@@ -320,6 +320,10 @@ export function WorkflowProvider({
       if (method === 'POST' && response.status === 409) {
         // Workflow was already created (e.g. in another session) — update it
         response = await fetch(url, { method: 'PUT', headers, body: signature });
+      } else if (method === 'PUT' && response.status === 404) {
+        // The ref still describes the previous dataset: a new one was saved before
+        // its loadWorkflow resolved (a sample loaded after an upload) — create it
+        response = await fetch(url, { method: 'POST', headers, body: signature });
       }
       if (response.ok) {
         workflowExistsRef.current = true;
