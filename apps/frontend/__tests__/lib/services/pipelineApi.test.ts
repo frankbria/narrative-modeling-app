@@ -43,6 +43,15 @@ describe('previewPipeline', () => {
     expect(preview.summary).toEqual({ rows_before: 2, rows_after: 2, cols_before: 2, cols_after: 2 });
   });
 
+  it('keeps the headers when the preview has no rows left', async () => {
+    fetchMock().mockResolvedValueOnce(ok({ success: true, preview_data: [] }));
+    const before = { columns: ['name', 'score'], data: [[null, null]] };
+
+    const preview = await previewPipeline('ds1', steps, before);
+
+    expect(preview.after).toEqual({ columns: ['name', 'score'], data: [] });
+  });
+
   it('throws the API error a failed preview reports', async () => {
     fetchMock().mockResolvedValueOnce(ok({ success: false, error: 'Column score is not numeric' }));
     await expect(previewPipeline('ds1', steps, null)).rejects.toThrow('Column score is not numeric');

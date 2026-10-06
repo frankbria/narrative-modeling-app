@@ -107,7 +107,8 @@ function adaptPreview(result: Record<string, unknown>, before: PreviewTable | nu
   const rows = (result.preview_data as Record<string, unknown>[] | null) ?? [];
   return {
     before,
-    after: table(rows),
+    // No rows left: no record to read the columns from, so keep the dataset's.
+    after: table(rows, rows.length ? undefined : before?.columns),
     summary: summary(result.stats_before as Stats | undefined, result.stats_after as Stats | undefined),
   };
 }

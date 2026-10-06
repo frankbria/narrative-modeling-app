@@ -523,8 +523,10 @@ class TransformationService(BaseService[TransformationConfig]):
         self, df: pd.DataFrame, steps: list[tuple[TransformationType, dict[str, Any]]], n_rows: int
     ) -> TransformationResult:
         """Apply every step but the last in order, then preview the last on the result.
-        A failure names its step, so the user knows which node to fix."""
+        A failure names its step, so the user knows which node to fix. `stats_before`
+        describes the untransformed rows, which is what the Before table shows."""
         *earlier, (last_type, last_parameters) = steps
+        before = self.engine._calculate_stats(df.head(n_rows))
         for number, (step_type, parameters) in enumerate(earlier, start=1):
             frame, result = self.engine.apply_transformation_frame(df, step_type, parameters)
             if frame is None:
@@ -533,7 +535,10 @@ class TransformationService(BaseService[TransformationConfig]):
         result = self.engine.preview_transformation(
             df=df, transformation_type=last_type, parameters=last_parameters, n_rows=n_rows
         )
-        return result if result.success else _name_step(result, len(steps), last_type)
+        if not result.success:
+            return _name_step(result, len(steps), last_type)
+        result.stats_before = before
+        return result
 
     async def apply_transformation(
         self,
