@@ -177,20 +177,36 @@ class TransformationService(BaseService[TransformationConfig]):
             quality_before = await self._assess_quality_dict(df)
             quality_after = await self._assess_quality_dict(transformed_df)
 
-            # Create version with lineage
-            version, lineage = await versioning_service.create_transformation_version(
-                parent_version_id=parent_version.version_id,
-                transformed_content=transformed_content,
-                transformation_steps=transformation_steps,
-                dataset_metadata=dataset,
-                user_id=user_id,
-                description=f"Applied {transformation_type} transformation",
-                transformation_config_id=config_id,
-                quality_before=quality_before,
-                quality_after=quality_after
+            version_id = await self._lineage_version(
+                versioning_service,
+                dict(
+                    parent_version_id=parent_version.version_id,
+                    transformed_content=transformed_content,
+                    transformation_steps=transformation_steps,
+                    dataset_metadata=dataset,
+                    user_id=user_id,
+                    description=f"Applied {transformation_type} transformation",
+                    transformation_config_id=config_id,
+                    quality_before=quality_before,
+                    quality_after=quality_after,
+                ),
             )
-            version_id = version.version_id
         return version_id
+
+    @staticmethod
+    async def _lineage_version(versioning_service: Any, version_args: dict[str, Any]) -> str | None:
+        """Write the transformation's version; None if it cannot be written.
+
+        Best-effort, like the base version: a failed lineage copy must not fail the
+        user's transformation, which has already been written. The step is then recorded
+        without a version, and undo says so instead of restoring nothing (#800, #850).
+        """
+        try:
+            version, _lineage = await versioning_service.create_transformation_version(**version_args)
+        except Exception:
+            logger.warning("No version for this transformation; undo cannot restore to it", exc_info=True)
+            return None
+        return version.version_id
 
     async def _parent_version(self, version_model: Any, dataset: Any, df: Any, user_id: str) -> Any:
         """The latest version to derive from, or a base version made now if there is none."""
