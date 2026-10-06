@@ -42,7 +42,11 @@ async def test_load_sample_uploads_a_real_object_not_a_fabricated_url(setup_data
 
     ud = await UserData.get(result["upload_id"])
     assert ud is not None and ud.s3_url == result["s3_url"]
-    assert ud.num_rows > 0 and ud.is_processed is True
+    assert ud.num_rows > 0
+    # #808: not processed yet, so the explore page runs /data/process for it as it
+    # does for an upload. Claiming is_processed with no schema, statistics or
+    # quality report made every one of those surfaces read "N/A".
+    assert ud.is_processed is False and ud.schema is None
     # #770: the displayed name is the sample's name, never an internal user id.
     assert ud.filename == "Customer Churn Prediction.csv"
     assert USER not in ud.filename

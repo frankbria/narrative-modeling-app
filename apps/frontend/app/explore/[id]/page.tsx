@@ -27,6 +27,10 @@ interface ProcessedDataset {
   id: string
   filename: string
   is_processed: boolean
+  // The stored counts every writer sets and transformations keep current (#808);
+  // `schema` only exists once /data/process has run.
+  num_rows: number
+  num_columns: number
   schema?: DatasetSchema
   statistics?: DatasetStatistics
   quality_report?: DatasetQualityReport
@@ -108,9 +112,10 @@ export default function DatasetAnalysisPage() {
       if (response.ok) {
         const processedData = await response.json()
         // Preserve the already-normalized id; the processing response (like the
-        // initial fetch) carries the id as `_id` with `id` null.
+        // initial fetch) carries the id as `_id` with `id` null. It carries no
+        // `is_processed` either, so set it here or the page waits forever (#808).
         setDataset(prev => prev
-          ? { ...prev, ...processedData, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
+          ? { ...prev, ...processedData, is_processed: true, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
           : null)
       }
     } catch (err) {
@@ -399,7 +404,7 @@ export default function DatasetAnalysisPage() {
                     <Database className="h-5 w-5 text-primary" />
                     <div>
                       <p className="text-2xl font-bold">
-                        {dataset.schema?.row_count?.toLocaleString() || 'N/A'}
+                        {dataset.num_rows?.toLocaleString() ?? 'N/A'}
                       </p>
                       <p className="text-sm text-muted-foreground">Rows</p>
                     </div>
@@ -413,7 +418,7 @@ export default function DatasetAnalysisPage() {
                     <BarChart3 className="h-5 w-5 text-primary" />
                     <div>
                       <p className="text-2xl font-bold">
-                        {dataset.schema?.column_count || 'N/A'}
+                        {dataset.num_columns ?? 'N/A'}
                       </p>
                       <p className="text-sm text-muted-foreground">Columns</p>
                     </div>

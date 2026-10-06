@@ -412,8 +412,9 @@ class OnboardingService:
             file_type="csv",
             file_size=len(csv_bytes),
             contains_pii=False,
-            is_processed=True,
-            processed_at=datetime.now(UTC),
+            # Unprocessed like any upload: the explore page then runs /data/process,
+            # which fills schema/statistics/quality. Claiming is_processed here left
+            # all three empty for good (#808).
             row_count=len(df),
             columns=df.columns.tolist(),
             data_preview=df.head(5).to_dict('records')
