@@ -155,10 +155,11 @@ function ProfilingActions(props: {
 }
 
 function Unavailable(props: { message: string }) {
+  const { message } = props
   return (
     <Card>
       <CardContent className="flex items-center justify-center h-32">
-        <p className="text-muted-foreground">{props.message}</p>
+        <p className="text-muted-foreground">{message}</p>
       </CardContent>
     </Card>
   )
@@ -166,15 +167,17 @@ function Unavailable(props: { message: string }) {
 
 /** The children when `when` holds data, else a "not available" card. */
 function Present(props: { when: unknown; fallback: string; children: ReactNode }) {
-  return props.when ? props.children : <Unavailable message={props.fallback} />
+  const { when, fallback, children } = props
+  return when ? children : <Unavailable message={fallback} />
 }
 
 function DatasetMissing(props: { message: string; className: string }) {
+  const { message, className } = props
   return (
     <div className="p-6">
       <Card>
         <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-          <p className={`${props.className} text-lg`}>{props.message}</p>
+          <p className={`${className} text-lg`}>{message}</p>
           <Link href="/explore">
             <Button variant="outline">
               <ArrowLeft className="mr-2 h-4 w-4" />
