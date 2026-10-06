@@ -56,6 +56,31 @@ class HistoryService:
             )
         return config
 
+    async def _move_to_step(self, dataset_id: str, user_id: str, version_id: str | None) -> None:
+        """Point the dataset (and its twin) at the version a history step produced."""
+        if not version_id:
+            return
+        dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id})
+        if not dataset:
+            return
+        # Version metadata only; the move needs its URL and shape, not its content.
+        version = await self.versioning_service.get_version(version_id, mark_accessed=False)
+        if not version:
+            return
+        # Bring the restored version's shape with the move so BOTH twins describe the
+        # restored file — record_new_file copies these onto the UserData twin, and a stale
+        # count silently mis-drives the training mode recommendation (model_training reads
+        # num_rows/num_columns off the twin). #629, same twin-drift class as #467/#524.
+        dataset.num_rows = version.num_rows
+        dataset.num_columns = version.num_columns
+        dataset.columns = version.columns
+        # Move file_path, s3_url AND the dual-written UserData twin together (#629):
+        # setting file_path alone left the twin (which training reads by ObjectId) and
+        # s3_url at the pre-navigation file, so training silently used the state the user
+        # had just navigated away from, the same twin-drift #467 fixed for forward writers.
+        await record_new_file(dataset, version.s3_url)
+        logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+
     async def undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move back one step in transformation history.
@@ -87,32 +112,7 @@ class HistoryService:
         target_step = config.transformation_steps[config.current_position]
         version_id = target_step.version_id
 
-        if version_id:
-            # Update dataset file_path to point to this version
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": dataset_id,
-                "user_id": user_id
-            })
-
-            if dataset:
-                # Get version metadata to update file_path (no need to fetch content)
-                version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-                if version:
-                    # Bring the restored version's shape with the move so BOTH twins
-                    # describe the restored file — record_new_file copies these onto the
-                    # UserData twin, and a stale count silently mis-drives the training
-                    # mode recommendation (model_training reads num_rows/num_columns off
-                    # the twin). #629, same twin-drift class as #467/#524.
-                    dataset.num_rows = version.num_rows
-                    dataset.num_columns = version.num_columns
-                    dataset.columns = version.columns
-                    # Move file_path, s3_url AND the dual-written UserData twin
-                    # together (#629) — setting file_path alone left the twin (which
-                    # training reads by ObjectId) and s3_url at the pre-undo file, so
-                    # training silently used the state the user just navigated away
-                    # from, the same twin-drift #467 fixed for forward writers.
-                    await record_new_file(dataset, version.s3_url)
-                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+        await self._move_to_step(dataset_id, user_id, version_id)
 
         # Save config
         await config.save()
@@ -156,32 +156,7 @@ class HistoryService:
         target_step = config.transformation_steps[config.current_position]
         version_id = target_step.version_id
 
-        if version_id:
-            # Update dataset file_path to point to this version
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": dataset_id,
-                "user_id": user_id
-            })
-
-            if dataset:
-                # Get version metadata to update file_path (no need to fetch content)
-                version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-                if version:
-                    # Bring the restored version's shape with the move so BOTH twins
-                    # describe the restored file — record_new_file copies these onto the
-                    # UserData twin, and a stale count silently mis-drives the training
-                    # mode recommendation (model_training reads num_rows/num_columns off
-                    # the twin). #629, same twin-drift class as #467/#524.
-                    dataset.num_rows = version.num_rows
-                    dataset.num_columns = version.num_columns
-                    dataset.columns = version.columns
-                    # Move file_path, s3_url AND the dual-written UserData twin
-                    # together (#629) — setting file_path alone left the twin (which
-                    # training reads by ObjectId) and s3_url at the pre-undo file, so
-                    # training silently used the state the user just navigated away
-                    # from, the same twin-drift #467 fixed for forward writers.
-                    await record_new_file(dataset, version.s3_url)
-                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+        await self._move_to_step(dataset_id, user_id, version_id)
 
         # Save config
         await config.save()
@@ -213,7 +188,7 @@ class HistoryService:
         config = await self._config(dataset_id, user_id)
 
         # Validate position
-        if position < 0 or position >= len(config.transformation_steps):
+        if not 0 <= position < len(config.transformation_steps):
             raise ValidationError(
                 message=f"Invalid position {position}",
                 details={
@@ -229,32 +204,7 @@ class HistoryService:
         target_step = config.transformation_steps[config.current_position]
         version_id = target_step.version_id
 
-        if version_id:
-            # Update dataset file_path to point to this version
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": dataset_id,
-                "user_id": user_id
-            })
-
-            if dataset:
-                # Get version metadata to update file_path (no need to fetch content)
-                version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-                if version:
-                    # Bring the restored version's shape with the move so BOTH twins
-                    # describe the restored file — record_new_file copies these onto the
-                    # UserData twin, and a stale count silently mis-drives the training
-                    # mode recommendation (model_training reads num_rows/num_columns off
-                    # the twin). #629, same twin-drift class as #467/#524.
-                    dataset.num_rows = version.num_rows
-                    dataset.num_columns = version.num_columns
-                    dataset.columns = version.columns
-                    # Move file_path, s3_url AND the dual-written UserData twin
-                    # together (#629) — setting file_path alone left the twin (which
-                    # training reads by ObjectId) and s3_url at the pre-undo file, so
-                    # training silently used the state the user just navigated away
-                    # from, the same twin-drift #467 fixed for forward writers.
-                    await record_new_file(dataset, version.s3_url)
-                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+        await self._move_to_step(dataset_id, user_id, version_id)
 
         # Save config
         await config.save()
