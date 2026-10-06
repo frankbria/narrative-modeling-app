@@ -51,6 +51,17 @@ function buildSavePayload(state: WorkflowState) {
 
 const WorkflowContext = createContext<WorkflowContextType | undefined>(undefined);
 
+/** PUT when the workflow is known to exist, else POST; each retries as the other
+ *  when the server disagrees. POST 409: it was created elsewhere (another session).
+ *  PUT 404: the ref still describes the previous dataset, because a new one was
+ *  saved before its loadWorkflow resolved (a sample loaded after an upload, #808). */
+async function sendWorkflow(url: string, exists: boolean, headers: HeadersInit, body: string) {
+  const [first, retry, disagreement] = exists ? ['PUT', 'POST', 404] : ['POST', 'PUT', 409];
+  const response = await fetch(url, { method: first, headers, body });
+  if (response.status !== disagreement) return response;
+  return fetch(url, { method: retry, headers, body });
+}
+
 export function WorkflowProvider({ 
   children,
   initialDatasetId
@@ -315,12 +326,7 @@ export function WorkflowProvider({
         ...(token && { Authorization: `Bearer ${token}` })
       };
       const url = `${API_URL}/workflows/${state.datasetId}`;
-      const method = workflowExistsRef.current ? 'PUT' : 'POST';
-      let response = await fetch(url, { method, headers, body: signature });
-      if (method === 'POST' && response.status === 409) {
-        // Workflow was already created (e.g. in another session) — update it
-        response = await fetch(url, { method: 'PUT', headers, body: signature });
-      }
+      const response = await sendWorkflow(url, workflowExistsRef.current, headers, signature);
       if (response.ok) {
         workflowExistsRef.current = true;
         lastSavedRef.current = signature;

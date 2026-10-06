@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
@@ -27,6 +27,10 @@ interface ProcessedDataset {
   id: string
   filename: string
   is_processed: boolean
+  // The stored counts every writer sets and transformations keep current (#808);
+  // `schema` only exists once /data/process has run.
+  num_rows: number
+  num_columns: number
   schema?: DatasetSchema
   statistics?: DatasetStatistics
   quality_report?: DatasetQualityReport
@@ -34,31 +38,171 @@ interface ProcessedDataset {
   processed_at: string
 }
 
-/** Map a backend DataType (schema_inference.py) or legacy pandas dtype to the
- *  visualization dashboard's column buckets. */
-function classifyColumnType(dataType: string | undefined): 'numeric' | 'categorical' | 'datetime' | 'text' {
-  switch (dataType) {
-    case 'integer':
-    case 'float':
-    case 'currency':
-    case 'percentage':
-    case 'number':
-    case 'int64':
-    case 'float64':
-      return 'numeric'
-    case 'categorical':
-    case 'boolean':
-    case 'string':
-    case 'object':
-      return 'categorical'
-    case 'date':
-    case 'datetime':
-    case 'time':
-    case 'datetime64[ns]':
-      return 'datetime'
-    default:
-      return 'text'
+type ColumnKind = 'numeric' | 'categorical' | 'datetime' | 'text'
+
+/** Backend DataType (schema_inference.py) or legacy pandas dtype → the
+ *  visualization dashboard's column bucket. A Map, so `constructor` is not a key. */
+const COLUMN_KINDS = new Map<string, ColumnKind>([
+  ...['integer', 'float', 'currency', 'percentage', 'number', 'int64', 'float64'].map(
+    (t) => [t, 'numeric'] as const,
+  ),
+  ...['categorical', 'boolean', 'string', 'object'].map((t) => [t, 'categorical'] as const),
+  ...['date', 'datetime', 'time', 'datetime64[ns]'].map((t) => [t, 'datetime'] as const),
+])
+
+function classifyColumnType(dataType: string | undefined): ColumnKind {
+  return COLUMN_KINDS.get(dataType ?? '') ?? 'text'
+}
+
+const isAbort = (err: unknown) => err instanceof Error && err.name === 'AbortError'
+
+/** Merge a /data/process response into the loaded dataset. The response has no
+ *  `is_processed`, so it is set here or the page waits on "Processing" forever
+ *  (#808), and no `id`, so the one normalized at fetch time is kept. */
+function withProcessed(
+  prev: ProcessedDataset | null,
+  processed: Partial<ProcessedDataset>,
+): ProcessedDataset | null {
+  return prev && { ...prev, ...processed, is_processed: true, id: prev.id }
+}
+
+function ProcessingStatus(props: { dataset: ProcessedDataset }) {
+  const { dataset } = props
+  return (
+    <div className="flex items-center gap-4 text-muted-foreground">
+      {dataset.is_processed ? (
+        <div className="flex items-center gap-1 text-green-600">
+          <CheckCircle2 className="h-4 w-4" />
+          <span className="text-sm">Processed</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 text-yellow-600">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Processing...</span>
+        </div>
+      )}
+      {dataset.processed_at && (
+        <span className="text-sm">
+          Processed {new Date(dataset.processed_at).toLocaleDateString()}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function StatCard(props: { icon: ReactNode; value: string; label: string }) {
+  const { icon, value, label } = props
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center space-x-2">
+          {icon}
+          <div>
+            <p className="text-2xl font-bold">{value}</p>
+            <p className="text-sm text-muted-foreground">{label}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Rows and columns are the stored counts every writer sets (#808); `schema`
+ *  only exists after processing. */
+function OverviewStats({ dataset }: { dataset: ProcessedDataset }) {
+  const score = dataset.quality_report?.overall_quality_score
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <StatCard icon={<Database className="h-5 w-5 text-primary" />} value={dataset.num_rows?.toLocaleString() ?? 'N/A'} label="Rows" />
+      <StatCard icon={<BarChart3 className="h-5 w-5 text-primary" />} value={String(dataset.num_columns ?? 'N/A')} label="Columns" />
+      <StatCard icon={<CheckCircle2 className="h-5 w-5 text-primary" />} value={score ? (score * 100).toFixed(1) + '%' : 'N/A'} label="Quality Score" />
+    </div>
+  )
+}
+
+function ProfilingActions(props: {
+  dataset: ProcessedDataset
+  profiled: boolean
+  // VoidFunction, not `() => void`: the CRAP gate's lizard reader counts a type-level
+  // arrow as an (uncovered) function.
+  onExport: VoidFunction
+  onComplete: VoidFunction
+  onContinue: VoidFunction
+}) {
+  const { dataset, profiled, onExport, onComplete, onContinue } = props
+  return (
+    <div className="flex gap-2">
+      <Button
+        onClick={onExport}
+        disabled={!dataset.is_processed}
+        variant="outline"
+        className="bg-card hover:bg-muted border-border"
+      >
+        Export Data
+      </Button>
+      {dataset.is_processed && !profiled && (
+        <Button onClick={onComplete} className="bg-green-600 hover:bg-green-700 text-white">
+          Complete & Continue to Data Preparation
+        </Button>
+      )}
+      {profiled && (
+        <Button onClick={onContinue} className="bg-blue-600 hover:bg-blue-700 text-white">
+          Continue to Data Preparation
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function Unavailable(props: { message: string }) {
+  const { message } = props
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-center h-32">
+        <p className="text-muted-foreground">{message}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** The children when `when` holds data, else a "not available" card. */
+function Present(props: { when: unknown; fallback: string; children: ReactNode }) {
+  const { when, fallback, children } = props
+  return when ? children : <Unavailable message={fallback} />
+}
+
+function DatasetMissing(props: { message: string; className: string }) {
+  const { message, className } = props
+  return (
+    <div className="p-6">
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
+          <p className={`${className} text-lg`}>{message}</p>
+          <Link href="/explore">
+            <Button variant="outline">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Datasets
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/** What the page shows instead of the dataset while it loads, fails or is missing. */
+function blockingView(isLoading: boolean, error: string | null, dataset: ProcessedDataset | null) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <span className="text-lg">Loading dataset...</span>
+      </div>
+    )
   }
+  if (error) return <DatasetMissing message={error} className="text-destructive" />
+  if (!dataset) return <DatasetMissing message="Dataset not found" className="text-muted-foreground" />
+  return null
 }
 
 export default function DatasetAnalysisPage() {
@@ -107,18 +251,10 @@ export default function DatasetAnalysisPage() {
 
       if (response.ok) {
         const processedData = await response.json()
-        // Preserve the already-normalized id; the processing response (like the
-        // initial fetch) carries the id as `_id` with `id` null.
-        setDataset(prev => prev
-          ? { ...prev, ...processedData, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
-          : null)
+        setDataset(prev => withProcessed(prev, processedData))
       }
     } catch (err) {
-      // Ignore abort errors
-      if (err instanceof Error && err.name === 'AbortError') {
-        return
-      }
-      console.error('Error processing dataset:', err)
+      if (!isAbort(err)) console.error('Error processing dataset:', err)
     }
   }
 
@@ -234,50 +370,8 @@ export default function DatasetAnalysisPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
-        <span className="text-lg">Loading dataset...</span>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-            <p className="text-destructive text-lg">{error}</p>
-            <Link href="/explore">
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Datasets
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!dataset) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-            <p className="text-muted-foreground text-lg">Dataset not found</p>
-            <Link href="/explore">
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Datasets
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  const blocker = blockingView(isLoading, error, dataset)
+  if (blocker || !dataset) return blocker
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -293,61 +387,25 @@ export default function DatasetAnalysisPage() {
             </Link>
             <h1 className="text-3xl font-bold">{dataset.filename}</h1>
           </div>
-          <div className="flex items-center gap-4 text-muted-foreground">
-            {dataset.is_processed ? (
-              <div className="flex items-center gap-1 text-green-600">
-                <CheckCircle2 className="h-4 w-4" />
-                <span className="text-sm">Processed</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-yellow-600">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Processing...</span>
-              </div>
-            )}
-            {dataset.processed_at && (
-              <span className="text-sm">
-                Processed {new Date(dataset.processed_at).toLocaleDateString()}
-              </span>
-            )}
-          </div>
+          <ProcessingStatus dataset={dataset} />
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleExport} 
-            disabled={!dataset.is_processed}
-            variant="outline"
-            className="bg-card hover:bg-muted border-border"
-          >
-            Export Data
-          </Button>
-          {dataset.is_processed && !state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
-            <Button 
-              onClick={() => {
-                // autoAdvance: complete profiling AND move straight to the next
-                // stage in one click, matching the button label.
-                completeStage(WorkflowStage.DATA_PROFILING, {
-                  datasetId: dataset.id,
-                  schema: dataset.schema,
-                  statistics: dataset.statistics,
-                  quality: dataset.quality_report,
-                  timestamp: new Date().toISOString()
-                }, { autoAdvance: true })
-              }}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              Complete & Continue to Data Preparation
-            </Button>
-          )}
-          {state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
-            <Button 
-              onClick={() => router.push('/prepare')}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Continue to Data Preparation
-            </Button>
-          )}
-        </div>
+        <ProfilingActions
+          dataset={dataset}
+          profiled={state.completedStages.has(WorkflowStage.DATA_PROFILING)}
+          onExport={handleExport}
+          onComplete={() => {
+            // autoAdvance: complete profiling AND move straight to the next
+            // stage in one click, matching the button label.
+            completeStage(WorkflowStage.DATA_PROFILING, {
+              datasetId: dataset.id,
+              schema: dataset.schema,
+              statistics: dataset.statistics,
+              quality: dataset.quality_report,
+              timestamp: new Date().toISOString()
+            }, { autoAdvance: true })
+          }}
+          onContinue={() => router.push('/prepare')}
+        />
       </div>
 
       {!dataset.is_processed ? (
@@ -392,110 +450,39 @@ export default function DatasetAnalysisPage() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <Database className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold">
-                        {dataset.schema?.row_count?.toLocaleString() || 'N/A'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Rows</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <BarChart3 className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold">
-                        {dataset.schema?.column_count || 'N/A'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Columns</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle2 className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold">
-                        {dataset.quality_report?.overall_quality_score 
-                          ? (dataset.quality_report.overall_quality_score * 100).toFixed(1) + '%'
-                          : 'N/A'
-                        }
-                      </p>
-                      <p className="text-sm text-muted-foreground">Quality Score</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <OverviewStats dataset={dataset} />
 
             <DataPreviewTable datasetId={dataset.id} onExport={handleExport} />
           </TabsContent>
 
           <TabsContent value="schema">
-            {dataset.schema ? (
-              <SchemaViewer schema={dataset.schema} />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Schema information not available</p>
-                </CardContent>
-              </Card>
-            )}
+            <Present when={dataset.schema} fallback="Schema information not available">
+              <SchemaViewer schema={dataset.schema as DatasetSchema} />
+            </Present>
           </TabsContent>
 
           <TabsContent value="statistics">
-            {dataset.statistics ? (
-              <StatisticsDashboard 
-                datasetId={dataset.id} 
-                statistics={dataset.statistics}
-              />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Statistics not available</p>
-                </CardContent>
-              </Card>
-            )}
+            <Present when={dataset.statistics} fallback="Statistics not available">
+              <StatisticsDashboard datasetId={dataset.id} statistics={dataset.statistics} />
+            </Present>
           </TabsContent>
 
           <TabsContent value="visualizations">
-            {vizColumns ? (
+            <Present when={vizColumns} fallback="Schema information required for visualizations">
               <InteractiveVisualizationDashboard
                 datasetId={dataset.id}
-                columns={vizColumns}
+                columns={vizColumns as NonNullable<typeof vizColumns>}
                 statistics={dataset.statistics}
               />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Schema information required for visualizations</p>
-                </CardContent>
-              </Card>
-            )}
+            </Present>
           </TabsContent>
 
           <TabsContent value="quality" className="space-y-4">
-            {dataset.id && <QualityDashboard fileId={dataset.id} datasetId={dataset.id} />}
-            {dataset.quality_report ? (
-              <QualityReportCard report={dataset.quality_report} />
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-32">
-                  <p className="text-muted-foreground">Quality report not available</p>
-                </CardContent>
-              </Card>
-            )}
+            {/* id is never empty: normalized at fetch, with the route param as fallback */}
+            <QualityDashboard fileId={dataset.id} datasetId={dataset.id} />
+            <Present when={dataset.quality_report} fallback="Quality report not available">
+              <QualityReportCard report={dataset.quality_report as DatasetQualityReport} />
+            </Present>
           </TabsContent>
 
           <TabsContent value="insights">

@@ -1,0 +1,339 @@
+{
+  "file_id": "6ac4678431da9244808f9bde",
+  "preview": {
+    "columns": [
+      "tenure",
+      "plan",
+      "churn"
+    ],
+    "data": [
+      {
+        "churn": 1,
+        "plan": "basic",
+        "tenure": 1
+      },
+      {
+        "churn": 0,
+        "plan": "pro",
+        "tenure": 24
+      },
+      {
+        "churn": 0,
+        "plan": "pro",
+        "tenure": 36
+      },
+      {
+        "churn": 1,
+        "plan": "basic",
+        "tenure": 5
+      },
+      {
+        "churn": 0,
+        "plan": "premium",
+        "tenure": 60
+      }
+    ],
+    "preview_rows": 5,
+    "total_rows": 5
+  },
+  "processing_id": "6ac4678431da9244808f9bde",
+  "quality_report": {
+    "actionable_recommendations": [],
+    "assessed_at": "2026-10-06T03:14:12.762303+00:00",
+    "column_count": 3,
+    "column_scores": [
+      {
+        "column_name": "tenure",
+        "completeness_score": 1.0,
+        "consistency_score": 1.0,
+        "issues": [],
+        "overall_score": 1.0,
+        "uniqueness_score": 1.0,
+        "validity_score": 1.0
+      },
+      {
+        "column_name": "plan",
+        "completeness_score": 1.0,
+        "consistency_score": 1.0,
+        "issues": [],
+        "overall_score": 1.0,
+        "uniqueness_score": 1.0,
+        "validity_score": 1.0
+      },
+      {
+        "column_name": "churn",
+        "completeness_score": 1.0,
+        "consistency_score": 1.0,
+        "issues": [],
+        "overall_score": 1.0,
+        "uniqueness_score": 1.0,
+        "validity_score": 1.0
+      }
+    ],
+    "component_scores": {
+      "completeness": 100.0,
+      "consistency": 100.0,
+      "uniqueness": 100.0,
+      "validity": 100.0
+    },
+    "critical_issues": [],
+    "dimension_scores": {
+      "completeness": 1.0,
+      "consistency": 1.0,
+      "uniqueness": 1.0,
+      "validity": 1.0
+    },
+    "overall_quality_score": 1.0,
+    "recommendations": [],
+    "row_count": 5,
+    "score_0_100": 100.0,
+    "warnings": []
+  },
+  "schema": {
+    "column_count": 3,
+    "columns": [
+      {
+        "cardinality": 5,
+        "data_type": "integer",
+        "format_pattern": null,
+        "max_value": 60.0,
+        "mean_value": 25.2,
+        "min_value": 1.0,
+        "most_common_value": 1,
+        "name": "tenure",
+        "null_count": 0,
+        "null_percentage": 0.0,
+        "nullable": false,
+        "sample_values": [
+          1,
+          24,
+          36,
+          5,
+          60
+        ],
+        "unique": true
+      },
+      {
+        "cardinality": 3,
+        "data_type": "string",
+        "format_pattern": null,
+        "max_value": null,
+        "mean_value": null,
+        "min_value": null,
+        "most_common_value": "basic",
+        "name": "plan",
+        "null_count": 0,
+        "null_percentage": 0.0,
+        "nullable": false,
+        "sample_values": [
+          "basic",
+          "pro",
+          "premium"
+        ],
+        "unique": false
+      },
+      {
+        "cardinality": 2,
+        "data_type": "boolean",
+        "format_pattern": null,
+        "max_value": null,
+        "mean_value": null,
+        "min_value": null,
+        "most_common_value": 0,
+        "name": "churn",
+        "null_count": 0,
+        "null_percentage": 0.0,
+        "nullable": false,
+        "sample_values": [
+          0,
+          1
+        ],
+        "unique": false
+      }
+    ],
+    "file_type": "csv",
+    "inference_confidence": 0.9333333333333332,
+    "inferred_at": "2026-10-06T03:14:12.753494+00:00",
+    "row_count": 5
+  },
+  "statistics": {
+    "calculated_at": "2026-10-06T03:14:12.759959+00:00",
+    "column_count": 3,
+    "column_statistics": [
+      {
+        "avg_length": null,
+        "column_name": "tenure",
+        "data_type": "integer",
+        "date_range_days": null,
+        "earliest_date": null,
+        "iqr": 31.0,
+        "kurtosis": -0.6244736071312191,
+        "latest_date": null,
+        "lower_fence": -41.5,
+        "max_length": null,
+        "max_value": 60.0,
+        "mean": 25.2,
+        "median": 24.0,
+        "min_length": null,
+        "min_value": 1.0,
+        "mode": 1,
+        "most_frequent_values": [
+          {
+            "count": 1,
+            "percentage": 20.0,
+            "value": 1
+          },
+          {
+            "count": 1,
+            "percentage": 20.0,
+            "value": 24
+          },
+          {
+            "count": 1,
+            "percentage": 20.0,
+            "value": 36
+          },
+          {
+            "count": 1,
+            "percentage": 20.0,
+            "value": 5
+          },
+          {
+            "count": 1,
+            "percentage": 20.0,
+            "value": 60
+          }
+        ],
+        "null_count": 0,
+        "null_percentage": 0.0,
+        "outlier_count": 0,
+        "outlier_percentage": 0.0,
+        "percentile_5": 1.8,
+        "percentile_95": 55.199999999999996,
+        "q1": 5.0,
+        "q3": 36.0,
+        "range": 59.0,
+        "skewness": 0.6249095704336778,
+        "std_dev": 24.09771773425857,
+        "total_count": 5,
+        "unique_count": 5,
+        "unique_percentage": 100.0,
+        "upper_fence": 82.5,
+        "variance": 580.6999999999999
+      },
+      {
+        "avg_length": 4.6,
+        "column_name": "plan",
+        "data_type": "string",
+        "date_range_days": null,
+        "earliest_date": null,
+        "iqr": null,
+        "kurtosis": null,
+        "latest_date": null,
+        "lower_fence": null,
+        "max_length": 7,
+        "max_value": null,
+        "mean": null,
+        "median": null,
+        "min_length": 3,
+        "min_value": null,
+        "mode": "basic",
+        "most_frequent_values": [
+          {
+            "count": 2,
+            "percentage": 40.0,
+            "value": "basic"
+          },
+          {
+            "count": 2,
+            "percentage": 40.0,
+            "value": "pro"
+          },
+          {
+            "count": 1,
+            "percentage": 20.0,
+            "value": "premium"
+          }
+        ],
+        "null_count": 0,
+        "null_percentage": 0.0,
+        "outlier_count": null,
+        "outlier_percentage": null,
+        "percentile_5": null,
+        "percentile_95": null,
+        "q1": null,
+        "q3": null,
+        "range": null,
+        "skewness": null,
+        "std_dev": null,
+        "total_count": 5,
+        "unique_count": 3,
+        "unique_percentage": 60.0,
+        "upper_fence": null,
+        "variance": null
+      },
+      {
+        "avg_length": null,
+        "column_name": "churn",
+        "data_type": "boolean",
+        "date_range_days": null,
+        "earliest_date": null,
+        "iqr": null,
+        "kurtosis": null,
+        "latest_date": null,
+        "lower_fence": null,
+        "max_length": null,
+        "max_value": null,
+        "mean": null,
+        "median": null,
+        "min_length": null,
+        "min_value": null,
+        "mode": 0,
+        "most_frequent_values": [
+          {
+            "count": 3,
+            "percentage": 60.0,
+            "value": 0
+          },
+          {
+            "count": 2,
+            "percentage": 40.0,
+            "value": 1
+          }
+        ],
+        "null_count": 0,
+        "null_percentage": 0.0,
+        "outlier_count": null,
+        "outlier_percentage": null,
+        "percentile_5": null,
+        "percentile_95": null,
+        "q1": null,
+        "q3": null,
+        "range": null,
+        "skewness": null,
+        "std_dev": null,
+        "total_count": 5,
+        "unique_count": 2,
+        "unique_percentage": 40.0,
+        "upper_fence": null,
+        "variance": null
+      }
+    ],
+    "correlation_matrix": null,
+    "memory_usage_mb": 0.000457763671875,
+    "missing_value_summary": {
+      "columns_with_missing": 0,
+      "complete_columns": 3,
+      "missing_by_column": {},
+      "missing_patterns": {
+        "common_patterns": [],
+        "complete_rows": 5,
+        "rows_with_all_missing": 0,
+        "rows_with_any_missing": 0
+      },
+      "total_missing_values": 0
+    },
+    "row_count": 5
+  },
+  "status": "success"
+}

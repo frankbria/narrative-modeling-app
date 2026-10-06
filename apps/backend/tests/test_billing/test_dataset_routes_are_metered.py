@@ -222,7 +222,8 @@ class TestEveryUploadEnforcesTheStorageCeiling:
     #: Where the check lives when it is not in the handler itself.
     _VIA = {
         "/api/v1/onboarding/sample-datasets/{dataset_id}/load": (
-            "app.services.onboarding_service", "OnboardingService.load_sample_dataset",
+            # The loader's upload step (split out of load_sample_dataset in #808).
+            "app.services.onboarding_service", "_upload_sample",
         ),
     }
 

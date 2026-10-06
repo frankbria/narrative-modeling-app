@@ -2,6 +2,8 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { getAuthToken } from '@/lib/auth-helpers'
 import DatasetAnalysisPage from '@/app/explore/[id]/page'
+import realUserData from '@/__tests__/fixtures/userDataResponse.unprocessed.json'
+import realProcessResponse from '@/__tests__/fixtures/dataProcessResponse.json'
 
 const mockGetAuthToken = getAuthToken as jest.Mock
 
@@ -126,7 +128,12 @@ jest.mock('@/components/ModelTrainingButton', () => {
   }
 })
 
+// Built on a real /user_data response (#808): a hand-written object let the
+// page read a field the API never sends and still pass.
 const mockProcessedDataset = {
+  ...realUserData,
+  num_rows: 1000,
+  num_columns: 5,
   id: 'test-dataset-id',
   filename: 'test-dataset.csv',
   is_processed: true,
@@ -193,6 +200,26 @@ describe('DatasetAnalysisPage', () => {
     mockGetAuthToken.mockResolvedValue('mock-token')
   })
 
+  // #808: real response shapes (captured by the backend's
+  // test_user_data_response_fixture.py), not a hand-written dataset.
+  describe('with real API responses', () => {
+    const statFor = (label: string) =>
+      screen.getByText(label).previousElementSibling?.textContent
+
+    it('shows the stored row and column counts once a fresh upload is processed', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(realUserData) })
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(realProcessResponse) })
+
+      renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
+
+      await waitFor(() => expect(screen.getByText('Rows')).toBeInTheDocument())
+      expect(statFor('Rows')).toBe(realUserData.num_rows.toLocaleString())
+      expect(statFor('Columns')).toBe(String(realUserData.num_columns))
+      expect(screen.queryByText('Processing Dataset')).not.toBeInTheDocument()
+    })
+  })
+
   it('renders loading state initially', () => {
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')
     expect(screen.getByText('Loading dataset...')).toBeInTheDocument()
@@ -240,7 +267,7 @@ describe('DatasetAnalysisPage', () => {
     ;(global.fetch as jest.Mock).mockReset()
     ;(global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
-      json: jest.fn().mockResolvedValue({ ...mockProcessedDataset, id: null }),
+      json: jest.fn().mockResolvedValue({ ...mockProcessedDataset, id: null, _id: undefined }),
     })
 
     renderWithWorkflow(<DatasetAnalysisPage />, 'test-dataset-id')

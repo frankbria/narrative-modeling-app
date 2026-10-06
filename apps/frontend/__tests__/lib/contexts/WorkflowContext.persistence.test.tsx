@@ -208,6 +208,31 @@ describe('saveWorkflow', () => {
     });
   });
 
+  it('creates the workflow when a second dataset is saved before its load resolves (#808 demo)', async () => {
+    // Dataset A's workflow exists, so the ref says "exists". Loading a sample
+    // (dataset B) in the same session saves B before loadWorkflow(B) resets that
+    // ref: the PUT 404s, and the workflow must then be created, not dropped.
+    (global.fetch as jest.Mock).mockResolvedValue(mockFetchResponse(201, backendState));
+    const { result } = renderHook(() => useWorkflow(), { wrapper });
+    await act(async () => {
+      result.current.completeStage(WorkflowStage.DATA_LOADING, { datasetId: DATASET_ID });
+    });
+    await waitFor(() => expect(workflowCalls().length).toBeGreaterThanOrEqual(1));
+
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockFetchResponse(404, { detail: 'Workflow not found' }))
+      .mockResolvedValue(mockFetchResponse(201, { ...backendState, dataset_id: 'ds-b' }));
+    await act(async () => {
+      result.current.completeStage(WorkflowStage.DATA_LOADING, { datasetId: 'ds-b' });
+    });
+
+    await waitFor(() => {
+      const calls = workflowCalls().filter(([url]) => String(url).endsWith('/workflows/ds-b'));
+      expect(calls.map(([, init]) => init.method)).toEqual(['PUT', 'POST']);
+    });
+  });
+
   it('keeps state in localStorage when the backend save fails', async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error('network down'));
 

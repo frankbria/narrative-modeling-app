@@ -1,6 +1,7 @@
 """
 Onboarding service for managing user tutorial and guidance experience
 """
+import os
 from copy import deepcopy
 from datetime import UTC, datetime
 from functools import cache
@@ -11,7 +12,7 @@ import pandas as pd
 
 from app.billing.storage import enforce_storage_ceiling
 from app.models.onboarding import OnboardingProgress
-from app.models.user_data import UserData
+from app.models.user_data import SchemaField, UserData
 from app.schemas.onboarding import (
     OnboardingStepStatus,
     OnboardingStepType,
@@ -94,6 +95,51 @@ def _file_facts(dataset_id: str, target_column: str) -> dict[str, Any]:
         "feature_columns": [c for c in df.columns if c != target_column],
     }
 
+
+
+async def _upload_sample(user_id: str, dataset_id: str, df: pd.DataFrame) -> tuple[str, int]:
+    """Upload the sample under the user's prefix with a server-derived key and return
+    the URL of the REAL object and its size (#541). The loader once persisted a
+    fabricated URL, so every downstream load 404'd."""
+    # Imported here so a test's patch of app.utils.s3 applies at call time.
+    from app.utils.s3 import dataset_s3_key, upload_file_to_s3
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    await enforce_storage_ceiling(user_id, len(csv_bytes))
+    success, s3_url = upload_file_to_s3(
+        csv_bytes, dataset_s3_key(user_id, f"{dataset_id}.csv"), content_type="text/csv"
+    )
+    if not success or s3_url is None:
+        raise ValueError("Failed to upload sample dataset to storage")
+    return s3_url, len(csv_bytes)
+
+
+def _sample_field_type(series: pd.Series, n_rows: int) -> str:
+    if series.dtype in ["int64", "float64"]:
+        return "numeric"
+    if series.dtype == "bool":
+        return "boolean"
+    if series.dtype == "datetime64[ns]":
+        return "datetime"
+    return "categorical" if series.nunique() < n_rows * 0.5 else "text"
+
+
+def _sample_schema(df: pd.DataFrame) -> list[SchemaField]:
+    fields = []
+    for col in df.columns:
+        unique_count = df[col].nunique()
+        fields.append(SchemaField(
+            field_name=col,
+            field_type=_sample_field_type(df[col], len(df)),
+            data_type="nominal",
+            inferred_dtype=str(df[col].dtype),
+            unique_values=unique_count,
+            missing_values=df[col].isnull().sum(),
+            example_values=df[col].dropna().head(3).tolist(),
+            is_constant=unique_count == 1,
+            is_high_cardinality=unique_count > len(df) * 0.8,
+        ))
+    return fields
 
 class OnboardingService:
     """Service for managing user onboarding experience"""
@@ -329,108 +375,34 @@ class OnboardingService:
 
     async def load_sample_dataset(self, user_id: str, dataset_id: str) -> dict[str, Any]:
         """Load a sample dataset for the user"""
-        
-        # Get dataset info
-        datasets = await self.get_sample_datasets()
-        dataset = next((d for d in datasets if d["dataset_id"] == dataset_id), None)
-        
-        if not dataset:
-            raise ValueError(f"Sample dataset not found: {dataset_id}")
-        
-        # Upload the sample dataset file to S3 for the user
-        try:
-            import os
+        dataset = await self._find_sample(dataset_id)
+        df = pd.read_csv(_sample_path(dataset_id))
+        s3_url, size = await _upload_sample(user_id, dataset_id, df)
 
-            from app.models.user_data import SchemaField, UserData
-        except ImportError as e:
-            raise ValueError(f"Required dependencies not available: {e}")
-        
-        sample_file_path = _sample_path(dataset_id)
-
-        if not os.path.exists(sample_file_path):
-            raise ValueError(f"Sample dataset file not found: {dataset_id}")
-        
-        # Read and process the dataset
-        df = pd.read_csv(sample_file_path)
-        
         # Shown as the dataset's title. The S3 key is server-derived and unique, so the
         # name need not be; it used to carry the user id and a timestamp (#770).
-        filename = f"{dataset['name']}.csv"
-        
-        # Upload the sample to S3 under the user's prefix with a server-derived key, and
-        # store the URL of the REAL object (#541). Previously this wrote the CSV to a temp
-        # file it never cleaned up and persisted a fabricated URL to a nonexistent object,
-        # so every downstream load (preview/transform/train) 404'd. No temp file is needed:
-        # serialize straight to bytes.
-        from app.utils.s3 import dataset_s3_key, upload_file_to_s3
-
-        s3_key = dataset_s3_key(user_id, f"{dataset_id}.csv")
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
-        await enforce_storage_ceiling(user_id, len(csv_bytes))
-        success, s3_url = upload_file_to_s3(csv_bytes, s3_key, content_type="text/csv")
-        if not success:
-            raise ValueError("Failed to upload sample dataset to storage")
-        
-        # Infer schema
-        schema_fields = []
-        for col in df.columns:
-            dtype = str(df[col].dtype)
-            unique_count = df[col].nunique()
-            missing_count = df[col].isnull().sum()
-            
-            # Determine field type
-            if df[col].dtype in ['int64', 'float64']:
-                field_type = 'numeric'
-            elif df[col].dtype == 'bool':
-                field_type = 'boolean'
-            elif df[col].dtype == 'datetime64[ns]':
-                field_type = 'datetime'
-            else:
-                field_type = 'categorical' if unique_count < len(df) * 0.5 else 'text'
-            
-            schema_fields.append(SchemaField(
-                field_name=col,
-                field_type=field_type,
-                data_type='nominal',
-                inferred_dtype=dtype,
-                unique_values=unique_count,
-                missing_values=missing_count,
-                example_values=df[col].dropna().head(3).tolist(),
-                is_constant=unique_count == 1,
-                is_high_cardinality=unique_count > len(df) * 0.8
-            ))
-        
-        # Create UserData record
+        name = f"{dataset['name']}.csv"
         user_data = UserData(
             user_id=user_id,
-            filename=filename,
-            original_filename=f"{dataset['name']}.csv",
+            filename=name,
+            original_filename=name,
             s3_url=s3_url,
             num_rows=len(df),
             num_columns=len(df.columns),
-            data_schema=schema_fields,
+            data_schema=_sample_schema(df),
             file_type="csv",
-            file_size=len(csv_bytes),
+            file_size=size,
             contains_pii=False,
-            is_processed=True,
-            processed_at=datetime.now(UTC),
+            # Unprocessed like any upload: the explore page then runs /data/process,
+            # which fills schema/statistics/quality. Claiming is_processed here left
+            # all three empty for good (#808).
             row_count=len(df),
             columns=df.columns.tolist(),
             data_preview=df.head(5).to_dict('records')
         )
-        
         await user_data.insert()
-        
-        # Track that user loaded this sample dataset
-        progress = await self._get_or_create_user_progress(user_id)
-        if dataset_id not in progress.sample_datasets_loaded:
-            progress.sample_datasets_loaded.append(dataset_id)
-        
-        progress.features_discovered.append(f"sample_dataset_{dataset_id}")
-        progress.last_activity_at = datetime.now(UTC)
-        
-        await self._save_user_progress(user_id, progress)
-        
+        await self._record_sample_load(user_id, dataset_id)
+
         return {
             "dataset_id": str(user_data.id),
             "upload_id": str(user_data.id),
@@ -440,7 +412,25 @@ class OnboardingService:
                 "train_model"
             ]
         }
-    
+
+    async def _find_sample(self, dataset_id: str) -> dict[str, Any]:
+        datasets = await self.get_sample_datasets()
+        dataset = next((d for d in datasets if d["dataset_id"] == dataset_id), None)
+        if not dataset:
+            raise ValueError(f"Sample dataset not found: {dataset_id}")
+        if not os.path.exists(_sample_path(dataset_id)):
+            raise ValueError(f"Sample dataset file not found: {dataset_id}")
+        return dataset
+
+    async def _record_sample_load(self, user_id: str, dataset_id: str) -> None:
+        """Track that the user loaded this sample."""
+        progress = await self._get_or_create_user_progress(user_id)
+        if dataset_id not in progress.sample_datasets_loaded:
+            progress.sample_datasets_loaded.append(dataset_id)
+        progress.features_discovered.append(f"sample_dataset_{dataset_id}")
+        progress.last_activity_at = datetime.now(UTC)
+        await self._save_user_progress(user_id, progress)
+
     async def reset_onboarding_progress(self, user_id: str):
         """Reset user's onboarding progress"""
         
