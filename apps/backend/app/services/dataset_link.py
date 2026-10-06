@@ -54,23 +54,35 @@ async def record_new_file(doc: Dataset, new_url: str) -> None:
     # dataset, the first moves both twins, and the second would otherwise search the
     # stale URL, find nothing, and move its own side alone — re-severing the link (codex).
     current = await _stored(doc)
-    old_url = (current.s3_url if current is not None else None) or doc.s3_url
+    old_url = _current_url(current, doc)
     twin = await _find_twin(doc, old_url)
-
     # Every writer uploads the transformed frame as parquet, so a dataset uploaded as CSV
     # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
     doc.file_type = _file_type_of(new_url) or doc.file_type
+    await _move_all(_erasure_order(doc, twin), doc, current, old_url, new_url)
 
+
+def _current_url(current: Dataset | None, doc: Dataset) -> str | None:
+    return (current.s3_url if current is not None else None) or doc.s3_url
+
+
+async def _move_all(
+    docs: list[Dataset], doc: Dataset, current: Dataset | None, old_url: str | None, new_url: str
+) -> None:
     moved: list[str] = []
-    for d in _erasure_order(doc, twin):
-        fresh = current if d is doc else d
+    for d in docs:
         try:
-            await _write(d, _move_fields(d, doc, fresh or d, old_url, new_url))
+            await _write(d, _move_fields(d, doc, _fresh_copy(d, doc, current), old_url, new_url))
         except Exception:
             _log_half_move(moved, d, new_url, old_url)
             raise
         moved.append(type(d).__name__)
 
+
+def _fresh_copy(d: Dataset, doc: Dataset, current: Dataset | None) -> Dataset:
+    """d as the database holds it: the re-read copy for the caller's document (the twin
+    was just read)."""
+    return (current if d is doc else None) or d
 
 async def _stored(doc: Dataset) -> Dataset | None:
     """The document as the database holds it now; None for one not yet inserted."""
