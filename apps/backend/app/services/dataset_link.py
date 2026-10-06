@@ -20,6 +20,7 @@ from bson import ObjectId
 
 from app.models.dataset import DatasetMetadata
 from app.models.user_data import UserData
+from app.services.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -213,8 +214,20 @@ async def _create_twin(upload: UserData) -> DatasetMetadata:
 
 
 
+
 def _twin_file_type(upload: UserData) -> str:
-    """A file type DatasetMetadata accepts. /upload/ stores "txt" for a TSV, which it
-    refuses, and that must not turn a dataset that used to 404 into a 500."""
-    stored = (upload.file_type or "").lower()
-    return stored if stored in _KNOWN_TYPES else (_file_type_of(upload.s3_url) or "csv")
+    """The upload's file type, if the transformation reader can parse it.
+
+    /upload/ stores a TSV as "txt", and the reader parses comma-separated. Typing the
+    twin "csv" collapsed the file into one column and overwrote the live data on both
+    twins, so such an upload is refused with the reason (#857 review).
+    """
+    stored = (upload.file_type or "").lower() or _file_type_of(upload.s3_url) or ""
+    if stored not in _KNOWN_TYPES:
+        raise NotFoundError(
+            resource_type="Dataset",
+            resource_id=str(upload.id),
+            message="Transformations support CSV, Excel, JSON and Parquet uploads; "
+            "this one is tab-separated text. Re-upload it as CSV to transform it.",
+        )
+    return stored

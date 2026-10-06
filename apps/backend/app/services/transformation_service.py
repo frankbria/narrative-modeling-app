@@ -138,7 +138,7 @@ class TransformationService(BaseService[TransformationConfig]):
         from app.services.versioning_service import versioning_service
         # Owner-scoped (#559): the service now refuses a foreign parent, so an
         # unscoped "latest" here would turn a stray row into a denial.
-        parent_version = await self._parent_version(DatasetVersion, dataset, df, user_id)
+        parent_version = await self._parent_version(DatasetVersion, dataset, user_id)
 
         version_id = None
         if parent_version:
@@ -208,29 +208,31 @@ class TransformationService(BaseService[TransformationConfig]):
             return None
         return version.version_id
 
-    async def _parent_version(self, version_model: Any, dataset: Any, df: Any, user_id: str) -> Any:
+    async def _parent_version(self, version_model: Any, dataset: Any, user_id: str) -> Any:
         """The latest version to derive from, or a base version made now if there is none."""
         latest = await version_model.find(
             {"dataset_id": dataset.dataset_id, "user_id": user_id}
         ).sort("-version_number").first_or_none()
-        return latest or await self._base_version(dataset, df, user_id)
+        return latest or await self._base_version(dataset, user_id)
 
-    async def _base_version(self, dataset: Any, df: Any, user_id: str) -> Any:
-        """Version 1 from the frame about to be transformed, when the dataset has none.
+    async def _base_version(self, dataset: Any, user_id: str) -> Any:
+        """Version 1 for a dataset that has none, from its current (untransformed) file.
 
         A UI upload's twin starts without one (#850), as does a dataset the feature builder
-        made; without it every history step has no version and undo refuses. Best-effort,
-        and a failure is retried on the next apply.
+        made; without it every history step has no version and undo refuses. The hash is
+        taken from the stored object's own bytes, so a no-op first transformation cannot
+        deduplicate onto it (#857 review). Best-effort, retried on the next apply.
         """
-        import io
-
+        from app.services.s3_service import s3_service
         from app.services.versioning_service import versioning_service
+        from app.utils.s3 import downloadable_url, resolve_validated_object
 
-        buffer = io.BytesIO()
-        df.to_parquet(buffer, index=False)
         try:
+            _, key = resolve_validated_object(downloadable_url(dataset.file_path, dataset.s3_url))
             return await versioning_service.create_base_version(
-                dataset_metadata=dataset, file_content=buffer.getvalue(), user_id=user_id
+                dataset_metadata=dataset,
+                file_content=await s3_service.download_file_bytes(key),
+                user_id=user_id,
             )
         except Exception:
             logger.warning("No base version for dataset %s", dataset.dataset_id, exc_info=True)

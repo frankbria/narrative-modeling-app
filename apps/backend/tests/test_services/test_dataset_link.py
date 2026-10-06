@@ -284,15 +284,18 @@ class TestEnsureMetadataTwin:
         assert await ensure_metadata_twin("not-an-id", USER) is None
         assert await ensure_metadata_twin(str(ud.id), "someone_else") is None
 
-    async def test_an_upload_stored_as_txt_still_gets_a_valid_twin(self, setup_database):
-        """/upload/ accepts TSV and stores file_type="txt", which DatasetMetadata refuses;
-        the twin must not turn a dataset that used to 404 into a 500 (#850 review)."""
+    async def test_a_tab_separated_upload_is_refused_not_mangled(self, setup_database):
+        """/upload/ stores a TSV as file_type="txt". The transformation reader parses
+        with commas, so a twin typed csv would collapse it into one column and overwrite
+        the live file on both twins (#857 review). It is refused with a reason instead."""
         from app.services.dataset_link import ensure_metadata_twin
+        from app.services.exceptions import NotFoundError
 
         ud = await UserData(
             user_id=USER, filename="t.txt", original_filename="t.txt",
             s3_url=f"s3://test-bucket/datasets/{USER}/t.txt",
             num_rows=2, num_columns=2, data_schema=[], file_type="txt",
         ).insert()
-        twin = await ensure_metadata_twin(str(ud.id), USER)
-        assert twin.file_type == "csv"
+        with pytest.raises(NotFoundError, match="tab-separated"):
+            await ensure_metadata_twin(str(ud.id), USER)
+        assert await DatasetMetadata.find(DatasetMetadata.dataset_id == str(ud.id)).count() == 0
