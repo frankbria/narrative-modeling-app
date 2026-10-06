@@ -10,11 +10,14 @@ import io
 
 import pytest
 
-from tests.test_integration.test_transformation_first_apply_localstack import (  # noqa: F401
-    USER,
-    client,
-    real_s3_env,
+from tests.test_integration import (
+    test_transformation_first_apply_localstack as first_apply,
 )
+
+# The LocalStack app client and S3 env from the first-apply suite, as this module's fixtures.
+client = first_apply.client
+real_s3_env = first_apply.real_s3_env
+USER = first_apply.USER
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
