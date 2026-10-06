@@ -18,7 +18,6 @@ import pytest
 
 from app.services.exceptions import (
     NotFoundError,
-    PermissionDeniedError,
     ValidationError,
 )
 from app.services.history_service import HistoryService
@@ -38,7 +37,7 @@ def mock_versioning_service():
 def mock_transformation_service():
     """Create mock transformation service."""
     mock = MagicMock()
-    mock.get_transformation_config = AsyncMock()
+    mock.get_dataset_config = AsyncMock()
     return mock
 
 
@@ -102,7 +101,7 @@ class TestHistoryServiceUndo:
     ):
         """Test successful undo operation."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
@@ -138,7 +137,7 @@ class TestHistoryServiceUndo:
         # Setup: position at 0 (can't undo)
         mock_transformation_config.current_position = 0
         mock_transformation_config.can_undo.return_value = False
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         # Execute & Verify
         with pytest.raises(ValidationError, match="Cannot undo"):
@@ -152,7 +151,7 @@ class TestHistoryServiceUndo:
     ):
         """Test undo when transformation config not found."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = None
+        mock_transformation_service.get_dataset_config.return_value = None
 
         # Execute & Verify
         with pytest.raises(NotFoundError, match="Transformation config"):
@@ -168,10 +167,11 @@ class TestHistoryServiceUndo:
         """Test undo with unauthorized user."""
         # Setup: config belongs to user1, but user2 is trying to undo
         mock_transformation_config.user_id = "user1"
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        # #800: the lookup is scoped to the caller, so another user's dataset is not found
+        mock_transformation_service.get_dataset_config.return_value = None
 
         # Execute & Verify
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(NotFoundError):
             await history_service.undo("ds1", "user2")
 
 
@@ -192,7 +192,7 @@ class TestHistoryServiceRedo:
         # Setup: position at 1, can redo to 2
         mock_transformation_config.current_position = 1
         mock_transformation_config.can_redo.return_value = True
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
@@ -223,7 +223,7 @@ class TestHistoryServiceRedo:
         """Test redo when at end of history."""
         # Setup: at the end, can't redo
         mock_transformation_config.can_redo.return_value = False
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         # Execute & Verify
         with pytest.raises(ValidationError, match="Cannot redo"):
@@ -239,10 +239,11 @@ class TestHistoryServiceRedo:
         """Test redo with unauthorized user."""
         # Setup: config belongs to user1, but user2 is trying to redo
         mock_transformation_config.user_id = "user1"
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        # #800: the lookup is scoped to the caller, so another user's dataset is not found
+        mock_transformation_service.get_dataset_config.return_value = None
 
         # Execute & Verify
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(NotFoundError):
             await history_service.redo("ds1", "user2")
 
 
@@ -261,7 +262,7 @@ class TestHistoryServiceJumpToPosition:
     ):
         """Test successful jump to specific position."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
@@ -291,7 +292,7 @@ class TestHistoryServiceJumpToPosition:
     ):
         """Test jump to invalid position."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         # Execute & Verify: try to jump to position 5 (out of bounds)
         with pytest.raises(ValidationError, match="Invalid position"):
@@ -306,7 +307,7 @@ class TestHistoryServiceJumpToPosition:
     ):
         """Test jump to negative position."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         # Execute & Verify
         with pytest.raises(ValidationError, match="Invalid position"):
@@ -322,10 +323,11 @@ class TestHistoryServiceJumpToPosition:
         """Test jump_to_position with unauthorized user."""
         # Setup: config belongs to user1, but user2 is trying to jump
         mock_transformation_config.user_id = "user1"
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        # #800: the lookup is scoped to the caller, so another user's dataset is not found
+        mock_transformation_service.get_dataset_config.return_value = None
 
         # Execute & Verify
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(NotFoundError):
             await history_service.jump_to_position("ds1", 0, "user2")
 
 
@@ -342,7 +344,7 @@ class TestHistoryServiceGetHistory:
     ):
         """Test successful get_history operation."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         # Execute
         result = await history_service.get_history("ds1", "user1")
@@ -386,7 +388,7 @@ class TestHistoryServiceGetHistory:
         empty_config.can_undo = MagicMock(return_value=False)
         empty_config.can_redo = MagicMock(return_value=False)
 
-        mock_transformation_service.get_transformation_config.return_value = empty_config
+        mock_transformation_service.get_dataset_config.return_value = empty_config
 
         # Execute
         result = await history_service.get_history("ds1", "user1")
@@ -407,10 +409,11 @@ class TestHistoryServiceGetHistory:
         """Test get_history with unauthorized user."""
         # Setup: config belongs to user1, but user2 is trying to get history
         mock_transformation_config.user_id = "user1"
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        # #800: the lookup is scoped to the caller, so another user's dataset is not found
+        mock_transformation_service.get_dataset_config.return_value = None
 
         # Execute & Verify
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(NotFoundError):
             await history_service.get_history("ds1", "user2")
 
 
@@ -427,14 +430,15 @@ class TestHistoryServiceClearHistory:
     ):
         """Test successful clear_history operation."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         # Execute
         result = await history_service.clear_history("ds1", "user1")
 
         # Verify
         assert result is True
-        assert mock_transformation_config.transformation_steps == []
+        # The model's own reset clears steps and counters (test_transformation.py covers it).
+        mock_transformation_config.clear_transformations.assert_called_once()
         assert mock_transformation_config.current_position == -1
         mock_transformation_config.save.assert_called_once()
 
@@ -448,10 +452,11 @@ class TestHistoryServiceClearHistory:
         """Test clear_history with unauthorized user."""
         # Setup
         mock_transformation_config.user_id = "user1"
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        # #800: the lookup is scoped to the caller, so another user's dataset is not found
+        mock_transformation_service.get_dataset_config.return_value = None
 
         # Execute & Verify
-        with pytest.raises(PermissionDeniedError):
+        with pytest.raises(NotFoundError):
             await history_service.clear_history("ds1", "user2")
 
 
@@ -470,7 +475,7 @@ class TestHistoryServiceBranching:
     ):
         """Test undo then apply new transformation creates branch."""
         # Setup
-        mock_transformation_service.get_transformation_config.return_value = mock_transformation_config
+        mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
         with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
@@ -538,7 +543,7 @@ async def test_history_navigation_moves_the_userdata_twin(setup_database, start_
     config.save = AsyncMock()
 
     ts = MagicMock()
-    ts.get_transformation_config = AsyncMock(return_value=config)
+    ts.get_dataset_config = AsyncMock(return_value=config)
     vs = MagicMock()
     vs.get_version = AsyncMock(return_value=version)
     hs = HistoryService(versioning_service=vs, transformation_service=ts)
@@ -555,3 +560,20 @@ async def test_history_navigation_moves_the_userdata_twin(setup_database, start_
     # And the metadata side moved too (both twins agree on the RESTORED file).
     meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == "ds629")
     assert meta.s3_url == restored and meta.file_path == restored
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_navigating_to_a_step_without_a_saved_version_fails_loudly(
+    history_service, mock_transformation_service, mock_transformation_config
+):
+    """#800 review: a step applied while the dataset had no base version (a dataset the
+    feature builder created) has no version to restore. Undo used to answer 200 and move
+    the cursor while the data stayed put; now it refuses and the cursor does not move."""
+    mock_transformation_config.transformation_steps[1].version_id = None
+    mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
+
+    with pytest.raises(ValidationError, match="no saved version"):
+        await history_service.undo("ds1", "user1")
+
+    mock_transformation_config.save.assert_not_awaited()

@@ -11,7 +11,6 @@ from app.models.dataset import DatasetMetadata
 from app.services.dataset_link import record_new_file
 from app.services.exceptions import (
     NotFoundError,
-    PermissionDeniedError,
     ValidationError,
 )
 from app.services.versioning_service import VersioningService
@@ -40,6 +39,54 @@ class HistoryService:
         self.versioning_service = versioning_service
         self.transformation_service = transformation_service
 
+    async def _config(self, dataset_id: str, user_id: str):
+        """The dataset's transformation history, owned by `user_id` (#800).
+
+        Looked up by dataset, not by `config_id`: the two are different id spaces, so the
+        old `get_transformation_config(dataset_id)` matched nothing and every history
+        route answered 404. Scoped to the owner, so another tenant's dataset answers the
+        same NotFoundError as an unknown one rather than a distinguishable 403.
+        """
+        config = await self.transformation_service.get_dataset_config(dataset_id, user_id)
+        if not config:
+            raise NotFoundError(
+                resource_type="Transformation config",
+                resource_id=dataset_id,
+                message=f"Transformation config not found for dataset {dataset_id}"
+            )
+        return config
+
+    async def _move_to_step(self, dataset_id: str, user_id: str, version_id: str | None) -> None:
+        """Point the dataset (and its twin) at the version a history step produced.
+
+        Raises rather than returning quietly: a step with nothing to restore used to
+        answer 200 and move the cursor while the data stayed where it was (#800 review).
+        The caller saves the cursor only after this succeeds.
+        """
+        # Version metadata only; the move needs its URL and shape, not its content.
+        version = await self.versioning_service.get_version(version_id, mark_accessed=False) if version_id else None
+        if not version:
+            raise ValidationError(
+                message="This history step has no saved version, so the data cannot be restored to it",
+                details={"version_id": version_id},
+            )
+        dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id})
+        if not dataset:
+            raise NotFoundError(resource_type="Dataset", resource_id=dataset_id)
+        # Bring the restored version's shape with the move so BOTH twins describe the
+        # restored file — record_new_file copies these onto the UserData twin, and a stale
+        # count silently mis-drives the training mode recommendation (model_training reads
+        # num_rows/num_columns off the twin). #629, same twin-drift class as #467/#524.
+        dataset.num_rows = version.num_rows
+        dataset.num_columns = version.num_columns
+        dataset.columns = version.columns
+        # Move file_path, s3_url AND the dual-written UserData twin together (#629):
+        # setting file_path alone left the twin (which training reads by ObjectId) and
+        # s3_url at the pre-navigation file, so training silently used the state the user
+        # had just navigated away from, the same twin-drift #467 fixed for forward writers.
+        await record_new_file(dataset, version.s3_url)
+        logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+
     async def undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move back one step in transformation history.
@@ -53,23 +100,9 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
             ValidationError: If cannot undo (at beginning of history)
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Check if can undo
         if not config.can_undo():
@@ -85,32 +118,7 @@ class HistoryService:
         target_step = config.transformation_steps[config.current_position]
         version_id = target_step.version_id
 
-        if version_id:
-            # Update dataset file_path to point to this version
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": dataset_id,
-                "user_id": user_id
-            })
-
-            if dataset:
-                # Get version metadata to update file_path (no need to fetch content)
-                version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-                if version:
-                    # Bring the restored version's shape with the move so BOTH twins
-                    # describe the restored file — record_new_file copies these onto the
-                    # UserData twin, and a stale count silently mis-drives the training
-                    # mode recommendation (model_training reads num_rows/num_columns off
-                    # the twin). #629, same twin-drift class as #467/#524.
-                    dataset.num_rows = version.num_rows
-                    dataset.num_columns = version.num_columns
-                    dataset.columns = version.columns
-                    # Move file_path, s3_url AND the dual-written UserData twin
-                    # together (#629) — setting file_path alone left the twin (which
-                    # training reads by ObjectId) and s3_url at the pre-undo file, so
-                    # training silently used the state the user just navigated away
-                    # from, the same twin-drift #467 fixed for forward writers.
-                    await record_new_file(dataset, version.s3_url)
-                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+        await self._move_to_step(dataset_id, user_id, version_id)
 
         # Save config
         await config.save()
@@ -136,23 +144,9 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
             ValidationError: If cannot redo (at end of history)
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Check if can redo
         if not config.can_redo():
@@ -168,32 +162,7 @@ class HistoryService:
         target_step = config.transformation_steps[config.current_position]
         version_id = target_step.version_id
 
-        if version_id:
-            # Update dataset file_path to point to this version
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": dataset_id,
-                "user_id": user_id
-            })
-
-            if dataset:
-                # Get version metadata to update file_path (no need to fetch content)
-                version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-                if version:
-                    # Bring the restored version's shape with the move so BOTH twins
-                    # describe the restored file — record_new_file copies these onto the
-                    # UserData twin, and a stale count silently mis-drives the training
-                    # mode recommendation (model_training reads num_rows/num_columns off
-                    # the twin). #629, same twin-drift class as #467/#524.
-                    dataset.num_rows = version.num_rows
-                    dataset.num_columns = version.num_columns
-                    dataset.columns = version.columns
-                    # Move file_path, s3_url AND the dual-written UserData twin
-                    # together (#629) — setting file_path alone left the twin (which
-                    # training reads by ObjectId) and s3_url at the pre-undo file, so
-                    # training silently used the state the user just navigated away
-                    # from, the same twin-drift #467 fixed for forward writers.
-                    await record_new_file(dataset, version.s3_url)
-                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+        await self._move_to_step(dataset_id, user_id, version_id)
 
         # Save config
         await config.save()
@@ -220,26 +189,12 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
             ValidationError: If position is invalid
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Validate position
-        if position < 0 or position >= len(config.transformation_steps):
+        if not 0 <= position < len(config.transformation_steps):
             raise ValidationError(
                 message=f"Invalid position {position}",
                 details={
@@ -255,32 +210,7 @@ class HistoryService:
         target_step = config.transformation_steps[config.current_position]
         version_id = target_step.version_id
 
-        if version_id:
-            # Update dataset file_path to point to this version
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": dataset_id,
-                "user_id": user_id
-            })
-
-            if dataset:
-                # Get version metadata to update file_path (no need to fetch content)
-                version = await self.versioning_service.get_version(version_id, mark_accessed=False)
-                if version:
-                    # Bring the restored version's shape with the move so BOTH twins
-                    # describe the restored file — record_new_file copies these onto the
-                    # UserData twin, and a stale count silently mis-drives the training
-                    # mode recommendation (model_training reads num_rows/num_columns off
-                    # the twin). #629, same twin-drift class as #467/#524.
-                    dataset.num_rows = version.num_rows
-                    dataset.num_columns = version.num_columns
-                    dataset.columns = version.columns
-                    # Move file_path, s3_url AND the dual-written UserData twin
-                    # together (#629) — setting file_path alone left the twin (which
-                    # training reads by ObjectId) and s3_url at the pre-undo file, so
-                    # training silently used the state the user just navigated away
-                    # from, the same twin-drift #467 fixed for forward writers.
-                    await record_new_file(dataset, version.s3_url)
-                    logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
+        await self._move_to_step(dataset_id, user_id, version_id)
 
         # Save config
         await config.save()
@@ -307,22 +237,8 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Return history in the API contract shape (schemas.HistoryDataResponse);
         # previously this returned a transformation_steps list that did not
@@ -373,25 +289,11 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
-
-        # Clear history
-        config.transformation_steps = []
+        # The model's own reset (steps, counters, applied state), plus the cursor it leaves alone.
+        config.clear_transformations()
         config.current_position = -1
 
         # Save config

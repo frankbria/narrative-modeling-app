@@ -125,6 +125,8 @@ class TestApplyTransformationVersioning:
              patch.object(transformation_service.engine, 'apply_transformation', return_value=mock_result), \
              patch.object(transformation_service, 'create_transformation_config',
                           new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'get_dataset_config',
+                          new=AsyncMock(return_value=None)), \
              patch.object(transformation_service, 'add_transformation_step',
                           new=AsyncMock(return_value=mock_config)), \
              patch.object(transformation_service, 'mark_transformations_applied',
@@ -190,6 +192,8 @@ class TestApplyTransformationVersioning:
              patch.object(transformation_service.engine, 'apply_transformation', return_value=mock_result), \
              patch.object(transformation_service, 'create_transformation_config',
                           new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'get_dataset_config',
+                          new=AsyncMock(return_value=None)), \
              patch.object(transformation_service, 'add_transformation_step',
                           new=AsyncMock(return_value=mock_config)), \
              patch.object(transformation_service, 'mark_transformations_applied',
@@ -275,6 +279,8 @@ class TestApplyTransformationVersioning:
              patch.object(transformation_service.engine, 'apply_transformation', return_value=mock_result), \
              patch.object(transformation_service, 'create_transformation_config',
                           new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'get_dataset_config',
+                          new=AsyncMock(return_value=None)), \
              patch.object(transformation_service, 'add_transformation_step',
                           new=mock_add_step), \
              patch.object(transformation_service, 'mark_transformations_applied',
@@ -375,6 +381,8 @@ class TestApplyTransformationVersioning:
              patch.object(transformation_service.engine, 'apply_transformation', return_value=mock_result), \
              patch.object(transformation_service, 'create_transformation_config',
                           new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'get_dataset_config',
+                          new=AsyncMock(return_value=None)), \
              patch.object(transformation_service, 'add_transformation_step',
                           new=mock_add_step), \
              patch.object(transformation_service, 'mark_transformations_applied',
@@ -459,6 +467,8 @@ class TestApplyTransformationVersioning:
              patch.object(transformation_service.engine, 'apply_transformation', return_value=mock_result), \
              patch.object(transformation_service, 'create_transformation_config',
                           new=AsyncMock(return_value=mock_config)), \
+             patch.object(transformation_service, 'get_dataset_config',
+                          new=AsyncMock(return_value=None)), \
              patch.object(transformation_service, 'add_transformation_step',
                           new=AsyncMock(return_value=mock_config)), \
              patch.object(transformation_service, 'mark_transformations_applied',

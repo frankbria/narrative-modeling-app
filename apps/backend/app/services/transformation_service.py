@@ -116,6 +116,99 @@ class TransformationService(BaseService[TransformationConfig]):
         await config.save()
         return config
 
+    async def _version_for(
+        self,
+        dataset: Any,
+        dataset_id: str,
+        user_id: str,
+        df: Any,
+        transformed_df: Any,
+        transformation_type: str,
+        parameters: dict[str, Any],
+        rows_affected: int,
+        execution_time_ms: int,
+        config_id: str,
+    ) -> str | None:
+        """Record the transformed frame as a dataset version (lineage + quality trend);
+        the version id the history step points at, None when there is no parent version."""
+
+        # Create dataset version for transformation BEFORE adding step
+        # Get parent version (most recent version for this dataset)
+        from app.models.version import DatasetVersion
+        from app.services.versioning_service import versioning_service
+        # Owner-scoped (#559): the service now refuses a foreign parent, so an
+        # unscoped "latest" here would turn a stray row into a denial.
+        parent_version = await DatasetVersion.find(
+            {"dataset_id": dataset_id, "user_id": user_id}
+        ).sort("-version_number").first_or_none()
+
+        version_id = None
+        if parent_version:
+            # Get file content for versioning
+            import io
+            buffer = io.BytesIO()
+            transformed_df.to_parquet(buffer, index=False)
+            transformed_content = buffer.getvalue()
+
+            # Update dataset metadata for version creation
+            dataset.num_rows = len(transformed_df)
+            dataset.num_columns = len(transformed_df.columns)
+            dataset.columns = transformed_df.columns.tolist()
+
+            # Build transformation steps for lineage.
+            # Use the TransformationStep schema field names (step_type/affected_columns/
+            # rows_affected); the previous dict used transformation_type/column/columns,
+            # which raised a ValidationError that aborted every versioned transform.
+            affected_columns = [
+                c for c in (parameters.get("column"), *(parameters.get("columns") or []))
+                if c
+            ]
+            transformation_steps = [
+                {
+                    "step_type": transformation_type,
+                    "parameters": parameters,
+                    "affected_columns": affected_columns,
+                    "rows_affected": rows_affected,
+                    # TransformationStep.execution_time is documented in seconds.
+                    "execution_time": execution_time_ms / 1000
+                }
+            ]
+
+            # Quality trend tracking (issue #102, AC3): assess before/after,
+            # best-effort — a quality failure must never break the transformation.
+            quality_before = await self._assess_quality_dict(df)
+            quality_after = await self._assess_quality_dict(transformed_df)
+
+            # Create version with lineage
+            version, lineage = await versioning_service.create_transformation_version(
+                parent_version_id=parent_version.version_id,
+                transformed_content=transformed_content,
+                transformation_steps=transformation_steps,
+                dataset_metadata=dataset,
+                user_id=user_id,
+                description=f"Applied {transformation_type} transformation",
+                transformation_config_id=config_id,
+                quality_before=quality_before,
+                quality_after=quality_after
+            )
+            version_id = version.version_id
+        return version_id
+
+    async def _history_config_id(
+        self, dataset_id: str, user_id: str, timestamp: float, file_path: str
+    ) -> str:
+        """The dataset's history config, created on its first transformation (#800).
+        Minting one per call left every config a one-step history that no lookup by
+        dataset could assemble."""
+        existing = await self.get_dataset_config(dataset_id, user_id)
+        if existing:
+            return existing.config_id
+        config_id = f"config_{dataset_id}_{int(timestamp)}"
+        await self.create_transformation_config(
+            user_id=user_id, dataset_id=dataset_id, config_id=config_id, current_file_path=file_path
+        )
+        return config_id
+
     async def get_transformation_config(
         self,
         config_id: str
@@ -130,6 +223,20 @@ class TransformationService(BaseService[TransformationConfig]):
             TransformationConfig instance or None if not found
         """
         return await self.get_by_id(config_id, check_ownership=False)
+
+    async def get_dataset_config(
+        self, dataset_id: str, user_id: str
+    ) -> TransformationConfig | None:
+        """The dataset's history config: its newest, owned by `user_id` (#800).
+
+        Steps accumulate in one config per dataset (`apply_transformation` reuses it), so
+        undo/redo move through one ordered list. Datasets transformed before #800 hold one
+        config per step; the newest is the current state.
+        """
+        return await TransformationConfig.find(
+            TransformationConfig.dataset_id == dataset_id,
+            TransformationConfig.user_id == user_id,
+        ).sort("-created_at").first_or_none()
 
     async def list_transformation_configs(
         self,
@@ -448,78 +555,15 @@ class TransformationService(BaseService[TransformationConfig]):
                 f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
             )
 
-            # Create transformation config
-            config_id = f"config_{dataset_id}_{int(timestamp)}"
-            await self.create_transformation_config(
-                user_id=user_id,
-                dataset_id=dataset_id,
-                config_id=config_id,
-                current_file_path=new_file_path
-            )
+            config_id = await self._history_config_id(dataset_id, user_id, timestamp, new_file_path)
 
             # Calculate execution time early for versioning
             execution_time_ms = int((time.time() - start_time) * 1000)
 
-            # Create dataset version for transformation BEFORE adding step
-            # Get parent version (most recent version for this dataset)
-            from app.models.version import DatasetVersion
-            from app.services.versioning_service import versioning_service
-            # Owner-scoped (#559): the service now refuses a foreign parent, so an
-            # unscoped "latest" here would turn a stray row into a denial.
-            parent_version = await DatasetVersion.find(
-                {"dataset_id": dataset_id, "user_id": user_id}
-            ).sort("-version_number").first_or_none()
-
-            version_id = None
-            if parent_version:
-                # Get file content for versioning
-                import io
-                buffer = io.BytesIO()
-                transformed_df.to_parquet(buffer, index=False)
-                transformed_content = buffer.getvalue()
-
-                # Update dataset metadata for version creation
-                dataset.num_rows = len(transformed_df)
-                dataset.num_columns = len(transformed_df.columns)
-                dataset.columns = transformed_df.columns.tolist()
-
-                # Build transformation steps for lineage.
-                # Use the TransformationStep schema field names (step_type/affected_columns/
-                # rows_affected); the previous dict used transformation_type/column/columns,
-                # which raised a ValidationError that aborted every versioned transform.
-                affected_columns = [
-                    c for c in (parameters.get("column"), *(parameters.get("columns") or []))
-                    if c
-                ]
-                transformation_steps = [
-                    {
-                        "step_type": transformation_type,
-                        "parameters": parameters,
-                        "affected_columns": affected_columns,
-                        "rows_affected": result.affected_rows,
-                        # TransformationStep.execution_time is documented in seconds.
-                        "execution_time": execution_time_ms / 1000
-                    }
-                ]
-
-                # Quality trend tracking (issue #102, AC3): assess before/after,
-                # best-effort — a quality failure must never break the transformation.
-                quality_before = await self._assess_quality_dict(df)
-                quality_after = await self._assess_quality_dict(transformed_df)
-
-                # Create version with lineage
-                version, lineage = await versioning_service.create_transformation_version(
-                    parent_version_id=parent_version.version_id,
-                    transformed_content=transformed_content,
-                    transformation_steps=transformation_steps,
-                    dataset_metadata=dataset,
-                    user_id=user_id,
-                    description=f"Applied {transformation_type} transformation",
-                    transformation_config_id=config_id,
-                    quality_before=quality_before,
-                    quality_after=quality_after
-                )
-                version_id = version.version_id
+            version_id = await self._version_for(
+                dataset, dataset_id, user_id, df, transformed_df, transformation_type,
+                parameters, result.affected_rows, execution_time_ms, config_id,
+            )
 
             # Add transformation step WITH version_id
             await self.add_transformation_step(
