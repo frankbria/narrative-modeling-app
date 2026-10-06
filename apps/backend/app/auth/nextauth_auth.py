@@ -40,6 +40,10 @@ security = HTTPBearer()
 _optional_bearer = HTTPBearer(auto_error=False)
 
 
+# The frontend and backend clocks may differ slightly; PyJWT rejects a future `iat`.
+CLOCK_SKEW_SECONDS = 30
+
+
 def _verify(token: str, secret: str) -> dict:
     """Verify an API token as the frontend mints it (`lib/api-token.ts`): HS256 only,
     signed with NEXTAUTH_SECRET, carrying `sub` and an unexpired `exp`. Raises a
@@ -47,7 +51,9 @@ def _verify(token: str, secret: str) -> dict:
     that base, since a key error such as ``InvalidKeyError`` is not an
     ``InvalidTokenError``. PyJWT since #844: python-jose had an unpatched critical CVE.
     """
-    return jwt.decode(token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]})
+    return jwt.decode(
+        token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]}, leeway=CLOCK_SKEW_SECONDS
+    )
 
 
 def _configured_secret() -> str:

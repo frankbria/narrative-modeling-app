@@ -267,3 +267,13 @@ async def test_require_admin_turns_any_jwt_error_into_404(mock_env_vars):
         with pytest.raises(HTTPException) as exc_info:
             await require_admin(bearer(mint_api_token(SAMPLE_USER_ID, "ops@example.com")))
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_frontend_clock_slightly_ahead_is_tolerated(mock_env_vars):
+    """PyJWT rejects an `iat` in the future, which python-jose never checked; a
+    frontend host a few seconds ahead must not 401 every fresh token (#870 review)."""
+    ahead = int(time.time()) + 10
+    token = make_token({"sub": SAMPLE_USER_ID, "iat": ahead, "exp": ahead + 3600})
+
+    assert await get_current_user_id(bearer(token)) == SAMPLE_USER_ID
