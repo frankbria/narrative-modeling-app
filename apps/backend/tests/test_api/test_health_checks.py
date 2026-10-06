@@ -53,10 +53,9 @@ def admin_auth():
 
 
 def _bearer(email: str | None) -> dict[str, str]:
-    from jose import jwt
+    from tests.api_tokens import mint_api_token
 
-    claims = {"sub": "u1", **({"email": email} if email else {})}
-    return {"Authorization": f"Bearer {jwt.encode(claims, _SECRET, algorithm='HS256')}"}
+    return {"Authorization": f"Bearer {mint_api_token('u1', email, secret=_SECRET)}"}
 
 
 class TestMetricsAreAdminOnly:

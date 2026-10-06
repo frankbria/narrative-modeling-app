@@ -13,10 +13,10 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from jose import jwt
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.config import parse_invite_allowlist, resolve_signup_mode, signup_admits
+from tests.api_tokens import mint_api_token
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
@@ -24,7 +24,7 @@ TEST_SECRET = "test-secret"
 
 
 def _bearer(payload: dict) -> HTTPAuthorizationCredentials:
-    token = jwt.encode(payload, TEST_SECRET, algorithm="HS256")
+    token = mint_api_token(payload["sub"], payload.get("email"), secret=TEST_SECRET)
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
 

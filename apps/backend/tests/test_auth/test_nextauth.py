@@ -1,9 +1,9 @@
 """Tests for NextAuth JWT validation (app/auth/nextauth_auth.py).
 
 Tests the current get_current_user_id contract with real HS256-signed tokens:
-- Valid JWT -> user id from `sub` (or `id`) claim
+- The token the frontend mints -> user id from its `sub` claim
 - Malformed/wrongly-signed/expired tokens -> 401
-- Token without a user id claim -> 401
+- A token without `sub` or without `exp`, or under any algorithm but HS256 -> 401
 - Missing NEXTAUTH_SECRET configuration -> 500
 - SKIP_AUTH development mode token mapping
 
@@ -15,12 +15,17 @@ longer exist in the implementation.
 import time
 from unittest.mock import patch
 
+import jwt
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from jose import jwt
 
-from app.auth.nextauth_auth import get_current_user_id, get_current_user_id_optional
+from app.auth.nextauth_auth import (
+    get_current_user_id,
+    get_current_user_id_optional,
+    require_admin,
+)
+from tests.api_tokens import mint_api_token
 
 pytestmark = [pytest.mark.unit, pytest.mark.auth]
 
@@ -29,8 +34,12 @@ SAMPLE_USER_ID = "user_123"
 
 
 def make_token(payload: dict, secret: str = TEST_SECRET) -> str:
-    """Create a real HS256-signed JWT like NextAuth produces."""
+    """An HS256 token with exactly these claims, for shapes the frontend never mints."""
     return jwt.encode(payload, secret, algorithm="HS256")
+
+
+def in_an_hour() -> int:
+    return int(time.time()) + 3600
 
 
 def bearer(token: str) -> HTTPAuthorizationCredentials:
@@ -49,20 +58,65 @@ def mock_env_vars():
 
 @pytest.mark.asyncio
 async def test_valid_jwt_returns_sub_claim(mock_env_vars):
-    """A valid signed JWT yields the user id from the `sub` claim."""
-    token = make_token({"sub": SAMPLE_USER_ID, "email": "test@test.com"})
+    """The token the frontend mints yields the user id from its `sub` claim."""
+    token = mint_api_token(SAMPLE_USER_ID, "test@test.com")
 
     user_id = await get_current_user_id(bearer(token))
     assert user_id == SAMPLE_USER_ID
 
 
 @pytest.mark.asyncio
-async def test_valid_jwt_falls_back_to_id_claim(mock_env_vars):
-    """Without `sub`, the `id` claim is used."""
-    token = make_token({"id": SAMPLE_USER_ID})
+async def test_an_id_claim_does_not_stand_in_for_sub(mock_env_vars):
+    """The frontend always mints `sub` (#844); a token carrying only `id` is refused."""
+    token = make_token({"id": SAMPLE_USER_ID, "exp": in_an_hour()})
 
-    user_id = await get_current_user_id(bearer(token))
-    assert user_id == SAMPLE_USER_ID
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer(token))
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_token_without_expiry_is_refused(mock_env_vars):
+    """A token with no `exp` would be valid forever if it leaked (#844)."""
+    token = make_token({"sub": SAMPLE_USER_ID})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer(token))
+    assert exc_info.value.status_code == 401
+
+
+def _unsigned(email: str | None = None) -> str:
+    """An `alg: none` token: the frontend's claims, no signature."""
+    token = mint_api_token(SAMPLE_USER_ID, email, header={"alg": "none", "typ": "JWT"})
+    return token.rsplit(".", 1)[0] + "."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "forge",
+    [
+        pytest.param(_unsigned, id="alg-none"),
+        # Right secret, wrong header: only HS256 is accepted, whatever signs it.
+        pytest.param(lambda: mint_api_token(SAMPLE_USER_ID, header={"alg": "RS256", "typ": "JWT"}), id="rs256-header"),
+    ],
+)
+async def test_only_hs256_is_accepted(mock_env_vars, forge):
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer(forge()))
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid authentication token"
+
+
+@pytest.mark.asyncio
+async def test_require_admin_refuses_an_unsigned_token(mock_env_vars):
+    """The admin gate verifies like the user gate: an `alg: none` token naming an
+    admin email is the same 404 as no token."""
+    with patch.dict("os.environ", {"ADMIN_EMAILS": "ops@example.com"}):
+        with pytest.raises(HTTPException) as exc_info:
+            await require_admin(bearer(_unsigned("ops@example.com")))
+        assert exc_info.value.status_code == 404
+        # The real token for that admin is admitted, so the refusal is the signature's.
+        assert await require_admin(bearer(mint_api_token(SAMPLE_USER_ID, "ops@example.com"))) is None
 
 
 @pytest.mark.asyncio
@@ -103,7 +157,7 @@ async def test_placeholder_default_token_rejected(mock_env_vars):
 @pytest.mark.asyncio
 async def test_wrong_signature_rejected(mock_env_vars):
     """A JWT signed with a different secret is rejected with 401."""
-    token = make_token({"sub": SAMPLE_USER_ID}, secret="some-other-secret")
+    token = mint_api_token(SAMPLE_USER_ID, secret="some-other-secret")
 
     with pytest.raises(HTTPException) as exc_info:
         await get_current_user_id(bearer(token))
@@ -128,7 +182,7 @@ async def test_unexpected_decode_error_is_401_not_500(mock_env_vars):
 @pytest.mark.asyncio
 async def test_expired_token_rejected(mock_env_vars):
     """An expired JWT is rejected with 401 and an expiry message."""
-    token = make_token({"sub": SAMPLE_USER_ID, "exp": int(time.time()) - 3600})
+    token = mint_api_token(SAMPLE_USER_ID, ttl=-3600)
 
     with pytest.raises(HTTPException) as exc_info:
         await get_current_user_id(bearer(token))
@@ -139,8 +193,8 @@ async def test_expired_token_rejected(mock_env_vars):
 
 @pytest.mark.asyncio
 async def test_missing_user_id_claim_rejected(mock_env_vars):
-    """A valid JWT without `sub`/`id` claims is rejected with 401 (not 500)."""
-    token = make_token({"email": "test@test.com"})
+    """A valid JWT without a `sub` claim is rejected with 401 (not 500)."""
+    token = make_token({"email": "test@test.com", "exp": in_an_hour()})
 
     with pytest.raises(HTTPException) as exc_info:
         await get_current_user_id(bearer(token))
@@ -188,7 +242,7 @@ class TestOptionalAuthentication:
 
     @pytest.mark.asyncio
     async def test_valid_bearer_header_returns_user_id(self, mock_env_vars):
-        token = make_token({"sub": SAMPLE_USER_ID})
+        token = mint_api_token(SAMPLE_USER_ID)
 
         user_id = await get_current_user_id_optional(f"Bearer {token}")
         assert user_id == SAMPLE_USER_ID
@@ -204,3 +258,35 @@ class TestOptionalAuthentication:
     @pytest.mark.asyncio
     async def test_invalid_token_returns_none(self, mock_env_vars):
         assert await get_current_user_id_optional("Bearer not-a-jwt") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [jwt.InvalidKeyError("bad key"), ValueError("odd input")])
+async def test_require_admin_turns_any_verification_error_into_404(mock_env_vars, error):
+    """A key error is not an InvalidTokenError, and an odd input may raise outside
+    PyJWT's hierarchy; either is the plain 404, never a 500."""
+    with patch("app.auth.nextauth_auth.jwt.decode", side_effect=error):
+        with pytest.raises(HTTPException) as exc_info:
+            await require_admin(bearer(mint_api_token(SAMPLE_USER_ID, "ops@example.com")))
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_frontend_clock_slightly_ahead_is_tolerated(mock_env_vars):
+    """PyJWT rejects an `iat` in the future, which python-jose never checked; a
+    frontend host a few seconds ahead must not 401 every fresh token (#870 review)."""
+    ahead = int(time.time()) + 10
+    token = make_token({"sub": SAMPLE_USER_ID, "iat": ahead, "exp": ahead + 3600})
+
+    assert await get_current_user_id(bearer(token)) == SAMPLE_USER_ID
+
+
+@pytest.mark.asyncio
+async def test_an_empty_sub_is_refused(mock_env_vars):
+    """`require` checks the claim is present, not that it names anyone; an empty
+    `sub` would make every such token the same tenant."""
+    token = make_token({"sub": "", "exp": in_an_hour()})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer(token))
+    assert exc_info.value.status_code == 401
