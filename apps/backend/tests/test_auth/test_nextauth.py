@@ -261,9 +261,11 @@ class TestOptionalAuthentication:
 
 
 @pytest.mark.asyncio
-async def test_require_admin_turns_any_jwt_error_into_404(mock_env_vars):
-    """A key error is not an InvalidTokenError; it must still be the plain 404, not a 500."""
-    with patch("app.auth.nextauth_auth.jwt.decode", side_effect=jwt.InvalidKeyError("bad key")):
+@pytest.mark.parametrize("error", [jwt.InvalidKeyError("bad key"), ValueError("odd input")])
+async def test_require_admin_turns_any_verification_error_into_404(mock_env_vars, error):
+    """A key error is not an InvalidTokenError, and an odd input may raise outside
+    PyJWT's hierarchy; either is the plain 404, never a 500."""
+    with patch("app.auth.nextauth_auth.jwt.decode", side_effect=error):
         with pytest.raises(HTTPException) as exc_info:
             await require_admin(bearer(mint_api_token(SAMPLE_USER_ID, "ops@example.com")))
     assert exc_info.value.status_code == 404
@@ -277,3 +279,14 @@ async def test_a_frontend_clock_slightly_ahead_is_tolerated(mock_env_vars):
     token = make_token({"sub": SAMPLE_USER_ID, "iat": ahead, "exp": ahead + 3600})
 
     assert await get_current_user_id(bearer(token)) == SAMPLE_USER_ID
+
+
+@pytest.mark.asyncio
+async def test_an_empty_sub_is_refused(mock_env_vars):
+    """`require` checks the claim is present, not that it names anyone; an empty
+    `sub` would make every such token the same tenant."""
+    token = make_token({"sub": "", "exp": in_an_hour()})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user_id(bearer(token))
+    assert exc_info.value.status_code == 401

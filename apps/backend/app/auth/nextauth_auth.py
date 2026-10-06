@@ -51,9 +51,13 @@ def _verify(token: str, secret: str) -> dict:
     that base, since a key error such as ``InvalidKeyError`` is not an
     ``InvalidTokenError``. PyJWT since #844: python-jose had an unpatched critical CVE.
     """
-    return jwt.decode(
+    payload = jwt.decode(
         token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]}, leeway=CLOCK_SKEW_SECONDS
     )
+    # `require` checks presence; an empty `sub` would name no one (every such token one tenant).
+    if not payload["sub"]:
+        raise jwt.MissingRequiredClaimError("sub")
+    return payload
 
 
 def _configured_secret() -> str:
@@ -151,5 +155,5 @@ def _admin_payload(credentials: HTTPAuthorizationCredentials | None) -> dict | N
         return None
     try:
         return _verify(credentials.credentials, NEXTAUTH_SECRET)
-    except jwt.PyJWTError:
+    except Exception:  # any verification failure is the same 404, never a 500
         return None
