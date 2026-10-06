@@ -86,7 +86,9 @@ def _fresh_copy(d: Dataset, doc: Dataset, current: Dataset | None) -> Dataset:
 
 async def _stored(doc: Dataset) -> Dataset | None:
     """The document as the database holds it now; None for one not yet inserted."""
-    model: type[DatasetMetadata] | type[UserData] = type(doc)
+    model: type[DatasetMetadata] | type[UserData] = (
+        DatasetMetadata if isinstance(doc, DatasetMetadata) else UserData
+    )
     return await model.get(doc.id) if doc.id is not None else None
 
 
