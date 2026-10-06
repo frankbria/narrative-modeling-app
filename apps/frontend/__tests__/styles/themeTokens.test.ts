@@ -22,6 +22,15 @@ import { join } from 'path'
 import postcss from 'postcss'
 import tailwind from '@tailwindcss/postcss'
 
+// @tailwindcss/node registers an ESM cache-busting loader hook at import, and
+// Jest >= 30.5 throws on module.register/registerHooks. The hook only matters
+// for reloading config in a long-lived process, so hide both from the import.
+jest.mock('module', () => ({
+  ...jest.requireActual('module'),
+  register: undefined,
+  registerHooks: undefined,
+}))
+
 const CSS_PATH = join(__dirname, '..', '..', 'app', 'globals.css')
 
 /** Every semantic token the theme promises, in both modes. */
