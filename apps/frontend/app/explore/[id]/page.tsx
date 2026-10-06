@@ -66,6 +66,58 @@ function withProcessed(
   return prev && { ...prev, ...processed, is_processed: true, id: prev.id }
 }
 
+function ProcessingStatus({ dataset }: { dataset: ProcessedDataset }) {
+  return (
+    <>
+      {dataset.is_processed ? (
+        <div className="flex items-center gap-1 text-green-600">
+          <CheckCircle2 className="h-4 w-4" />
+          <span className="text-sm">Processed</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 text-yellow-600">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Processing...</span>
+        </div>
+      )}
+      {dataset.processed_at && (
+        <span className="text-sm">
+          Processed {new Date(dataset.processed_at).toLocaleDateString()}
+        </span>
+      )}
+    </>
+  )
+}
+
+function StatCard({ icon: Icon, value, label }: { icon: typeof Database; value: string; label: string }) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center space-x-2">
+          <Icon className="h-5 w-5 text-primary" />
+          <div>
+            <p className="text-2xl font-bold">{value}</p>
+            <p className="text-sm text-muted-foreground">{label}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Rows and columns are the stored counts every writer sets (#808); `schema`
+ *  only exists after processing. */
+function OverviewStats({ dataset }: { dataset: ProcessedDataset }) {
+  const score = dataset.quality_report?.overall_quality_score
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <StatCard icon={Database} value={dataset.num_rows?.toLocaleString() ?? 'N/A'} label="Rows" />
+      <StatCard icon={BarChart3} value={String(dataset.num_columns ?? 'N/A')} label="Columns" />
+      <StatCard icon={CheckCircle2} value={score ? (score * 100).toFixed(1) + '%' : 'N/A'} label="Quality Score" />
+    </div>
+  )
+}
+
 export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
@@ -291,22 +343,7 @@ export default function DatasetAnalysisPage() {
             <h1 className="text-3xl font-bold">{dataset.filename}</h1>
           </div>
           <div className="flex items-center gap-4 text-muted-foreground">
-            {dataset.is_processed ? (
-              <div className="flex items-center gap-1 text-green-600">
-                <CheckCircle2 className="h-4 w-4" />
-                <span className="text-sm">Processed</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-yellow-600">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Processing...</span>
-              </div>
-            )}
-            {dataset.processed_at && (
-              <span className="text-sm">
-                Processed {new Date(dataset.processed_at).toLocaleDateString()}
-              </span>
-            )}
+            <ProcessingStatus dataset={dataset} />
           </div>
         </div>
         <div className="flex gap-2">
@@ -389,52 +426,7 @@ export default function DatasetAnalysisPage() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <Database className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold">
-                        {dataset.num_rows?.toLocaleString() ?? 'N/A'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Rows</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <BarChart3 className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold">
-                        {dataset.num_columns ?? 'N/A'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Columns</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle2 className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold">
-                        {dataset.quality_report?.overall_quality_score 
-                          ? (dataset.quality_report.overall_quality_score * 100).toFixed(1) + '%'
-                          : 'N/A'
-                        }
-                      </p>
-                      <p className="text-sm text-muted-foreground">Quality Score</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <OverviewStats dataset={dataset} />
 
             <DataPreviewTable datasetId={dataset.id} onExport={handleExport} />
           </TabsContent>
