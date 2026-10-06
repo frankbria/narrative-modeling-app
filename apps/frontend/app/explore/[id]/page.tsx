@@ -38,31 +38,32 @@ interface ProcessedDataset {
   processed_at: string
 }
 
-/** Map a backend DataType (schema_inference.py) or legacy pandas dtype to the
- *  visualization dashboard's column buckets. */
-function classifyColumnType(dataType: string | undefined): 'numeric' | 'categorical' | 'datetime' | 'text' {
-  switch (dataType) {
-    case 'integer':
-    case 'float':
-    case 'currency':
-    case 'percentage':
-    case 'number':
-    case 'int64':
-    case 'float64':
-      return 'numeric'
-    case 'categorical':
-    case 'boolean':
-    case 'string':
-    case 'object':
-      return 'categorical'
-    case 'date':
-    case 'datetime':
-    case 'time':
-    case 'datetime64[ns]':
-      return 'datetime'
-    default:
-      return 'text'
-  }
+type ColumnKind = 'numeric' | 'categorical' | 'datetime' | 'text'
+
+/** Backend DataType (schema_inference.py) or legacy pandas dtype → the
+ *  visualization dashboard's column bucket. A Map, so `constructor` is not a key. */
+const COLUMN_KINDS = new Map<string, ColumnKind>([
+  ...['integer', 'float', 'currency', 'percentage', 'number', 'int64', 'float64'].map(
+    (t) => [t, 'numeric'] as const,
+  ),
+  ...['categorical', 'boolean', 'string', 'object'].map((t) => [t, 'categorical'] as const),
+  ...['date', 'datetime', 'time', 'datetime64[ns]'].map((t) => [t, 'datetime'] as const),
+])
+
+function classifyColumnType(dataType: string | undefined): ColumnKind {
+  return COLUMN_KINDS.get(dataType ?? '') ?? 'text'
+}
+
+const isAbort = (err: unknown) => err instanceof Error && err.name === 'AbortError'
+
+/** Merge a /data/process response into the loaded dataset. The response has no
+ *  `is_processed`, so it is set here or the page waits on "Processing" forever
+ *  (#808), and no `id`, so the one normalized at fetch time is kept. */
+function withProcessed(
+  prev: ProcessedDataset | null,
+  processed: Partial<ProcessedDataset>,
+): ProcessedDataset | null {
+  return prev && { ...prev, ...processed, is_processed: true, id: prev.id }
 }
 
 export default function DatasetAnalysisPage() {
@@ -111,19 +112,10 @@ export default function DatasetAnalysisPage() {
 
       if (response.ok) {
         const processedData = await response.json()
-        // Preserve the already-normalized id; the processing response (like the
-        // initial fetch) carries the id as `_id` with `id` null. It carries no
-        // `is_processed` either, so set it here or the page waits forever (#808).
-        setDataset(prev => prev
-          ? { ...prev, ...processedData, is_processed: true, id: prev.id ?? processedData.id ?? processedData._id ?? datasetId }
-          : null)
+        setDataset(prev => withProcessed(prev, processedData))
       }
     } catch (err) {
-      // Ignore abort errors
-      if (err instanceof Error && err.name === 'AbortError') {
-        return
-      }
-      console.error('Error processing dataset:', err)
+      if (!isAbort(err)) console.error('Error processing dataset:', err)
     }
   }
 
