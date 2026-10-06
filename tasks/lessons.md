@@ -1598,3 +1598,27 @@ checked, and the fix is always the same: the claim is a query, so run it.
   refused by the other ("Artifact signature mismatch"). A demo that trains repeatedly as
   one user also needs `test-e2e.sh`'s `PLAN_FREE_*` lifts, or the fourth `/ml/train`
   answers 402.
+
+## 2026-10-06 — P0 loop (#808, #723, #800, #850, #855)
+
+- **Never use `git stash` for a RED check in the main checkout.** A `stash -- <path>`
+  with a bracketed path failed, and the `stash pop` that followed popped the user's
+  months-old `stash@{0}` instead, conflicting two unrelated files. To prove a test fails
+  without a fix, revert the fix with an inverse edit, or check out the base in a
+  worktree.
+- **A worktree is not the main checkout's environment.** It has no `apps/backend/.env`,
+  so `S3Service` starts in mock mode and every LocalStack test fails locally while CI
+  passes. Symlink `.env` for the integration run, then remove it before the gate run.
+  Turbopack rejects a symlinked `node_modules`, so run e2e from the main checkout on a
+  detached commit and switch back to `main` afterwards.
+- **A permanently red check hides the next finding.** #844 kept the Security Audit red,
+  so four new pymongo CVEs and two high npm runtime advisories (#866) looked exactly like
+  the known one. Until the job is green again, read its log on every PR and diff the
+  findings against the known list.
+- **Verify a reviewer's "not mounted" claim against `app.openapi()`.** Codex said
+  `/data/{id}/preview` was unmounted. It was mounted. The real gap was that the e2e
+  asserted only the After table, so it never proved the route the page loads first.
+  Assert every data source a page reads, not just the final one.
+- **Cross-family review earns its cost on data paths.** GLM caught the #850 resolver
+  transforming TSV as CSV, a silent corruption that every test passed because each one
+  used a CSV.
