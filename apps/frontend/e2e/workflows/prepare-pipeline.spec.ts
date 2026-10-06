@@ -35,7 +35,8 @@ test.describe('Prepare pipeline', () => {
     await page.getByRole('button', { name: /^preview$/i }).click();
     await page.getByRole('button', { name: /^after$/i }).click();
     await expect(page.locator('th', { hasText: 'age' })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    // The pipeline's own error, not Next's route announcer (also role=alert).
+    await expect(page.getByTestId('pipeline-error')).toHaveCount(0);
 
     await page.getByRole('button', { name: /apply & continue/i }).click();
     await expect(page.getByText('Applied 1 transformation')).toBeVisible({ timeout: 20000 });
