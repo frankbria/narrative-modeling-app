@@ -3,10 +3,10 @@
 import logging
 import os
 
+import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -39,13 +39,70 @@ if not NEXTAUTH_SECRET and not SKIP_AUTH:
 security = HTTPBearer()
 _optional_bearer = HTTPBearer(auto_error=False)
 
+
+# The frontend and backend clocks may differ slightly; PyJWT rejects a future `iat`.
+CLOCK_SKEW_SECONDS = 30
+
+
+def _verify(token: str, secret: str) -> dict:
+    """Verify an API token as the frontend mints it (`lib/api-token.ts`): HS256 only,
+    signed with NEXTAUTH_SECRET, carrying `sub` and an unexpired `exp`. Raises a
+    ``jwt.PyJWTError`` otherwise (``ExpiredSignatureError`` for expiry); callers catch
+    that base, since a key error such as ``InvalidKeyError`` is not an
+    ``InvalidTokenError``. PyJWT since #844: python-jose had an unpatched critical CVE.
+    """
+    payload = jwt.decode(
+        token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]}, leeway=CLOCK_SKEW_SECONDS
+    )
+    # `require` checks presence; an empty `sub` would name no one (every such token one tenant).
+    if not payload["sub"]:
+        raise jwt.MissingRequiredClaimError("sub")
+    return payload
+
+
+def _configured_secret() -> str:
+    if not NEXTAUTH_SECRET:
+        logger.error("NextAuth configuration is missing.")
+        raise HTTPException(
+            status_code=500,
+            detail="Authentication service is not properly configured.",
+        )
+    return NEXTAUTH_SECRET
+
+
+def _verified_payload(token: str) -> dict:
+    """The token's claims, or a 401 with a fixed message: library internals are
+    logged server-side, never echoed (issue #269), and an unexpected failure is
+    still an auth failure, not a leaky 500 that pollutes the error-rate metrics."""
+    secret = _configured_secret()
+    try:
+        return _verify(token, secret)
+    except jwt.ExpiredSignatureError:
+        logger.error("Token has expired")
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.PyJWTError as e:
+        logger.error(f"JWT validation error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+    except Exception as e:
+        logger.error(f"Authentication error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+
+def _admit_signup(payload: dict) -> None:
+    """Signup gate (#261, #768): defense-in-depth mirror of the NextAuth signIn
+    callback. SIGNUP_MODE decides; invite mode checks the email claim (minted by the
+    frontend) against INVITE_ALLOWLIST. Reads the env per request so a revoked
+    invitee is refused within the token TTL."""
+    allowlist = parse_invite_allowlist(os.getenv("INVITE_ALLOWLIST"))
+    if not signup_admits(payload.get("email"), current_signup_mode(), allowlist):
+        logger.warning("Invite gate: rejected non-allowlisted user")
+        raise HTTPException(status_code=403, detail="Access is limited to invited beta users.")
+
+
 async def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> str:
-    """
-    Validate NextAuth JWT token and extract user ID
-    """
-    # Skip authentication in development if SKIP_AUTH is true
+    """Validate the API token the frontend minted and return its `sub`."""
     if SKIP_AUTH:
         # Every request maps to a single fixed dev identity. The old "dev-"
         # prefix branch returned the bearer string verbatim as the user id,
@@ -54,68 +111,9 @@ async def get_current_user_id(
         # (issue #149); real multi-user testing uses a signed JWT (the frontend
         # mints one via mintApiToken) or a FastAPI dependency override.
         return "dev-user-default"
-    
-    if not NEXTAUTH_SECRET:
-        logger.error("NextAuth configuration is missing.")
-        raise HTTPException(
-            status_code=500,
-            detail="Authentication service is not properly configured.",
-        )
-
-    token = credentials.credentials
-
-    try:
-        # Decode the JWT token using the NextAuth secret
-        # NextAuth uses HS256 algorithm by default
-        payload = jwt.decode(
-            token,
-            NEXTAUTH_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False}  # NextAuth doesn't use audience by default
-        )
-
-        # Extract user ID from the payload
-        # NextAuth stores user info in the token
-        user_id = payload.get("sub") or payload.get("id")
-        
-        if not user_id:
-            # If no user ID in token, might be a session token
-            # In that case, we'd need to validate with the NextAuth API
-            logger.error("No user ID found in token")
-            raise HTTPException(status_code=401, detail="Invalid authentication token")
-
-        # Signup gate (#261, #768): defense-in-depth mirror of the NextAuth
-        # signIn callback. SIGNUP_MODE decides; invite mode checks the email
-        # claim (minted by the frontend) against INVITE_ALLOWLIST. Reads the env
-        # per request so a revoked invitee is refused within the token TTL.
-        allowlist = parse_invite_allowlist(os.getenv("INVITE_ALLOWLIST"))
-        if not signup_admits(payload.get("email"), current_signup_mode(), allowlist):
-            logger.warning("Invite gate: rejected non-allowlisted user")
-            raise HTTPException(
-                status_code=403,
-                detail="Access is limited to invited beta users.",
-            )
-
-        return user_id
-
-    except jwt.ExpiredSignatureError:
-        logger.error("Token has expired")
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except JWTError as e:
-        # Log library internals server-side; return a fixed message (issue #269
-        # — never echo JWT/stack details to the client).
-        logger.error(f"JWT validation error: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
-    except HTTPException:
-        # Deliberate auth failures (e.g. missing user id claim -> 401) must not
-        # be converted into 500s by the generic handler below
-        raise
-    except Exception as e:
-        # An unexpected decode/verify failure is still an auth failure: return a
-        # fixed 401 (not a leaky 500 — issue #269; 401 also keeps genuine auth
-        # rejections out of the 5xx error-rate metrics).
-        logger.error(f"Authentication error: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
+    payload = _verified_payload(credentials.credentials)
+    _admit_signup(payload)
+    return payload["sub"]
 
 # For backward compatibility during migration
 async def get_current_user_id_optional(
@@ -146,17 +144,16 @@ async def require_admin(
     gets the same 404 as a path that does not exist, like the frontend's
     ``/admin`` rewrite (#477): the endpoint's existence is not advertised.
     """
-    not_found = HTTPException(status_code=404, detail="Not Found")
+    payload = _admin_payload(credentials)
+    if payload is None or not is_admin_email(payload.get("email")):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+def _admin_payload(credentials: HTTPAuthorizationCredentials | None) -> dict | None:
+    """The verified claims, or None for anything that is not a valid token."""
     if credentials is None or SKIP_AUTH or not NEXTAUTH_SECRET:
-        raise not_found
+        return None
     try:
-        payload = jwt.decode(
-            credentials.credentials,
-            NEXTAUTH_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-    except JWTError:
-        raise not_found from None
-    if not is_admin_email(payload.get("email")):
-        raise not_found
+        return _verify(credentials.credentials, NEXTAUTH_SECRET)
+    except Exception:  # any verification failure is the same 404, never a 500
+        return None

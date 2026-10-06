@@ -5,10 +5,10 @@ from unittest.mock import patch
 import pytest
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
-from jose import jwt
 
 from app.main import app
 from app.services import product_events
+from tests.api_tokens import mint_api_token
 
 FUNNEL = "/api/v1/admin/funnel"
 ADMIN = "ops@example.com"
@@ -16,8 +16,7 @@ _SECRET = "test-secret"
 
 
 def _bearer(email: str | None) -> dict[str, str]:
-    claims = {"sub": "u1", **({"email": email} if email else {})}
-    return {"Authorization": f"Bearer {jwt.encode(claims, _SECRET, algorithm='HS256')}"}
+    return {"Authorization": f"Bearer {mint_api_token('u1', email, secret=_SECRET)}"}
 
 
 @pytest.fixture

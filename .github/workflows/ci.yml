@@ -630,9 +630,10 @@ jobs:
     # opens the fix PRs. npm audit gates the production tree, which is clean, so
     # it goes red only on a NEW high/critical there (see the step); pip-audit surfaces the transitive long tail for ongoing
     # Dependabot triage. The known-fixable CVE tail (cryptography/pillow/lxml/
-    # pyarrow/idna/pygments/python-dotenv/pyasn1/ecdsa/pytest) was bumped to fixed
-    # releases; the single remaining advisory has no upstream fix and is ignored
-    # below with a documented justification.
+    # pyarrow/idna/pygments/python-dotenv/pyasn1/ecdsa/pytest/pymongo) was bumped to
+    # fixed releases, and python-jose (unpatched critical CVE, with the unfixable
+    # `ecdsa` timing advisory under it) was replaced by PyJWT (#844), so nothing is
+    # ignored: a red job is a new finding.
     name: Security Audit (pip-audit + npm audit)
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -648,14 +649,7 @@ jobs:
         run: |
           uv export --frozen --no-emit-project --no-hashes \
             --format requirements-txt -o requirements-audit.txt
-          # PYSEC-2026-1325: Minerva-class timing side-channel in the pure-Python
-          # `ecdsa` lib. NO upstream fix exists — the library documents that
-          # constant-time operation is out of scope (SECURITY.md). It is a
-          # transitive dep of python-jose; this app signs/verifies JWTs with
-          # HS256 only (app/auth/nextauth_auth.py), so the ECDSA code path is
-          # never exercised. Accepted + ignored rather than left to flip the job.
-          uvx pip-audit -r requirements-audit.txt \
-            --ignore-vuln PYSEC-2026-1325
+          uvx pip-audit -r requirements-audit.txt
       - name: pip-audit (mcp)
         # Runs even when the backend audit failed: a red backend step used to
         # skip this one, hiding an mcp-only CVE (anyio, #784).

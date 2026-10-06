@@ -21,7 +21,9 @@ dependencies = [
     "pydantic>=2.11.5",
     "pydantic-settings>=2.9.1",
     "python-dotenv>=1.2.2",
-    "python-jose[cryptography]>=3.5.0",
+    # API-token verification (#844): python-jose had an unpatched critical CVE and no
+    # maintained release.
+    "pyjwt>=2.15",
     # The multipart form parser central to uploads — 0.0.31 clears a run of
     # parser DoS/allocation CVEs (CVE-2026-53538/53539/53540 et al.). Issue #270.
     "python-multipart>=0.0.31",
