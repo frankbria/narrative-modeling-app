@@ -120,6 +120,38 @@ function OverviewStats({ dataset }: { dataset: ProcessedDataset }) {
   )
 }
 
+function ProfilingActions(props: {
+  dataset: ProcessedDataset
+  profiled: boolean
+  onExport: () => void
+  onComplete: () => void
+  onContinue: () => void
+}) {
+  const { dataset, profiled, onExport, onComplete, onContinue } = props
+  return (
+    <div className="flex gap-2">
+      <Button
+        onClick={onExport}
+        disabled={!dataset.is_processed}
+        variant="outline"
+        className="bg-card hover:bg-muted border-border"
+      >
+        Export Data
+      </Button>
+      {dataset.is_processed && !profiled && (
+        <Button onClick={onComplete} className="bg-green-600 hover:bg-green-700 text-white">
+          Complete & Continue to Data Preparation
+        </Button>
+      )}
+      {profiled && (
+        <Button onClick={onContinue} className="bg-blue-600 hover:bg-blue-700 text-white">
+          Continue to Data Preparation
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export default function DatasetAnalysisPage() {
   const params = useParams()
   const router = useRouter()
@@ -346,42 +378,23 @@ export default function DatasetAnalysisPage() {
           </div>
           <ProcessingStatus dataset={dataset} />
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleExport} 
-            disabled={!dataset.is_processed}
-            variant="outline"
-            className="bg-card hover:bg-muted border-border"
-          >
-            Export Data
-          </Button>
-          {dataset.is_processed && !state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
-            <Button 
-              onClick={() => {
-                // autoAdvance: complete profiling AND move straight to the next
-                // stage in one click, matching the button label.
-                completeStage(WorkflowStage.DATA_PROFILING, {
-                  datasetId: dataset.id,
-                  schema: dataset.schema,
-                  statistics: dataset.statistics,
-                  quality: dataset.quality_report,
-                  timestamp: new Date().toISOString()
-                }, { autoAdvance: true })
-              }}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              Complete & Continue to Data Preparation
-            </Button>
-          )}
-          {state.completedStages.has(WorkflowStage.DATA_PROFILING) && (
-            <Button 
-              onClick={() => router.push('/prepare')}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Continue to Data Preparation
-            </Button>
-          )}
-        </div>
+        <ProfilingActions
+          dataset={dataset}
+          profiled={state.completedStages.has(WorkflowStage.DATA_PROFILING)}
+          onExport={handleExport}
+          onComplete={() => {
+            // autoAdvance: complete profiling AND move straight to the next
+            // stage in one click, matching the button label.
+            completeStage(WorkflowStage.DATA_PROFILING, {
+              datasetId: dataset.id,
+              schema: dataset.schema,
+              statistics: dataset.statistics,
+              quality: dataset.quality_report,
+              timestamp: new Date().toISOString()
+            }, { autoAdvance: true })
+          }}
+          onContinue={() => router.push('/prepare')}
+        />
       </div>
 
       {!dataset.is_processed ? (
