@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
@@ -68,7 +68,7 @@ function withProcessed(
 
 function ProcessingStatus({ dataset }: { dataset: ProcessedDataset }) {
   return (
-    <>
+    <div className="flex items-center gap-4 text-muted-foreground">
       {dataset.is_processed ? (
         <div className="flex items-center gap-1 text-green-600">
           <CheckCircle2 className="h-4 w-4" />
@@ -85,16 +85,17 @@ function ProcessingStatus({ dataset }: { dataset: ProcessedDataset }) {
           Processed {new Date(dataset.processed_at).toLocaleDateString()}
         </span>
       )}
-    </>
+    </div>
   )
 }
 
-function StatCard({ icon: Icon, value, label }: { icon: typeof Database; value: string; label: string }) {
+function StatCard(props: { icon: ReactNode; value: string; label: string }) {
+  const { icon, value, label } = props
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center space-x-2">
-          <Icon className="h-5 w-5 text-primary" />
+          {icon}
           <div>
             <p className="text-2xl font-bold">{value}</p>
             <p className="text-sm text-muted-foreground">{label}</p>
@@ -111,9 +112,9 @@ function OverviewStats({ dataset }: { dataset: ProcessedDataset }) {
   const score = dataset.quality_report?.overall_quality_score
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <StatCard icon={Database} value={dataset.num_rows?.toLocaleString() ?? 'N/A'} label="Rows" />
-      <StatCard icon={BarChart3} value={String(dataset.num_columns ?? 'N/A')} label="Columns" />
-      <StatCard icon={CheckCircle2} value={score ? (score * 100).toFixed(1) + '%' : 'N/A'} label="Quality Score" />
+      <StatCard icon={<Database className="h-5 w-5 text-primary" />} value={dataset.num_rows?.toLocaleString() ?? 'N/A'} label="Rows" />
+      <StatCard icon={<BarChart3 className="h-5 w-5 text-primary" />} value={String(dataset.num_columns ?? 'N/A')} label="Columns" />
+      <StatCard icon={<CheckCircle2 className="h-5 w-5 text-primary" />} value={score ? (score * 100).toFixed(1) + '%' : 'N/A'} label="Quality Score" />
     </div>
   )
 }
@@ -342,9 +343,7 @@ export default function DatasetAnalysisPage() {
             </Link>
             <h1 className="text-3xl font-bold">{dataset.filename}</h1>
           </div>
-          <div className="flex items-center gap-4 text-muted-foreground">
-            <ProcessingStatus dataset={dataset} />
-          </div>
+          <ProcessingStatus dataset={dataset} />
         </div>
         <div className="flex gap-2">
           <Button 
