@@ -25,6 +25,17 @@ import { TransformationChainView, TransformationStep as ChainStep } from './Tran
 import { TransformationConfigDialog, TransformationConfig } from './TransformationConfigDialog';
 import PreviewPanel from './PreviewPanel';
 import RecipeManager from './RecipeManager';
+import {
+  applyPipeline,
+  fetchDatasetRows,
+  fetchTransformationTypes,
+  previewPipeline,
+  saveRecipe,
+  type PipelinePreview,
+  type PipelineStep,
+  type PreviewTable,
+  type TransformationTypeMeta,
+} from '@/lib/services/pipelineApi';
 import { Save, Play, Undo, Redo, Code, CheckCircle, Eye, List } from 'lucide-react';
 
 interface TransformationPipelineProps {
@@ -41,13 +52,6 @@ interface TransformationPipelineProps {
   showViewToggle?: boolean;
 }
 
-/** Shape of a transformation type as returned by GET /transformations/available. */
-interface TransformationTypeMeta {
-  type: string;
-  label?: string;
-  description?: string;
-  parameters_schema?: Record<string, unknown>;
-}
 
 // React Flow's NodeTypes registry expects components keyed by a generic
 // NodeProps signature; our node component is typed for its specific node data,
@@ -55,6 +59,28 @@ interface TransformationTypeMeta {
 const nodeTypes = {
   transformation: TransformationNode,
 } as NodeTypes;
+
+/** The outcome of the last preview/apply/save, for the user rather than the console. */
+function ActionStatus(props: { error: string | null; notice: string | null }) {
+  const { error, notice } = props;
+  if (error) {
+    return (
+      <div role="alert" className="mx-4 mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+  return notice ? (
+    <div role="status" className="mx-4 mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+      {notice}
+    </div>
+  ) : null;
+}
+
+/** Before any preview runs, the panel shows the dataset's own rows. */
+function initialPreview(rows: PreviewTable | null): PipelinePreview | null {
+  return rows ? { before: rows, after: null, summary: null } : null;
+}
 
 export default function TransformationPipeline({
   datasetId,
@@ -66,6 +92,9 @@ export default function TransformationPipeline({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // What the last preview/apply/save said: shown to the user, never only logged (#855).
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   // Undo/redo history over structural snapshots of the pipeline (#281).
   const [history, setHistory] = useState<
     Array<{ nodes: TransformationFlowNode[]; edges: Edge[] }>
@@ -96,19 +125,26 @@ export default function TransformationPipeline({
   // Date.now()+length can collide on rapid adds within the same millisecond.
   const nodeIdCounterRef = useRef(0);
 
-  const { data: previewData } = useAsyncData(
+
+  // Transformation-type metadata + column names so the Chain view's Edit action
+  // can open a keyboard-accessible parameter dialog (mirrors the wiring in
+  // app/datasets/[id]/prepare/page.tsx). Best-effort: the pipeline still works
+  // without it (dialog degrades to "no parameters needed").
+  const { data: metadata } = useAsyncData(
     async () => {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/datasets/${datasetId}/preview?rows=100`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      // A failed preview was only logged before; the pipeline stays usable.
-      if (!response.ok) return null;
-      return response.json();
+      // Each half is best-effort: the pipeline stays usable without either.
+      const [types, rows] = await Promise.all([
+        fetchTransformationTypes().catch((): TransformationTypeMeta[] => []),
+        fetchDatasetRows(datasetId).catch(() => null),
+      ]);
+      return { types, rows };
     },
     [datasetId],
     { enabled: !!datasetId },
   );
+  const transformationTypes = metadata?.types ?? [];
+  const availableColumns = metadata?.rows?.columns ?? [];
+
   // Running a transformation preview replaces the initial dataset preview, so
   // the action's result is held separately and tagged with its dataset — the
   // load shows through until an action overrides it, and switching datasets
@@ -120,43 +156,8 @@ export default function TransformationPipeline({
   const preview =
     previewOverride && previewOverride.datasetId === datasetId
       ? previewOverride.data
-      : previewData ?? null;
+      : initialPreview(metadata?.rows ?? null);
   const setPreview = (data: unknown) => setPreviewOverride({ datasetId, data });
-
-  // Transformation-type metadata + column names so the Chain view's Edit action
-  // can open a keyboard-accessible parameter dialog (mirrors the wiring in
-  // app/datasets/[id]/prepare/page.tsx). Best-effort: the pipeline still works
-  // without it (dialog degrades to "no parameters needed").
-  const { data: metadata } = useAsyncData(
-    async () => {
-      const token = await getAuthToken();
-
-      let types: TransformationTypeMeta[] = [];
-      const typesResponse = await fetch(`${API_URL}/transformations/available`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (typesResponse.ok) {
-        types = (await typesResponse.json()).transformations || [];
-      }
-
-      let columns: string[] = [];
-      const columnsResponse = await fetch(`${API_URL}/data/${datasetId}/preview`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (columnsResponse.ok) {
-        const columnsData = await columnsResponse.json();
-        if (Array.isArray(columnsData.columns)) {
-          columns = columnsData.columns.map((col: { name: string }) => col.name);
-        }
-      }
-
-      return { types, columns };
-    },
-    [datasetId],
-    { enabled: !!datasetId },
-  );
-  const transformationTypes = metadata?.types ?? [];
-  const availableColumns = metadata?.columns ?? [];
 
   // Reset the pipeline + undo history when the dataset changes, so switching
   // datasets on a reused component instance (the /prepare routes key only on
@@ -349,103 +350,46 @@ export default function TransformationPipeline({
     setHasUnsavedChanges(true);
   }, [setNodes]);
 
-  const handlePreviewTransformation = async () => {
+  const pipelineSteps = (): PipelineStep[] =>
+    nodes.map((node) => ({ type: node.data.type, parameters: node.data.parameters ?? {} }));
+
+  /** Run one API action with the loading flag, surfacing its failure to the user. */
+  const runAction = async (action: () => Promise<string | null>) => {
     setLoading(true);
+    setError(null);
+    setNotice(null);
     try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
-
-      const response = await fetch(`${API_URL}/transformations/preview`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          dataset_id: datasetId,
-          transformations: pipeline,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPreview(data);
-      }
-    } catch (error) {
-      console.error('Failed to preview transformation:', error);
+      setNotice(await action());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApplyTransformations = async () => {
-    setLoading(true);
-    try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
+  const handlePreviewTransformation = () =>
+    runAction(async () => {
+      setPreview(await previewPipeline(datasetId, pipelineSteps(), metadata?.rows ?? null));
+      return null;
+    });
 
-      const response = await fetch(`${API_URL}/transformations/apply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          dataset_id: datasetId,
-          transformations: pipeline,
-        }),
-      });
+  const handleApplyTransformations = () =>
+    runAction(async () => {
+      const steps = pipelineSteps();
+      await applyPipeline(datasetId, steps);
+      // Transformations move the same dataset to a new file; there is no new id.
+      setTransformedDatasetId(datasetId);
+      setHasUnsavedChanges(false);
+      onComplete?.(datasetId);
+      return `Applied ${steps.length} transformation${steps.length === 1 ? '' : 's'}`;
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        setTransformedDatasetId(data.transformed_dataset_id);
-        setHasUnsavedChanges(false);
-        if (onComplete) {
-          onComplete(data.transformed_dataset_id);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to apply transformations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveRecipe = async (name: string, description: string) => {
-    try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
-
-      const response = await fetch(`${API_URL}/recipes/save`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name,
-          description,
-          transformations: pipeline,
-          dataset_id: datasetId,
-        }),
-      });
-
-      if (response.ok) {
-        setShowRecipeManager(false);
-      }
-    } catch (error) {
-      console.error('Failed to save recipe:', error);
-    }
-  };
+  const handleSaveRecipe = (name: string, description: string) =>
+    runAction(async () => {
+      await saveRecipe({ name, description, datasetId, steps: pipelineSteps() });
+      setShowRecipeManager(false);
+      return `Saved recipe "${name}"`;
+    });
 
   const handleLoadRecipe = async (recipe: { transformations: TransformationStep[] }) => {
     // Convert recipe transformations to nodes
@@ -583,7 +527,7 @@ export default function TransformationPipeline({
   return (
     <div className="flex h-full">
       {/* Sidebar */}
-      <TransformationSidebar onAdd={addTransformation} />
+      <TransformationSidebar types={transformationTypes} onAdd={addTransformation} />
 
       {/* Main Canvas */}
       <div className="flex-1 flex flex-col">
@@ -672,6 +616,8 @@ export default function TransformationPipeline({
             </button>
           </div>
         </div>
+
+        <ActionStatus error={error} notice={notice} />
 
         {/* Canvas/Chain and Preview */}
         <div className="flex-1 flex">

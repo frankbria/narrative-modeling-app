@@ -1,0 +1,103 @@
+[
+  {
+    "category": "Data Cleaning",
+    "description": "Remove duplicate rows from the dataset",
+    "label": "Remove Duplicates",
+    "parameters_schema": {
+      "keep": {
+        "enum": [
+          "first",
+          "last"
+        ],
+        "required": false,
+        "type": "string"
+      },
+      "subset": {
+        "items": {
+          "type": "string"
+        },
+        "required": false,
+        "type": "array"
+      }
+    },
+    "requires_columns": false,
+    "type": "remove_duplicates"
+  },
+  {
+    "category": "Data Cleaning",
+    "description": "Remove leading and trailing whitespace from text columns (all text columns if none are specified)",
+    "label": "Trim Whitespace",
+    "parameters_schema": {
+      "columns": {
+        "items": {
+          "type": "string"
+        },
+        "required": false,
+        "type": "array"
+      }
+    },
+    "requires_columns": false,
+    "type": "trim_whitespace"
+  },
+  {
+    "category": "Missing Values",
+    "description": "Remove rows with missing values",
+    "label": "Drop Missing",
+    "parameters_schema": {
+      "columns": {
+        "items": {
+          "type": "string"
+        },
+        "required": false,
+        "type": "array"
+      },
+      "how": {
+        "enum": [
+          "any",
+          "all"
+        ],
+        "required": false,
+        "type": "string"
+      },
+      "threshold": {
+        "maximum": 100,
+        "minimum": 0,
+        "required": false,
+        "type": "number"
+      }
+    },
+    "requires_columns": false,
+    "type": "drop_missing"
+  },
+  {
+    "category": "Missing Values",
+    "description": "Fill missing values with a constant value, or impute with a strategy: mean, median, mode, forward-fill or backward-fill",
+    "label": "Fill Missing",
+    "parameters_schema": {
+      "columns": {
+        "items": {
+          "type": "string"
+        },
+        "required": false,
+        "type": "array"
+      },
+      "method": {
+        "enum": [
+          "mean",
+          "median",
+          "mode",
+          "ffill",
+          "bfill"
+        ],
+        "required": false,
+        "type": "string"
+      },
+      "value": {
+        "required": false,
+        "type": "string"
+      }
+    },
+    "requires_columns": false,
+    "type": "fill_missing"
+  }
+]

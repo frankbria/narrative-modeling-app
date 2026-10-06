@@ -1,0 +1,261 @@
+{
+  "POST /transformations/apply": {
+    "description": "Request schema for applying a single transformation.",
+    "properties": {
+      "column": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Target column",
+        "title": "Column"
+      },
+      "columns": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Target columns",
+        "title": "Columns"
+      },
+      "dataset_id": {
+        "description": "Dataset to apply transformation to",
+        "title": "Dataset Id",
+        "type": "string"
+      },
+      "parameters": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Transformation parameters",
+        "title": "Parameters"
+      },
+      "save_as_new": {
+        "default": false,
+        "description": "Whether to save as new dataset version",
+        "title": "Save As New",
+        "type": "boolean"
+      },
+      "transformation_type": {
+        "description": "Type of transformation",
+        "title": "Transformation Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "dataset_id",
+      "transformation_type"
+    ],
+    "title": "TransformationApplyRequest",
+    "type": "object"
+  },
+  "POST /transformations/preview": {
+    "$defs": {
+      "TransformationStepRequest": {
+        "description": "Request schema for adding a transformation step.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Target column",
+            "title": "Column"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Target columns",
+            "title": "Columns"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Transformation parameters",
+            "title": "Parameters"
+          },
+          "transformation_type": {
+            "description": "Type of transformation",
+            "title": "Transformation Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transformation_type"
+        ],
+        "title": "TransformationStepRequest",
+        "type": "object"
+      }
+    },
+    "description": "Request schema for transformation preview.",
+    "properties": {
+      "dataset_id": {
+        "description": "Dataset to preview transformation on",
+        "title": "Dataset Id",
+        "type": "string"
+      },
+      "preview_rows": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 100,
+        "description": "Number of rows to preview",
+        "title": "Preview Rows"
+      },
+      "transformation_steps": {
+        "description": "Transformation steps to preview",
+        "items": {
+          "$ref": "#/$defs/TransformationStepRequest"
+        },
+        "title": "Transformation Steps",
+        "type": "array"
+      }
+    },
+    "required": [
+      "dataset_id",
+      "transformation_steps"
+    ],
+    "title": "TransformationPreviewRequest",
+    "type": "object"
+  },
+  "POST /transformations/recipes": {
+    "$defs": {
+      "RecipeStepRequest": {
+        "description": "Request schema for recipe step.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "type": {
+            "description": "Transformation type",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "RecipeStepRequest",
+        "type": "object"
+      }
+    },
+    "description": "Request schema for creating recipe.",
+    "properties": {
+      "dataset_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Dataset Id"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "is_public": {
+        "default": false,
+        "title": "Is Public",
+        "type": "boolean"
+      },
+      "name": {
+        "description": "Recipe name",
+        "title": "Name",
+        "type": "string"
+      },
+      "steps": {
+        "description": "Recipe steps",
+        "items": {
+          "$ref": "#/$defs/RecipeStepRequest"
+        },
+        "title": "Steps",
+        "type": "array"
+      },
+      "tags": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Tags",
+        "type": "array"
+      }
+    },
+    "required": [
+      "name",
+      "steps"
+    ],
+    "title": "RecipeCreateRequest",
+    "type": "object"
+  }
+}
