@@ -11,7 +11,6 @@ from app.models.dataset import DatasetMetadata
 from app.services.dataset_link import record_new_file
 from app.services.exceptions import (
     NotFoundError,
-    PermissionDeniedError,
     ValidationError,
 )
 from app.services.versioning_service import VersioningService
@@ -40,6 +39,23 @@ class HistoryService:
         self.versioning_service = versioning_service
         self.transformation_service = transformation_service
 
+    async def _config(self, dataset_id: str, user_id: str):
+        """The dataset's transformation history, owned by `user_id` (#800).
+
+        Looked up by dataset, not by `config_id`: the two are different id spaces, so the
+        old `get_transformation_config(dataset_id)` matched nothing and every history
+        route answered 404. Scoped to the owner, so another tenant's dataset answers the
+        same NotFoundError as an unknown one rather than a distinguishable 403.
+        """
+        config = await self.transformation_service.get_dataset_config(dataset_id, user_id)
+        if not config:
+            raise NotFoundError(
+                resource_type="Transformation config",
+                resource_id=dataset_id,
+                message=f"Transformation config not found for dataset {dataset_id}"
+            )
+        return config
+
     async def undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move back one step in transformation history.
@@ -53,23 +69,9 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
             ValidationError: If cannot undo (at beginning of history)
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Check if can undo
         if not config.can_undo():
@@ -136,23 +138,9 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
             ValidationError: If cannot redo (at end of history)
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Check if can redo
         if not config.can_redo():
@@ -220,23 +208,9 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
             ValidationError: If position is invalid
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Validate position
         if position < 0 or position >= len(config.transformation_steps):
@@ -307,22 +281,8 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Return history in the API contract shape (schemas.HistoryDataResponse);
         # previously this returned a transformation_steps list that did not
@@ -373,22 +333,8 @@ class HistoryService:
 
         Raises:
             NotFoundError: If transformation config not found
-            PermissionDeniedError: If user doesn't own the dataset
         """
-        # Get transformation config
-        config = await self.transformation_service.get_transformation_config(dataset_id)
-        if not config:
-            raise NotFoundError(
-                resource_type="Transformation config",
-                resource_id=dataset_id,
-                message=f"Transformation config not found for dataset {dataset_id}"
-            )
-
-        # Check ownership
-        if config.user_id != user_id:
-            raise PermissionDeniedError(
-                message=f"User {user_id} does not own dataset {dataset_id}"
-            )
+        config = await self._config(dataset_id, user_id)
 
         # Clear history
         config.transformation_steps = []

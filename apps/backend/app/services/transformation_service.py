@@ -116,6 +116,21 @@ class TransformationService(BaseService[TransformationConfig]):
         await config.save()
         return config
 
+    async def _history_config_id(
+        self, dataset_id: str, user_id: str, timestamp: float, file_path: str
+    ) -> str:
+        """The dataset's history config, created on its first transformation (#800).
+        Minting one per call left every config a one-step history that no lookup by
+        dataset could assemble."""
+        existing = await self.get_dataset_config(dataset_id, user_id)
+        if existing:
+            return existing.config_id
+        config_id = f"config_{dataset_id}_{int(timestamp)}"
+        await self.create_transformation_config(
+            user_id=user_id, dataset_id=dataset_id, config_id=config_id, current_file_path=file_path
+        )
+        return config_id
+
     async def get_transformation_config(
         self,
         config_id: str
@@ -130,6 +145,20 @@ class TransformationService(BaseService[TransformationConfig]):
             TransformationConfig instance or None if not found
         """
         return await self.get_by_id(config_id, check_ownership=False)
+
+    async def get_dataset_config(
+        self, dataset_id: str, user_id: str
+    ) -> TransformationConfig | None:
+        """The dataset's history config: its newest, owned by `user_id` (#800).
+
+        Steps accumulate in one config per dataset (`apply_transformation` reuses it), so
+        undo/redo move through one ordered list. Datasets transformed before #800 hold one
+        config per step; the newest is the current state.
+        """
+        return await TransformationConfig.find(
+            TransformationConfig.dataset_id == dataset_id,
+            TransformationConfig.user_id == user_id,
+        ).sort("-created_at").first_or_none()
 
     async def list_transformation_configs(
         self,
@@ -448,14 +477,7 @@ class TransformationService(BaseService[TransformationConfig]):
                 f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
             )
 
-            # Create transformation config
-            config_id = f"config_{dataset_id}_{int(timestamp)}"
-            await self.create_transformation_config(
-                user_id=user_id,
-                dataset_id=dataset_id,
-                config_id=config_id,
-                current_file_path=new_file_path
-            )
+            config_id = await self._history_config_id(dataset_id, user_id, timestamp, new_file_path)
 
             # Calculate execution time early for versioning
             execution_time_ms = int((time.time() - start_time) * 1000)
