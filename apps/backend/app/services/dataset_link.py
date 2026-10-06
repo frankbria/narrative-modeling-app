@@ -16,8 +16,11 @@ it; `scripts/inventory_dataset_links.py` finds every pair in that state.
 import logging
 from datetime import UTC, datetime
 
+from bson import ObjectId
+
 from app.models.dataset import DatasetMetadata
 from app.models.user_data import UserData
+from app.services.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -156,3 +159,92 @@ def _log_half_move(moved: list[str], d: Dataset, new_url: str, old_url: str | No
             "run scripts/inventory_dataset_links.py and repair",
             ", ".join(moved), new_url, type(d).__name__, old_url, d.user_id,
         )
+
+
+async def ensure_metadata_twin(dataset_id: str, user_id: str) -> DatasetMetadata | None:
+    """The `DatasetMetadata` a transformation runs on, for either id space (#850).
+
+    The UI uploads through `/upload/secure` and chunked `complete`, which write only a
+    `UserData` row, and hands its ObjectId to the Prepare stage. The transformation
+    service and its history are keyed on `DatasetMetadata`, so every transformation on a
+    UI upload answered 404. An id that names the caller's `UserData` resolves to its
+    twin (joined on `(user_id, s3_url)`), created with a base version on first use.
+    None when the caller owns neither.
+    """
+    meta = await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id})
+    if meta:
+        return meta
+    upload = await _owned_upload(dataset_id, user_id)
+    if upload is None:
+        return None
+    twin = await DatasetMetadata.find_one(
+        DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
+    )
+    return twin or await _create_twin(upload)
+
+
+async def _owned_upload(dataset_id: str, user_id: str) -> UserData | None:
+    if not ObjectId.is_valid(dataset_id):
+        return None
+    return await UserData.find_one(UserData.id == ObjectId(dataset_id), UserData.user_id == user_id)
+
+
+async def _create_twin(upload: UserData) -> DatasetMetadata:
+    """The upload's metadata twin, keyed by the upload's own id so the id the UI holds
+    resolves directly from now on."""
+    # ponytail: find-then-insert with no unique (user_id, dataset_id) index, so a
+    # double-click on a dataset's very first transform can write two twins. A unique
+    # index needs CLAUDE.md's #565 new-name migration; tracked with #853.
+    twin = await DatasetMetadata(
+        user_id=upload.user_id,
+        dataset_id=str(upload.id),
+        filename=upload.filename,
+        original_filename=upload.original_filename,
+        file_type=_twin_file_type(upload),
+        file_path=upload.file_path or upload.s3_url,
+        s3_url=upload.s3_url,
+        file_size=upload.file_size,
+        num_rows=upload.num_rows,
+        num_columns=upload.num_columns,
+        columns=list(upload.columns or []),
+    ).insert()
+    # No base version here: the first apply writes it from the frame it transforms
+    # (TransformationService._version_for), which also heals a failed write later.
+    return twin
+
+
+
+
+# What the transformation reader parses safely. It ignores file_type and tries csv,
+# then parquet, so TSV and JSON come back as junk columns and Excel not at all.
+_TRANSFORMABLE = {"csv", "parquet"}
+
+
+def _twin_file_type(upload: UserData) -> str:
+    """The upload's file type, if a transformation can read it.
+
+    An apply on a misread frame overwrites the live file on both twins (#857 review: a
+    TSV typed "csv" collapsed into one column), so anything else is refused with its
+    type named. /upload/secure stores Excel as "excel", so the URL's extension names it.
+    """
+    kind = _transformable_kind(upload)
+    if kind is None:
+        raise _not_transformable(upload)
+    return kind
+
+
+def _transformable_kind(upload: UserData) -> str | None:
+    for candidate in ((upload.file_type or "").lower(), _file_type_of(upload.s3_url)):
+        if candidate in _TRANSFORMABLE:
+            return candidate
+    return None
+
+
+def _not_transformable(upload: UserData) -> NotFoundError:
+    kind = upload.file_type or _file_type_of(upload.s3_url) or "of an unknown type"
+    return NotFoundError(
+        resource_type="Dataset",
+        resource_id=str(upload.id),
+        message=f"Transformations support CSV and Parquet files; this upload is {kind}. "
+        "Re-upload it as CSV to transform it.",
+    )

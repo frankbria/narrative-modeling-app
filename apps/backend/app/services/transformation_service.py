@@ -19,7 +19,7 @@ from app.models.transformation import (
 )
 from app.services.base_service import BaseService
 from app.services.data_processing.quality_assessment import QualityAssessmentService
-from app.services.dataset_link import record_new_file
+from app.services.dataset_link import ensure_metadata_twin, record_new_file
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -138,9 +138,7 @@ class TransformationService(BaseService[TransformationConfig]):
         from app.services.versioning_service import versioning_service
         # Owner-scoped (#559): the service now refuses a foreign parent, so an
         # unscoped "latest" here would turn a stray row into a denial.
-        parent_version = await DatasetVersion.find(
-            {"dataset_id": dataset_id, "user_id": user_id}
-        ).sort("-version_number").first_or_none()
+        parent_version = await self._parent_version(DatasetVersion, dataset, user_id)
 
         version_id = None
         if parent_version:
@@ -179,20 +177,66 @@ class TransformationService(BaseService[TransformationConfig]):
             quality_before = await self._assess_quality_dict(df)
             quality_after = await self._assess_quality_dict(transformed_df)
 
-            # Create version with lineage
-            version, lineage = await versioning_service.create_transformation_version(
-                parent_version_id=parent_version.version_id,
-                transformed_content=transformed_content,
-                transformation_steps=transformation_steps,
-                dataset_metadata=dataset,
-                user_id=user_id,
-                description=f"Applied {transformation_type} transformation",
-                transformation_config_id=config_id,
-                quality_before=quality_before,
-                quality_after=quality_after
+            version_id = await self._lineage_version(
+                versioning_service,
+                dict(
+                    parent_version_id=parent_version.version_id,
+                    transformed_content=transformed_content,
+                    transformation_steps=transformation_steps,
+                    dataset_metadata=dataset,
+                    user_id=user_id,
+                    description=f"Applied {transformation_type} transformation",
+                    transformation_config_id=config_id,
+                    quality_before=quality_before,
+                    quality_after=quality_after,
+                ),
             )
-            version_id = version.version_id
         return version_id
+
+    @staticmethod
+    async def _lineage_version(versioning_service: Any, version_args: dict[str, Any]) -> str | None:
+        """Write the transformation's version; None if it cannot be written.
+
+        Best-effort, like the base version: a failed lineage copy must not fail the
+        user's transformation, which has already been written. The step is then recorded
+        without a version, and undo says so instead of restoring nothing (#800, #850).
+        """
+        try:
+            version, _lineage = await versioning_service.create_transformation_version(**version_args)
+        except Exception:
+            logger.warning("No version for this transformation; undo cannot restore to it", exc_info=True)
+            return None
+        return version.version_id
+
+    async def _parent_version(self, version_model: Any, dataset: Any, user_id: str) -> Any:
+        """The latest version to derive from, or a base version made now if there is none."""
+        latest = await version_model.find(
+            {"dataset_id": dataset.dataset_id, "user_id": user_id}
+        ).sort("-version_number").first_or_none()
+        return latest or await self._base_version(dataset, user_id)
+
+    async def _base_version(self, dataset: Any, user_id: str) -> Any:
+        """Version 1 for a dataset that has none, from its current (untransformed) file.
+
+        A UI upload's twin starts without one (#850), as does a dataset the feature builder
+        made; without it every history step has no version and undo refuses. The hash is
+        taken from the stored object's own bytes, so a no-op first transformation cannot
+        deduplicate onto it (#857 review). Best-effort, retried on the next apply.
+        """
+        from app.services.s3_service import s3_service
+        from app.services.versioning_service import versioning_service
+        from app.utils.s3 import downloadable_url, resolve_validated_object
+
+        try:
+            _, key = resolve_validated_object(downloadable_url(dataset.file_path, dataset.s3_url))
+            return await versioning_service.create_base_version(
+                dataset_metadata=dataset,
+                file_content=await s3_service.download_file_bytes(key),
+                user_id=user_id,
+            )
+        except Exception:
+            logger.warning("No base version for dataset %s", dataset.dataset_id, exc_info=True)
+            return None
 
     async def _history_config_id(
         self, dataset_id: str, user_id: str, timestamp: float, file_path: str
@@ -432,14 +476,11 @@ class TransformationService(BaseService[TransformationConfig]):
             NotFoundError: If dataset not found or user doesn't own it
             OperationError: If transformation preview fails
         """
-        from app.models.dataset import DatasetMetadata
         from app.services.transformation_engine.data_utils import get_dataframe_from_s3
 
         # Get dataset with ownership verification
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
+        # Either id space: a UI upload's UserData id resolves to its twin (#850).
+        dataset = await ensure_metadata_twin(dataset_id, user_id)
 
         if not dataset:
             raise NotFoundError(
@@ -505,7 +546,6 @@ class TransformationService(BaseService[TransformationConfig]):
         import time
         from datetime import datetime
 
-        from app.models.dataset import DatasetMetadata
         from app.services.redis_cache import cache_service
         from app.services.transformation_engine.data_utils import (
             get_dataframe_from_s3,
@@ -515,10 +555,8 @@ class TransformationService(BaseService[TransformationConfig]):
         start_time = time.time()
 
         # Get dataset with ownership verification
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
+        # Either id space: a UI upload's UserData id resolves to its twin (#850).
+        dataset = await ensure_metadata_twin(dataset_id, user_id)
 
         if not dataset:
             raise NotFoundError(

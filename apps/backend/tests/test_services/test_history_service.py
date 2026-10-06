@@ -103,9 +103,10 @@ class TestHistoryServiceUndo:
         # Setup
         mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+        # The service resolves the dataset in either id space (#850).
+        with patch('app.services.history_service.ensure_metadata_twin',
+                   new=AsyncMock(return_value=mock_dataset)), \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
-            MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
             mock_versioning_service.get_version_content.return_value = mock_version_content
@@ -194,9 +195,10 @@ class TestHistoryServiceRedo:
         mock_transformation_config.can_redo.return_value = True
         mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+        # The service resolves the dataset in either id space (#850).
+        with patch('app.services.history_service.ensure_metadata_twin',
+                   new=AsyncMock(return_value=mock_dataset)), \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
-            MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
             mock_versioning_service.get_version_content.return_value = mock_version_content
@@ -264,9 +266,10 @@ class TestHistoryServiceJumpToPosition:
         # Setup
         mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+        # The service resolves the dataset in either id space (#850).
+        with patch('app.services.history_service.ensure_metadata_twin',
+                   new=AsyncMock(return_value=mock_dataset)), \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
-            MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
             mock_versioning_service.get_version_content.return_value = mock_version_content
@@ -477,9 +480,10 @@ class TestHistoryServiceBranching:
         # Setup
         mock_transformation_service.get_dataset_config.return_value = mock_transformation_config
 
-        with patch('app.services.history_service.DatasetMetadata') as MockDataset, \
+        # The service resolves the dataset in either id space (#850).
+        with patch('app.services.history_service.ensure_metadata_twin',
+                   new=AsyncMock(return_value=mock_dataset)), \
              patch('app.services.history_service.record_new_file', new_callable=AsyncMock) as mock_rnf:
-            MockDataset.find_one = AsyncMock(return_value=mock_dataset)
 
             mock_version_content = b"test data"
             mock_versioning_service.get_version_content.return_value = mock_version_content

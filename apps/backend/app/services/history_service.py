@@ -7,8 +7,7 @@ Handles navigation through transformation history, restoring previous dataset ve
 import logging
 from typing import TYPE_CHECKING, Any
 
-from app.models.dataset import DatasetMetadata
-from app.services.dataset_link import record_new_file
+from app.services.dataset_link import ensure_metadata_twin, record_new_file
 from app.services.exceptions import (
     NotFoundError,
     ValidationError,
@@ -70,7 +69,7 @@ class HistoryService:
                 message="This history step has no saved version, so the data cannot be restored to it",
                 details={"version_id": version_id},
             )
-        dataset = await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id})
+        dataset = await ensure_metadata_twin(dataset_id, user_id)
         if not dataset:
             raise NotFoundError(resource_type="Dataset", resource_id=dataset_id)
         # Bring the restored version's shape with the move so BOTH twins describe the
