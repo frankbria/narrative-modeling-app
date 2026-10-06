@@ -116,3 +116,43 @@ async def test_a_dataset_without_a_base_version_still_gets_a_restorable_history(
 
     undo = await client.post(f"/api/v1/transformations/datasets/{dataset_id}/history/undo")
     assert undo.status_code == 200, undo.text
+
+
+async def test_a_preview_shows_every_step_of_the_pipeline(client, real_s3_env):
+    """#855: the Prepare stage previews the whole pipeline in one request, and the
+    route used to preview only its first step, so the After table never showed step 2."""
+    dataset_id = await _ui_upload(client)
+
+    preview = await client.post("/api/v1/transformations/preview", json={
+        "dataset_id": dataset_id,
+        "transformation_steps": [
+            {"transformation_type": "trim_whitespace", "parameters": {"columns": ["color"]}},
+            {"transformation_type": "fill_missing", "parameters": {"columns": ["score"], "method": "mean"}},
+        ],
+    })
+
+    assert preview.status_code == 200, preview.text
+    rows = preview.json()["preview_data"]
+    assert [r["color"] for r in rows] == ["red", "blue", "green"], "step 1 applied"
+    assert [r["score"] for r in rows] == [10, 20, 30], "step 2 applied on top of step 1"
+
+
+
+async def test_a_pipeline_preview_summarises_from_the_untransformed_rows(client, real_s3_env):
+    """The summary beside the Before table must start from the same rows: an earlier
+    step that drops rows must not shrink `stats_before` (#865 review)."""
+    dataset_id = await _ui_upload(client)
+
+    preview = await client.post("/api/v1/transformations/preview", json={
+        "dataset_id": dataset_id,
+        "transformation_steps": [
+            {"transformation_type": "drop_missing", "parameters": {"columns": ["score"]}},
+            {"transformation_type": "trim_whitespace", "parameters": {"columns": ["color"]}},
+        ],
+    })
+
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["success"] is True, body
+    assert body["stats_before"]["row_count"] == 3, "the dataset's own rows"
+    assert body["stats_after"]["row_count"] == 2, "the row with no score is gone"

@@ -16,16 +16,27 @@ import {
   NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { API_URL } from '@/lib/constants';
 import type { TransformationStep } from '@/lib/types/recipe';
-import { getAuthToken } from '@/lib/auth-helpers';
 import TransformationSidebar from './TransformationSidebar';
 import TransformationNode, { TransformationFlowNode, TransformationNodeData } from './TransformationNode';
 import { TransformationChainView, TransformationStep as ChainStep } from './TransformationChainView';
 import { TransformationConfigDialog, TransformationConfig } from './TransformationConfigDialog';
 import PreviewPanel from './PreviewPanel';
 import RecipeManager from './RecipeManager';
-import { Save, Play, Undo, Redo, Code, CheckCircle, Eye, List } from 'lucide-react';
+import PipelineToolbar, { type PipelineView } from './PipelineToolbar';
+import {
+  PipelineApplyError,
+  applyPipeline,
+  exportPipelineCode,
+  fetchDatasetRows,
+  fetchTransformationTypes,
+  previewPipeline,
+  saveRecipe,
+  type PipelinePreview,
+  type PipelineStep,
+  type PreviewTable,
+  type TransformationTypeMeta,
+} from '@/lib/services/pipelineApi';
 
 interface TransformationPipelineProps {
   datasetId: string;
@@ -41,13 +52,6 @@ interface TransformationPipelineProps {
   showViewToggle?: boolean;
 }
 
-/** Shape of a transformation type as returned by GET /transformations/available. */
-interface TransformationTypeMeta {
-  type: string;
-  label?: string;
-  description?: string;
-  parameters_schema?: Record<string, unknown>;
-}
 
 // React Flow's NodeTypes registry expects components keyed by a generic
 // NodeProps signature; our node component is typed for its specific node data,
@@ -55,6 +59,99 @@ interface TransformationTypeMeta {
 const nodeTypes = {
   transformation: TransformationNode,
 } as NodeTypes;
+
+/** The outcome of the last preview/apply/save, for the user rather than the console. */
+function ActionStatus(props: { error: string | null; notice: string | null }) {
+  const { error, notice } = props;
+  if (error) {
+    return (
+      <div role="alert" data-testid="pipeline-error" className="mx-4 mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+  return notice ? (
+    <div role="status" className="mx-4 mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+      {notice}
+    </div>
+  ) : null;
+}
+
+interface PipelineMetadata {
+  /** `null` when GET /transformations/available failed, so the sidebar can say so. */
+  types: TransformationTypeMeta[] | null;
+  rows: PreviewTable | null;
+}
+
+/** Each half is best-effort: the pipeline stays usable without either. */
+async function loadMetadata(datasetId: string): Promise<PipelineMetadata> {
+  const [types, rows] = await Promise.all([
+    fetchTransformationTypes().catch(() => null),
+    fetchDatasetRows(datasetId).catch(() => null),
+  ]);
+  return { types, rows };
+}
+
+/** The loaded metadata, with what is not loaded yet as empty. */
+function metadataView(metadata: PipelineMetadata | null | undefined) {
+  const { types = [], rows = null } = metadata ?? {};
+  return { types, rows, columns: rows?.columns ?? [] };
+}
+
+/** What the preview panel shows: the last action's preview for this dataset, else,
+ * before any preview runs, the dataset's own rows. Tagging the override with its
+ * dataset means switching datasets discards it by derivation. */
+function currentPreview(
+  override: { datasetId: string; data: PipelinePreview } | null,
+  datasetId: string,
+  rows: PreviewTable | null,
+): PipelinePreview | null {
+  if (override?.datasetId === datasetId) return override.data;
+  return rows && { before: rows, after: null, summary: null };
+}
+
+/** The node ids an apply that stopped part-way already applied: the first `applied`
+ * nodes, which are in the dataset's history now and must not be sent again. */
+function appliedNodeIds(err: unknown, nodes: TransformationFlowNode[]): Set<string> {
+  const applied = err instanceof PipelineApplyError ? err.applied : 0;
+  return new Set(nodes.slice(0, applied).map((n) => n.id));
+}
+
+/** The Chain view's edit-parameters dialog (keyboard-accessible). */
+function EditStepDialog(props: {
+  node: TransformationFlowNode | undefined;
+  config: TransformationConfig | null;
+  types: TransformationTypeMeta[] | null;
+  columns: string[];
+  datasetId: string;
+  onClose: VoidFunction;
+  onSave(config: TransformationConfig): void;
+}) {
+  const { node, config, types, columns, datasetId, onClose, onSave } = props;
+  if (!node || !config) return null;
+  const meta = {
+    label: node.data.label,
+    description: '',
+    parameters_schema: {},
+    ...types?.find((t) => t.type === node.data.type),
+  };
+  return (
+    <TransformationConfigDialog
+      open={true}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      transformationType={node.data.type}
+      transformationLabel={meta.label}
+      transformationDescription={meta.description}
+      parametersSchema={meta.parameters_schema}
+      existingConfig={config}
+      availableColumns={columns}
+      datasetId={datasetId}
+      onAdd={onSave}
+    />
+  );
+}
 
 export default function TransformationPipeline({
   datasetId,
@@ -66,6 +163,9 @@ export default function TransformationPipeline({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // What the last preview/apply/save said: shown to the user, never only logged (#855).
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   // Undo/redo history over structural snapshots of the pipeline (#281).
   const [history, setHistory] = useState<
     Array<{ nodes: TransformationFlowNode[]; edges: Edge[] }>
@@ -81,14 +181,13 @@ export default function TransformationPipeline({
   // dev double-mount) so an identical snapshot is never appended twice.
   const lastRecordedSignatureRef = useRef<string | null>(null);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
-  const [transformedDatasetId, setTransformedDatasetId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Default to the accessible Chain view so keyboard-only users get a fully
   // operable path (add/reorder/edit/delete) without touching the drag-only
   // React Flow canvas (issue #275, WCAG 2.1.1). The Visual canvas stays one
   // keyboard-operable toggle away. When the toggle is suppressed (embedded in a
   // host that owns view switching), fall back to the visual canvas.
-  const [viewMode, setViewMode] = useState<'chain' | 'visual'>(
+  const [viewMode, setViewMode] = useState<PipelineView>(
     showViewToggle ? 'chain' : 'visual'
   );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -96,67 +195,21 @@ export default function TransformationPipeline({
   // Date.now()+length can collide on rapid adds within the same millisecond.
   const nodeIdCounterRef = useRef(0);
 
-  const { data: previewData } = useAsyncData(
-    async () => {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/datasets/${datasetId}/preview?rows=100`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      // A failed preview was only logged before; the pipeline stays usable.
-      if (!response.ok) return null;
-      return response.json();
-    },
-    [datasetId],
-    { enabled: !!datasetId },
-  );
-  // Running a transformation preview replaces the initial dataset preview, so
-  // the action's result is held separately and tagged with its dataset — the
-  // load shows through until an action overrides it, and switching datasets
-  // discards the override by derivation.
-  const [previewOverride, setPreviewOverride] = useState<{
-    datasetId: string;
-    data: unknown;
-  } | null>(null);
-  const preview =
-    previewOverride && previewOverride.datasetId === datasetId
-      ? previewOverride.data
-      : previewData ?? null;
-  const setPreview = (data: unknown) => setPreviewOverride({ datasetId, data });
 
   // Transformation-type metadata + column names so the Chain view's Edit action
   // can open a keyboard-accessible parameter dialog (mirrors the wiring in
-  // app/datasets/[id]/prepare/page.tsx). Best-effort: the pipeline still works
-  // without it (dialog degrades to "no parameters needed").
-  const { data: metadata } = useAsyncData(
-    async () => {
-      const token = await getAuthToken();
+  // app/datasets/[id]/prepare/page.tsx).
+  const { data: metadata } = useAsyncData(() => loadMetadata(datasetId), [datasetId], {
+    enabled: !!datasetId,
+  });
+  const { types: transformationTypes, rows: datasetRows, columns: availableColumns } = metadataView(metadata);
 
-      let types: TransformationTypeMeta[] = [];
-      const typesResponse = await fetch(`${API_URL}/transformations/available`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (typesResponse.ok) {
-        types = (await typesResponse.json()).transformations || [];
-      }
-
-      let columns: string[] = [];
-      const columnsResponse = await fetch(`${API_URL}/data/${datasetId}/preview`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (columnsResponse.ok) {
-        const columnsData = await columnsResponse.json();
-        if (Array.isArray(columnsData.columns)) {
-          columns = columnsData.columns.map((col: { name: string }) => col.name);
-        }
-      }
-
-      return { types, columns };
-    },
-    [datasetId],
-    { enabled: !!datasetId },
-  );
-  const transformationTypes = metadata?.types ?? [];
-  const availableColumns = metadata?.columns ?? [];
+  // An action's preview replaces the dataset's own rows until the dataset changes.
+  const [previewOverride, setPreviewOverride] = useState<{
+    datasetId: string;
+    data: PipelinePreview;
+  } | null>(null);
+  const preview = currentPreview(previewOverride, datasetId, datasetRows);
 
   // Reset the pipeline + undo history when the dataset changes, so switching
   // datasets on a reused component instance (the /prepare routes key only on
@@ -295,7 +348,7 @@ export default function TransformationPipeline({
     setEditingIndex(index);
   }, []);
 
-  const editingNode = editingIndex !== null ? nodes[editingIndex] ?? null : null;
+  const editingNode = nodes.find((_, i) => i === editingIndex);
   // TransformationConfigDialog resets its form whenever `existingConfig`'s
   // identity changes. Key this memo on the node id ALONE (not the params
   // object, whose identity churns on every setNodes) so the dialog's form
@@ -313,9 +366,6 @@ export default function TransformationPipeline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editingNode?.id]
   );
-  const editingTypeMeta = editingNode
-    ? transformationTypes.find((t) => t.type === editingNode.data.type)
-    : undefined;
 
   const handleSaveEdit = useCallback(
     (config: TransformationConfig) => {
@@ -349,102 +399,57 @@ export default function TransformationPipeline({
     setHasUnsavedChanges(true);
   }, [setNodes]);
 
-  const handlePreviewTransformation = async () => {
+  const pipelineSteps = (): PipelineStep[] =>
+    nodes.map((node) => ({ type: node.data.type, parameters: node.data.parameters ?? {} }));
+
+  /** Run one API action with the loading flag, surfacing its failure to the user. */
+  const runAction = async (action: () => Promise<string | null>) => {
     setLoading(true);
+    setError(null);
+    setNotice(null);
     try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
-
-      const response = await fetch(`${API_URL}/transformations/preview`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          dataset_id: datasetId,
-          transformations: pipeline,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPreview(data);
-      }
-    } catch (error) {
-      console.error('Failed to preview transformation:', error);
+      setNotice(await action());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApplyTransformations = async () => {
-    setLoading(true);
-    try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
+  const handlePreviewTransformation = () =>
+    runAction(async () => {
+      const data = await previewPipeline(datasetId, pipelineSteps(), datasetRows);
+      setPreviewOverride({ datasetId, data });
+      return null;
+    });
 
-      const response = await fetch(`${API_URL}/transformations/apply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          dataset_id: datasetId,
-          transformations: pipeline,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTransformedDatasetId(data.transformed_dataset_id);
-        setHasUnsavedChanges(false);
-        if (onComplete) {
-          onComplete(data.transformed_dataset_id);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to apply transformations:', error);
-    } finally {
-      setLoading(false);
-    }
+  /** Drop the nodes an apply already applied, so retrying sends only the rest. */
+  const dropApplied = (err: unknown) => {
+    const applied = appliedNodeIds(err, nodes);
+    setNodes((nds) => nds.filter((n) => !applied.has(n.id)));
+    setEdges((eds) => eds.filter((e) => !applied.has(e.source) && !applied.has(e.target)));
   };
 
-  const handleSaveRecipe = async (name: string, description: string) => {
-    try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
-
-      const response = await fetch(`${API_URL}/recipes/save`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name,
-          description,
-          transformations: pipeline,
-          dataset_id: datasetId,
-        }),
+  const handleApplyTransformations = () =>
+    runAction(async () => {
+      const steps = pipelineSteps();
+      await applyPipeline(datasetId, steps).catch((err) => {
+        dropApplied(err);
+        throw err;
       });
+      setHasUnsavedChanges(false);
+      // Transformations move the same dataset to a new file; there is no new id.
+      onComplete?.(datasetId);
+      return `Applied ${steps.length} transformation${steps.length === 1 ? '' : 's'}`;
+    });
 
-      if (response.ok) {
-        setShowRecipeManager(false);
-      }
-    } catch (error) {
-      console.error('Failed to save recipe:', error);
-    }
+  // The manager closes first, so the outcome shows on the page and not behind it.
+  const handleSaveRecipe = (name: string, description: string) => {
+    setShowRecipeManager(false);
+    return runAction(async () => {
+      await saveRecipe({ name, description, datasetId, steps: pipelineSteps() });
+      return `Saved recipe "${name}"`;
+    });
   };
 
   const handleLoadRecipe = async (recipe: { transformations: TransformationStep[] }) => {
@@ -475,38 +480,11 @@ export default function TransformationPipeline({
     setShowRecipeManager(false);
   };
 
-  const handleExportCode = async () => {
-    try {
-      const token = await getAuthToken();
-      const pipeline = nodes.map((node) => ({
-        type: node.data.type,
-        parameters: node.data.parameters,
-      }));
-
-      const response = await fetch(`${API_URL}/transformations/export-code`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          transformations: pipeline,
-        }),
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'transformation_pipeline.py';
-        a.click();
-        window.URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      console.error('Failed to export code:', error);
-    }
-  };
+  const handleExportCode = () =>
+    runAction(async () => {
+      await exportPipelineCode(pipelineSteps());
+      return null;
+    });
 
   // Structural signature of the pipeline — node type/label/params + edge
   // endpoints, but NOT node positions, so dragging a node around the canvas
@@ -583,95 +561,26 @@ export default function TransformationPipeline({
   return (
     <div className="flex h-full">
       {/* Sidebar */}
-      <TransformationSidebar onAdd={addTransformation} />
+      <TransformationSidebar types={transformationTypes} onAdd={addTransformation} />
 
       {/* Main Canvas */}
       <div className="flex-1 flex flex-col">
-        {/* Toolbar */}
-        <div className="bg-card border-b p-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handlePreviewTransformation}
-              disabled={loading || nodes.length === 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <Play className="w-4 h-4" />
-              Preview
-            </button>
-            <button
-              onClick={handleApplyTransformations}
-              disabled={loading || nodes.length === 0}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <CheckCircle className="w-4 h-4" />
-              Apply & Continue
-            </button>
-          </div>
+        <PipelineToolbar
+          busy={loading || nodes.length === 0}
+          onPreview={handlePreviewTransformation}
+          onApply={handleApplyTransformations}
+          showViewToggle={showViewToggle}
+          viewMode={viewMode}
+          onViewChange={setViewMode}
+          onRecipes={() => setShowRecipeManager(true)}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < history.length - 1}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onExport={handleExportCode}
+        />
 
-          <div className="flex items-center gap-2">
-            {/* View toggle — keyboard-operable; both views always reachable (#275) */}
-            {showViewToggle && (
-              <div
-                className="flex border rounded-lg p-1 bg-muted mr-2"
-                role="group"
-                aria-label="Pipeline view"
-              >
-                <button
-                  type="button"
-                  onClick={() => setViewMode('chain')}
-                  aria-pressed={viewMode === 'chain'}
-                  className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    viewMode === 'chain' ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground'
-                  }`}
-                >
-                  <List className="w-4 h-4" />
-                  Chain
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('visual')}
-                  aria-pressed={viewMode === 'visual'}
-                  className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    viewMode === 'visual' ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground'
-                  }`}
-                >
-                  <Eye className="w-4 h-4" />
-                  Visual
-                </button>
-              </div>
-            )}
-            <button
-              onClick={() => setShowRecipeManager(true)}
-              className="p-2 hover:bg-muted rounded"
-              title="Manage Recipes"
-            >
-              <Save className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleUndo}
-              disabled={historyIndex <= 0}
-              className="p-2 hover:bg-muted rounded disabled:opacity-50"
-              title="Undo"
-            >
-              <Undo className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={historyIndex >= history.length - 1}
-              className="p-2 hover:bg-muted rounded disabled:opacity-50"
-              title="Redo"
-            >
-              <Redo className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleExportCode}
-              className="p-2 hover:bg-muted rounded"
-              title="Export as Code"
-            >
-              <Code className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+        <ActionStatus error={error} notice={notice} />
 
         {/* Canvas/Chain and Preview */}
         <div className="flex-1 flex">
@@ -710,23 +619,15 @@ export default function TransformationPipeline({
         </div>
       </div>
 
-      {/* Edit-parameters dialog (keyboard-accessible) for the Chain view */}
-      {editingNode && editingConfig && (
-        <TransformationConfigDialog
-          open={true}
-          onOpenChange={(open) => {
-            if (!open) setEditingIndex(null);
-          }}
-          transformationType={editingNode.data.type}
-          transformationLabel={editingTypeMeta?.label ?? editingNode.data.label}
-          transformationDescription={editingTypeMeta?.description ?? ''}
-          parametersSchema={editingTypeMeta?.parameters_schema ?? {}}
-          existingConfig={editingConfig}
-          availableColumns={availableColumns}
-          datasetId={datasetId}
-          onAdd={handleSaveEdit}
-        />
-      )}
+      <EditStepDialog
+        node={editingNode}
+        config={editingConfig}
+        types={transformationTypes}
+        columns={availableColumns}
+        datasetId={datasetId}
+        onClose={() => setEditingIndex(null)}
+        onSave={handleSaveEdit}
+      />
 
       {/* Recipe Manager Modal */}
       {showRecipeManager && (

@@ -138,13 +138,12 @@ class TestPreviewAPIValidation:
         assert body["error"] is None
 
     @pytest.mark.asyncio
-    async def test_preview_accepts_extra_steps_but_previews_only_the_first(
+    async def test_preview_runs_every_step_and_names_the_one_that_fails(
         self, async_authorized_client, setup_database
     ):
-        """A request with multiple steps is accepted (200), but the route
-        previews ONLY transformation_steps[0] (transformations.py:98,118) — the
-        second step is not applied. This documents the real contract rather than
-        implying every step is previewed.
+        """Every step is previewed, in order (#855) — the route used to preview only
+        transformation_steps[0] and silently ignore the rest. A step the engine
+        cannot execute fails the preview and is named, not skipped.
         """
         await _seed_dataset("preview_ok_2")
 
@@ -166,7 +165,9 @@ class TestPreviewAPIValidation:
             )
 
         assert response.status_code == 200
-        assert response.json()["success"] is True
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"].startswith("Step 2 (outlier_removal) failed")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("preview_rows", [5, 10, 1000, 2000])

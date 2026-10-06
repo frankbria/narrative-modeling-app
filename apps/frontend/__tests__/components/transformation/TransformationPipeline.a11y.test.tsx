@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { mockPipelineFetch } from '@/__tests__/utils/pipelineFetch';
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
 
 /**
@@ -13,10 +14,7 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
   beforeEach(() => {
     // Component fires loadPreview + metadata fetches on mount. jest.setup makes
     // the default fetch REJECT, so stub it to a benign OK response here.
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
+    mockPipelineFetch();
   });
 
   it('defaults to the accessible Chain view', () => {
@@ -35,7 +33,7 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
 
-    const addButton = screen.getByRole('button', { name: /add remove duplicates/i });
+    const addButton = await screen.findByRole('button', { name: /add remove duplicates/i });
     addButton.focus();
     expect(addButton).toHaveFocus();
 
@@ -47,24 +45,24 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     expect(screen.queryByText(/no transformations added yet/i)).not.toBeInTheDocument();
   });
 
-  it('uses the sidebar’s curated label for the added chain step', async () => {
+  it('labels the added chain step with the registry’s label (#855)', async () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
 
-    // "Forward Fill" (curated) must not become the type-derived "Fill Forward".
-    await user.click(screen.getByRole('button', { name: /add forward fill/i }));
+    // The sidebar lists what GET /transformations/available returns, nothing else.
+    await user.click(await screen.findByRole('button', { name: /add fill missing/i }));
 
     const step = screen.getByRole('listitem');
-    expect(within(step).getByText('Forward Fill')).toBeInTheDocument();
-    expect(within(step).queryByText('Fill Forward')).not.toBeInTheDocument();
+    expect(within(step).getByText('Fill Missing')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add forward fill/i })).not.toBeInTheDocument();
   });
 
   it('reorders steps with keyboard shortcuts (Alt+ArrowDown)', async () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
 
-    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
-    await user.click(screen.getByRole('button', { name: /add trim whitespace/i }));
+    await user.click(await screen.findByRole('button', { name: /add remove duplicates/i }));
+    await user.click(await screen.findByRole('button', { name: /add trim whitespace/i }));
 
     let steps = screen.getAllByRole('listitem');
     expect(within(steps[0]).getByText('Remove Duplicates')).toBeInTheDocument();
@@ -83,13 +81,17 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
 
-    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
+    await user.click(await screen.findByRole('button', { name: /add remove duplicates/i }));
 
     const editButton = screen.getByRole('button', { name: /edit step 1/i });
     editButton.focus();
     await user.keyboard('{Enter}');
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    // Escape closes it.
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('suppresses the built-in toggle when a host provides its own (showViewToggle=false)', () => {
@@ -109,8 +111,8 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);
 
-    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
-    await user.click(screen.getByRole('button', { name: /add trim whitespace/i }));
+    await user.click(await screen.findByRole('button', { name: /add remove duplicates/i }));
+    await user.click(await screen.findByRole('button', { name: /add trim whitespace/i }));
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
 
     const steps = screen.getAllByRole('listitem');

@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { mockPipelineFetch } from '@/__tests__/utils/pipelineFetch';
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
 
 /**
@@ -11,10 +12,7 @@ import TransformationPipeline from '@/components/transformation/TransformationPi
  */
 describe('TransformationPipeline — Undo/Redo (#281)', () => {
   beforeEach(() => {
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
+    mockPipelineFetch();
   });
 
   it('Undo starts disabled and Undo/Redo reverse a structural change', async () => {
@@ -30,7 +28,7 @@ describe('TransformationPipeline — Undo/Redo (#281)', () => {
     expect(screen.getByText(/no transformations added yet/i)).toBeInTheDocument();
 
     // Add a step → it becomes undoable.
-    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
+    await user.click(await screen.findByRole('button', { name: /add remove duplicates/i }));
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(undo).toBeEnabled();
     expect(redo).toBeDisabled();
@@ -55,8 +53,8 @@ describe('TransformationPipeline — Undo/Redo (#281)', () => {
 
     const undo = screen.getByTitle('Undo');
 
-    await user.click(screen.getByRole('button', { name: /add remove duplicates/i }));
-    await user.click(screen.getByRole('button', { name: /add trim whitespace/i }));
+    await user.click(await screen.findByRole('button', { name: /add remove duplicates/i }));
+    await user.click(await screen.findByRole('button', { name: /add trim whitespace/i }));
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
 
     // Two undos should peel back exactly the two structural additions.
