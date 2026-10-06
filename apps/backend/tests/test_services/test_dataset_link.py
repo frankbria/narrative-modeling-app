@@ -284,18 +284,20 @@ class TestEnsureMetadataTwin:
         assert await ensure_metadata_twin("not-an-id", USER) is None
         assert await ensure_metadata_twin(str(ud.id), "someone_else") is None
 
-    async def test_a_tab_separated_upload_is_refused_not_mangled(self, setup_database):
-        """/upload/ stores a TSV as file_type="txt". The transformation reader parses
-        with commas, so a twin typed csv would collapse it into one column and overwrite
-        the live file on both twins (#857 review). It is refused with a reason instead."""
+    @pytest.mark.parametrize("file_type, name", [("txt", "t.txt"), ("excel", "t.xlsx"), ("json", "t.json")])
+    async def test_a_file_the_transformation_reader_cannot_parse_is_refused(self, setup_database, file_type, name):
+        """The reader infers csv-then-parquet. A TSV ("txt") or JSON file parses into junk
+        columns, and the apply then overwrites the live file on both twins; Excel cannot be
+        read at all (#857 review). Such uploads are refused, naming their type, and no twin
+        is written."""
         from app.services.dataset_link import ensure_metadata_twin
         from app.services.exceptions import NotFoundError
 
         ud = await UserData(
-            user_id=USER, filename="t.txt", original_filename="t.txt",
-            s3_url=f"s3://test-bucket/datasets/{USER}/t.txt",
-            num_rows=2, num_columns=2, data_schema=[], file_type="txt",
+            user_id=USER, filename=name, original_filename=name,
+            s3_url=f"s3://test-bucket/datasets/{USER}/{name}",
+            num_rows=2, num_columns=2, data_schema=[], file_type=file_type,
         ).insert()
-        with pytest.raises(NotFoundError, match="tab-separated"):
+        with pytest.raises(NotFoundError, match=f"support CSV and Parquet.*{file_type}"):
             await ensure_metadata_twin(str(ud.id), USER)
         assert await DatasetMetadata.find(DatasetMetadata.dataset_id == str(ud.id)).count() == 0

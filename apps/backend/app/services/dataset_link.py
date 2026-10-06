@@ -215,19 +215,36 @@ async def _create_twin(upload: UserData) -> DatasetMetadata:
 
 
 
-def _twin_file_type(upload: UserData) -> str:
-    """The upload's file type, if the transformation reader can parse it.
+# What the transformation reader parses safely. It ignores file_type and tries csv,
+# then parquet, so TSV and JSON come back as junk columns and Excel not at all.
+_TRANSFORMABLE = {"csv", "parquet"}
 
-    /upload/ stores a TSV as "txt", and the reader parses comma-separated. Typing the
-    twin "csv" collapsed the file into one column and overwrote the live data on both
-    twins, so such an upload is refused with the reason (#857 review).
+
+def _twin_file_type(upload: UserData) -> str:
+    """The upload's file type, if a transformation can read it.
+
+    An apply on a misread frame overwrites the live file on both twins (#857 review: a
+    TSV typed "csv" collapsed into one column), so anything else is refused with its
+    type named. /upload/secure stores Excel as "excel", so the URL's extension names it.
     """
-    stored = (upload.file_type or "").lower() or _file_type_of(upload.s3_url) or ""
-    if stored not in _KNOWN_TYPES:
-        raise NotFoundError(
-            resource_type="Dataset",
-            resource_id=str(upload.id),
-            message="Transformations support CSV, Excel, JSON and Parquet uploads; "
-            "this one is tab-separated text. Re-upload it as CSV to transform it.",
-        )
-    return stored
+    kind = _transformable_kind(upload)
+    if kind is None:
+        raise _not_transformable(upload)
+    return kind
+
+
+def _transformable_kind(upload: UserData) -> str | None:
+    for candidate in ((upload.file_type or "").lower(), _file_type_of(upload.s3_url)):
+        if candidate in _TRANSFORMABLE:
+            return candidate
+    return None
+
+
+def _not_transformable(upload: UserData) -> NotFoundError:
+    kind = upload.file_type or _file_type_of(upload.s3_url) or "of an unknown type"
+    return NotFoundError(
+        resource_type="Dataset",
+        resource_id=str(upload.id),
+        message=f"Transformations support CSV and Parquet files; this upload is {kind}. "
+        "Re-upload it as CSV to transform it.",
+    )
