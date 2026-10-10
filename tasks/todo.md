@@ -1,26 +1,24 @@
-# #806 — AutoML one-hot encodes per-row identifier columns (P0.39)
+# #780 — Provision SIGNUP_MODE in .env.staging, then make compose require it (P1.54)
 
-Plan self-authored (no plan on the issue). One fork, resolved by the owner mid-run:
-numeric IDs need an ID-like name, and `feature_config.keep_columns` overrides.
-
-## Rules
-- Text/category column with nunique / rows >= 0.95 → identifier.
-- Numeric column → identifier only if ID-named (`id`, `customerId`, `row_number`,
-  `order_no`, `Unnamed: 0`, …), no nulls, unique, integral, and monotone in the
-  original row order (`sort_index()`, since the training split shuffles).
-- `keep_columns` is never excluded. All features identifiers → classified ValueError.
+Plan follows the owner's steps on the issue. One decision made here: AC3 is closed
+now, not at the `open` switch. Compose cannot say "required only in invite mode", so
+`INVITE_ALLOWLIST` becomes `${…:-}` and the preflight keeps the guard: it refuses a
+`SIGNUP_MODE` that is not `invite|open`, and refuses `invite` with an empty allowlist
+(which would lock every user out, fail-closed but silent).
 
 ## Steps
-1. RED: FE exclusion/keep/legacy-pickle tests; standalone parity; AC3 sample run;
-   report JSON + markdown; train task persists `training_config.excluded_identifier_columns`;
-   `job_failures` classification; `FeatureConfigRequest.keep_columns` mapping.
-2. GREEN: `FeatureEngineer.excluded_features` (fit drops, transform drops if present,
-   `getattr` default for old pickles); same in `_standalone_fe.py` + `feature_engineer_state`.
-3. Report: engine `TrainingEvent`; `DatasetSection.excluded_columns`; frontend type + page.
-4. Docs: CLAUDE.md training/export bullets.
+1. Box: append `SIGNUP_MODE=invite` to `.env.staging`, `up -d --force-recreate backend
+   frontend`, confirm the backend logs `Signup mode: invite`. Before the merge, because
+   the merge deploy's preflight will require the value.
+2. RED: `test_staging_signup_env.py` (both services guard `SIGNUP_MODE` with `:?`,
+   neither guards `INVITE_ALLOWLIST`, `.env.staging.example` carries `SIGNUP_MODE=`);
+   preflight `--self-check` cases for the mode rule.
+3. GREEN: compose flip; preflight mode rule; `.env.staging.example`.
+4. Docs: STAGING_DEPLOYMENT_GUIDE (variable list, invitee section, checklist), CLAUDE.md
+   signup bullet.
+5. After merge: deploy.yml green, box still logs the mode.
 
 ## Acceptance criteria
-- [ ] AC1 excluded at fit, reported (log + report); numeric monotone IDs too
-- [ ] AC2 absent from feature_names, form contract, both exports; standalone parity
-- [ ] AC3 customer_id added → same features and score
-- [ ] AC4 pre-fix models keep serving
+- [ ] AC1 `.env.staging` carries `SIGNUP_MODE`; recreated containers log it
+- [ ] AC2 compose guards `SIGNUP_MODE` with `:?`; preflight lists it as required
+- [ ] AC3 switching to `open` needs no dummy `INVITE_ALLOWLIST`

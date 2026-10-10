@@ -55,6 +55,9 @@ mitigated today by the **invite-only beta gate shipped in #261**, not by billing
   `INVITE_ALLOWLIST` via `${INVITE_ALLOWLIST:?}` (same guard pattern as the
   CORS/S3 deploy guards, #256/#257). An empty/unset list disables the gate only
   for local dev, tests, and CI.
+  *Since #768/#780 the required switch is `SIGNUP_MODE`: compose guards that,
+  and `scripts/deploy/preflight_staging_env.sh` requires the allowlist whenever
+  the mode is `invite`.*
 
 So compute is bounded by *who can sign in*, not by *who has paid*. That is the
 correct control for a free beta.
