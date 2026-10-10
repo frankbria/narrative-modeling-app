@@ -48,6 +48,10 @@ if [ "${1:-}" = "--self-check" ]; then
   mode_case 1 'INVITE_ALLOWLIST' 'SIGNUP_MODE=invite\nINVITE_ALLOWLIST=""\n'
   mode_case 1 'must be invite or open' 'SIGNUP_MODE=opne\nINVITE_ALLOWLIST=a@example.com\n'
   mode_case 1 '- SIGNUP_MODE' 'INVITE_ALLOWLIST=a@example.com\n'
+  # Compose drops an inline comment, so the value checked must not carry one.
+  mode_case 0 'OK' 'SIGNUP_MODE=open # launch day\n'
+  mode_case 0 'OK' 'SIGNUP_MODE="invite" # beta\nINVITE_ALLOWLIST=a@example.com # cohort 1\n'
+  mode_case 1 "got 'in#vite'" 'SIGNUP_MODE=in#vite\n'
   echo "self-check OK"; exit 0
 fi
 
@@ -77,11 +81,14 @@ required=$(sed -E 's/(^|[[:space:]])#.*$//' "$compose_file" \
 # raw text: it strips a matching pair of surrounding quotes and trims whitespace,
 # so VAR="", VAR='' and VAR=<spaces> all resolve to empty and would still trip
 # ${VAR:?} at `docker compose up`. A naive `grep -qE "^VAR=.+"` would pass them.
+# It also drops an inline comment (whitespace then `#`, or anything after a closing
+# quote), which matters once a value is compared and not just tested for presence.
 env_value() {
   local value
-  value=$(sed -nE "s/^${1}=//p" "$env_file" | tail -n 1)
-  value="${value%\"}"; value="${value#\"}"      # strip surrounding double quotes
-  value="${value%\'}"; value="${value#\'}"      # strip surrounding single quotes
+  value=$(sed -nE "s/^${1}=[[:space:]]*//p" "$env_file" | tail -n 1 | sed -E \
+    -e 's/^"([^"]*)"[[:space:]]*(#.*)?$/\1/; t' \
+    -e "s/^'([^']*)'[[:space:]]*(#.*)?\$/\1/; t" \
+    -e 's/[[:space:]]+#.*$//')
   printf '%s' "${value//[[:space:]]/}"          # whitespace-only counts as empty
 }
 
