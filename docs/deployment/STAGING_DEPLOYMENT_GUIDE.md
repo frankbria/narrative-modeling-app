@@ -117,8 +117,8 @@ nano .env.staging
 - `NEXTAUTH_URL`: https://narrative.yourdomain.com
 - `BACKEND_CORS_ORIGINS`: https://narrative.yourdomain.com (explicit origin(s); the backend refuses `*` in production-like envs)
 - `ALLOWED_ORIGINS`: https://narrative.yourdomain.com (frontend page-middleware CORS allowlist)
-- `INVITE_ALLOWLIST`: comma-separated invitee emails (**required** — the invite-only beta gate; compose refuses to start if unset). See [Managing beta invitees](#managing-beta-invitees).
-- `SIGNUP_MODE`: `invite` or `open` (#768). Set it to `invite` explicitly; unset also resolves to `invite` in staging/production (fail closed). `open` admits any Google/GitHub account and logs a warning at startup on both halves — only after the #768 backstops and #769 telemetry are live.
+- `SIGNUP_MODE`: `invite` or `open` (#768). **Required**: compose refuses to start if unset, and the deploy preflight refuses any other value (#780). `open` admits any Google/GitHub account and logs a warning at startup on both halves — only after the #768 backstops and #769 telemetry are live.
+- `INVITE_ALLOWLIST`: comma-separated invitee emails. **Required while `SIGNUP_MODE=invite`** (the deploy preflight fails without it); not needed in `open` mode. See [Managing beta invitees](#managing-beta-invitees).
 - `ADMIN_EMAILS`: comma-separated admin emails for `/admin` (frontend) and `GET /metrics` (backend). Unset means nobody.
 - Optional backstop tuning (defaults are the ADR-003 values): `AI_CALLS_DAILY_CEILING` (500 model calls/day across all tenants), `SIGNUP_ALERT_THRESHOLD_24H` (100 new accounts/day before the health probe fails).
 - Google/GitHub OAuth credentials (if using authentication)
@@ -467,8 +467,10 @@ this gate anyone could sign in and consume compute.
 - The **FastAPI backend** (`app/auth/nextauth_auth.py`) mirrors the check and
   returns **403** for any authenticated request whose token email isn't listed
   (defense-in-depth; catches revocation within the ~1h token TTL).
-- An **empty** `INVITE_ALLOWLIST` disables the gate. Staging compose therefore
-  **fails to start** if it's unset (`${INVITE_ALLOWLIST:?...}`).
+- `SIGNUP_MODE` decides whether the list is consulted (#768). In `invite` mode an
+  **empty** `INVITE_ALLOWLIST` admits nobody, so the deploy preflight
+  (`scripts/deploy/preflight_staging_env.sh`) **fails the deploy** if it's unset.
+  In `open` mode the list is ignored and may be absent.
 
 > **First activation:** when the gate is first enabled (or on this feature's
 > initial deploy), every *active* session must refresh its token before it
@@ -506,7 +508,7 @@ that user stops working within the token TTL (≤1h) via the backend mirror.
 
 Post-deployment security verification:
 
-- [ ] `INVITE_ALLOWLIST` set to the intended beta cohort (both services)
+- [ ] `SIGNUP_MODE=invite`, and `INVITE_ALLOWLIST` set to the intended beta cohort (both services)
 - [ ] All services running with authentication enabled
 - [ ] Atlas IP Access List restricted to the staging server (no 0.0.0.0/0)
 - [ ] Redis requires password

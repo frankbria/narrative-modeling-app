@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Preflight for the staging deploy: verify every variable the compose file marks
-# required via a ${VAR:?...} guard has a non-empty value in the env file.
+# required via a ${VAR:?...} guard has a non-empty value in the env file, and that
+# SIGNUP_MODE is invite (with an allowlist) or open.
 #
 # Why: `docker compose up` aborts on the FIRST missing ${VAR:?} it interpolates,
 # so discovering a drifted .env.staging is a slow one-variable-at-a-time loop.
@@ -30,6 +31,23 @@ if [ "${1:-}" = "--self-check" ]; then
   done
   printf 'SET=real\nEMPTY=x\nQUOTED_EMPTY="x"\nSPACES=x\nABSENT=x\nTRAILING=x\n' > "$tmp/env"
   "$0" "$tmp/compose.yml" "$tmp/env" >/dev/null || { echo "self-check FAILED: expected exit 0"; exit 1; }
+  # The signup-mode rule (#780): the allowlist is required in invite mode only,
+  # and a mode that is neither value is refused instead of silently meaning invite.
+  printf 'services:\n  a:\n    environment:\n      - M=${SIGNUP_MODE:?req}\n      - L=${INVITE_ALLOWLIST:-}\n' > "$tmp/mode.yml"
+  mode_case() {  # <want exit> <text the output must carry> <env file body>
+    local out rc=0
+    printf "$3" > "$tmp/env"
+    out=$("$0" "$tmp/mode.yml" "$tmp/env" 2>&1) || rc=$?
+    [ "$rc" = "$1" ] && grep -q -- "$2" <<<"$out" && return 0
+    echo "self-check FAILED: mode case '$3' gave exit $rc, want $1 with '$2'"; echo "$out"; exit 1
+  }
+  mode_case 0 'OK' 'SIGNUP_MODE=invite\nINVITE_ALLOWLIST=a@example.com\n'
+  mode_case 0 'OK' 'SIGNUP_MODE=open\n'
+  mode_case 0 'OK' 'SIGNUP_MODE="Open"\nINVITE_ALLOWLIST=\n'
+  mode_case 1 'INVITE_ALLOWLIST' 'SIGNUP_MODE=invite\n'
+  mode_case 1 'INVITE_ALLOWLIST' 'SIGNUP_MODE=invite\nINVITE_ALLOWLIST=""\n'
+  mode_case 1 'must be invite or open' 'SIGNUP_MODE=opne\nINVITE_ALLOWLIST=a@example.com\n'
+  mode_case 1 '- SIGNUP_MODE' 'INVITE_ALLOWLIST=a@example.com\n'
   echo "self-check OK"; exit 0
 fi
 
@@ -55,18 +73,22 @@ required=$(sed -E 's/(^|[[:space:]])#.*$//' "$compose_file" \
   | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:\?' \
   | sed -E 's/^\$\{//; s/:\?$//' | sort -u || true)
 
+# The value of $1 as Compose's own --env-file parsing resolves it, rather than the
+# raw text: it strips a matching pair of surrounding quotes and trims whitespace,
+# so VAR="", VAR='' and VAR=<spaces> all resolve to empty and would still trip
+# ${VAR:?} at `docker compose up`. A naive `grep -qE "^VAR=.+"` would pass them.
+env_value() {
+  local value
+  value=$(sed -nE "s/^${1}=//p" "$env_file" | tail -n 1)
+  value="${value%\"}"; value="${value#\"}"      # strip surrounding double quotes
+  value="${value%\'}"; value="${value#\'}"      # strip surrounding single quotes
+  printf '%s' "${value//[[:space:]]/}"          # whitespace-only counts as empty
+}
+
 missing=()
 for v in $required; do
   # Required means present AND non-empty — ${VAR:?} rejects an empty value too.
-  # Match Compose's own --env-file parsing rather than the raw text: it strips a
-  # matching pair of surrounding quotes and trims whitespace, so VAR="", VAR=''
-  # and VAR=<spaces> all resolve to empty and would still trip ${VAR:?} at
-  # `docker compose up`. A naive `grep -qE "^VAR=.+"` would pass them.
-  value=$(sed -nE "s/^${v}=//p" "$env_file" | tail -n 1)
-  value="${value%\"}"; value="${value#\"}"      # strip surrounding double quotes
-  value="${value%\'}"; value="${value#\'}"      # strip surrounding single quotes
-  value="${value//[[:space:]]/}"                # whitespace-only counts as empty
-  [ -n "$value" ] || missing+=("$v")
+  [ -n "$(env_value "$v")" ] || missing+=("$v")
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
@@ -74,6 +96,26 @@ if [ "${#missing[@]}" -gt 0 ]; then
   printf '  - %s\n' "${missing[@]}" >&2
   echo "preflight: add them (see .env.staging.example) and re-run the deploy." >&2
   exit 1
+fi
+
+# Compose cannot say "required only in invite mode", so that rule lives here
+# (#780): a ${INVITE_ALLOWLIST:?} guard would force a dummy list on
+# SIGNUP_MODE=open, while invite mode with an empty list admits nobody. Both
+# halves lowercase the mode and read any other value as invite, so a typo for
+# `open` would otherwise deploy as a silent no-op.
+if grep -qx SIGNUP_MODE <<<"$required"; then
+  mode=$(env_value SIGNUP_MODE)
+  case "${mode,,}" in
+    open) ;;
+    invite)
+      [ -n "$(env_value INVITE_ALLOWLIST)" ] || {
+        echo "preflight: SIGNUP_MODE=invite needs a non-empty INVITE_ALLOWLIST in $env_file (an empty list admits nobody)." >&2
+        exit 1
+      } ;;
+    *)
+      echo "preflight: SIGNUP_MODE must be invite or open in $env_file, got '$mode'." >&2
+      exit 1 ;;
+  esac
 fi
 
 echo "preflight: OK — all required variables present in $env_file"

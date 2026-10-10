@@ -89,10 +89,9 @@ services:
       # The backend validates NextAuth JWTs, so it needs the same secret the
       # frontend signs them with (app/auth/nextauth_auth.py).
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env.staging}
-      # Signup model (#768): invite | open, read by both halves. Optional
-      # passthrough until .env.staging carries it (#457): blank in a
-      # production-like environment resolves to `invite`, today's behaviour.
-      SIGNUP_MODE: ${SIGNUP_MODE:-}
+      # Signup model (#768): invite | open, read by both halves. Required
+      # (#780), so the mode is a stated choice and not the blank default.
+      SIGNUP_MODE: ${SIGNUP_MODE:?SIGNUP_MODE (invite|open) must be set in .env.staging}
       # Admin allowlist (#768): the only identities GET /metrics answers. Same
       # value as the frontend's; unset ⇒ nobody (fails closed), so optional.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
@@ -102,8 +101,10 @@ services:
       SIGNUP_ALERT_THRESHOLD_24H: ${SIGNUP_ALERT_THRESHOLD_24H:-}
       # Invite-only beta gate (#261): comma-separated allowlist of invitee
       # emails, checked in invite mode. The frontend signIn callback is the
-      # primary gate; the backend mirrors it.
-      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:?INVITE_ALLOWLIST (comma-separated invitee emails) must be set in .env.staging}
+      # primary gate; the backend mirrors it. Not guarded here, because open
+      # mode needs no list (#780): scripts/deploy/preflight_staging_env.sh
+      # requires it whenever SIGNUP_MODE=invite.
+      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
 
       # Billing (#365/#367, issue #457). Without these the backend runs on FREE
       # limits and billing is INERT: /billing/checkout answers 503, every webhook
@@ -191,10 +192,10 @@ services:
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       # Signup model (#768) — same value as the backend; see the note there.
-      SIGNUP_MODE: ${SIGNUP_MODE:-}
+      SIGNUP_MODE: ${SIGNUP_MODE:?SIGNUP_MODE (invite|open) must be set in .env.staging}
       # Invite-only beta gate (#261) — same allowlist the backend mirrors. The
       # NextAuth signIn callback (auth.ts) rejects non-listed emails here.
-      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:?INVITE_ALLOWLIST (comma-separated invitee emails) must be set in .env.staging}
+      INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
       # Optional: where rejected users are pointed to request access (mailto or
       # a form URL). Defaults to a mailto in the error page when unset.
       NEXT_PUBLIC_INVITE_REQUEST_URL: ${NEXT_PUBLIC_INVITE_REQUEST_URL:-}
