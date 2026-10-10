@@ -52,6 +52,9 @@ if [ "${1:-}" = "--self-check" ]; then
   mode_case 0 'OK' 'SIGNUP_MODE=open # launch day\n'
   mode_case 0 'OK' 'SIGNUP_MODE="invite" # beta\nINVITE_ALLOWLIST=a@example.com # cohort 1\n'
   mode_case 1 "got 'in#vite'" 'SIGNUP_MODE=in#vite\n'
+  # The apps trim the mode, they do not squeeze it: `op en` is invite to them.
+  mode_case 1 "got 'op en'" 'SIGNUP_MODE=op en\nINVITE_ALLOWLIST=a@example.com\n'
+  mode_case 0 'OK' 'SIGNUP_MODE=" open "\n'
   echo "self-check OK"; exit 0
 fi
 
@@ -86,10 +89,13 @@ required=$(sed -E 's/(^|[[:space:]])#.*$//' "$compose_file" \
 env_value() {
   local value
   value=$(sed -nE "s/^${1}=[[:space:]]*//p" "$env_file" | tail -n 1 | sed -E \
-    -e 's/^"([^"]*)"[[:space:]]*(#.*)?$/\1/; t' \
-    -e "s/^'([^']*)'[[:space:]]*(#.*)?\$/\1/; t" \
-    -e 's/[[:space:]]+#.*$//')
-  printf '%s' "${value//[[:space:]]/}"          # whitespace-only counts as empty
+    -e 's/^"([^"]*)"[[:space:]]*(#.*)?$/\1/; t trim' \
+    -e "s/^'([^']*)'[[:space:]]*(#.*)?\$/\1/; t trim" \
+    -e 's/[[:space:]]+#.*$//' \
+    -e ':trim' -e 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  # Trimmed, not squeezed: whitespace-only counts as empty, and `op en` stays
+  # the invalid mode the apps would read it as.
+  printf '%s' "$value"
 }
 
 missing=()
