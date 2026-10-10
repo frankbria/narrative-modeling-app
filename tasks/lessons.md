@@ -1622,3 +1622,22 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Cross-family review earns its cost on data paths.** GLM caught the #850 resolver
   transforming TSV as CSV, a silent corruption that every test passed because each one
   used a CSV.
+
+## 2026-10-10 — #780 (staging requires SIGNUP_MODE)
+
+- **A review with no verdict line is not a review, whatever its exit code.** opencode
+  exited 0 after two "now verifying…" sentences, with no findings and no verdict. The
+  retry stalled (exit 75). Grep the output for `APPROVE|REQUEST_CHANGES` before counting
+  it, and fall back to codex otherwise. Codex then found two real parser bugs.
+- **A check that moves from presence to value needs a stricter parser.** The preflight's
+  `env_value` removed every space and kept inline comments. Neither matters for "is it
+  non-empty"; both are wrong once the value is compared (`op en` passed as `open`,
+  `open # note` was refused). Diff the parser against the real consumer first: a five-line
+  env file through `docker compose config` took a minute.
+- **`git push` from a worktree is refused while the session's checkout is on `main`.**
+  `no-push-to-main.sh` reads the session's branch, not the worktree's. Its documented
+  override, `ALLOW_MAIN_PUSH=1 git push …`, is the way through; the pre-push hook still
+  guards `main` itself.
+- **Read the whole tier before picking a priority slot.** A `head -80` listing ended at
+  P3.60, so the follow-up was filed over an existing P3.61 and had to be retitled. Use
+  `gh issue list --limit 300 --json title --jq '.[].title' | grep -o '^\[P3\.[0-9]*\]' | sort -t. -k2 -n | tail -1`.
