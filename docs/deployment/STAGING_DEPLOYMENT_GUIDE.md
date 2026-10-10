@@ -471,6 +471,10 @@ this gate anyone could sign in and consume compute.
   **empty** `INVITE_ALLOWLIST` admits nobody, so the deploy preflight
   (`scripts/deploy/preflight_staging_env.sh`) **fails the deploy** if it's unset.
   In `open` mode the list is ignored and may be absent.
+  Compose itself no longer checks the list, so a hand-run `docker compose up`
+  with `SIGNUP_MODE=invite` and no list starts cleanly and locks every user out.
+  Run the preflight first whenever you edit `.env.staging` by hand:
+  `bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging`.
 
 > **First activation:** when the gate is first enabled (or on this feature's
 > initial deploy), every *active* session must refresh its token before it
