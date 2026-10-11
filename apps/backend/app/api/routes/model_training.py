@@ -36,6 +36,7 @@ from app.billing.enforcement import quota
 from app.billing.plans import TrainingCeilings, training_ceilings_for
 from app.config import settings
 from app.models.batch_job import JobStatus
+from app.models.dataset import DatasetMetadata
 from app.models.ml_model import MLModel
 from app.models.subscription import PlanTier
 from app.models.training_job import (
@@ -45,6 +46,7 @@ from app.models.training_job import (
     TrainingLogEntry,
 )
 from app.models.user_data import UserData
+from app.models.version import DatasetVersion
 from app.schemas.error_analysis import ErrorAnalysisResponse
 from app.schemas.evaluation import (
     ClassificationMetrics,
@@ -80,6 +82,7 @@ from app.services.model_report import (
 from app.services.model_storage import (
     ModelArtifactDeletionError,
     ModelStorageService,
+    _to_json_safe,
     build_evaluation_payload,
     build_shap_payload,
     invalidate_model_cache,
@@ -518,8 +521,63 @@ def _parse_dataset(file_bytes: bytes, file_type: str | None) -> pd.DataFrame:
     raise ValueError(f"Unsupported file type: {file_type}")
 
 
-async def _load_training_frame(user_data: UserData, log_event) -> pd.DataFrame:
-    """Download the dataset and parse it in a worker thread (#665).
+def _parse_and_hash(file_bytes: bytes, file_type: str | None) -> tuple[pd.DataFrame, str]:
+    """The frame, and the content hash a `DatasetVersion` of these bytes carries."""
+    return _parse_dataset(file_bytes, file_type), DatasetVersion.compute_content_hash(file_bytes)
+
+
+async def _trained_version_id(user_id: str, s3_url: str, content_hash: str) -> str | None:
+    """The id of the dataset version whose content is byte for byte what was just
+    read for training; None when no such version exists (#801).
+
+    Matched on content, not on "the dataset's latest version": the dataset can be
+    transformed or moved between training and any later lookup, and a version of
+    other bytes would be a wrong fact in the model report. Resolved right after the
+    bytes are read, so the `(user_id, s3_url)` join to the twin is still the one the
+    bytes came from. Best-effort: a lookup that fails records no version and never
+    fails the run.
+    """
+    try:
+        twin = await DatasetMetadata.find_one(
+            DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == s3_url
+        )
+        if twin is None:
+            return None
+        # The latest of them, when a step that changed nothing left two versions of
+        # the same bytes: that is where the dataset's history stands.
+        version = (
+            await DatasetVersion.find(
+                DatasetVersion.dataset_id == twin.dataset_id,
+                DatasetVersion.user_id == user_id,
+                DatasetVersion.content_hash == content_hash,
+            )
+            .sort("-version_number")
+            .first_or_none()
+        )
+        return version.version_id if version else None
+    except Exception:
+        logger.warning("Could not resolve the dataset version being trained on", exc_info=True)
+        return None
+
+
+async def _mark_version_trained_on(version_id: str | None, model_id: str) -> None:
+    """Record on the version that a stored model was trained on it (#801). Called only
+    after the model is saved: a version listing a model that was never stored would be
+    kept by retention cleanup for nothing. `$addToSet`, not `link_to_training()` and a
+    save, so two models finishing at once cannot drop each other's entry."""
+    if version_id is None:
+        return
+    try:
+        await DatasetVersion.get_motor_collection().update_one(
+            {"version_id": version_id}, {"$addToSet": {"used_in_training": model_id}}
+        )
+    except Exception:
+        logger.warning("Could not mark version %s as trained on by %s", version_id, model_id, exc_info=True)
+
+
+async def _load_training_frame(user_data: UserData, log_event) -> tuple[pd.DataFrame, str]:
+    """Download the dataset and parse it in a worker thread (#665); the frame and the
+    hash of the bytes it came from.
 
     The parse used to run on the event loop, where a large file stalled every other
     request for as long as it took. `log_event` is the task's own event callback, so
@@ -530,7 +588,7 @@ async def _load_training_frame(user_data: UserData, log_event) -> pd.DataFrame:
     _, file_key = parse_s3_url(user_data.s3_url)
     file_bytes = await s3_service.download_file_bytes(file_key)
     await log_event(TrainingEvent(level="info", message=f"Dataset downloaded ({len(file_bytes)} bytes)"))
-    return await asyncio.to_thread(_parse_dataset, file_bytes, user_data.file_type)
+    return await asyncio.to_thread(_parse_and_hash, file_bytes, user_data.file_type)
 
 
 async def train_model_task(
@@ -752,7 +810,10 @@ async def train_model_task(
             async with heartbeat_pump(training_job):
                 # Loaded here, not at task entry (#665): a queued job then holds
                 # no frame in memory, and the load counts toward the same cap.
-                df = await _load_training_frame(user_data, on_event)
+                df, content_hash = await _load_training_frame(user_data, on_event)
+                dataset_version_id = await _trained_version_id(
+                    user_id, user_data.s3_url, content_hash
+                )
                 try:
                     result = await asyncio.wait_for(
                         engine.run(
@@ -783,6 +844,12 @@ async def train_model_task(
         training_config["excluded_identifier_columns"] = result.metadata.get(
             "feature_engineering", {}
         ).get("excluded_features", [])
+        # What the model report could only call "not recorded" (#801): the seed the
+        # engine actually used, and the settings the winning candidate ran with.
+        training_config["random_seed"] = engine.random_state
+        training_config["winner_hyperparameters"] = _to_json_safe(
+            result.best_model.hyperparameters
+        )
 
         # Prepare metadata
         model_metadata: dict[str, Any] = {
@@ -820,6 +887,7 @@ async def train_model_task(
             "improvement_from_tuning": result.improvement_from_tuning,
             "tuning_results": result.tuning_results,
             "training_config": training_config,
+            "dataset_version_id": dataset_version_id,
         }
 
         # Held-out evaluation artifacts for the dashboard (issue #79).
@@ -861,6 +929,7 @@ async def train_model_task(
             evaluation_data=evaluation_data,
             shap_data=shap_data,
         )
+        await _mark_version_trained_on(dataset_version_id, model_id)
         await product_events.record(
             user_id,
             product_events.FIRST_MODEL_TRAINED,

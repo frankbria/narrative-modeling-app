@@ -258,6 +258,21 @@ class ModelStorageService:
         self.s3_service = S3Service()
         self.models_prefix = "models/"
     
+    async def _upload_json_artifact(
+        self, key: str, payload: Any, what: str, model_id: str
+    ) -> str | None:
+        """Upload an optional JSON artifact of a model; its URL, or None when there is
+        nothing to upload or the upload failed (logged, never raised)."""
+        if payload is None:
+            return None
+        try:
+            buffer = io.BytesIO(json.dumps(payload, allow_nan=False).encode("utf-8"))
+            await self.s3_service.upload_file_obj(buffer, key)
+            return f"s3://{self.s3_service.bucket_name}/{key}"
+        except Exception as exc:
+            logger.warning(f"Failed to upload {what} for {model_id}: {exc}")
+            return None
+
     async def save_model(
         self,
         model_candidate: ModelCandidate,
@@ -320,43 +335,18 @@ class ModelStorageService:
             await self.s3_service.upload_file_obj(transformer_buffer, transformer_key)
             feature_transformer_path = f"s3://{self.s3_service.bucket_name}/{transformer_key}"
 
-        # Upload evaluation artifacts (best-effort — issue #79). A failure
-        # here must never fail the training job; the evaluation endpoint
-        # degrades to partial results when the path is absent.
-        evaluation_data_path = None
-        if evaluation_data is not None:
-            evaluation_key = (
-                f"{self.models_prefix}{user_id}/{model_id}/evaluation_data.json"
-            )
-            try:
-                evaluation_buffer = io.BytesIO(
-                    json.dumps(evaluation_data, allow_nan=False).encode("utf-8")
-                )
-                await self.s3_service.upload_file_obj(evaluation_buffer, evaluation_key)
-                evaluation_data_path = (
-                    f"s3://{self.s3_service.bucket_name}/{evaluation_key}"
-                )
-            except Exception as exc:
-                logger.warning(
-                    f"Failed to upload evaluation artifacts for {model_id}: {exc}"
-                )
-
-        # Upload the global SHAP summary (best-effort — issue #80). Mirrors the
-        # evaluation-artifact path: a failure here must never fail training; the
-        # interpretability endpoint reports SHAP as unavailable when absent.
-        shap_values_path = None
-        if shap_data is not None:
-            shap_key = f"{self.models_prefix}{user_id}/{model_id}/shap_data.json"
-            try:
-                shap_buffer = io.BytesIO(
-                    json.dumps(shap_data, allow_nan=False).encode("utf-8")
-                )
-                await self.s3_service.upload_file_obj(shap_buffer, shap_key)
-                shap_values_path = f"s3://{self.s3_service.bucket_name}/{shap_key}"
-            except Exception as exc:
-                logger.warning(
-                    f"Failed to upload SHAP summary for {model_id}: {exc}"
-                )
+        # Evaluation artifacts (issue #79) and the global SHAP summary (issue #80),
+        # both best-effort: a failure here must never fail the training job. The
+        # evaluation endpoint degrades to partial results, and the interpretability
+        # endpoint reports SHAP as unavailable, when the path is absent.
+        evaluation_data_path = await self._upload_json_artifact(
+            f"{self.models_prefix}{user_id}/{model_id}/evaluation_data.json",
+            evaluation_data, "evaluation artifacts", model_id,
+        )
+        shap_values_path = await self._upload_json_artifact(
+            f"{self.models_prefix}{user_id}/{model_id}/shap_data.json",
+            shap_data, "SHAP summary", model_id,
+        )
 
         # Version lineage (issue #78): chain this run onto the previous version
         # in its family (same user/dataset/name) and capture the runtime
@@ -370,29 +360,12 @@ class ModelStorageService:
             logger.warning(f"Failed to resolve parent version for {model_id}: {exc}")
             parent_model_id = None
 
-        # Link the dataset version this model was trained on (issue #78 AC1).
-        # Prefer an explicit id from the caller; otherwise best-effort resolve the
-        # latest DatasetVersion for the dataset so the lineage column is populated
-        # whenever the dataset-versioning system has tracked it.
+        # The dataset version this model was trained on (issue #78 AC1), as the
+        # caller resolved it. There is no fallback to "the dataset's latest version"
+        # (#801): latest is not trained-on, and a version of other bytes would reach
+        # the model report as a stored fact. Training matches the version by content
+        # (`model_training._trained_version_id`); none matched means none recorded.
         dataset_version_id = model_metadata.get("dataset_version_id")
-        if dataset_version_id is None:
-            try:
-                from app.models.version import DatasetVersion
-
-                latest = (
-                    await DatasetVersion.find(
-                        DatasetVersion.dataset_id == dataset_id,
-                        DatasetVersion.user_id == user_id,
-                    )
-                    .sort("-version_number")
-                    .first_or_none()
-                )
-                if latest is not None:
-                    dataset_version_id = latest.version_id
-            except Exception as exc:
-                logger.warning(
-                    f"Failed to resolve dataset version for {model_id}: {exc}"
-                )
 
         # Create model document
         ml_model = MLModel(
