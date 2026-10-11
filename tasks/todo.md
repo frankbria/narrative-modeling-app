@@ -1,46 +1,37 @@
-# #735 — uploads write the S3 object before `insert()`; a failed insert orphans it (P1.61)
+# #665 — training's S3 download and parse run on the event loop before the semaphore (P1.62)
 
-Self-authored plan (the issue lists two options, no plan and no acceptance criteria).
+Self-authored plan (the issue has two acceptance criteria, no plan).
 
 ## Decisions made here
-- **Delete on failure, in one middleware, not in each route.** `upload_file_to_s3` records
-  every object it writes during a request. `UnownedUploadCleanupMiddleware` runs when the
-  request ends in a 4xx/5xx or an unhandled exception, and deletes each recorded object
-  that no document references. Same shape as `QuotaRefundMiddleware`, for the same
-  reason: routes get added, and the one that forgets orphans silently.
-- **Why not a guard in each route:** five handlers write then insert (`/upload/secure`,
-  `/upload/confirm-pii-upload`, chunked `complete`, `/upload/`, `/datasets/upload`), at
-  cyclomatic complexity 23, 8, 11, 16 and 11. Editing any of them means splitting it for
-  the CRAP gate, which is a rewrite of the whole upload surface for a cleanup fix. The
-  middleware touches none of them and also covers the onboarding sample loader and the
-  transformation writers, which use the same helper.
-- **"Owned" is decided by looking, not by where the exception came from.** An object is
-  kept if any `UserData` or `DatasetMetadata` row of that tenant names its key in
-  `s3_url`, `file_path`, `source_s3_url` or `superseded_s3_urls`. So an insert that landed
-  and then raised, or `/datasets/upload` failing on its second (twin) write, keeps the
-  object. If the lookup or the delete itself fails, the object is left and the failure is
-  logged: an orphan is reported by `scripts/inventory_orphaned_s3_objects.py`, a deleted
-  object that a row still points at is data loss.
-- `upload_file_to_s3` is cc 8, so the recording is a decorator on it, not an edit inside it.
-- Not covered: a request cancelled by a client disconnect (the refund middleware has the
-  same limit), and a 2xx that reports failure in its body after uploading.
-- From review: `TransformationConfig.current_file_path` and
-  `BulkTransformationJob.output_file_path` also count as ownership, the key is matched raw
-  or percent-encoded, and both log lines name the key.
+- **Both halves of AC1.** The parse moves to `asyncio.to_thread`, and the whole load
+  (download + parse) moves inside the training semaphore. The download was already off
+  the loop (`download_file_bytes` uses `to_thread`); the pandas parse was not.
+- **Two new small functions, `_parse_dataset` and `_load_training_frame`,** hold the code
+  that leaves `train_model_task`. The task itself stays over the CRAP ceiling under the
+  standing #842 exemption; it gets shorter here (cc 41 to 37).
+- **The parse is moved as it stood** (same `decode` + `StringIO` for CSV, same type
+  dispatch). Routing training through `load_dataframe_from_s3`, the reader every other
+  stage uses, is #842's: it changes which seam the existing training tests stub.
+- **The `TimeoutError` → wall-clock mapping now wraps `engine.run` alone.** With the load
+  beside it inside the semaphore, the old outer `try` would have reported an S3 socket
+  timeout as the plan's wall-clock limit.
+- **The "Dataset downloaded" log line goes through `on_event`** (a partial write). It used
+  to be a full `save()` at task entry; after a wait for a slot, a full save could
+  overwrite a cancellation.
+- **`_parse_dataset` also accepts `"excel"`,** the value `/upload/secure` stores for an
+  `.xls`/`.xlsx` file. Training refused it as unsupported, so an Excel file uploaded
+  through the UI could not be trained on. Found by the cross-family review's note on that
+  error path.
+- AC2's timing test is marked `performance` (outside the PR gate): it measures time and
+  pandas holds the GIL for parts of a parse. The gate's version asserts the parse runs on
+  a worker thread.
 
-## Acceptance criteria (derived from the issue)
-- [x] AC1: a request that fails after the S3 put on `/upload/secure`,
-      `/upload/confirm-pii-upload` or chunked `complete` leaves no object in the bucket.
-- [x] AC2: the same holds for the other writers through the helper, shown on
-      `/datasets/upload` with a file that fails processing (no fault injection).
-- [x] AC3: a successful upload keeps its object, and an object a document references is
-      never deleted even when the request then fails.
-- [x] AC4: a cleanup that cannot run (lookup or delete fails) does not change the
-      response, and is logged.
+## Acceptance criteria (from the issue)
+- [x] AC1: the S3 download + parse run in `to_thread` and inside the training semaphore.
+- [x] AC2: a test/benchmark confirms a large parse does not block other request handling.
 
 ## Steps
-1. Tests first: LocalStack tests per route (real bucket listing), plus gate-suite tests of
-   the middleware with real documents and a stubbed delete.
-2. `app/utils/s3.py`: the per-request record and the decorator.
-3. `app/middleware/upload_cleanup.py`: the middleware; mount it in `app/main.py`.
-4. CLAUDE.md: the chunked-upload / S3 section.
+1. Tests first: loop stall during a large parse; no download while every slot is held;
+   a download timeout is not the wall clock; each stored type reaches the engine.
+2. `_parse_dataset`, `_load_training_frame`; call the latter inside the semaphore.
+3. CLAUDE.md: the training concurrency paragraph.
