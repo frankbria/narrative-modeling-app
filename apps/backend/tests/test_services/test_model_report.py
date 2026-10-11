@@ -255,20 +255,54 @@ class TestReproducibilityReportsOnlyWhatWasCaptured:
         assert report.reproducibility.environment["sklearn"] == "1.5.0"
 
     @pytest.mark.asyncio
-    async def test_the_seed_is_not_claimed_because_it_is_not_stored(
+    async def test_the_seed_is_not_claimed_for_a_model_that_did_not_record_one(
         self, setup_database
     ):
-        """`random_state=42` is an engine default, never written per model.
-
-        Reporting "seed: 42" would be a guess that happens to be right today and
-        silently wrong the moment a caller overrides it.
-        """
+        """Models trained before #801 wrote no seed. `random_state=42` was an engine
+        default then; reporting it would be a guess, right until a caller overrides it."""
         model = _model()
         await model.insert()
 
         report = await build_model_report(model, USER)
 
         assert report.reproducibility.seed is None
+        assert report.reproducibility.seed_provenance is Provenance.NOT_RECORDED
+        assert "seed used for this run is **not recorded**" in render_markdown(report)
+
+    @pytest.mark.asyncio
+    async def test_a_recorded_seed_is_stated(self, setup_database):
+        """#801: training writes the seed it actually used; the report states it."""
+        model = _model(training_config={"random_seed": 7})
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+        markdown = render_markdown(report)
+
+        assert report.reproducibility.seed == 7
+        assert report.reproducibility.seed_provenance is Provenance.STORED
+        assert "Random seed: **7**" in markdown and "not recorded" not in markdown.split("## Reproducibility")[1]
+
+    @pytest.mark.parametrize("junk", [True, "42", 4.2, None])
+    @pytest.mark.asyncio
+    async def test_a_seed_that_is_not_an_integer_is_not_stated(self, setup_database, junk):
+        model = _model(training_config={"random_seed": junk})
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+
+        assert report.reproducibility.seed is None
+        assert report.reproducibility.seed_provenance is Provenance.NOT_RECORDED
+
+    @pytest.mark.asyncio
+    async def test_a_recorded_dataset_version_is_stated_and_raises_no_caveat(self, setup_database):
+        model = _model(dataset_version_id="3f2a-version")
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+
+        assert report.reproducibility.dataset_version_id == "3f2a-version"
+        assert "Dataset version: `3f2a-version`" in render_markdown(report)
+        assert not any("dataset version" in c.lower() for c in report.caveats)
 
     @pytest.mark.asyncio
     async def test_a_missing_dataset_version_is_disclosed_as_a_caveat(
@@ -663,3 +697,54 @@ class TestFreeTextCannotInjectStructure:
         report = await build_model_report(_model("m-win"), USER)
 
         assert sum(1 for row in report.leaderboard.rows if row.is_winner) == 1
+
+
+
+class TestTheWinnersSettingsAreStatedWhenRecorded:
+    """#801: the engine knew each candidate's hyperparameters and dropped them when
+    the comparison rows were built. Training now writes the winner's."""
+
+    @pytest.mark.asyncio
+    async def test_recorded_hyperparameters_are_stated(self, setup_database):
+        model = _model(training_config={"winner_hyperparameters": {"n_estimators": 100, "max_depth": None}})
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+        markdown = render_markdown(report)
+
+        assert report.winner.hyperparameters == {"n_estimators": 100, "max_depth": None}
+        assert report.winner.hyperparameters_provenance is Provenance.STORED
+        assert "| n_estimators | 100 |" in markdown and "| max_depth | None |" in markdown
+
+    @pytest.mark.asyncio
+    async def test_an_empty_set_means_library_defaults_not_missing(self, setup_database):
+        """A candidate with no overrides ran on its library defaults. That is a
+        recorded fact, not an absence."""
+        model = _model(training_config={"winner_hyperparameters": {}})
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+
+        assert report.winner.hyperparameters == {}
+        assert report.winner.hyperparameters_provenance is Provenance.STORED
+        assert "library defaults" in render_markdown(report)
+
+    @pytest.mark.asyncio
+    async def test_a_model_that_recorded_none_says_so(self, setup_database):
+        model = _model()
+        await model.insert()
+
+        report = await build_model_report(model, USER)
+
+        assert report.winner.hyperparameters is None
+        assert report.winner.hyperparameters_provenance is Provenance.NOT_RECORDED
+        assert "hyperparameters were **not recorded**" in render_markdown(report)
+
+    @pytest.mark.asyncio
+    async def test_a_hyperparameter_name_cannot_break_the_table(self, setup_database):
+        model = _model(training_config={"winner_hyperparameters": {"a|b\n## Injected": "x|y"}})
+        await model.insert()
+
+        markdown = render_markdown(await build_model_report(model, USER))
+
+        assert "\n## Injected" not in markdown

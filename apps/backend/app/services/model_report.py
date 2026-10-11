@@ -9,23 +9,30 @@ a model whose training job was never recorded — reads as "nothing else was tri
 which is a claim the data does not support. #536 is the precedent: a quality score a
 customer cannot trust is worse than no score.
 
-What is deliberately NOT claimed, because the platform does not record it:
+What training records since #801, and the report states for a model that has it:
 
-* **the random seed** — `random_state=42` is an engine default
-  (`automl_engine.py`), never written per model. Printing "seed: 42" would be a
-  guess that is right today and silently wrong the first time a caller overrides it;
-* **the dataset version** — `MLModel.dataset_version_id` is null in the normal flow
-  (the resolver queries the `DatasetVersion` id-space with a `UserData` ObjectId, so
-  it never matches). Surfaced as a caveat rather than left to imply currency;
-* **the preprocessing actually applied** — no ordered list is reachable from a model.
-  `UserData.transformation_history` is never written, `pipeline/apply` records
-  nothing, and reconstructing the chain needs a join through a mutating `s3_url`;
-* **the winner's hyperparameters** — dropped when the comparison rows are built,
-  except for whatever tuning recorded.
+* **the random seed** — the engine's effective `random_state`, in
+  `training_config["random_seed"]`. Never the engine default read at report time:
+  that would be right today and silently wrong the first time a caller overrides it;
+* **the dataset version** — `MLModel.dataset_version_id`, the version whose content
+  is byte for byte what training read (`_link_trained_version`). It used to be
+  resolved by querying the `DatasetVersion` id-space with a `UserData` id, which
+  never matched. A dataset with no version of those bytes records none, and the
+  report raises that as a caveat rather than imply currency;
+* **the winner's hyperparameters** — `training_config["winner_hyperparameters"]`.
+  An empty set is a recorded fact (library defaults), not an absence.
 
-Each of those is a `not_recorded` section or a caveat, and each is a candidate for a
-later issue that captures the data at training time. None of them is a reason to
-print a plausible number.
+A model trained before #801 has none of these, and says so.
+
+What is still deliberately NOT claimed:
+
+* **the preprocessing actually applied** — no complete ordered list exists to
+  record. `pipeline/apply`, bulk transformations and data-issue fixes move a dataset
+  without writing a history step (#851), so a list taken from the history would be
+  incomplete and stated as fact. The dataset version pins the content that was
+  trained on; the steps that produced it wait on #851.
+
+None of these is ever a reason to print a plausible number.
 """
 
 from __future__ import annotations
@@ -80,6 +87,10 @@ class WinnerSection(Section):
     test_score: float | None = None
     explanation: str | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
+    # None = not recorded (a model trained before #801); {} = recorded, and the
+    # algorithm ran on its library defaults.
+    hyperparameters: dict[str, Any] | None = None
+    hyperparameters_provenance: Provenance = Provenance.NOT_RECORDED
 
 
 class BaselineSection(Section):
@@ -104,6 +115,7 @@ class DatasetSection(Section):
 class ReproducibilitySection(Section):
     environment: dict[str, str] = Field(default_factory=dict)
     seed: int | None = None
+    seed_provenance: Provenance = Provenance.NOT_RECORDED
     dataset_version_id: str | None = None
     training_config: dict[str, Any] = Field(default_factory=dict)
 
@@ -279,6 +291,7 @@ def _winner(model: MLModel, job: TrainingJob | None) -> WinnerSection:
     # whole section NOT_RECORDED labelled real stored numbers as absent — the
     # inverse of fabricating one, and the same contract breach.
     explanation = job.best_model_explanation if job else None
+    hyperparameters = _recorded(model, "winner_hyperparameters", dict)
     return WinnerSection(
         provenance=Provenance.STORED,
         algorithm=model.algorithm,
@@ -286,8 +299,22 @@ def _winner(model: MLModel, job: TrainingJob | None) -> WinnerSection:
         test_score=model.test_score,
         explanation=explanation,
         metrics=getattr(model, "metrics", {}) or {},
+        hyperparameters=hyperparameters,
+        hyperparameters_provenance=_provenance_of(hyperparameters),
         note=None if explanation else "No stored explanation of why this algorithm won.",
     )
+
+
+def _recorded(model: MLModel, key: str, kind: type) -> Any:
+    """A fact training wrote into `training_config` (#801), or None when this model
+    did not record it or holds something of another shape there."""
+    value = (getattr(model, "training_config", None) or {}).get(key)
+    # `bool` is an `int`; a stored True is not a seed.
+    return value if isinstance(value, kind) and not isinstance(value, bool) else None
+
+
+def _provenance_of(value: Any) -> Provenance:
+    return Provenance.NOT_RECORDED if value is None else Provenance.STORED
 
 
 def _as_dict(value: Any) -> dict[Any, Any]:
@@ -326,6 +353,7 @@ def _drivers(model: MLModel, shap_artifacts: dict[str, Any] | None) -> DriversSe
 
 def _reproducibility(model: MLModel) -> ReproducibilitySection:
     environment = _as_dict(getattr(model, "environment_metadata", None))
+    seed = _recorded(model, "random_seed", int)
     provenance, note = Provenance.STORED, None
     if not environment:
         provenance = Provenance.NOT_RECORDED
@@ -333,8 +361,8 @@ def _reproducibility(model: MLModel) -> ReproducibilitySection:
     return ReproducibilitySection(
         provenance=provenance,
         environment={str(k): str(v) for k, v in environment.items()},
-        # Deliberately None — see the module docstring.
-        seed=None,
+        seed=seed,
+        seed_provenance=_provenance_of(seed),
         dataset_version_id=getattr(model, "dataset_version_id", None),
         training_config=getattr(model, "training_config", None) or {},
         note=note,
@@ -569,7 +597,16 @@ def _md_winner(report: ModelReport) -> list[str]:
     if extra:
         out += ["", "| Metric | Value |", "|---|---|"]
         out += [f"| {_cell(k)} | {_fmt(float(v))} |" for k, v in sorted(extra.items())]
-    return out + [""]
+    return out + ["", *_md_hyperparameters(winner.hyperparameters), ""]
+
+
+def _md_hyperparameters(hyperparameters: dict[str, Any] | None) -> list[str]:
+    if hyperparameters is None:
+        return ["The winning algorithm's hyperparameters were **not recorded** for this model."]
+    if not hyperparameters:
+        return ["The winning algorithm ran on its library defaults: no hyperparameters were set."]
+    rows = sorted((str(k), str(v)) for k, v in hyperparameters.items())
+    return ["| Hyperparameter | Value |", "|---|---|", *[f"| {_cell(k)} | {_cell(v)} |" for k, v in rows]]
 
 
 def _md_drivers(report: ModelReport) -> list[str]:
@@ -604,12 +641,20 @@ def _md_reproducibility(report: ModelReport) -> list[str]:
         out += [f"| {_cell(k)} | {_cell(v)} |" for k, v in sorted(environment.items())]
     else:
         out.append(_absent(report.reproducibility))
-    return out + [
-        "",
-        "The random seed used for this run is **not recorded** by the platform, so "
-        "this report does not state one.",
-        "",
-    ]
+    return out + ["", *_md_run_identity(report.reproducibility), ""]
+
+
+def _md_run_identity(section: ReproducibilitySection) -> list[str]:
+    """The seed and the dataset version, each stated only if this model recorded it."""
+    seed = (
+        f"Random seed: **{section.seed}**."
+        if section.seed is not None
+        else "The random seed used for this run is **not recorded** for this model, so "
+        "this report does not state one."
+    )
+    if not section.dataset_version_id:
+        return [seed]  # the missing version is raised under Caveats
+    return [seed, "", f"Dataset version: `{_flatten(section.dataset_version_id)}`."]
 
 
 _MD_SECTIONS = (

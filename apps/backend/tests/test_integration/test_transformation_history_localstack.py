@@ -182,3 +182,30 @@ async def test_the_audit_corrects_a_dataset_an_old_undo_left_calling_parquet_csv
     assert (result["mismatched"], result["fixed"]) == (1, 1)
     assert (await UserData.get(twin.id)).file_type == "parquet"
     assert (await audit._audit(DatasetMetadata, apply=True))["fixed"] == 1
+
+
+async def test_training_names_the_version_a_transformed_dataset_is_on(client, s3_client, real_s3_env):
+    """#801: the version a model trained on is found by content. A transformation
+    writes the dataset's current file and its version as two objects, so this only
+    works if the two hold the same bytes, which only real objects can show."""
+    from app.api.routes.model_training import _link_trained_version
+    from app.models.dataset import DatasetMetadata
+    from app.models.version import DatasetVersion
+    from app.utils.s3 import parse_s3_url
+
+    dataset_id = await _upload_and_transform_twice(client)
+    meta = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)
+    _, key = parse_s3_url(meta.s3_url)
+    current_file = s3_client.get_object(Bucket=real_s3_env, Key=key)["Body"].read()
+    history = (await client.get(f"/api/v1/transformations/datasets/{dataset_id}/history")).json()
+
+    trained_on = await _link_trained_version(
+        USER, meta.s3_url, DatasetVersion.compute_content_hash(current_file), "model_801"
+    )
+
+    latest = await DatasetVersion.find(
+        DatasetVersion.dataset_id == dataset_id
+    ).sort("-version_number").first_or_none()
+    assert trained_on == latest.version_id, "the version the second step produced"
+    assert history["current_position"] == 1
+    assert (await DatasetVersion.get(latest.id)).used_in_training == ["model_801"]

@@ -146,4 +146,67 @@ describe('ModelReportPage', () => {
       expect(screen.getByText(/does not record which dataset version/)).toBeInTheDocument()
     );
   });
+
+  describe('what training records since #801', () => {
+    it('says the seed is not recorded for a model that has none', async () => {
+      render(<ModelReportPage />);
+
+      await waitFor(() =>
+        expect(screen.getByText(/random seed used for this run is not recorded/)).toBeInTheDocument()
+      );
+      expect(screen.queryByText(/Random seed:/)).not.toBeInTheDocument();
+    });
+
+    it('states a recorded seed and dataset version, with no disclaimer', async () => {
+      (modelService.getModelReport as jest.Mock).mockResolvedValue({
+        ...base,
+        reproducibility: {
+          ...base.reproducibility,
+          seed: 7,
+          seed_provenance: 'stored',
+          dataset_version_id: '3f2a-version',
+        },
+      });
+      render(<ModelReportPage />);
+
+      await waitFor(() => expect(screen.getByText(/Random seed:/)).toHaveTextContent('Random seed: 7'));
+      expect(screen.getByText('3f2a-version')).toBeInTheDocument();
+      expect(screen.queryByText(/seed used for this run is not recorded/)).not.toBeInTheDocument();
+    });
+
+    it("lists the winner's recorded hyperparameters", async () => {
+      (modelService.getModelReport as jest.Mock).mockResolvedValue({
+        ...base,
+        winner: {
+          ...base.winner,
+          hyperparameters: { n_estimators: 100, max_depth: null },
+          hyperparameters_provenance: 'stored',
+        },
+      });
+      render(<ModelReportPage />);
+
+      const list = await screen.findByRole('list', { name: 'Hyperparameters' });
+      expect(list).toHaveTextContent('n_estimators100');
+      expect(list).toHaveTextContent('max_depthnull');
+    });
+
+    it('reads an empty set as library defaults, not as missing', async () => {
+      (modelService.getModelReport as jest.Mock).mockResolvedValue({
+        ...base,
+        winner: { ...base.winner, hyperparameters: {}, hyperparameters_provenance: 'stored' },
+      });
+      render(<ModelReportPage />);
+
+      await waitFor(() => expect(screen.getByText(/ran on its library defaults/)).toBeInTheDocument());
+      expect(screen.queryByText(/hyperparameters were not recorded/)).not.toBeInTheDocument();
+    });
+
+    it('says the hyperparameters were not recorded for a model that has none', async () => {
+      render(<ModelReportPage />);
+
+      await waitFor(() =>
+        expect(screen.getByText(/hyperparameters were not recorded for this model/)).toBeInTheDocument()
+      );
+    });
+  });
 });

@@ -1782,3 +1782,23 @@ checked, and the fix is always the same: the claim is a query, so run it.
   test's stubbed service returned a `BatchJob` that was never inserted, and the route's
   full `save()` quietly created it. The real service always returns a stored job.
 
+## 2026-10-11 — #801 (training records the seed, the dataset version and the winner's settings)
+
+- **Identify "what was trained on" by content, not by a link that can move.** The stored
+  lookup joined two id-spaces and never matched; "the dataset's latest version" would
+  match the wrong bytes after an undo. The hash of the bytes training read, compared
+  with `DatasetVersion.content_hash`, is true by construction. Check the premise on real
+  objects first: it only works because a transformation's current file and its version
+  hold identical bytes.
+- **Before adding a model field, look for the dict that already travels.** Two of the
+  three facts went into `MLModel.training_config`, which `save_model` already persists.
+  That avoided editing a cc-11 function and the mock fixture that breaks on every new
+  `MLModel` field.
+- **A hard-coded disclaimer in the UI becomes a false statement when the backend starts
+  recording the thing.** The page said "the random seed is not recorded" as literal
+  text. Grep the frontend for the sentence when the backend stops disclaiming.
+- **A text-slicing edit script must anchor on text that occurs once after the script's
+  own earlier insertions.** Mine searched for a line it had just inserted a copy of,
+  and cut the page component out. Re-check `count == 1` after each insertion, not only
+  at the start.
+

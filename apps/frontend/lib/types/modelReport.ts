@@ -43,6 +43,12 @@ export interface ModelReport {
     test_score: number | null;
     explanation: string | null;
     metrics: Record<string, unknown>;
+    /**
+     * The winner's settings (#801). `null` on a model that did not record them; an
+     * empty object means it ran on its library defaults.
+     */
+    hyperparameters?: Record<string, unknown> | null;
+    hyperparameters_provenance?: Provenance;
   };
   baseline: ReportSection & {
     strategy: string | null;
@@ -55,7 +61,9 @@ export interface ModelReport {
   };
   reproducibility: ReportSection & {
     environment: Record<string, string>;
+    /** The seed training used (#801); `null` on a model that did not record it. */
     seed: number | null;
+    seed_provenance?: Provenance;
     dataset_version_id: string | null;
     training_config: Record<string, unknown>;
   };
