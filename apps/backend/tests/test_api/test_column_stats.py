@@ -463,3 +463,21 @@ class TestColumnStatsTenantIsolation:
         assert await ColumnStats.get_motor_collection().count_documents(
             {"dataset_id.$id": mine.id}
         ) == 0
+
+    @pytest.mark.asyncio
+    async def test_a_malformed_csv_is_a_400_like_any_other_unparseable_file(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)  # payroll.csv
+        ragged = io.BytesIO(b"salary,dept\n100,a\n200,b,c,d\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=ragged
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 400

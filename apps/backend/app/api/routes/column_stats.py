@@ -87,12 +87,12 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
     # traversal and namespace checks, size cap.
     file_content = get_file_from_s3(dataset.s3_url).getvalue()
 
-    if dataset.filename.endswith(".csv"):
-        return pd.read_csv(io.BytesIO(file_content))
-    if dataset.filename.endswith((".xlsx", ".xls")):
-        return pd.read_excel(io.BytesIO(file_content))
-    # Try to read as CSV with different settings
     try:
+        if dataset.filename.endswith(".csv"):
+            return pd.read_csv(io.BytesIO(file_content))
+        if dataset.filename.endswith((".xlsx", ".xls")):
+            return pd.read_excel(io.BytesIO(file_content))
+        # Try to read as CSV with different settings
         return pd.read_csv(io.BytesIO(file_content), sep=None, engine="python")
     except (
         pd.errors.ParserError,
