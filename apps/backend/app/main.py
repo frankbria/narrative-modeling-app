@@ -43,6 +43,7 @@ from app.middleware.metrics import MetricsMiddleware, get_metrics
 from app.billing import stripe_client
 from app.billing.enforcement import QuotaRefundMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.upload_cleanup import UnownedUploadCleanupMiddleware
 from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
@@ -218,6 +219,9 @@ app.add_middleware(RateLimitMiddleware)
 # Outside RateLimitMiddleware in registration order, so it wraps the routes and
 # sees the final status of anything that reserved quota (#368).
 app.add_middleware(QuotaRefundMiddleware)
+# Beside the refund, for the same reason: a request that fails after writing an S3
+# object deletes what no document ended up owning (#735).
+app.add_middleware(UnownedUploadCleanupMiddleware)
 
 # ✅ Upload byte cap (#270). Added before CORS so it stays inner and CORS still
 # decorates the 413; rejects an oversized Content-Length before the multipart

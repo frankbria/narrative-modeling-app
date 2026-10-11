@@ -1,3 +1,5 @@
+import contextvars
+import functools
 import io
 import logging
 import os
@@ -212,6 +214,36 @@ def dataset_s3_key(user_id: str, original_filename: str, *, masked: bool = False
     return f"datasets/{user_id}/{name}.{ext}" if ext else f"datasets/{user_id}/{name}"
 
 
+# The keys this request has written, for UnownedUploadCleanupMiddleware (#735). Unset
+# outside a request (scripts, background tasks started without one), where nothing records.
+_request_uploads: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
+    "request_uploads", default=None
+)
+
+
+def record_request_uploads() -> list[str]:
+    """Start recording the keys `upload_file_to_s3` writes in this context; the live list."""
+    uploads: list[str] = []
+    _request_uploads.set(uploads)
+    return uploads
+
+
+def _recorded(upload):
+    """Note each object the wrapped upload writes, so a request that then fails can
+    delete what nothing ended up owning."""
+
+    @functools.wraps(upload)
+    def wrapper(file_content: bytes, s3_filename: str, content_type: str | None = None):
+        success, url = upload(file_content, s3_filename, content_type)
+        uploads = _request_uploads.get()
+        if success and uploads is not None:
+            uploads.append(s3_filename)
+        return success, url
+
+    return wrapper
+
+
+@_recorded
 def upload_file_to_s3(
     file_content: bytes, s3_filename: str, content_type: str | None = None
 ) -> tuple[bool, str | None]:
