@@ -252,6 +252,9 @@ class BatchPredictionService:
                 return
             if fresh.status == JobStatus.CANCELLED:
                 logger.info("Batch job %s was cancelled while queued; skipping", job.job_id)
+                # It never ran, so everything it reserved goes back (#653: this
+                # path returned without a refund).
+                await self._refund_remainder(fresh, 0)
                 return
             await self._process_batch_job(fresh)
 
@@ -460,8 +463,8 @@ class BatchPredictionService:
 
     async def _fail_at_wall_clock(self, job: BatchJob) -> None:
         """Mark a run that outlived BATCH_JOB_WALL_CLOCK_SECONDS as FAILED (#653) and
-        refund the records it never reached. Only if it is still RUNNING: a cancel
-        or a completion that landed first keeps its own state and its own refund.
+        refund the records it never reached. FAILED is written only if the job is
+        still RUNNING: a cancel or a completion that landed first keeps its state.
 
         Work already inside a worker thread cannot be killed; it finishes on its
         own and its guarded writes then match nothing.
@@ -473,13 +476,15 @@ class BatchPredictionService:
             f"This batch job ran past the {BATCH_JOB_WALL_CLOCK_SECONDS}-second limit and "
             "was stopped. Retry it, or split the input into smaller files."
         )
-        if await self._finalize_if_running(job):
+        if not await self._finalize_if_running(job):
+            stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+            if stored is not None:
+                # What the webhook reports is what is stored, not the failure that lost.
+                job.status, job.error_message = stored.status, stored.error_message
+        if job.status != JobStatus.COMPLETED:
+            # FAILED just now, or CANCELLED while the run was too stuck to reach the
+            # check where it refunds a cancel. `_refund_remainder` refunds once.
             await self._refund_remainder(job, job.progress.processed_records)
-            return
-        stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
-        if stored is not None:
-            # What the webhook reports is what is stored, not the failure that lost.
-            job.status, job.error_message = stored.status, stored.error_message
 
     async def _run_batch_job(self, job: BatchJob) -> None:
         try:
@@ -700,13 +705,25 @@ class BatchPredictionService:
         """Refund the predictions reserved for records a cancelled run never
         processed (#485 AC3), against the period the reservation was taken from."""
         remainder = max(0, job.progress.total_records - processed)
-        if remainder > 0:
+        if remainder > 0 and await self._claim_refund(job.job_id):
             await metering.refund(
                 job.user_id,
                 "predictions",
                 remainder,
                 period_key_for(as_utc(job.created_at)),
             )
+
+    @staticmethod
+    async def _claim_refund(job_id: str) -> bool:
+        """Whether this caller is the one to refund the run's remainder (#653). A
+        cancel is refunded by the run that notices it, by the queue that skips it,
+        or by the wall clock when the run is too stuck to notice; the first to set
+        the marker refunds and the others do nothing."""
+        result = await BatchJob.get_motor_collection().update_one(
+            {"job_id": job_id, "remainder_refunded": {"$ne": True}},
+            {"$set": {"remainder_refunded": True}},
+        )
+        return result.modified_count == 1
 
     @staticmethod
     async def _is_safe_webhook_url(url: str) -> bool:
@@ -1338,6 +1355,7 @@ class BatchPredictionService:
                 "$set": {
                     "status": JobStatus.PENDING.value,
                     "admission_slot": slot,
+                    "remainder_refunded": False,
                     "started_at": None,
                     "completed_at": None,
                     "error_message": None,

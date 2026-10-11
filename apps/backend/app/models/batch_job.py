@@ -127,6 +127,9 @@ class BatchJob(Document):
     # Which of the tenant's concurrent-job slots this job holds while it is live
     # (#653). See the `user_live_slot_unique` index below.
     admission_slot: int | None = None
+    # Set by whichever path refunds this run's unprocessed records, so a cancel and
+    # the wall clock cannot both do it (#653). A retry clears it with its new reservation.
+    remainder_refunded: bool = False
 
     # Results
     results: dict[str, Any] = Field(default_factory=dict)
@@ -154,7 +157,9 @@ class BatchJob(Document):
             # one. Partial on the live statuses, so a job that finishes, fails, is
             # cancelled or is reaped frees its slot by that status write alone, with
             # nothing to release. `$type` keeps rows without a slot (other job types,
-            # and jobs created before this index) out of it.
+            # and jobs created before this index) out of it. It matches a 32-bit int
+            # only, which is what a Python int in this range is stored as: a writer
+            # that stored the slot as a long would be invisible to the cap.
             IndexModel(
                 [("user_id", 1), ("job_type", 1), ("admission_slot", 1)],
                 name="user_live_slot_unique",

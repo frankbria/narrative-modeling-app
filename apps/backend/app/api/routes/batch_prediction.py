@@ -159,6 +159,53 @@ def _count_csv_rows(content: bytes) -> int:
         csv.field_size_limit(previous_limit)
 
 
+def _require_csv(file: UploadFile) -> None:
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+
+async def _reserve_rows(request: Request, current_user_id: str, content: bytes) -> None:
+    """Reserve one `predictions` unit per row of the uploaded file, beyond the one
+    the route's dependency already took."""
+    # Charge the rows BEFORE the job is created. Creating it spawns processing
+    # immediately (`auto_start`), so a check afterwards would have to unwind a
+    # job that is already running — and an unconditional true-up is not a limit
+    # at all: MAX_BATCH_PREDICT_RECORDS is 1,000,000 against a FREE ceiling of
+    # 1,000, so one job could be accepted AND EXECUTED at 1000x the plan. That
+    # is a compute bill, not a bookkeeping error.
+    #
+    # The admission dependency already reserved 1, so only the remainder is
+    # charged here; a refusal leaves that 1 to the refund middleware.
+    # Fail closed if the rows can't be counted (#486): reserving 0 for an
+    # uncountable file would run the whole job unmetered.
+    try:
+        rows = _count_csv_rows(content)
+    except CsvCountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if rows > 1:
+        await reserve(request, current_user_id, "predictions", rows - 1)
+
+
+async def _create_job_from_upload(content: bytes, **job_options: Any) -> BatchJob:
+    """Create the job from the uploaded bytes, through the temp file the service
+    reads, which is removed whatever happens."""
+    with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".csv") as temp_file:
+        temp_file.write(content)
+        temp_file_path = temp_file.name
+
+    try:
+        job = await batch_service.create_batch_prediction_job(
+            input_data=temp_file_path, **job_options
+        )
+        # Store input file size. One field, not a full save: processing has
+        # already been spawned, and a full save of this copy could write PENDING
+        # back over the RUNNING the run has claimed since (#653).
+        await job.set({"input_size_bytes": len(content)})
+        return job
+    finally:
+        os.unlink(temp_file_path)
+
+
 @router.post(
     "/jobs",
     response_model=BatchJobResponse,
@@ -190,62 +237,26 @@ async def create_batch_job(
 ):
     """Create a new batch prediction job from uploaded file"""
 
-    # Validate file type
-    if not file.filename or not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+    _require_csv(file)
 
     try:
         # Read file content
         content = await read_upload_capped(file)
+        await _reserve_rows(request, current_user_id, content)
 
-        # Charge the rows BEFORE the job is created. Creating it spawns processing
-        # immediately (`auto_start`), so a check afterwards would have to unwind a
-        # job that is already running — and an unconditional true-up is not a limit
-        # at all: MAX_BATCH_PREDICT_RECORDS is 1,000,000 against a FREE ceiling of
-        # 1,000, so one job could be accepted AND EXECUTED at 1000x the plan. That
-        # is a compute bill, not a bookkeeping error.
-        #
-        # The admission dependency already reserved 1, so only the remainder is
-        # charged here; a refusal leaves that 1 to the refund middleware.
-        # Fail closed if the rows can't be counted (#486): reserving 0 for an
-        # uncountable file would run the whole job unmetered.
-        try:
-            rows = _count_csv_rows(content)
-        except CsvCountError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if rows > 1:
-            await reserve(request, current_user_id, "predictions", rows - 1)
-
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(
-            mode="wb", delete=False, suffix=".csv"
-        ) as temp_file:
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-
-        try:
-            # Create job
-            job = await batch_service.create_batch_prediction_job(
-                user_id=current_user_id,
-                model_id=model_id,
-                input_data=temp_file_path,
-                output_format=output_format,
-                include_probabilities=include_probabilities,
-                include_metadata=include_metadata,
-                include_explanations=include_explanations,
-                chunk_size=chunk_size,
-                priority=priority,
-                webhook_url=webhook_url,
-                webhook_secret=webhook_secret,
-            )
-
-            # Store input file size
-            job.input_size_bytes = len(content)
-            await job.save()
-
-        finally:
-            # Clean up temp file
-            os.unlink(temp_file_path)
+        job = await _create_job_from_upload(
+            content,
+            user_id=current_user_id,
+            model_id=model_id,
+            output_format=output_format,
+            include_probabilities=include_probabilities,
+            include_metadata=include_metadata,
+            include_explanations=include_explanations,
+            chunk_size=chunk_size,
+            priority=priority,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
+        )
 
         return BatchJobResponse(
             job_id=job.job_id,

@@ -22,6 +22,14 @@ Self-authored plan (the issue has acceptance criteria for both halves, no plan).
 - **`asyncio.wait`, not `wait_for`:** the run fires the completion webhook from its own
   `finally`. With `wait_for` that webhook would report RUNNING.
 - `_run_batch_job` (cc 24) is not touched.
+- From the cross-family review: **a run's remainder is refunded once**
+  (`BatchJob.remainder_refunded`, claimed in `_refund_remainder`). A cancel is refunded by
+  the run when it notices; a hung run never notices, so the wall clock makes that refund,
+  and the marker stops the two from both doing it. The queue's skip of a job cancelled
+  before it started now refunds too (it returned without one).
+- The create route stored the input size with a full `job.save()` after processing was
+  spawned. It is a one-field write now, which meant splitting the handler (cc 10) into
+  `_require_csv`, `_reserve_rows` and `_create_job_from_upload`.
 - The partial index filter uses `$in`, which needs MongoDB 6.0 or later (CI runs 7.0,
   local 8.0).
 

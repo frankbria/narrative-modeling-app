@@ -79,12 +79,15 @@ class TestCreate:
         self, async_authorized_client, setup_database
     ):
         before = await metering.usage_for(TEST_USER, "predictions")
-        created = BatchJob(
+        # Inserted, as the service always returns it: the route writes the input size
+        # onto the stored job with a one-field update (#653), not a save that would
+        # have created the row.
+        created = await BatchJob(
             job_id="created_1", job_type=JobType.BATCH_PREDICTION, user_id=TEST_USER,
             config={"model_id": "m1", "output_format": "csv"},
             input_path="batch-jobs/u/m1/ts/in.csv", status=JobStatus.PENDING,
             progress=JobProgress(total_records=3),
-        )
+        ).insert()
         with patch(
             "app.api.routes.batch_prediction.batch_service.create_batch_prediction_job",
             new_callable=AsyncMock, return_value=created,
@@ -96,6 +99,8 @@ class TestCreate:
         assert resp.json()["job_id"] == "created_1"
         # 3 rows: 1 reserved by the admission dependency + 2 remainder in the route.
         assert await metering.usage_for(TEST_USER, "predictions") == before + 3
+        stored = await BatchJob.find_one(BatchJob.job_id == "created_1")
+        assert stored.input_size_bytes == resp.json()["input_size_bytes"] > 0
 
 
 class TestListAndStats:
@@ -273,3 +278,38 @@ class TestDelete:
     ):
         await _job("active", TEST_USER, status=JobStatus.RUNNING)
         assert (await async_authorized_client.delete(f"{_BATCH}/jobs/active")).status_code == 400
+
+
+class TestCreateDoesNotOverwriteTheRun:
+    async def test_storing_the_input_size_leaves_the_runs_status_alone(
+        self, async_authorized_client, setup_database
+    ):
+        """#653: the route stored the input size with a full `save()` of the copy the
+        service handed back. Processing is already spawned by then, so that save could
+        write PENDING over the RUNNING the run had claimed, and the run's guarded
+        writes then matched nothing: the job never finished."""
+        created = await BatchJob(
+            job_id="created_race_653", job_type=JobType.BATCH_PREDICTION, user_id=TEST_USER,
+            config={"model_id": "m1", "output_format": "csv"},
+            input_path="batch-jobs/u/m1/ts/in.csv", status=JobStatus.PENDING,
+            progress=JobProgress(total_records=3),
+        ).insert()
+
+        async def create_and_let_the_run_claim_it(**_kwargs):
+            await BatchJob.get_motor_collection().update_one(
+                {"job_id": created.job_id}, {"$set": {"status": JobStatus.RUNNING.value}}
+            )
+            return created  # the caller's copy still says PENDING
+
+        with patch(
+            "app.api.routes.batch_prediction.batch_service.create_batch_prediction_job",
+            create_and_let_the_run_claim_it,
+        ):
+            resp = await async_authorized_client.post(
+                f"{_BATCH}/jobs", files=_csv(3), data={"model_id": "m1"}
+            )
+
+        assert resp.status_code == 200, resp.text
+        stored = await BatchJob.find_one(BatchJob.job_id == created.job_id)
+        assert stored.status == JobStatus.RUNNING
+        assert stored.input_size_bytes > 0

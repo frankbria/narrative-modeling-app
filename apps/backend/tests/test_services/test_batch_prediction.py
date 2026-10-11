@@ -1323,7 +1323,12 @@ async def test_a_run_that_never_returns_is_failed_at_the_wall_clock_and_frees_it
 
 
 @pytest.mark.asyncio
-async def test_the_wall_clock_does_not_overwrite_a_cancellation(setup_database, monkeypatch):
+async def test_a_cancelled_job_too_stuck_to_notice_is_refunded_at_the_wall_clock(
+    setup_database, monkeypatch
+):
+    """A cancel is refunded by the run, at its next between-chunks check. A hung run
+    never gets there, so before the wall clock that cancel kept every reserved unit.
+    The wall clock leaves the job CANCELLED and makes the refund the run could not."""
     from app.services import batch_prediction as bp
 
     monkeypatch.setattr(bp, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.2)
@@ -1334,9 +1339,8 @@ async def test_the_wall_clock_does_not_overwrite_a_cancellation(setup_database, 
 
     async def hangs_after_a_cancel(job):
         await svc._claim_running(job)
-        await BatchJob.get_motor_collection().update_one(
-            {"job_id": job.job_id}, {"$set": {"status": JobStatus.CANCELLED.value}}
-        )
+        job.progress.processed_records = 4
+        await svc.cancel_job(job.job_id, user)
         await _asyncio.sleep(30)
 
     svc._run_batch_job = hangs_after_a_cancel
@@ -1346,7 +1350,55 @@ async def test_the_wall_clock_does_not_overwrite_a_cancellation(setup_database, 
 
         stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
         assert stored.status == JobStatus.CANCELLED and stored.error_message is None
-        refunds.assert_not_awaited()  # the cancel path owns that refund
+        assert [c.args[1:3] for c in refunds.await_args_list] == [("predictions", 6)]
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_database, monkeypatch):
+    """The run's own cancel check and the wall clock can both reach the refund within
+    the same instant. Whichever marks the job first refunds; a retry reserves again
+    and so may be refunded again."""
+    from app.services import batch_prediction as bp
+
+    refunds = AsyncMock()
+    monkeypatch.setattr(bp.metering, "refund", refunds)
+    svc, user = _service(), "refund_once_653"
+    svc._spawn_processing = MagicMock()
+    job = await _running_job(user, "batch_refund_once_653")
+    try:
+        await _asyncio.gather(*[svc._refund_remainder(job, 4) for _ in range(5)])
+        assert refunds.await_count == 1
+
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": job.job_id}, {"$set": {"status": JobStatus.FAILED.value}}
+        )
+        assert await svc.retry_job(job.job_id, user) is True
+        await svc._refund_remainder(job, 0)
+        assert refunds.await_count == 2
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_job_cancelled_while_queued_gets_its_whole_reservation_back(setup_database, monkeypatch):
+    """It reserved its records at creation and never ran one. The queue skipped it
+    without a refund."""
+    from app.services import batch_prediction as bp
+
+    _batch_semaphores.clear()
+    refunds = AsyncMock()
+    monkeypatch.setattr(bp.metering, "refund", refunds)
+    svc, user = _service(), "queued_cancel_653"
+    svc._run_batch_job = AsyncMock(side_effect=AssertionError("a cancelled job ran"))
+    job = await _running_job(user, "batch_queued_cancel_653")
+    try:
+        assert await svc.cancel_job(job.job_id, user) is True
+
+        await svc._process_batch_job_admitted(job)
+
+        assert [c.args[1:3] for c in refunds.await_args_list] == [("predictions", 10)]
     finally:
         await BatchJob.find(BatchJob.user_id == user).delete()
 
