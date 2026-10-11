@@ -21,7 +21,7 @@ The versioning system provides comprehensive version control for datasets, enabl
 
 3. **S3 Storage Backend**
    - Stores version snapshots in S3
-   - Path structure: `datasets/{user_id}/{dataset_id}/versions/{version_id}.parquet`
+   - Path structure: `datasets/{user_id}/{dataset_id}/versions/{version_id}/data.parquet` (named for the parquet it holds; versions written before #888 sit under the upload's filename)
    - Supports content-based deduplication
 
 ## Version Lifecycle

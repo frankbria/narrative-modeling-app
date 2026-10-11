@@ -33,7 +33,12 @@ from app.services.exceptions import (
     OperationError,
     ValidationError,
 )
-from app.utils.s3 import configured_bucket, create_s3_client, parse_s3_url
+from app.utils.s3 import (
+    configured_bucket,
+    create_s3_client,
+    holds_parquet,
+    parse_s3_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +240,10 @@ class VersioningService(BaseService[DatasetVersion]):
         # concurrent transforms can never put_object to the same key and silently
         # overwrite each other's content.
         version_id = str(uuid.uuid4())
-        versioned_file_path = f"datasets/{user_id}/{parent_version.dataset_id}/versions/{version_id}/{dataset_metadata.filename}"
+        # Named for what it holds, not for the upload: an undo makes this object the
+        # dataset's current file, and file_type is then read off its name (#888).
+        name = "data.parquet" if holds_parquet(transformed_content) else dataset_metadata.filename
+        versioned_file_path = f"datasets/{user_id}/{parent_version.dataset_id}/versions/{version_id}/{name}"
 
         try:
             self.s3_client.put_object(

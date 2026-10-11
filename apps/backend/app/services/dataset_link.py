@@ -13,6 +13,7 @@ metadata's `s3_url` to the twin) would then miss the PII-carrying `UserData` row
 the join. A half-failure is logged at ERROR with both locations so the operator can repair
 it; `scripts/inventory_dataset_links.py` finds every pair in that state.
 """
+import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -21,6 +22,7 @@ from bson import ObjectId
 from app.models.dataset import DatasetMetadata
 from app.models.user_data import UserData
 from app.services.exceptions import NotFoundError
+from app.utils.s3 import get_file_from_s3, holds_parquet
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,21 @@ def _file_type_of(url: str) -> str | None:
     """The stored `file_type` value for a location, from its extension; None if unknown."""
     ext = url.split("?", 1)[0].rsplit(".", 1)[-1].lower()
     return ext if ext in _KNOWN_TYPES else None
+
+
+async def file_type_at(url: str) -> str | None:
+    """The `file_type` of the object at `url`: what its name says, unless it is a version
+    object whose name does not say parquet.
+
+    Until #888 every version held parquet under the upload's own name (`…/d.csv`), so
+    for those the bytes decide. Raises if that object cannot be read: a guess here is
+    what made training parse parquet as CSV after an undo.
+    """
+    named = _file_type_of(url)
+    if named == "parquet" or "/versions/" not in url:
+        return named
+    content = await asyncio.to_thread(lambda: get_file_from_s3(url).getvalue())
+    return "parquet" if holds_parquet(content) else named
 
 
 # What the caller may have changed on the document for the new file (#723: these and the
@@ -61,7 +78,7 @@ async def record_new_file(doc: Dataset, new_url: str) -> None:
     twin = await _find_twin(doc, old_url)
     # Every writer uploads the transformed frame as parquet, so a dataset uploaded as CSV
     # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
-    doc.file_type = _file_type_of(new_url) or doc.file_type
+    doc.file_type = await file_type_at(new_url) or doc.file_type
     await _move_all(_erasure_order(doc, twin), doc, current, old_url, new_url)
 
 
