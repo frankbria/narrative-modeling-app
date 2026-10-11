@@ -12,6 +12,9 @@ from pymongo import IndexModel
 
 from app.utils.datetime import as_utc, utcnow
 
+# The unique index that holds the per-tenant concurrent-job cap (#653).
+LIVE_SLOT_INDEX = "user_live_slot_unique"
+
 
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -162,7 +165,7 @@ class BatchJob(Document):
             # that stored the slot as a long would be invisible to the cap.
             IndexModel(
                 [("user_id", 1), ("job_type", 1), ("admission_slot", 1)],
-                name="user_live_slot_unique",
+                name=LIVE_SLOT_INDEX,
                 unique=True,
                 partialFilterExpression={
                     "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]},

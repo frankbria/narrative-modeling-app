@@ -28,7 +28,13 @@ from pymongo.errors import DuplicateKeyError
 from app.billing import metering
 from app.billing.metering import period_key_for
 from app.billing.plans import _env_positive_int
-from app.models.batch_job import BatchJob, BatchPredictionConfig, JobStatus, JobType
+from app.models.batch_job import (
+    LIVE_SLOT_INDEX,
+    BatchJob,
+    BatchPredictionConfig,
+    JobStatus,
+    JobType,
+)
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import InterpretabilityService
@@ -89,6 +95,12 @@ def _batch_semaphore() -> asyncio.Semaphore:
         sem = asyncio.Semaphore(MAX_CONCURRENT_BATCH_JOBS)
         _batch_semaphores[loop] = sem
     return sem
+
+
+def _is_slot_collision(error: DuplicateKeyError) -> bool:
+    """Whether a duplicate key came from the tenant-slot index. Any other unique index
+    on the collection is a real failure, not a full tenant."""
+    return LIVE_SLOT_INDEX in str(error)
 
 
 class BatchConcurrencyLimitError(Exception):
@@ -242,7 +254,11 @@ class BatchPredictionService:
         is held at the ceiling, further jobs wait here rather than all executing.
         The direct ``_process_batch_job`` path (auto_start=False, tests) is not
         gated, so unit tests stay deterministic."""
-        async with _batch_semaphore():
+        # The pump covers the wait as well as the run (#653). A queued job has a live
+        # task that will run it, so it must not go stale: a job reaped while it only
+        # waited was still run when its slot freed, and a retry in between could have
+        # the same job executed twice or its retry refunded in full.
+        async with heartbeat_pump(job), _batch_semaphore():
             # A job cancelled while it waited its turn must not start (#515); the
             # harder case of cancelling a job already running is #485.
             fresh = await BatchJob.find_one(BatchJob.job_id == job.job_id)
@@ -356,8 +372,9 @@ class BatchPredictionService:
 
         try:
             await self._admit(job)
-        except BatchConcurrencyLimitError:
-            # Lost the race for the last slot after uploading: take the input back.
+        except Exception:
+            # No job row was written (usually: lost the race for the last slot after
+            # uploading), so nothing will ever read or erase the input. Take it back.
             await self._discard_input(input_path)
             raise
 
@@ -379,8 +396,9 @@ class BatchPredictionService:
             try:
                 await job.create()
                 return
-            except DuplicateKeyError:
-                continue
+            except DuplicateKeyError as e:
+                if not _is_slot_collision(e):
+                    raise
         raise BatchConcurrencyLimitError(
             MAX_CONCURRENT_BATCH_JOBS_PER_USER, MAX_CONCURRENT_BATCH_JOBS_PER_USER
         )
@@ -1326,8 +1344,10 @@ class BatchPredictionService:
             try:
                 claimed = await self._claim_retry(job_id, user_id, slot)
                 break
-            except DuplicateKeyError:
-                continue  # another live job of this tenant holds that slot (#653)
+            except DuplicateKeyError as e:
+                # Another live job of this tenant holds that slot (#653): try the next.
+                if not _is_slot_collision(e):
+                    raise
         else:
             raise BatchConcurrencyLimitError(
                 MAX_CONCURRENT_BATCH_JOBS_PER_USER, MAX_CONCURRENT_BATCH_JOBS_PER_USER
