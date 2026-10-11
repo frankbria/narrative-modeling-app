@@ -1668,3 +1668,29 @@ checked, and the fix is always the same: the claim is a query, so run it.
   to an inherited member and crashing the sign-in page). A chained merge cannot act on
   what the read shows. The same lookup in the older auth error page had the bug too:
   a caller-supplied key into a plain object needs `Object.hasOwn` or a `Map`.
+
+## 2026-10-10 — #715 (column stats: the race loser serves every column)
+
+- **Reproduce a race with real processes before trusting the issue's severity.** #715
+  called the window sub-millisecond. Two OS processes on a 3000-column dataset truncated
+  the response in 3 to 5 of 6 rounds on main, because MongoDB commits an `insert_many` in
+  batches. A test that seeds the interleaving proves the fix; only real concurrency shows
+  how often it happens.
+- **Grep for callers before sizing the fix.** No frontend code calls
+  `/api/v1/column_stats`. That turned up at review time, after two rounds of adjacent
+  fixes in the route. It belongs in exploration: it decides how far to chase a bot's next
+  finding.
+- **When a bot's finding has its root in another module, file the root.** The third
+  review round found that restored version objects hold parquet under a `.csv` key. A
+  magic-byte sniff in the column-stats loader would have closed the comment and left
+  training broken on the same state (#888).
+- **Test the branches of code the CRAP gate makes you extract, with real inputs.** The
+  shared loader was a line-for-line move. Its first two branch tests found two 500s that
+  should have been 400s (`csv.Error` from the sniffer is not a `ValueError`).
+- **Gate a commit on the test command, not on the last command in the chain.** `pytest |
+  grep; ruff && git commit` committed a failing test, because the pipeline's status was
+  grep's and ruff passed. Nothing was pushed, and the gate caught it. Run the tests, read
+  the exit code, then commit in the next command.
+- **A stale `.git/index.lock` in the main checkout blocks the post-merge pull.** It was
+  30 minutes old and empty with no git process alive (`pgrep -x git`), left while another
+  session was working in the repo. Check both before removing it.
