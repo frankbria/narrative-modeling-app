@@ -1761,3 +1761,24 @@ checked, and the fix is always the same: the claim is a query, so run it.
   could overwrite a cancellation, so it now goes through the task's partial-write
   callback.
 
+## 2026-10-11 — #653 (an exact per-tenant batch cap, and a wall clock on each run)
+
+- **For a concurrency cap, let the rows that are live be the count.** A counter needs a
+  decrement on every path to a terminal state, and one missed path locks a tenant out. A
+  numbered slot on the job plus a unique partial index over the live statuses is exact
+  under a burst and needs no release: the status write frees the slot.
+- **A new way to end a run needs every refund path re-read.** The wall clock cancels the
+  run, and the run was the only place a cancel got refunded. The cross-family reviewer
+  found that a cancelled, hung job would keep every reserved unit; reading the refund
+  callers also turned up a queue-skip path that never refunded. When two paths can reach
+  one refund, claim it with a conditional write and refund only on a win.
+- **`asyncio.wait_for` cancels the inner coroutine before you can touch shared state.** The
+  run fires its webhook from its own `finally`, so with `wait_for` the webhook reported
+  RUNNING. `asyncio.wait` with a timeout lets the caller write the terminal state first
+  and cancel after.
+- **lizard counts a `finally`.** The create handler sat at 6 with four `except` clauses; a
+  line-by-line bisect through lizard's API showed the inner `try/finally` was the sixth.
+- **A stub that returns an unsaved document hides how the caller writes it.** The route
+  test's stubbed service returned a `BatchJob` that was never inserted, and the route's
+  full `save()` quietly created it. The real service always returns a stored job.
+

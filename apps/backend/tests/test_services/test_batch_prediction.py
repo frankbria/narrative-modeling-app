@@ -1153,3 +1153,381 @@ async def test_failed_batch_records_a_user_safe_reason(monkeypatch):
     reason = job.mark_failed.call_args[0][0]
     assert "only one distinct value" in reason  # classified, actionable
     assert "secret-bucket" not in reason  # raw internal never surfaced
+
+
+# --- Atomic per-tenant admission and the wall clock (#653) ----------------------
+
+
+def _admission_service(burst: int = 1):
+    """A service whose input upload holds every create of a burst until all of them
+    have passed the cap check, so each one has uploaded before any job row exists."""
+    svc = _service()
+    uploading, all_uploading = [], _asyncio.Event()
+
+    async def prepare(_input, user_id, model_id, job_id):
+        uploading.append(job_id)
+        if len(uploading) >= burst:
+            all_uploading.set()
+        await all_uploading.wait()
+        return f"batch-jobs/{user_id}/{model_id}/{job_id}/input.csv", 1
+
+    svc._prepare_input_data = prepare
+    svc.s3_service.delete_file = AsyncMock(return_value=True)
+    return svc
+
+
+async def _burst(svc, user: str, n: int) -> list:
+    return await _asyncio.gather(
+        *[
+            svc.create_batch_prediction_job(user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False)
+            for _ in range(n)
+        ],
+        return_exceptions=True,
+    )
+
+
+async def _live_count(user: str) -> int:
+    return await BatchJob.find(
+        {"user_id": user, "status": {"$in": [JobStatus.PENDING.value, JobStatus.RUNNING.value]}}
+    ).count()
+
+
+@pytest.mark.asyncio
+async def test_a_burst_from_one_tenant_admits_exactly_the_cap(setup_database, monkeypatch):
+    """The cap was count-then-upload-then-insert, so every create in a burst counted
+    zero live jobs and all of them were admitted."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 3)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(burst=8), "burst_user_653"
+    try:
+        results = await _burst(svc, user, 8)
+
+        admitted = [r for r in results if isinstance(r, BatchJob)]
+        refused = [r for r in results if isinstance(r, BatchConcurrencyLimitError)]
+        assert (len(admitted), len(refused)) == (3, 5), results
+        assert await _live_count(user) == 3
+        assert sorted(j.admission_slot for j in admitted) == [0, 1, 2]
+        # A refused create had already uploaded its input: it is deleted, not orphaned.
+        deleted = {call.args[0] for call in svc.s3_service.delete_file.await_args_list}
+        assert len(deleted) == 5 and not deleted & {j.input_path for j in admitted}
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_finished_job_frees_its_slot_without_anyone_releasing_it(setup_database, monkeypatch):
+    """The slot is held by the job's own live status, so nothing has to remember to
+    give it back: any path to a terminal state (finish, cancel, the reaper) frees it."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 2)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(), "slot_user_653"
+    try:
+        first = await svc.create_batch_prediction_job(
+            user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+        )
+        second = await svc.create_batch_prediction_job(
+            user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+        )
+        with pytest.raises(BatchConcurrencyLimitError):
+            await svc.create_batch_prediction_job(user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False)
+
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": first.job_id}, {"$set": {"status": JobStatus.COMPLETED.value}}
+        )
+        third = await svc.create_batch_prediction_job(
+            user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+        )
+
+        assert third.admission_slot == first.admission_slot != second.admission_slot
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_retry_takes_a_free_slot_not_the_one_it_once_held(setup_database, monkeypatch):
+    """A failed job kept its old slot number. Another job may hold that slot now, so the
+    retry must claim whichever is free instead of colliding on its own history."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 2)
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(), "retry_slot_653"
+    svc._spawn_processing = MagicMock()
+    try:
+        failed = await svc.create_batch_prediction_job(
+            user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+        )
+        assert failed.admission_slot == 0
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": failed.job_id}, {"$set": {"status": JobStatus.FAILED.value}}
+        )
+        live = await svc.create_batch_prediction_job(
+            user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+        )
+        assert live.admission_slot == 0  # took the slot the failed job gave up
+
+        assert await svc.retry_job(failed.job_id, user) is True
+
+        retried = await BatchJob.find_one(BatchJob.job_id == failed.job_id)
+        assert (retried.status, retried.admission_slot) == (JobStatus.PENDING, 1)
+        assert await _live_count(user) == 2
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+async def _running_job(user: str, job_id: str, total: int = 10) -> BatchJob:
+    job = BatchJob(
+        job_id=job_id, job_type=JobType.BATCH_PREDICTION, user_id=user,
+        config={"model_id": "model_123"}, input_path="batch-jobs/u/m/j/input.csv",
+        status=JobStatus.PENDING,
+    )
+    job.progress.total_records = total
+    return await job.create()
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_never_returns_is_failed_at_the_wall_clock_and_frees_its_slot(
+    setup_database, monkeypatch
+):
+    """Nothing in a batch run was time-bounded, and since #515 a run holds one of the
+    process's execution slots, so one hung job starved every tenant's queue."""
+    from app.services import batch_prediction as bp
+
+    _batch_semaphores.clear()
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS", 1)
+    monkeypatch.setattr(bp, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.2)
+    refunds = AsyncMock()
+    monkeypatch.setattr(bp.metering, "refund", refunds)
+    svc, user = _service(), "hung_user_653"
+    svc._fire_webhook = AsyncMock()
+
+    async def hangs(job):
+        await svc._claim_running(job)
+        job.progress.processed_records = 4  # four of ten records were predicted
+        await _asyncio.sleep(30)
+
+    svc._run_batch_job = hangs
+    job = await _running_job(user, "batch_hung_653")
+    try:
+        await _asyncio.wait_for(svc._process_batch_job_admitted(job), timeout=5)
+
+        stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+        assert stored.status == JobStatus.FAILED
+        assert "0.2" in stored.error_message and "limit" in stored.error_message
+        assert not bp._batch_semaphore().locked(), "the execution slot was given back"
+        # The six records it never reached are handed back; the four it did are kept.
+        assert [c.args[1:3] for c in refunds.await_args_list] == [("predictions", 6)]
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_job_too_stuck_to_notice_is_refunded_at_the_wall_clock(
+    setup_database, monkeypatch
+):
+    """A cancel is refunded by the run, at its next between-chunks check. A hung run
+    never gets there, so before the wall clock that cancel kept every reserved unit.
+    The wall clock leaves the job CANCELLED and makes the refund the run could not."""
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.2)
+    refunds = AsyncMock()
+    monkeypatch.setattr(bp.metering, "refund", refunds)
+    svc, user = _service(), "cancelled_hung_653"
+    svc._fire_webhook = AsyncMock()
+
+    async def hangs_after_a_cancel(job):
+        await svc._claim_running(job)
+        job.progress.processed_records = 4
+        await svc.cancel_job(job.job_id, user)
+        await _asyncio.sleep(30)
+
+    svc._run_batch_job = hangs_after_a_cancel
+    job = await _running_job(user, "batch_cancelled_hung_653")
+    try:
+        await _asyncio.wait_for(svc._process_batch_job(job), timeout=5)
+
+        stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+        assert stored.status == JobStatus.CANCELLED and stored.error_message is None
+        assert [c.args[1:3] for c in refunds.await_args_list] == [("predictions", 6)]
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_database, monkeypatch):
+    """The run's own cancel check and the wall clock can both reach the refund within
+    the same instant. Whichever marks the job first refunds; a retry reserves again
+    and so may be refunded again."""
+    from app.services import batch_prediction as bp
+
+    refunds = AsyncMock()
+    monkeypatch.setattr(bp.metering, "refund", refunds)
+    svc, user = _service(), "refund_once_653"
+    svc._spawn_processing = MagicMock()
+    job = await _running_job(user, "batch_refund_once_653")
+    try:
+        await _asyncio.gather(*[svc._refund_remainder(job, 4) for _ in range(5)])
+        assert refunds.await_count == 1
+
+        # A caller that owes nothing still settles the run: a later, larger claim
+        # for the same run finds it settled.
+        settled = await _running_job(user, "batch_settled_653")
+        await svc._refund_remainder(settled, 10)
+        await svc._refund_remainder(settled, 0)
+        assert refunds.await_count == 1
+
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": job.job_id}, {"$set": {"status": JobStatus.FAILED.value}}
+        )
+        assert await svc.retry_job(job.job_id, user) is True
+        await svc._refund_remainder(job, 0)
+        assert refunds.await_count == 2
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_job_cancelled_while_queued_gets_its_whole_reservation_back(setup_database, monkeypatch):
+    """It reserved its records at creation and never ran one. The queue skipped it
+    without a refund."""
+    from app.services import batch_prediction as bp
+
+    _batch_semaphores.clear()
+    refunds = AsyncMock()
+    monkeypatch.setattr(bp.metering, "refund", refunds)
+    svc, user = _service(), "queued_cancel_653"
+    svc._run_batch_job = AsyncMock(side_effect=AssertionError("a cancelled job ran"))
+    job = await _running_job(user, "batch_queued_cancel_653")
+    try:
+        assert await svc.cancel_job(job.job_id, user) is True
+
+        await svc._process_batch_job_admitted(job)
+
+        assert [c.args[1:3] for c in refunds.await_args_list] == [("predictions", 10)]
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_run_inside_the_wall_clock_is_untouched(setup_database, monkeypatch):
+    from app.services import batch_prediction as bp
+
+    monkeypatch.setattr(bp, "BATCH_JOB_WALL_CLOCK_SECONDS", 5)
+    svc, user = _service(), "quick_user_653"
+    ran = []
+
+    async def finishes(job):
+        ran.append(job.job_id)
+
+    svc._run_batch_job = finishes
+    job = await _running_job(user, "batch_quick_653")
+    try:
+        await svc._process_batch_job(job)
+
+        assert ran == ["batch_quick_653"]
+        assert (await BatchJob.find_one(BatchJob.job_id == job.job_id)).status == JobStatus.PENDING
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_insert_that_is_not_a_full_tenant_is_raised_and_its_input_removed(
+    setup_database, monkeypatch
+):
+    """Only the tenant-slot index means "at the cap". Any other failure to write the job
+    row is a fault, and either way the input uploaded for it has no owner."""
+    from pymongo.errors import DuplicateKeyError
+
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(), "other_index_653"
+    monkeypatch.setattr(
+        BatchJob, "create",
+        AsyncMock(side_effect=DuplicateKeyError("E11000 duplicate key error index: some_other_unique")),
+    )
+
+    with pytest.raises(DuplicateKeyError):
+        await svc.create_batch_prediction_job(user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False)
+
+    svc.s3_service.delete_file.assert_awaited_once()
+    assert await BatchJob.find(BatchJob.user_id == user).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_an_insert_that_landed_and_then_raised_keeps_its_input(setup_database, monkeypatch):
+    """A write can fail after the server applied it. The job exists then, and deleting
+    its input would make every run of it fail, so the row is looked up first."""
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(), "landed_insert_653"
+    real_create = BatchJob.create
+
+    async def create_then_time_out(self, *args, **kwargs):
+        await real_create(self, *args, **kwargs)
+        raise ConnectionError("the reply was lost")
+
+    monkeypatch.setattr(BatchJob, "create", create_then_time_out)
+    try:
+        with pytest.raises(ConnectionError):
+            await svc.create_batch_prediction_job(
+                user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+            )
+
+        assert await BatchJob.find(BatchJob.user_id == user).count() == 1
+        svc.s3_service.delete_file.assert_not_awaited()
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_a_job_waiting_for_an_execution_slot_is_not_reaped(setup_database, monkeypatch):
+    """Nothing kept a queued job's heartbeat fresh, so after the stale timeout the reaper
+    failed and refunded a job whose task was alive and about to run it."""
+    from datetime import timedelta
+
+    from app.services import batch_prediction as bp
+    from app.services.job_reaper import reap_stale_jobs
+    from app.utils.datetime import utcnow
+    from app.utils.heartbeat import heartbeat_pump
+
+    _batch_semaphores.clear()
+    monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS", 1)
+    monkeypatch.setattr(bp, "heartbeat_pump", lambda job: heartbeat_pump(job, interval=0.05))
+    svc, user = _service(), "queued_alive_653"
+    ran = []
+
+    async def runs(job):
+        ran.append(job.job_id)
+
+    svc._run_batch_job = runs
+    job = await _running_job(user, "batch_queued_alive_653")
+    await BatchJob.get_motor_collection().update_one(
+        {"job_id": job.job_id}, {"$set": {"last_heartbeat": utcnow() - timedelta(hours=2)}}
+    )
+    slot = bp._batch_semaphore()
+    await slot.acquire()
+    try:
+        task = _asyncio.create_task(svc._process_batch_job_admitted(job))
+        await _asyncio.sleep(0.3)
+
+        await reap_stale_jobs(timeout_seconds=60)
+        assert (await BatchJob.find_one(BatchJob.job_id == job.job_id)).status == JobStatus.PENDING
+
+        slot.release()
+        await task
+        assert ran == [job.job_id]
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
