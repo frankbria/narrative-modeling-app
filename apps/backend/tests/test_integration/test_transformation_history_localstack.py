@@ -117,6 +117,8 @@ async def _store_under_the_uploads_name(s3_client, bucket: str, dataset_id: str)
         DatasetVersion.dataset_id == dataset_id, DatasetVersion.version_number == 2
     )
     legacy_key = f"{version.file_path.rsplit('/', 1)[0]}/d.csv"
+    if version.file_path == legacy_key:
+        return  # this code still writes versions that way
     s3_client.copy_object(
         Bucket=bucket, Key=legacy_key, CopySource={"Bucket": bucket, "Key": version.file_path}
     )
