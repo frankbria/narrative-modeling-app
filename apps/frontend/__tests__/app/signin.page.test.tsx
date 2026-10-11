@@ -76,3 +76,31 @@ describe('SignInPage legal notice (issue #473 AC5)', () => {
     );
   });
 });
+
+// Auth.js sends a failed sign-in back to this page as `?error=<type>`. The page
+// used to ignore it, so a refused sign-in looked like nothing had happened.
+describe('SignInPage sign-in errors', () => {
+  beforeEach(() => {
+    sessionStatus = 'unauthenticated';
+  });
+
+  it('explains an email that is registered with another provider', () => {
+    search = new URLSearchParams({ error: 'OAuthAccountNotLinked' });
+    render(<SignInPage />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/different sign-in method/i);
+  });
+
+  it('shows a generic message for any other error, never the raw parameter', () => {
+    search = new URLSearchParams({ error: '<b>SomethingElse</b>' });
+    render(<SignInPage />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/sign-in failed/i);
+    expect(alert).not.toHaveTextContent('SomethingElse');
+  });
+
+  it('shows nothing when there is no error', () => {
+    search = new URLSearchParams();
+    render(<SignInPage />);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
