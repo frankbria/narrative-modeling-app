@@ -1,44 +1,46 @@
-# #888 — version objects hold parquet under the upload's `.csv` name (P1.59)
+# #735 — uploads write the S3 object before `insert()`; a failed insert orphans it (P1.61)
 
-Self-authored plan (the issue has a definition of done, no plan).
+Self-authored plan (the issue lists two options, no plan and no acceptance criteria).
 
 ## Decisions made here
-- **A new version object is named for what it holds.** `create_transformation_version`
-  keys parquet content as `…/versions/{version_id}/data.parquet`. The name is decided
-  from the bytes, not assumed: `POST /datasets/{id}/versions` hands the same function a
-  copy of the latest version, which can be the CSV upload. That content keeps the
-  dataset's filename, as today.
-- **For a version object whose name does not say parquet, the bytes decide.** This is the
-  pre-#888 population. `record_new_file` is the one place that stamps `file_type` from a
-  location, so the check lives there (one download, only for such a URL; every forward
-  writer hands it a `.parquet` URL and pays nothing). Undo, redo and jump all go through
-  it, so `history_service` does not change.
-- **The audit script uses the same rule**, so it repairs a dataset already sitting on a
-  mis-named version instead of confirming `csv`. A download it cannot make is
-  `undetermined` and the row is left alone.
-- No re-keying of existing objects: the row's `file_type` is made true, the name stays.
-  `column_stats` dispatched on the name alone, so its loader now takes the parquet
-  branch on the bytes it already holds (cross-family review).
-- `create_transformation_version` was cc 12 and the naming line is inside it, so the
-  CRAP gate required splitting it (`_duplicate_of`, `_upload_version`, `_schema_hash`,
-  `_insert_version`).
+- **Delete on failure, in one middleware, not in each route.** `upload_file_to_s3` records
+  every object it writes during a request. `UnownedUploadCleanupMiddleware` runs when the
+  request ends in a 4xx/5xx or an unhandled exception, and deletes each recorded object
+  that no document references. Same shape as `QuotaRefundMiddleware`, for the same
+  reason: routes get added, and the one that forgets orphans silently.
+- **Why not a guard in each route:** five handlers write then insert (`/upload/secure`,
+  `/upload/confirm-pii-upload`, chunked `complete`, `/upload/`, `/datasets/upload`), at
+  cyclomatic complexity 23, 8, 11, 16 and 11. Editing any of them means splitting it for
+  the CRAP gate, which is a rewrite of the whole upload surface for a cleanup fix. The
+  middleware touches none of them and also covers the onboarding sample loader and the
+  transformation writers, which use the same helper.
+- **"Owned" is decided by looking, not by where the exception came from.** An object is
+  kept if any `UserData` or `DatasetMetadata` row of that tenant names its key in
+  `s3_url`, `file_path`, `source_s3_url` or `superseded_s3_urls`. So an insert that landed
+  and then raised, or `/datasets/upload` failing on its second (twin) write, keeps the
+  object. If the lookup or the delete itself fails, the object is left and the failure is
+  logged: an orphan is reported by `scripts/inventory_orphaned_s3_objects.py`, a deleted
+  object that a row still points at is data loss.
+- `upload_file_to_s3` is cc 8, so the recording is a decorator on it, not an edit inside it.
+- Not covered: a request cancelled by a client disconnect (the refund middleware has the
+  same limit), and a 2xx that reports failure in its body after uploading.
+- From review: `TransformationConfig.current_file_path` and
+  `BulkTransformationJob.output_file_path` also count as ownership, the key is matched raw
+  or percent-encoded, and both log lines name the key.
 
-## Acceptance criteria (the issue's definition of done)
-- [x] AC1: a test reproduces it first (CSV upload, two steps, undo, read the way a
-      training-stage reader does) and fails on main.
-- [x] AC2: a new version object's key extension matches its content.
-- [x] AC3: a dataset restored to, or already sitting on, a mis-named version still loads:
-      the restore stamps `parquet`, and the audit script corrects an existing row.
-- [x] AC4: undo, then train, works on a CSV upload, against real bytes in LocalStack.
-- [x] AC5: column stats on a restored (new-style) version return every column.
+## Acceptance criteria (derived from the issue)
+- [x] AC1: a request that fails after the S3 put on `/upload/secure`,
+      `/upload/confirm-pii-upload` or chunked `complete` leaves no object in the bucket.
+- [x] AC2: the same holds for the other writers through the helper, shown on
+      `/datasets/upload` with a file that fails processing (no fault injection).
+- [x] AC3: a successful upload keeps its object, and an object a document references is
+      never deleted even when the request then fails.
+- [x] AC4: a cleanup that cannot run (lookup or delete fails) does not change the
+      response, and is logged.
 
 ## Steps
-1. Tests first, in `tests/test_integration/test_transformation_history_localstack.py`:
-   undo then read (AC1, AC2, AC4, AC5); a version re-keyed to the old shape, then undo
-   (AC3); the audit script on a row a pre-#888 undo left as `csv` (AC3).
-2. `app/utils/s3.py::holds_parquet(content)`: PAR1 at both ends, the #524 rule.
-3. `versioning_service.create_transformation_version`: name by content.
-4. `dataset_link.file_type_at(url)` used by `record_new_file` and the audit script.
-5. Unit tests for the non-integration gate: key naming, the bytes-decide branch with the
-   downloader stubbed, the script's undetermined case.
-6. CLAUDE.md: the `file_type` paragraph.
+1. Tests first: LocalStack tests per route (real bucket listing), plus gate-suite tests of
+   the middleware with real documents and a stubbed delete.
+2. `app/utils/s3.py`: the per-request record and the decorator.
+3. `app/middleware/upload_cleanup.py`: the middleware; mount it in `app/main.py`.
+4. CLAUDE.md: the chunked-upload / S3 section.
