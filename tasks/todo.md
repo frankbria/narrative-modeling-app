@@ -14,6 +14,11 @@ Self-authored plan (the issue lists four items and four acceptance criteria).
   transformation that wrote no version. A dataset with no version of those bytes records
   none, and the report keeps its caveat. It is passed to `save_model` explicitly, which
   already prefers an explicit id over its own (broken) lookup.
+- **`save_model`'s "latest version" fallback is removed** (cross-family review). Since #850
+  keys a UI upload's twin by the upload's own id, that fallback can match, and it would
+  name the dataset's latest version whenever training found no version of the bytes it
+  read. `save_model` was cc 11, so its two best-effort JSON uploads move to
+  `_upload_json_artifact`.
 - The matched version gets the model id in `used_in_training` (`$addToSet`), which the
   issue notes nothing ever wrote.
 - **Item 3, the preprocessing applied, is closed without capture, for a recorded

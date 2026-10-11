@@ -544,10 +544,16 @@ async def _link_trained_version(
         )
         if twin is None:
             return None
-        version = await DatasetVersion.find_one(
-            DatasetVersion.dataset_id == twin.dataset_id,
-            DatasetVersion.user_id == user_id,
-            DatasetVersion.content_hash == content_hash,
+        # The latest of them, when a step that changed nothing left two versions of
+        # the same bytes: that is where the dataset's history stands.
+        version = (
+            await DatasetVersion.find(
+                DatasetVersion.dataset_id == twin.dataset_id,
+                DatasetVersion.user_id == user_id,
+                DatasetVersion.content_hash == content_hash,
+            )
+            .sort("-version_number")
+            .first_or_none()
         )
         if version is None:
             return None

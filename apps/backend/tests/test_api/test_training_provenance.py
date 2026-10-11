@@ -111,3 +111,21 @@ async def test_a_dataset_with_no_twin_trains_and_records_no_version(setup_databa
     metadata = await _train("model_801_untracked", _csv())
 
     assert metadata.get("dataset_version_id") is None
+
+
+async def test_of_two_versions_holding_the_same_bytes_the_later_one_is_named(setup_database):
+    """A step that changes nothing writes a second version of identical content. The
+    later one is where the dataset's history stands."""
+    content = _csv()
+    first = await _version_of(content)
+    later = await DatasetVersion(
+        version_id="version-801-later", dataset_id="dataset_meta_801", version_number=2, user_id=USER,
+        content_hash=first.content_hash, file_size=len(content),
+        file_path=f"datasets/{USER}/v2/data.parquet", s3_url=f"s3://test-bucket/datasets/{USER}/v2/data.parquet",
+        num_rows=120, num_columns=3, columns=["x1", "x2", "target"], schema_hash="s",
+        is_base_version=False, created_by=USER,
+    ).insert()
+
+    metadata = await _train("model_801_twice", content)
+
+    assert metadata["dataset_version_id"] == later.version_id

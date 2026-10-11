@@ -442,3 +442,46 @@ class TestMLModelBackwardCompatibility:
             model_path="s3://b/k",
         )
         assert model.evaluation_data_path is None
+
+
+class TestSaveModelRecordsOnlyTheVersionItIsGiven:
+    """#801: `save_model` used to fill a missing `dataset_version_id` with the dataset's
+    latest version. Latest is not "trained on": after a transformation that writes no
+    version, or one that lands while the job is queued, it is a version of other bytes,
+    and the model report would state it as a stored fact."""
+
+    @pytest.mark.asyncio
+    async def test_a_version_training_did_not_match_is_not_filled_in(self, setup_database):
+        from app.models.version import DatasetVersion
+
+        # A dataset keyed by the upload's own id (#850), with a version on record.
+        version = await DatasetVersion(
+            version_id="latest-but-not-trained-on", dataset_id="ds_801", version_number=2,
+            user_id="user_801", content_hash="other-bytes", file_size=1,
+            file_path="datasets/user_801/ds_801/versions/v/data.parquet",
+            s3_url="s3://test-bucket/datasets/user_801/ds_801/versions/v/data.parquet",
+            num_rows=1, num_columns=1, columns=["a"], schema_hash="s",
+            is_base_version=False, created_by="user_801",
+        ).insert()
+
+        ml_model = await _mock_storage().save_model(
+            _trained_candidate(), FeatureEngineer(), user_id="user_801", dataset_id="ds_801",
+            model_metadata={**_metadata(), "dataset_version_id": None}, model_id="model_801_none",
+        )
+        try:
+            assert ml_model.dataset_version_id is None
+        finally:
+            await ml_model.delete()
+            await version.delete()
+
+    @pytest.mark.asyncio
+    async def test_the_version_training_matched_is_stored(self, setup_database):
+        ml_model = await _mock_storage().save_model(
+            _trained_candidate(), FeatureEngineer(), user_id="user_801", dataset_id="ds_801",
+            model_metadata={**_metadata(), "dataset_version_id": "matched-by-content"},
+            model_id="model_801_matched",
+        )
+        try:
+            assert ml_model.dataset_version_id == "matched-by-content"
+        finally:
+            await ml_model.delete()

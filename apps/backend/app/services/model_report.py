@@ -654,7 +654,7 @@ def _md_run_identity(section: ReproducibilitySection) -> list[str]:
     )
     if not section.dataset_version_id:
         return [seed]  # the missing version is raised under Caveats
-    return [seed, "", f"Dataset version: `{_flatten(section.dataset_version_id)}`."]
+    return [seed, "", f"Dataset version: {_code(section.dataset_version_id)}."]
 
 
 _MD_SECTIONS = (
