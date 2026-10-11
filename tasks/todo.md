@@ -1,37 +1,45 @@
-# #665 — training's S3 download and parse run on the event loop before the semaphore (P1.62)
+# #653 — batch admission: an exact per-tenant cap and a wall clock per job (P1.63)
 
-Self-authored plan (the issue has two acceptance criteria, no plan).
+Self-authored plan (the issue has acceptance criteria for both halves, no plan).
 
 ## Decisions made here
-- **Both halves of AC1.** The parse moves to `asyncio.to_thread`, and the whole load
-  (download + parse) moves inside the training semaphore. The download was already off
-  the loop (`download_file_bytes` uses `to_thread`); the pandas parse was not.
-- **Two new small functions, `_parse_dataset` and `_load_training_frame`,** hold the code
-  that leaves `train_model_task`. The task itself stays over the CRAP ceiling under the
-  standing #842 exemption; it gets shorter here (cc 41 to 37).
-- **The parse is moved as it stood** (same `decode` + `StringIO` for CSV, same type
-  dispatch). Routing training through `load_dataframe_from_s3`, the reader every other
-  stage uses, is #842's: it changes which seam the existing training tests stub.
-- **The `TimeoutError` → wall-clock mapping now wraps `engine.run` alone.** With the load
-  beside it inside the semaphore, the old outer `try` would have reported an S3 socket
-  timeout as the plan's wall-clock limit.
-- **The "Dataset downloaded" log line goes through `on_event`** (a partial write). It used
-  to be a full `save()` at task entry; after a wait for a slot, a full save could
-  overwrite a cancellation.
-- **`_parse_dataset` also accepts `"excel"`,** the value `/upload/secure` stores for an
-  `.xls`/`.xlsx` file. Training refused it as unsupported, so an Excel file uploaded
-  through the UI could not be trained on. Found by the cross-family review's note on that
-  error path.
-- AC2's timing test is marked `performance` (outside the PR gate): it measures time and
-  pandas holds the GIL for parts of a parse. The gate's version asserts the parse runs on
-  a worker thread.
+- **A slot index, not a counter.** A live job holds one numbered slot of its tenant
+  (`admission_slot` in `0..cap-1`); the unique partial index `user_live_slot_unique`
+  covers only PENDING/RUNNING rows. A create tries each slot and is refused when all
+  collide. A counter document would need a decrement on every path to a terminal state
+  (finish, failure, cancel, the reaper, a crash), and one missed path locks a tenant out;
+  here the status write itself frees the slot. The issue offered a counter or a claim
+  row; this is the claim row, with the job as its own claim.
+- **The claim is made when the job row is written, after the upload.** The count stays
+  as the early refusal before the upload (#515), so the common case still uploads
+  nothing. A create that then loses the race for the last slot deletes the input it
+  just uploaded (the key is the job's own).
+- **`retry_job` claims a free slot**, not the number the failed job once held, which
+  another live job may hold by now.
+- **The wall clock is one setting**, `BATCH_JOB_WALL_CLOCK_SECONDS` (default 3600), not
+  per tier. On expiry the job is written FAILED only if it is still RUNNING, and the
+  records it never reached are refunded, as a cancel does.
+- **`asyncio.wait`, not `wait_for`:** the run fires the completion webhook from its own
+  `finally`. With `wait_for` that webhook would report RUNNING.
+- `_run_batch_job` (cc 24) is not touched.
+- The partial index filter uses `$in`, which needs MongoDB 6.0 or later (CI runs 7.0,
+  local 8.0).
 
 ## Acceptance criteria (from the issue)
-- [x] AC1: the S3 download + parse run in `to_thread` and inside the training semaphore.
-- [x] AC2: a test/benchmark confirms a large parse does not block other request handling.
+- [x] AC1: per-user admission is atomic; a same-tenant burst cannot exceed
+      `MAX_CONCURRENT_BATCH_JOBS_PER_USER`.
+- [x] AC2: a test spawns N concurrent creates for one tenant and at most the cap are
+      admitted.
+- [x] AC3: a run is under a wall clock; a timeout marks the job FAILED with a clear
+      reason and releases the execution slot.
+- [x] AC4: a test: a job whose processing never returns is failed within the bound and
+      does not hold the semaphore.
 
 ## Steps
-1. Tests first: loop stall during a large parse; no download while every slot is held;
-   a download timeout is not the wall clock; each stored type reaches the engine.
-2. `_parse_dataset`, `_load_training_frame`; call the latter inside the semaphore.
-3. CLAUDE.md: the training concurrency paragraph.
+1. Tests first: a burst of 8 against a cap of 3; a finished job frees its slot; a retry
+   takes a free slot; a hung run is failed and frees the semaphore; a cancel is not
+   overwritten; a quick run is untouched.
+2. `BatchJob.admission_slot` and the index.
+3. `_admit`, `_discard_input`, `_claim_retry`; `_process_batch_job` and
+   `_fail_at_wall_clock`; `_finalize_if_running` reports whether it wrote.
+4. CLAUDE.md: the batch concurrency paragraph.

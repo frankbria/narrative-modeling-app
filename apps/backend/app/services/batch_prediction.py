@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 from beanie import PydanticObjectId
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.billing import metering
 from app.billing.metering import period_key_for
@@ -69,6 +70,10 @@ MAX_CONCURRENT_BATCH_JOBS = _env_positive_int("MAX_CONCURRENT_BATCH_JOBS", 2)
 MAX_CONCURRENT_BATCH_JOBS_PER_USER = _env_positive_int(
     "MAX_CONCURRENT_BATCH_JOBS_PER_USER", 3
 )
+# Hard stop for one run (#653). A run holds one of the process's execution slots, and
+# nothing inside it (the S3 reads, the chunk loop, inference) is time-bounded, so
+# without this a single hung job queues every tenant behind it for good.
+BATCH_JOB_WALL_CLOCK_SECONDS: float = _env_positive_int("BATCH_JOB_WALL_CLOCK_SECONDS", 3600)
 # WeakKeyDictionary, not id(loop): a closed test loop is collected and its entry
 # with it, so the cache never grows and a reused id() cannot alias a dead loop.
 _batch_semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
@@ -260,9 +265,9 @@ class BatchPredictionService:
 
     async def _enforce_per_user_cap(self, user_id: str) -> None:
         """Refuse when the caller already holds MAX_CONCURRENT_BATCH_JOBS_PER_USER
-        PENDING/RUNNING jobs (#515). Best-effort under a same-tenant burst — the
-        per-process semaphore is the hard execution bound; an atomic per-user
-        admission is #653.
+        PENDING/RUNNING jobs (#515). The early, cheap refusal: it runs before the
+        input is uploaded. It is a count, so a burst passes it together; the exact
+        bound is the slot the job claims when it is written (`_admit`, #653).
         """
         active = await BatchJob.find(
             {
@@ -346,13 +351,44 @@ class BatchPredictionService:
         job.progress.total_records = total_records
         job.progress.total_chunks = (total_records + chunk_size - 1) // chunk_size
 
-        await job.create()
+        try:
+            await self._admit(job)
+        except BatchConcurrencyLimitError:
+            # Lost the race for the last slot after uploading: take the input back.
+            await self._discard_input(input_path)
+            raise
 
         # Start processing asynchronously
         if auto_start:
             self._spawn_processing(job)
 
         return job
+
+    async def _admit(self, job: BatchJob) -> None:
+        """Insert the job into a free concurrent-job slot of its tenant, or refuse (#653).
+
+        The cap is the number of slots, and the `user_live_slot_unique` index lets
+        only one live job hold each, so a burst of creates is decided by the
+        database: the losers collide on every slot and are refused.
+        """
+        for slot in range(MAX_CONCURRENT_BATCH_JOBS_PER_USER):
+            job.admission_slot = slot
+            try:
+                await job.create()
+                return
+            except DuplicateKeyError:
+                continue
+        raise BatchConcurrencyLimitError(
+            MAX_CONCURRENT_BATCH_JOBS_PER_USER, MAX_CONCURRENT_BATCH_JOBS_PER_USER
+        )
+
+    async def _discard_input(self, input_path: str) -> None:
+        """Best-effort delete of an input this service just uploaded for a job that
+        was then refused; the key is the job's own (`batch-jobs/{user}/{model}/{job_id}/`)."""
+        try:
+            await self.s3_service.delete_file(input_path)
+        except Exception:
+            logger.warning("Could not delete the input of a refused batch job", exc_info=True)
 
     async def _prepare_input_data(
         self, input_data: Any, user_id: str, model_id: str, job_id: str
@@ -409,7 +445,41 @@ class BatchPredictionService:
         # Keep the heartbeat fresh through a slow chunk, so the stale-job reaper
         # (#484) never reaps this live run between per-chunk progress writes.
         async with heartbeat_pump(job):
-            await self._run_batch_job(job)
+            run = asyncio.ensure_future(self._run_batch_job(job))
+            try:
+                # Not wait_for: the run fires the completion webhook from its own
+                # `finally`, so the job has to read FAILED before the run is cancelled.
+                done, _ = await asyncio.wait({run}, timeout=BATCH_JOB_WALL_CLOCK_SECONDS)
+                if done:
+                    return run.result()
+                await self._fail_at_wall_clock(job)
+            finally:
+                if not run.done():
+                    run.cancel()
+                    await asyncio.gather(run, return_exceptions=True)
+
+    async def _fail_at_wall_clock(self, job: BatchJob) -> None:
+        """Mark a run that outlived BATCH_JOB_WALL_CLOCK_SECONDS as FAILED (#653) and
+        refund the records it never reached. Only if it is still RUNNING: a cancel
+        or a completion that landed first keeps its own state and its own refund.
+
+        Work already inside a worker thread cannot be killed; it finishes on its
+        own and its guarded writes then match nothing.
+        """
+        logger.error(
+            "Batch job %s exceeded the %ss wall clock", job.job_id, BATCH_JOB_WALL_CLOCK_SECONDS
+        )
+        job.mark_failed(
+            f"This batch job ran past the {BATCH_JOB_WALL_CLOCK_SECONDS}-second limit and "
+            "was stopped. Retry it, or split the input into smaller files."
+        )
+        if await self._finalize_if_running(job):
+            await self._refund_remainder(job, job.progress.processed_records)
+            return
+        stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+        if stored is not None:
+            # What the webhook reports is what is stored, not the failure that lost.
+            job.status, job.error_message = stored.status, stored.error_message
 
     async def _run_batch_job(self, job: BatchJob) -> None:
         try:
@@ -605,9 +675,10 @@ class BatchPredictionService:
             },
         )
 
-    async def _finalize_if_running(self, job: BatchJob) -> None:
+    async def _finalize_if_running(self, job: BatchJob) -> bool:
         """Write the terminal state ONLY if the job is still RUNNING (#485 AC2):
-        a cancel that already set CANCELLED wins. Atomic + conditional; explicit
+        a cancel that already set CANCELLED wins; returns whether it was written.
+        Atomic + conditional; explicit
         BSON-safe fields (a raw motor $set can't encode the enum objects a whole
         model_dump would produce)."""
         set_fields: dict[str, Any] = {
@@ -619,10 +690,11 @@ class BatchPredictionService:
         }
         if job.output_path is not None:
             set_fields["output_path"] = job.output_path
-        await BatchJob.get_motor_collection().update_one(
+        result = await BatchJob.get_motor_collection().update_one(
             {"job_id": job.job_id, "status": JobStatus.RUNNING.value},
             {"$set": set_fields},
         )
+        return result.modified_count == 1
 
     async def _refund_remainder(self, job: BatchJob, processed: int) -> None:
         """Refund the predictions reserved for records a cancelled run never
@@ -1233,7 +1305,29 @@ class BatchPredictionService:
         # A retry re-enters the queue, so it counts against the per-tenant cap too
         # (#515) — otherwise a capped tenant could still flood it with retries.
         await self._enforce_per_user_cap(user_id)
-        claimed = await BatchJob.get_motor_collection().find_one_and_update(
+        for slot in range(MAX_CONCURRENT_BATCH_JOBS_PER_USER):
+            try:
+                claimed = await self._claim_retry(job_id, user_id, slot)
+                break
+            except DuplicateKeyError:
+                continue  # another live job of this tenant holds that slot (#653)
+        else:
+            raise BatchConcurrencyLimitError(
+                MAX_CONCURRENT_BATCH_JOBS_PER_USER, MAX_CONCURRENT_BATCH_JOBS_PER_USER
+            )
+
+        if claimed is None:
+            return False
+
+        job = BatchJob.model_validate(claimed)
+        self._spawn_processing(job)
+
+        return True
+
+    async def _claim_retry(self, job_id: str, user_id: str, slot: int) -> dict[str, Any] | None:
+        """The retry's conditional claim, into concurrent-job slot `slot`. None when the
+        job is not retryable; DuplicateKeyError when the slot is taken."""
+        return await BatchJob.get_motor_collection().find_one_and_update(
             {
                 "job_id": job_id,
                 "user_id": user_id,
@@ -1243,6 +1337,7 @@ class BatchPredictionService:
             {
                 "$set": {
                     "status": JobStatus.PENDING.value,
+                    "admission_slot": slot,
                     "started_at": None,
                     "completed_at": None,
                     "error_message": None,
@@ -1258,14 +1353,6 @@ class BatchPredictionService:
             },
             return_document=ReturnDocument.AFTER,
         )
-
-        if claimed is None:
-            return False
-
-        job = BatchJob.model_validate(claimed)
-        self._spawn_processing(job)
-
-        return True
 
     async def download_results(self, job_id: str, user_id: str) -> bytes | None:
         """Download job results"""
