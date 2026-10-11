@@ -1641,3 +1641,25 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Read the whole tier before picking a priority slot.** A `head -80` listing ended at
   P3.60, so the follow-up was filed over an existing P3.61 and had to be retitled. Use
   `gh issue list --limit 300 --json title --jq '.[].title' | grep -o '^\[P3\.[0-9]*\]' | sort -t. -k2 -n | tail -1`.
+
+## 2026-10-10 — #830 (staging noindex at the edge)
+
+- **Read the sibling issue before designing a staging-only guard.** #830 alone reads as
+  "add a header to the staging file". #832 says production renders that same template,
+  so a hard-coded header would have shipped `noindex` to production. When an issue says
+  "only on staging", find the issue that owns the other environment first.
+- **Probe a new edge header on every kind of response, against a real nginx.** A location
+  that declares one `add_header` drops all the inherited ones, so `curl -I /` looked fine
+  while static assets had been served without HSTS for months. The text-based tests could
+  not have shown it; `docker run nginx` with the rendered template and stub upstreams did,
+  in a minute.
+- **Certificate issuance over SSH is refused from an agent session; its dry run is not.**
+  `certbot certonly --dry-run` ran on the box and the real request was refused as a
+  certificate change. Run the dry run to prove the command, then hand the one line to the
+  operator. Do not retry it in another shape.
+- **A Showboat `exec` that exits non-zero ends an `&&` chain silently.** The conftest
+  suppresses pytest's summary line, so `grep passed` matched nothing and returned 1. Use
+  `-rA` and `grep '^PASSED'` for test evidence.
+- **Remove the worktree before `gh pr merge --delete-branch`.** The merge succeeds, the
+  local branch delete fails because the worktree holds it, and the remote branch is left
+  behind for a second command.

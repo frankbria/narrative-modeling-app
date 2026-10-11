@@ -36,6 +36,6 @@ does not answer the new name, and static assets are served without HSTS.
 - [ ] AC1 certificate for dev.sheetpredict.app, renewal dry run (box)
 - [ ] AC2 `.env.staging` carries the new host; edge shipped by a deploy, no drift (cutover)
 - [ ] AC3 OAuth callbacks and Stripe webhook point at the new host (owner consoles)
-- [ ] AC4 `X-Robots-Tag: noindex, nofollow` on every staging response, pinned by a test
+- [x] AC4 `X-Robots-Tag: noindex, nofollow` on every staging response, pinned by a test
 - [ ] AC5 old name retired, decision recorded (cutover)
 - [ ] AC6 health gates and hand smoke checks against the new host (cutover)
