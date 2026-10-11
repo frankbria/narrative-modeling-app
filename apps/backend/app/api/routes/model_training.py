@@ -526,17 +526,16 @@ def _parse_and_hash(file_bytes: bytes, file_type: str | None) -> tuple[pd.DataFr
     return _parse_dataset(file_bytes, file_type), DatasetVersion.compute_content_hash(file_bytes)
 
 
-async def _link_trained_version(
-    user_id: str, s3_url: str, content_hash: str, model_id: str
-) -> str | None:
-    """The id of the dataset version whose content is byte for byte what was trained
-    on, marked as used by this model; None when no such version exists (#801).
+async def _trained_version_id(user_id: str, s3_url: str, content_hash: str) -> str | None:
+    """The id of the dataset version whose content is byte for byte what was just
+    read for training; None when no such version exists (#801).
 
     Matched on content, not on "the dataset's latest version": the dataset can be
     transformed or moved between training and any later lookup, and a version of
-    other bytes would be a wrong fact in the model report. The twin is found by the
-    documented `(user_id, s3_url)` join at the moment of training. Best-effort: a
-    lookup that fails records no version and never fails the run.
+    other bytes would be a wrong fact in the model report. Resolved right after the
+    bytes are read, so the `(user_id, s3_url)` join to the twin is still the one the
+    bytes came from. Best-effort: a lookup that fails records no version and never
+    fails the run.
     """
     try:
         twin = await DatasetMetadata.find_one(
@@ -555,15 +554,25 @@ async def _link_trained_version(
             .sort("-version_number")
             .first_or_none()
         )
-        if version is None:
-            return None
-        await DatasetVersion.get_motor_collection().update_one(
-            {"_id": version.id}, {"$addToSet": {"used_in_training": model_id}}
-        )
-        return version.version_id
+        return version.version_id if version else None
     except Exception:
-        logger.warning("Could not resolve the dataset version model %s trained on", model_id, exc_info=True)
+        logger.warning("Could not resolve the dataset version being trained on", exc_info=True)
         return None
+
+
+async def _mark_version_trained_on(version_id: str | None, model_id: str) -> None:
+    """Record on the version that a stored model was trained on it (#801). Called only
+    after the model is saved: a version listing a model that was never stored would be
+    kept by retention cleanup for nothing. `$addToSet`, not `link_to_training()` and a
+    save, so two models finishing at once cannot drop each other's entry."""
+    if version_id is None:
+        return
+    try:
+        await DatasetVersion.get_motor_collection().update_one(
+            {"version_id": version_id}, {"$addToSet": {"used_in_training": model_id}}
+        )
+    except Exception:
+        logger.warning("Could not mark version %s as trained on by %s", version_id, model_id, exc_info=True)
 
 
 async def _load_training_frame(user_data: UserData, log_event) -> tuple[pd.DataFrame, str]:
@@ -802,6 +811,9 @@ async def train_model_task(
                 # Loaded here, not at task entry (#665): a queued job then holds
                 # no frame in memory, and the load counts toward the same cap.
                 df, content_hash = await _load_training_frame(user_data, on_event)
+                dataset_version_id = await _trained_version_id(
+                    user_id, user_data.s3_url, content_hash
+                )
                 try:
                     result = await asyncio.wait_for(
                         engine.run(
@@ -875,9 +887,7 @@ async def train_model_task(
             "improvement_from_tuning": result.improvement_from_tuning,
             "tuning_results": result.tuning_results,
             "training_config": training_config,
-            "dataset_version_id": await _link_trained_version(
-                user_id, user_data.s3_url, content_hash, model_id
-            ),
+            "dataset_version_id": dataset_version_id,
         }
 
         # Held-out evaluation artifacts for the dashboard (issue #79).
@@ -919,6 +929,7 @@ async def train_model_task(
             evaluation_data=evaluation_data,
             shap_data=shap_data,
         )
+        await _mark_version_trained_on(dataset_version_id, model_id)
         await product_events.record(
             user_id,
             product_events.FIRST_MODEL_TRAINED,

@@ -188,7 +188,10 @@ async def test_training_names_the_version_a_transformed_dataset_is_on(client, s3
     """#801: the version a model trained on is found by content. A transformation
     writes the dataset's current file and its version as two objects, so this only
     works if the two hold the same bytes, which only real objects can show."""
-    from app.api.routes.model_training import _link_trained_version
+    from app.api.routes.model_training import (
+        _mark_version_trained_on,
+        _trained_version_id,
+    )
     from app.models.dataset import DatasetMetadata
     from app.models.version import DatasetVersion
     from app.utils.s3 import parse_s3_url
@@ -199,9 +202,10 @@ async def test_training_names_the_version_a_transformed_dataset_is_on(client, s3
     current_file = s3_client.get_object(Bucket=real_s3_env, Key=key)["Body"].read()
     history = (await client.get(f"/api/v1/transformations/datasets/{dataset_id}/history")).json()
 
-    trained_on = await _link_trained_version(
-        USER, meta.s3_url, DatasetVersion.compute_content_hash(current_file), "model_801"
+    trained_on = await _trained_version_id(
+        USER, meta.s3_url, DatasetVersion.compute_content_hash(current_file)
     )
+    await _mark_version_trained_on(trained_on, "model_801")
 
     latest = await DatasetVersion.find(
         DatasetVersion.dataset_id == dataset_id

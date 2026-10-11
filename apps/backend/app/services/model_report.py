@@ -15,7 +15,7 @@ What training records since #801, and the report states for a model that has it:
   `training_config["random_seed"]`. Never the engine default read at report time:
   that would be right today and silently wrong the first time a caller overrides it;
 * **the dataset version** — `MLModel.dataset_version_id`, the version whose content
-  is byte for byte what training read (`_link_trained_version`). It used to be
+  is byte for byte what training read (`_trained_version_id`). It used to be
   resolved by querying the `DatasetVersion` id-space with a `UserData` id, which
   never matched. A dataset with no version of those bytes records none, and the
   report raises that as a caveat rather than imply currency;

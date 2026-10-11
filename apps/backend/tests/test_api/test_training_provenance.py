@@ -35,7 +35,7 @@ def _csv() -> bytes:
     return buffer.getvalue().encode()
 
 
-async def _train(model_id: str, content: bytes) -> dict:
+async def _train(model_id: str, content: bytes, save_model: AsyncMock | None = None) -> dict:
     """Run the task and return the metadata the model was saved with."""
     from app.api.routes.model_training import TrainModelRequest, train_model_task
 
@@ -43,7 +43,7 @@ async def _train(model_id: str, content: bytes) -> dict:
         model_id=model_id, user_id=USER, dataset_id="dataset_801", target_column="target"
     ).insert()
     user_data = MagicMock(s3_url=S3_URL, file_type="csv", filename="data.csv", user_id=USER)
-    save_model = AsyncMock(return_value=MagicMock(model_id=model_id))
+    save_model = save_model or AsyncMock(return_value=MagicMock(model_id=model_id))
     with (
         patch("app.services.s3_service.S3Service.download_file_bytes", AsyncMock(return_value=content)),
         patch("app.services.model_storage.ModelStorageService.save_model", save_model),
@@ -129,3 +129,16 @@ async def test_of_two_versions_holding_the_same_bytes_the_later_one_is_named(set
     metadata = await _train("model_801_twice", content)
 
     assert metadata["dataset_version_id"] == later.version_id
+
+
+async def test_a_model_that_was_never_stored_is_not_listed_on_the_version(setup_database):
+    """Retention cleanup keeps any version a model was trained on. A model whose save
+    failed does not exist, so it must not hold a version alive."""
+    content = _csv()
+    version = await _version_of(content)
+
+    await _train(
+        "model_801_unsaved", content, save_model=AsyncMock(side_effect=RuntimeError("S3 is down"))
+    )
+
+    assert (await DatasetVersion.get(version.id)).used_in_training == []

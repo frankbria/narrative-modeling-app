@@ -364,7 +364,7 @@ class ModelStorageService:
         # caller resolved it. There is no fallback to "the dataset's latest version"
         # (#801): latest is not trained-on, and a version of other bytes would reach
         # the model report as a stored fact. Training matches the version by content
-        # (`model_training._link_trained_version`); none matched means none recorded.
+        # (`model_training._trained_version_id`); none matched means none recorded.
         dataset_version_id = model_metadata.get("dataset_version_id")
 
         # Create model document

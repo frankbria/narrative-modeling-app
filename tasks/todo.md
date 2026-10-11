@@ -7,7 +7,7 @@ Self-authored plan (the issue lists four items and four acceptance criteria).
   (`random_seed`, `winner_hyperparameters`), the channel #806 already uses for
   `excluded_identifier_columns`. No new `MLModel` field, so `save_model` (cc 11) is not
   touched and the `sample_ml_model` fixture needs no change (AC4 does not arise).
-- **The dataset version is matched by content.** `_link_trained_version` finds the twin
+- **The dataset version is matched by content.** `_trained_version_id` finds the twin
   by `(user_id, s3_url)` at training time and the `DatasetVersion` whose `content_hash`
   equals the hash of the bytes training read. The issue's other option, "the latest
   version of the dataset", can name a version of different bytes after an undo or a
