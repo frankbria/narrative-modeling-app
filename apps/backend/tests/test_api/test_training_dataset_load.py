@@ -181,6 +181,7 @@ async def test_a_download_timeout_is_not_reported_as_the_wall_clock(setup_databa
     ("csv", lambda f: f.to_csv(index=False).encode()),
     ("parquet", lambda f: f.to_parquet(index=False)),
     ("xlsx", lambda f: _xlsx(f)),
+    ("excel", lambda f: _xlsx(f)),  # the value /upload/secure stores; training refused it
 ])
 async def test_each_stored_type_reaches_the_engine_as_the_same_frame(setup_database, file_type, encode):
     frame = pd.DataFrame({"a": [1, 2, 3], "target": [0, 1, 0]})
@@ -204,3 +205,4 @@ async def test_an_unsupported_type_fails_the_job_and_names_nothing_internal(setu
         await job.delete()
 
     assert seen == [] and refreshed.status == JobStatus.FAILED
+    assert refreshed.error and "Unsupported file type" not in refreshed.error

@@ -18,6 +18,10 @@ Self-authored plan (the issue has two acceptance criteria, no plan).
 - **The "Dataset downloaded" log line goes through `on_event`** (a partial write). It used
   to be a full `save()` at task entry; after a wait for a slot, a full save could
   overwrite a cancellation.
+- **`_parse_dataset` also accepts `"excel"`,** the value `/upload/secure` stores for an
+  `.xls`/`.xlsx` file. Training refused it as unsupported, so an Excel file uploaded
+  through the UI could not be trained on. Found by the cross-family review's note on that
+  error path.
 - AC2's timing test is marked `performance` (outside the PR gate): it measures time and
   pandas holds the GIL for parts of a parse. The gate's version asserts the parse runs on
   a worker thread.

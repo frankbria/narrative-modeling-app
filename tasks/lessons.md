@@ -1741,3 +1741,23 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Send the reviewer the tests with the follow-up diff.** I sent only `app/` for the second
   pass, and its one finding was that the new behaviour had no tests. They were in the same
   commit.
+
+## 2026-10-11 — #665 (training loads its dataset inside the slot, off the event loop)
+
+- **A blocked event loop cannot be measured from inside it by timing each request.** The
+  demo's first version polled `/health/live` and reported each reply's latency: 4 ms on
+  main, because the poller was stalled too and never sent a request during the block.
+  Measure the gap between consecutive replies (or ticks) instead.
+- **A timing assertion belongs under the `performance` marker.** The stall test passed
+  alone and failed once beside another suite (0.21 s of stall for a 0.36 s parse; pandas
+  holds the GIL for parts of a parse). The gate's version of the same fact is
+  deterministic: spy on `pd.read_csv` and assert it is not called from the loop's thread.
+- **Moving code inside a `try` changes which exceptions that `try` catches.** The
+  `TimeoutError` to wall-clock mapping wrapped the whole semaphore block. Moving the
+  download in there would have reported an S3 socket timeout as the plan limit; the
+  mapping had to shrink to `engine.run` in the same change, with a test for it.
+- **When a full `save()` moves later in a task, check what can be written in between.**
+  The "Dataset downloaded" line was a full save at task entry. After a wait for a slot it
+  could overwrite a cancellation, so it now goes through the task's partial-write
+  callback.
+

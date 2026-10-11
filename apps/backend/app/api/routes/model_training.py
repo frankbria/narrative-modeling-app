@@ -510,7 +510,8 @@ def _parse_dataset(file_bytes: bytes, file_type: str | None) -> pd.DataFrame:
     """The stored file as a frame, by its `file_type`. Blocking: call it off the loop."""
     if file_type == "csv":
         return pd.read_csv(io.StringIO(file_bytes.decode("utf-8")))
-    if file_type in ("xls", "xlsx"):
+    # "excel" is what /upload/secure stores for an .xls or .xlsx file.
+    if file_type in ("xls", "xlsx", "excel"):
         return pd.read_excel(io.BytesIO(file_bytes))
     if file_type == "parquet":
         return pd.read_parquet(io.BytesIO(file_bytes))
