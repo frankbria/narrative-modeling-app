@@ -13,8 +13,8 @@ does not answer the new name, and static assets are served without HSTS.
   closed and needs no new env variable or script change.
 - **Every response means every location.** nginx drops all inherited `add_header` lines in
   a location that declares its own. The static-asset location does, which is why those
-  responses carry no HSTS today. It switches to `expires 1d` (same one-day intent) and a
-  test bans location-level `add_header`.
+  responses carry no HSTS today. That line is deleted (Next.js sets Cache-Control itself) and a
+  test bans nested `add_header`.
 - **AC5: the old name is removed, not redirected.** Staging has no users or search
   presence to carry over, and a 301 needs conditional rendering in a `sed` template.
   The old certificate is deleted at the cutover so its renewal stops.
@@ -24,7 +24,7 @@ does not answer the new name, and static assets are served without HSTS.
 
 ## Steps
 1. RED: `tests/test_security/test_nginx_noindex.py`.
-2. GREEN: `nginx-staging.conf` (map, header in both server blocks, `expires 1d`).
+2. GREEN: `nginx-staging.conf` (map, header in both server blocks, no nested `add_header`).
 3. Docs: `.env.staging.example` (`NGINX_SERVER_NAME`), compose comment, STAGING.md,
    CLAUDE.md edge bullet.
 4. Demo: render the template into a real nginx container and curl both hostnames.

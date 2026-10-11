@@ -251,7 +251,8 @@ authenticator and renewal moves to the webroot afterwards:
 apt-get install certbot python3-certbot-nginx -y    # if not already installed
 mkdir -p /var/www/letsencrypt
 
-# 1. First certificate. The authenticator adds a temporary challenge block and removes it.
+# 1. First certificate. DNS for the name must already point at this box. The
+#    authenticator adds a temporary challenge block and removes it.
 certbot certonly --nginx -d dev.sheetpredict.app
 
 # 2. Set NGINX_SERVER_NAME in .env.staging and deploy (Step 6).
@@ -274,7 +275,8 @@ Every line of `.env.staging` that carries the old name changes together:
 needs a deploy that rebuilds it, not a restart. The OAuth providers' callback URLs
 (`https://<host>/api/auth/callback/google` and `/github`) and the Stripe webhook endpoint
 (`https://<host>/webhooks/stripe/webhook`) must name the new host before the deploy, or
-sign-in fails until they do. A GitHub OAuth app allows one callback URL, so there is no
+sign-in fails until they do. Change them immediately before triggering the deploy:
+sign-in on the old name stops working the moment the callback is edited. A GitHub OAuth app allows one callback URL, so there is no
 window in which both names sign in.
 
 The template serves one name. The old one is not redirected: once nothing renders it,

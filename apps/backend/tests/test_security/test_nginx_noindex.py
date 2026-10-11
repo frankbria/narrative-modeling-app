@@ -11,9 +11,9 @@ closed. A new hostname is unindexable until someone lists it here and in the map
 
 Two nginx rules make the placement load-bearing:
 
-* `add_header` in a location **replaces** every inherited one, so a location with
-  its own header silently drops this one (and HSTS, which is how static assets were
-  being served without it).
+* `add_header` at a nested level **replaces** every inherited one, so a location
+  with its own header silently drops this one (and HSTS, which is how static assets
+  were being served without it).
 * this file is included at `http` level on a VPS shared with other sites, so a
   header outside a `server` block would land on all of them.
 
@@ -22,7 +22,7 @@ Text-based for the same reason as its siblings: CI has no nginx binary.
 
 import re
 
-from tests.test_security.test_nginx_webhook_route import NGINX_CONF, _location_blocks
+from tests.test_security.test_nginx_webhook_route import NGINX_CONF
 
 #: The only hostnames a crawler may index (#765 D4).
 INDEXABLE_HOSTS = {"www.sheetpredict.app"}
@@ -63,13 +63,11 @@ def test_every_server_block_sends_the_header():
         assert re.search(rf"^    {re.escape(HEADER)}$", block, re.M), block[:120]
 
 
-def test_no_location_drops_the_inherited_headers():
+def test_nothing_nested_drops_the_inherited_headers():
+    # Any deeper level (a location, an `if`) that declares one header loses the rest.
     for block in _server_blocks():
-        for match, (body, _) in _location_blocks(block).items():
-            assert not re.search(r"^\s*add_header\b", body, re.M), (
-                f"location {match} declares its own add_header, which discards "
-                "X-Robots-Tag and every security header set on the server"
-            )
+        indents = set(re.findall(r"^( *)add_header\b", block, re.M))
+        assert indents == {" " * 4}, "add_header belongs on the server block only"
 
 
 def test_no_header_is_set_for_the_whole_shared_box():
