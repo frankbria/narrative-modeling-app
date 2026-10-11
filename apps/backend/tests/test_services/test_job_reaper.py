@@ -182,3 +182,30 @@ async def test_retried_batch_job_refreshes_its_heartbeat(setup_database, monkeyp
     # Reheartbeated -> the reaper does not kill the retry before it starts.
     await reap_stale_jobs(timeout_seconds=60)
     assert (await BatchJob.get(job.id)).status == JobStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_a_job_reaped_while_queued_is_refunded_once_when_its_turn_comes(setup_database):
+    """#653: nothing pumps a queued job's heartbeat, so it can be reaped while it waits.
+    The reaper refunds its whole reservation. The job's task is still alive: when an
+    execution slot frees it fails its claim, and that path refunded the whole
+    reservation a second time."""
+    from app.services.batch_prediction import BatchPredictionService
+
+    await metering.record(USER, "predictions", 20)
+    before = await metering.usage_for(USER, "predictions")
+    job = BatchJob(
+        job_id="reap-queued-653", job_type=JobType.BATCH_PREDICTION, user_id=USER,
+        config={"model_id": "m1"}, input_path="batch-jobs/u/m1/ts/in.csv",
+        status=JobStatus.PENDING, progress=JobProgress(total_records=5),
+    )
+    job.last_heartbeat = utcnow() - timedelta(hours=2)
+    await job.insert()
+
+    await reap_stale_jobs(timeout_seconds=60)
+    service = BatchPredictionService()
+    service._fire_webhook = lambda _job: asyncio.sleep(0)
+    await service._process_batch_job_admitted(job)
+
+    assert (await BatchJob.get(job.id)).status == JobStatus.FAILED
+    assert await metering.usage_for(USER, "predictions") == before - 5
