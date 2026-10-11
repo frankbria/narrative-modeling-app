@@ -22,8 +22,14 @@ const SIGN_IN_ERRORS: Record<string, string> = {
     'This email is already registered with a different sign-in method. Sign in with the provider you used the first time.',
 };
 
-function signInErrorMessage(code: string): string {
-  return SIGN_IN_ERRORS[code] ?? 'Sign-in failed. Please try again.';
+function SignInError(props: { code: string | null }) {
+  const { code } = props;
+  if (!code) return null;
+  return (
+    <Alert variant="destructive">
+      <AlertDescription>{SIGN_IN_ERRORS[code] ?? 'Sign-in failed. Please try again.'}</AlertDescription>
+    </Alert>
+  );
 }
 
 export default function SignInPage() {
@@ -38,7 +44,6 @@ export default function SignInPage() {
   // same-origin relative path so `?callbackUrl=https://evil.example` can't
   // redirect an authenticated user off-site (open redirect, issue #271).
   const callbackUrl = sanitizeCallbackUrl(searchParams.get('callbackUrl'));
-  const authError = searchParams.get('error');
   
   useEffect(() => {
     // If already authenticated, redirect to callback URL
@@ -81,11 +86,7 @@ export default function SignInPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {authError && (
-            <Alert variant="destructive">
-              <AlertDescription>{signInErrorMessage(authError)}</AlertDescription>
-            </Alert>
-          )}
+          <SignInError code={searchParams.get('error')} />
           {isDevelopment && (
             <>
               <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-md">
