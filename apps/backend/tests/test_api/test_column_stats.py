@@ -22,14 +22,21 @@ from app.models.user_data import UserData
 OTHER_USER = "other_user_449"
 
 
-async def make_user_data(user_id: str, filename: str = "payroll.csv") -> UserData:
-    """A minimal persisted UserData owned by `user_id`."""
+async def make_user_data(
+    user_id: str, filename: str = "payroll.csv", stored_as: str | None = None
+) -> UserData:
+    """A minimal persisted UserData owned by `user_id`.
+
+    `stored_as` is the object's name when it differs from the upload's: a
+    transformation rewrites the file as parquet and never touches `filename`.
+    """
+    stored_as = stored_as or filename
     dataset = UserData(
         user_id=user_id,
         filename=filename,
         original_filename="payroll.csv",
-        s3_url=f"s3://test-bucket/{user_id}/payroll.csv",
-        file_path=f"{user_id}/payroll.csv",
+        s3_url=f"s3://test-bucket/{user_id}/{stored_as}",
+        file_path=f"{user_id}/{stored_as}",
         num_rows=100,
         num_columns=2,
         data_schema=[],
@@ -481,3 +488,26 @@ class TestColumnStatsTenantIsolation:
             )
 
         assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_a_transformed_dataset_is_read_as_the_parquet_it_now_is(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """A transformation moves `s3_url` to a parquet object and leaves `filename`
+        as the upload's .csv name, so the loader must dispatch on the location."""
+        import pandas as pd
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, stored_as="3f2a.parquet")
+        body = io.BytesIO()
+        pd.DataFrame({"salary": [100, 200], "dept": ["a", "b"]}).to_parquet(body)
+        body.seek(0)
+
+        with patch("app.api.routes.column_stats.get_file_from_s3", return_value=body):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
