@@ -14,13 +14,13 @@ Self-authored plan (the issue lists options, no plan and no explicit acceptance 
   the one place the collision is handled. `recalculate` keeps reporting success.
 
 ## Acceptance criteria (derived from the issue)
-- [ ] AC1: a GET that loses the recompute race returns every column of the dataset, even
+- [x] AC1: a GET that loses the recompute race returns every column of the dataset, even
       when the winner has written only some of its rows at the moment of the collision.
-- [ ] AC2: a test pins that window with a real duplicate-key error from the real index
+- [x] AC2: a test pins that window with a real duplicate-key error from the real index
       (the issue's repro sketch), and fails on the old code.
-- [ ] AC3: the loser still answers 200, not 500, and `recalculate` still reports success on
+- [x] AC3: the loser still answers 200, not 500, and `recalculate` still reports success on
       a collision.
-- [ ] AC4: a bulk write error that is not a duplicate key is not swallowed.
+- [x] AC4: a bulk write error that is not a duplicate key is not swallowed.
 
 ## Steps
 1. RED: in `tests/test_api/test_column_stats.py`, replace the full-set race test with one
