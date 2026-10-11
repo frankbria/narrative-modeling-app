@@ -1,7 +1,7 @@
 # Staging Deployment Guide
 
 **Server**: dev.briaanalytics.com
-**Domain**: dev.briaanalytics.com
+**Domain**: dev.sheetpredict.app (the box itself is still reached as dev.briaanalytics.com for SSH)
 **Environment**: Staging (Pre-Production)
 **Status**: ✅ **FULLY DEPLOYED** (as of 2025-10-23)
 **Last Updated**: 2025-10-27
@@ -43,8 +43,8 @@ The staging environment serves as a pre-production testing ground for integratio
 
 | Service | Status | Version | Port | Access |
 |---------|--------|---------|------|--------|
-| **Frontend** | ✅ Running | Next.js | 3010 | https://dev.briaanalytics.com |
-| **Backend** | ✅ Running | FastAPI | 8010 | https://dev.briaanalytics.com/api |
+| **Frontend** | ✅ Running | Next.js | 3010 | https://dev.sheetpredict.app |
+| **Backend** | ✅ Running | FastAPI | 8010 | https://dev.sheetpredict.app/api |
 | **MongoDB** | ✅ Healthy | 7.0 | 27018 | Docker container (self-hosted) |
 | **Redis** | ✅ Healthy | 7-alpine | 6381 | Docker container |
 | **Nginx** | ✅ Running | - | 80/443 | Reverse proxy |
@@ -65,7 +65,7 @@ The staging environment serves as a pre-production testing ground for integratio
 ```
 Internet (HTTPS)
     ↓
-Nginx (80/443) - dev.briaanalytics.com
+Nginx (80/443) - dev.sheetpredict.app
     ↓
     ├─→ Frontend (3010)
     └─→ Backend (8010)
@@ -316,13 +316,13 @@ docker compose -f docker-compose.simple.yml up -d
 
 **Backend API**:
 ```bash
-curl https://dev.briaanalytics.com/api/health
+curl https://dev.sheetpredict.app/api/health
 # Expected: {"status": "healthy"}
 ```
 
 **Frontend**:
 ```bash
-curl -I https://dev.briaanalytics.com
+curl -I https://dev.sheetpredict.app
 # Expected: HTTP/2 200
 ```
 
@@ -546,7 +546,7 @@ sudo systemctl restart narrative-backend
 ### Contact Information
 
 - **Server**: dev.briaanalytics.com
-- **Domain**: https://dev.briaanalytics.com
+- **Domain**: https://dev.sheetpredict.app
 - **SSH User**: narrative-deploy
 - **Deployment Path**: `/opt/narrative-modeling-app/staging`
 

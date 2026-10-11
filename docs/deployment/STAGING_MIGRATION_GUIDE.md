@@ -113,7 +113,7 @@ Check that services are healthy:
 sudo journalctl -u narrative-backend -n 50
 
 # Test health endpoint
-curl https://dev.briaanalytics.com/api/health
+curl https://dev.sheetpredict.app/api/health
 
 # Should return: {"status": "healthy"}
 ```

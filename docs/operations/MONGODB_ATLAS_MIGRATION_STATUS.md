@@ -147,7 +147,7 @@ mongodb+srv://<USERNAME>:<PASSWORD>@<cluster>.mongodb.net/narrative_staging?retr
 After server configuration, verify:
 - [ ] Backend service starts successfully
 - [ ] Backend connects to MongoDB Atlas
-- [ ] Health endpoint returns 200: `curl https://dev.briaanalytics.com/api/health`
+- [ ] Health endpoint returns 200: `curl https://dev.sheetpredict.app/api/health`
 - [ ] Frontend can communicate with backend
 - [ ] Can create/retrieve data through API
 - [ ] Redis is still running and accessible
@@ -262,9 +262,9 @@ After server configuration, verify:
 - **MongoDB Atlas**: https://cloud.mongodb.com
 - **GitHub Repository**: https://github.com/frankbria/narrative-modeling-app
 - **GitHub Secrets**: https://github.com/frankbria/narrative-modeling-app/settings/environments
-- **Staging Frontend**: https://dev.briaanalytics.com
-- **Staging Backend**: https://dev.briaanalytics.com/api
-- **Health Endpoint**: https://dev.briaanalytics.com/api/health
+- **Staging Frontend**: https://dev.sheetpredict.app
+- **Staging Backend**: https://dev.sheetpredict.app/api
+- **Health Endpoint**: https://dev.sheetpredict.app/api/health
 
 ---
 
