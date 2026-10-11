@@ -160,7 +160,7 @@ services:
       dockerfile: Dockerfile
       args:
         # Full backend base URL INCLUDING the /api/v1 prefix, e.g.
-        # https://dev.briaanalytics.com/api/v1 — baked in at build time.
+        # https://dev.sheetpredict.app/api/v1 — baked in at build time.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         # Browser error reporting (#769 AC4), baked in like the API URL. The
         # backend's DSN is reused; unset leaves the client SDK off.

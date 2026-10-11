@@ -189,10 +189,10 @@ that script on the box on every staging deploy. Two variables in `.env.staging` 
 
 ```bash
 # On the box, in .env.staging (the only manual step):
-NGINX_SERVER_NAME=dev.briaanalytics.com
+NGINX_SERVER_NAME=dev.sheetpredict.app
 # Optional; defaults to /etc/letsencrypt/live/$NGINX_SERVER_NAME, which is what
 # certbot creates. Set it only if the cert lives somewhere else.
-# NGINX_CERT_DIR=/etc/letsencrypt/live/dev.briaanalytics.com
+# NGINX_CERT_DIR=/etc/letsencrypt/live/dev.sheetpredict.app
 ```
 
 **Until `NGINX_SERVER_NAME` is set, the script is a no-op that exits 0** and prints a
@@ -237,21 +237,56 @@ not there → `systemctl reload nginx`. Only this site's file is touched.
 
 ## Step 7: Setup SSL Certificate (Let's Encrypt)
 
+Use `certbot certonly`, never bare `certbot --nginx`: without `certonly` certbot's
+installer edits the live nginx file, which the next deploy reports as drift and
+overwrites (#594).
+
+The certificate has to exist **before** `NGINX_SERVER_NAME` names the host. The rendered
+config points at `/etc/letsencrypt/live/<name>/`, so without it `nginx -t` fails and the
+apply restores the previous file. Until that config is live, port 80 does not serve the
+webroot for the new name either, so the first certificate comes from certbot's nginx
+authenticator and renewal moves to the webroot afterwards:
+
 ```bash
-# Install certbot (if not already installed)
-apt-get install certbot python3-certbot-nginx -y
+apt-get install certbot python3-certbot-nginx -y    # if not already installed
+mkdir -p /var/www/letsencrypt
 
-# Obtain SSL certificate
-certbot --nginx -d narrative.yourdomain.com
+# 1. First certificate. The authenticator adds a temporary challenge block and removes it.
+certbot certonly --nginx -d dev.sheetpredict.app
 
-# Certbot will automatically:
-# 1. Obtain certificate
-# 2. Update nginx configuration
-# 3. Set up auto-renewal
+# 2. Set NGINX_SERVER_NAME in .env.staging and deploy (Step 6).
 
-# Verify auto-renewal
-certbot renew --dry-run
+# 3. Renew through the webroot the rendered config now serves, and prove it.
+certbot reconfigure --cert-name dev.sheetpredict.app \
+  --webroot --webroot-path /var/www/letsencrypt
+certbot renew --dry-run --cert-name dev.sheetpredict.app
 ```
+
+A webroot renewal does not reload nginx on its own. The box's
+`/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh` does that for every certificate;
+check it exists on a new box, or the renewed certificate is never served.
+
+### Moving to a new hostname
+
+Every line of `.env.staging` that carries the old name changes together:
+`NGINX_SERVER_NAME`, `NEXTAUTH_URL`, `NEXT_PUBLIC_API_URL`, `BACKEND_CORS_ORIGINS` and
+`ALLOWED_ORIGINS`. `NEXT_PUBLIC_API_URL` is baked into the frontend image, so the move
+needs a deploy that rebuilds it, not a restart. The OAuth providers' callback URLs
+(`https://<host>/api/auth/callback/google` and `/github`) and the Stripe webhook endpoint
+(`https://<host>/webhooks/stripe/webhook`) must name the new host before the deploy, or
+sign-in fails until they do. A GitHub OAuth app allows one callback URL, so there is no
+window in which both names sign in.
+
+The template serves one name. The old one is not redirected: once nothing renders it,
+delete its certificate (`certbot delete --cert-name <old>`) so renewal stops.
+
+### Staging is never indexed
+
+Every response carries `X-Robots-Tag: noindex, nofollow` unless the request's host is the
+production name listed in the template's `map $host $narrative_robots_tag` (#830).
+Production renders the same template, so the header is keyed on the hostname and a host
+that is not listed stays unindexable. Check it with
+`curl -sI https://<host>/ | grep -i x-robots-tag`.
 
 ---
 
