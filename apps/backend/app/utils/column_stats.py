@@ -89,7 +89,7 @@ async def _store(column_stats_list: list[ColumnStats]) -> None:
     storing this same dataset's stats. The caller keeps the list it computed
     and must not re-read instead (#715): insert_many is not atomic across
     documents, so the winner may have written only some of its rows. Any other
-    bulk failure raises.
+    bulk failure raises, without the document it failed on.
     """
     if not column_stats_list:
         return
@@ -98,7 +98,9 @@ async def _store(column_stats_list: list[ColumnStats]) -> None:
     except BulkWriteError as e:
         codes = {err.get("code") for err in e.details.get("writeErrors", [])}
         if codes != {_DUPLICATE_KEY}:
-            raise
+            # Not a bare `raise`: a BulkWriteError's message carries the failing
+            # document, so the caller's log line would hold the column's values.
+            raise RuntimeError(f"column stats bulk write failed: codes {codes}") from None
 
 
 def _determine_data_type(series: pd.Series) -> str:

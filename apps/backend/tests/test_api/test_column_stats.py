@@ -397,17 +397,21 @@ class TestColumnStatsTenantIsolation:
     @pytest.mark.asyncio
     async def test_a_bulk_write_failure_that_is_not_a_duplicate_key_is_not_served_as_success(
         self, async_authorized_client: AsyncClient, setup_database,
-        mock_user_id: str, monkeypatch
+        mock_user_id: str, monkeypatch, caplog
     ):
         """#715: only a duplicate key means "someone else stored this". Any other
-        bulk write failure stored nothing and must not answer 200."""
+        bulk write failure must not answer 200, and must not put the failing
+        document (the column's values) in the log."""
         from pymongo.errors import BulkWriteError
 
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
         not_a_duplicate = BulkWriteError(
-            {"writeErrors": [{"index": 0, "code": 121, "errmsg": "Document failed validation"}]}
+            {"writeErrors": [{
+                "index": 0, "code": 121, "errmsg": "Document failed validation",
+                "op": {"column_name": "salary", "max_value": 480000.0},
+            }]}
         )
 
         with patch(
@@ -418,6 +422,8 @@ class TestColumnStatsTenantIsolation:
             )
 
         assert response.status_code == 500
+        assert "121" in caplog.text
+        assert "480000" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_a_file_that_is_not_named_csv_has_its_delimiter_sniffed(
