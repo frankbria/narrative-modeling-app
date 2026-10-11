@@ -506,6 +506,32 @@ async def train_model(
     )
 
 
+def _parse_dataset(file_bytes: bytes, file_type: str | None) -> pd.DataFrame:
+    """The stored file as a frame, by its `file_type`. Blocking: call it off the loop."""
+    if file_type == "csv":
+        return pd.read_csv(io.StringIO(file_bytes.decode("utf-8")))
+    if file_type in ("xls", "xlsx"):
+        return pd.read_excel(io.BytesIO(file_bytes))
+    if file_type == "parquet":
+        return pd.read_parquet(io.BytesIO(file_bytes))
+    raise ValueError(f"Unsupported file type: {file_type}")
+
+
+async def _load_training_frame(user_data: UserData, log_event) -> pd.DataFrame:
+    """Download the dataset and parse it in a worker thread (#665).
+
+    The parse used to run on the event loop, where a large file stalled every other
+    request for as long as it took. `log_event` is the task's own event callback, so
+    the progress line is a partial write like the engine's and cannot overwrite a
+    cancellation that arrives during the download.
+    """
+    # parse_s3_url handles all persisted URL shapes
+    _, file_key = parse_s3_url(user_data.s3_url)
+    file_bytes = await s3_service.download_file_bytes(file_key)
+    await log_event(TrainingEvent(level="info", message=f"Dataset downloaded ({len(file_bytes)} bytes)"))
+    return await asyncio.to_thread(_parse_dataset, file_bytes, user_data.file_type)
+
+
 async def train_model_task(
     user_data: UserData,
     request: TrainModelRequest,
@@ -545,36 +571,6 @@ async def train_model_task(
                 "info", f"Training task started for dataset {request.dataset_id}"
             )
             await training_job.save()
-
-        # Extract S3 file key (parse_s3_url handles all persisted URL shapes)
-        _, file_key = parse_s3_url(user_data.s3_url)
-
-        # Load data from S3
-        file_bytes = await s3_service.download_file_bytes(file_key)
-
-        if training_job:
-            training_job.add_log(
-                "info", f"Dataset downloaded ({len(file_bytes)} bytes)"
-            )
-            await training_job.save()
-
-        # Convert to dataframe based on file type, wrapping bytes in proper file-like objects
-        if user_data.file_type == "csv":
-            # For CSV, decode bytes to text and use StringIO
-            file_str = file_bytes.decode("utf-8")
-            df = pd.read_csv(io.StringIO(file_str))
-        elif user_data.file_type in ["xls", "xlsx"]:
-            # For Excel, use BytesIO
-            file_io = io.BytesIO(file_bytes)
-            file_io.seek(0)
-            df = pd.read_excel(file_io)
-        elif user_data.file_type == "parquet":
-            # For Parquet, use BytesIO
-            file_io = io.BytesIO(file_bytes)
-            file_io.seek(0)
-            df = pd.read_parquet(file_io)
-        else:
-            raise ValueError(f"Unsupported file type: {user_data.file_type}")
 
         # Create feature engineering config
         feature_config = None
@@ -720,40 +716,43 @@ async def train_model_task(
         # thread cannot be killed and finishes on its own; its result is dropped.
         if wall_clock_seconds is None:
             wall_clock_seconds = training_ceilings_for(PlanTier.FREE).wall_clock_seconds
-        try:
-            # Global concurrency cap (#498): gate the CPU-heavy engine run behind
-            # the per-process semaphore so at most MAX_CONCURRENT_TRAINING_JOBS
-            # trainings compute at once across all tenants — excess jobs wait here
-            # rather than all saturating the shared VPS. The wall clock only bounds
-            # the run itself: its timeout starts after the semaphore is acquired,
-            # so queue time is not counted against the plan's limit.
-            _sem = training_semaphore()
-            if _sem.locked() and training_job:
-                # Make the wait visible (AC4) — a slot-queued job must not look
-                # identical to a hung one. The UI streams these log lines.
-                training_job.add_log(
-                    "info", "Waiting for an available training slot (host at capacity)…"
-                )
-                await training_job.save()
-            async with _sem:
-                # A job cancelled while queued must not consume the slot it just
-                # acquired (#498, codex): the engine's own cancel_check only fires
-                # after preprocessing/tuning setup, so re-check here and skip the
-                # run entirely, handing the slot to the next job. Routes to the
-                # TrainingCancelledError handler below (marks CANCELLED). Guarded
-                # like the entry load — a failed status read must not block a
-                # valid run (and is a no-op when no job could be loaded at all).
-                if training_job is not None:
-                    try:
-                        cancelled_while_queued = await is_cancellation_requested()
-                    except Exception:  # noqa: BLE001
-                        cancelled_while_queued = False
-                    if cancelled_while_queued:
-                        raise TrainingCancelledError("Training cancelled while queued")
-                # Keep the heartbeat fresh while a slow candidate fits, so the
-                # stale-job reaper (#484) never reaps this live run between the
-                # per-candidate progress events.
-                async with heartbeat_pump(training_job):
+        # Global concurrency cap (#498): gate the CPU-heavy engine run behind
+        # the per-process semaphore so at most MAX_CONCURRENT_TRAINING_JOBS
+        # trainings compute at once across all tenants — excess jobs wait here
+        # rather than all saturating the shared VPS. The wall clock only bounds
+        # the run itself: its timeout starts after the semaphore is acquired,
+        # so queue time is not counted against the plan's limit.
+        _sem = training_semaphore()
+        if _sem.locked() and training_job:
+            # Make the wait visible (AC4) — a slot-queued job must not look
+            # identical to a hung one. The UI streams these log lines.
+            training_job.add_log(
+                "info", "Waiting for an available training slot (host at capacity)…"
+            )
+            await training_job.save()
+        async with _sem:
+            # A job cancelled while queued must not consume the slot it just
+            # acquired (#498, codex): the engine's own cancel_check only fires
+            # after preprocessing/tuning setup, so re-check here and skip the
+            # run entirely, handing the slot to the next job. Routes to the
+            # TrainingCancelledError handler below (marks CANCELLED). Guarded
+            # like the entry load — a failed status read must not block a
+            # valid run (and is a no-op when no job could be loaded at all).
+            if training_job is not None:
+                try:
+                    cancelled_while_queued = await is_cancellation_requested()
+                except Exception:  # noqa: BLE001
+                    cancelled_while_queued = False
+                if cancelled_while_queued:
+                    raise TrainingCancelledError("Training cancelled while queued")
+            # Keep the heartbeat fresh while a slow candidate fits, so the
+            # stale-job reaper (#484) never reaps this live run between the
+            # per-candidate progress events.
+            async with heartbeat_pump(training_job):
+                # Loaded here, not at task entry (#665): a queued job then holds
+                # no frame in memory, and the load counts toward the same cap.
+                df = await _load_training_frame(user_data, on_event)
+                try:
                     result = await asyncio.wait_for(
                         engine.run(
                             df,
@@ -765,13 +764,14 @@ async def train_model_task(
                         ),
                         timeout=wall_clock_seconds,
                     )
-        except TimeoutError as exc:
-            # Scoped to the engine run only: a socket timeout from the S3
-            # download above is a TimeoutError too and must keep its own message.
-            raise TrainingWallClockExceeded(
-                f"Training exceeded the {wall_clock_seconds}s wall-clock limit for "
-                "your plan and was stopped"
-            ) from exc
+                except TimeoutError as exc:
+                    # Scoped to the engine run only: a socket timeout from the S3
+                    # download above is a TimeoutError too and must keep its own
+                    # message.
+                    raise TrainingWallClockExceeded(
+                        f"Training exceeded the {wall_clock_seconds}s wall-clock limit for "
+                        "your plan and was stopped"
+                    ) from exc
 
         # Record the training-mode outcome (issue #101) in training_config so it
         # persists on the MLModel alongside the requested mode.
