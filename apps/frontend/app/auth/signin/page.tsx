@@ -13,6 +13,24 @@ import { Mail, Loader2 } from "lucide-react";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
 import Link from "next/link";
 import { sanitizeCallbackUrl } from "@/lib/safe-redirect";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+// Auth.js sends a failed sign-in back to this page as `?error=<type>`. The
+// parameter is caller-controlled, so it only ever selects one of these strings.
+const SIGN_IN_ERRORS: Record<string, string> = {
+  OAuthAccountNotLinked:
+    'This email is already registered with a different sign-in method. Sign in with the provider you used the first time.',
+};
+
+function SignInError(props: { code: string | null }) {
+  const { code } = props;
+  if (!code) return null;
+  return (
+    <Alert variant="destructive">
+      <AlertDescription>{SIGN_IN_ERRORS[code] ?? 'Sign-in failed. Please try again.'}</AlertDescription>
+    </Alert>
+  );
+}
 
 export default function SignInPage() {
   const { status } = useSession();
@@ -68,6 +86,7 @@ export default function SignInPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <SignInError code={searchParams.get('error')} />
           {isDevelopment && (
             <>
               <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-md">
