@@ -692,3 +692,12 @@ class TestDownloadableUrl:
         for stored in ("datasets/u/f.csv", "s3://the-bucket/transformed/u/x.parquet"):
             bucket, key = resolve_validated_object(downloadable_url(stored))
             assert bucket == "the-bucket" and key.startswith(("datasets/", "transformed/"))
+
+
+def test_parquet_is_recognised_by_both_ends_not_by_its_first_bytes():
+    """#524's rule, on bytes: a CSV whose first column is named PAR1 is not Parquet."""
+    from app.utils.s3 import holds_parquet
+
+    assert holds_parquet(b"PAR1 rows PAR1")
+    assert not holds_parquet(b"PAR1,b\n1,2\n")
+    assert not holds_parquet(b"PAR1")

@@ -10,9 +10,12 @@ both dual-written twins (``UserData`` and ``DatasetMetadata``).
 
 The object's extension (``s3_url``, then ``file_path``) is authoritative — it names
 the bytes that actually exist — so a mismatch is corrected by setting ``file_type``
-to the extension-derived type (the same derivation `record_new_file` uses). Rows
-whose location has no recognizable extension are reported as ``undetermined`` and
-never changed.
+to the extension-derived type (the same derivation `record_new_file` uses). The one
+exception is a version object (``…/versions/…``) not named ``.parquet``: until #888
+those held parquet under the upload's name, so the script downloads it and the bytes
+decide. That needs the S3 settings the backend runs with. Rows whose location has no
+recognizable extension, or whose version object cannot be read, are reported as
+``undetermined`` and never changed.
 
 Read-only by default; ``--apply`` writes the corrected ``file_type``. Output is
 counts only — no ids, no keys — so it is safe to paste into a public issue. Exit
@@ -37,7 +40,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.models.dataset import DatasetMetadata
 from app.models.registry import DOCUMENT_MODELS
 from app.models.user_data import UserData
-from app.services.dataset_link import _file_type_of
+from app.services.dataset_link import file_type_at
 
 
 async def _audit(model, *, apply: bool) -> dict[str, int]:
@@ -47,7 +50,14 @@ async def _audit(model, *, apply: bool) -> dict[str, int]:
         if not location:
             continue
         checked += 1
-        expected = _file_type_of(location)
+        try:
+            expected = await file_type_at(location)
+        except Exception as e:
+            # A version object that could not be read: its name proves nothing (#888).
+            # Say why, by class only (this output gets pasted into public issues), so
+            # missing S3 settings do not pass for "nothing to fix".
+            print(f"unreadable version object: {type(e).__name__}", file=sys.stderr)
+            expected = None
         if expected is None:
             undetermined += 1
             continue
@@ -91,7 +101,7 @@ async def main() -> int:
         for name, r in (("UserData", user_data), ("DatasetMetadata", metadata)):
             print(
                 f"{name}: checked={r['checked']} mismatched={r['mismatched']} "
-                f"fixed={r['fixed']} undetermined(no extension)={r['undetermined']}"
+                f"fixed={r['fixed']} undetermined={r['undetermined']}"
             )
         print(f"applied={args.apply}")
 

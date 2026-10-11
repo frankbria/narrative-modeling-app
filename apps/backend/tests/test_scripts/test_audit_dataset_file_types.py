@@ -74,3 +74,18 @@ async def test_reconciles_dataset_metadata_twin(setup_database):
 
     assert result["fixed"] == 1
     assert (await DatasetMetadata.get(doc.id)).file_type == "parquet"
+
+
+async def test_a_version_object_that_cannot_be_read_is_undetermined_not_confirmed(setup_database, capsys):
+    """#888: a version object's name proves nothing (they held parquet under the upload's
+    `.csv` name), so the row is left alone when the bytes cannot be checked, and the
+    operator is told a read failed, without the key."""
+    mod = _load()
+    doc = await _ud("s3://some-other-bucket/datasets/u/ds/versions/v2/d.csv", "parquet")
+
+    result = await mod._audit(UserData, apply=True)
+
+    assert (result["undetermined"], result["mismatched"], result["fixed"]) == (1, 0, 0)
+    assert (await UserData.get(doc.id)).file_type == "parquet"
+    err = capsys.readouterr().err
+    assert "unreadable version object" in err and "some-other-bucket" not in err

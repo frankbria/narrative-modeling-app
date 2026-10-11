@@ -1,37 +1,44 @@
-# #715 — column_stats concurrent cache-miss: loser can serve a partial winner write (P1.60)
+# #888 — version objects hold parquet under the upload's `.csv` name (P1.59)
 
-Self-authored plan (the issue lists options, no plan and no explicit acceptance criteria).
+Self-authored plan (the issue has a definition of done, no plan).
 
-## Decision made here
-- **The loser serves what it computed, not what it re-reads** (the issue's option 2).
-  `calculate_and_store_column_stats` already holds the complete in-memory list when its
-  `insert_many` collides on `dataset_column_unique`. It catches a duplicate-key-only
-  `BulkWriteError` and returns that list, so no reader ever depends on how far the
-  winner's non-atomic write has got. No retry loop, no sleep, no transaction (the local
-  mongod is standalone). A bulk error that is anything other than a duplicate key still
-  raises.
-- Both routes' `except (BulkWriteError, DuplicateKeyError)` branches go away: the helper is
-  the one place the collision is handled. `recalculate` keeps reporting success.
+## Decisions made here
+- **A new version object is named for what it holds.** `create_transformation_version`
+  keys parquet content as `…/versions/{version_id}/data.parquet`. The name is decided
+  from the bytes, not assumed: `POST /datasets/{id}/versions` hands the same function a
+  copy of the latest version, which can be the CSV upload. That content keeps the
+  dataset's filename, as today.
+- **For a version object whose name does not say parquet, the bytes decide.** This is the
+  pre-#888 population. `record_new_file` is the one place that stamps `file_type` from a
+  location, so the check lives there (one download, only for such a URL; every forward
+  writer hands it a `.parquet` URL and pays nothing). Undo, redo and jump all go through
+  it, so `history_service` does not change.
+- **The audit script uses the same rule**, so it repairs a dataset already sitting on a
+  mis-named version instead of confirming `csv`. A download it cannot make is
+  `undetermined` and the row is left alone.
+- No re-keying of existing objects: the row's `file_type` is made true, the name stays.
+  `column_stats` dispatched on the name alone, so its loader now takes the parquet
+  branch on the bytes it already holds (cross-family review).
+- `create_transformation_version` was cc 12 and the naming line is inside it, so the
+  CRAP gate required splitting it (`_duplicate_of`, `_upload_version`, `_schema_hash`,
+  `_insert_version`).
 
-## Acceptance criteria (derived from the issue)
-- [x] AC1: a GET that loses the recompute race returns every column of the dataset, even
-      when the winner has written only some of its rows at the moment of the collision.
-- [x] AC2: a test pins that window with a real duplicate-key error from the real index
-      (the issue's repro sketch), and fails on the old code.
-- [x] AC3: the loser still answers 200, not 500, and `recalculate` still reports success on
-      a collision.
-- [x] AC4: a bulk write error that is not a duplicate key is not swallowed.
+## Acceptance criteria (the issue's definition of done)
+- [x] AC1: a test reproduces it first (CSV upload, two steps, undo, read the way a
+      training-stage reader does) and fails on main.
+- [x] AC2: a new version object's key extension matches its content.
+- [x] AC3: a dataset restored to, or already sitting on, a mis-named version still loads:
+      the restore stamps `parquet`, and the audit script corrects an existing row.
+- [x] AC4: undo, then train, works on a CSV upload, against real bytes in LocalStack.
+- [x] AC5: column stats on a restored (new-style) version return every column.
 
 ## Steps
-1. RED: in `tests/test_api/test_column_stats.py`, replace the full-set race test with one
-   that seeds one of two winner rows just before the real `insert_many`; add the
-   recalculate collision test and the non-duplicate error test.
-2. GREEN: handle the collision in `app/utils/column_stats.py`; delete the two route
-   branches and the now-unused import in `app/api/routes/column_stats.py`.
-3. Update the #543 paragraph in `CLAUDE.md`.
-
-## Out of scope, to be filed
-- A plain reader (no recompute) that arrives while a winner is mid-`insert_many` sees a
-  non-empty partial set and serves it as a cache hit. Nothing checks a cached set is
-  complete. Different path, same root; needs its own decision on what "complete" is
-  measured against.
+1. Tests first, in `tests/test_integration/test_transformation_history_localstack.py`:
+   undo then read (AC1, AC2, AC4, AC5); a version re-keyed to the old shape, then undo
+   (AC3); the audit script on a row a pre-#888 undo left as `csv` (AC3).
+2. `app/utils/s3.py::holds_parquet(content)`: PAR1 at both ends, the #524 rule.
+3. `versioning_service.create_transformation_version`: name by content.
+4. `dataset_link.file_type_at(url)` used by `record_new_file` and the audit script.
+5. Unit tests for the non-integration gate: key naming, the bytes-decide branch with the
+   downloader stubbed, the script's undetermined case.
+6. CLAUDE.md: the `file_type` paragraph.

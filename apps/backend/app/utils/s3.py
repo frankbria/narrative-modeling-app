@@ -455,6 +455,12 @@ def downloadable_url(path_or_url: str | None, fallback: str | None = None) -> st
     return f"s3://{allowed_bucket()}/{candidate.lstrip('/')}"
 
 
+def holds_parquet(content: bytes) -> bool:
+    """Whether these bytes are a Parquet file: ``PAR1`` at both ends, since a CSV can
+    start with it (#524)."""
+    return len(content) >= 8 and content[:4] == b"PAR1" == content[-4:]
+
+
 def get_file_from_s3(s3_url: str) -> io.BytesIO:
     """Download a stored object into memory — the one BytesIO reader (#531).
 

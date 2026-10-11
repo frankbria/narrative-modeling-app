@@ -208,10 +208,15 @@ class TestVersionCreation:
             assert "nonexistent" in str(exc_info.value.message)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("content, name", [
+        (b"PAR1 a transformed frame PAR1", "data.parquet"),  # what every transformation writes
+        (b"id,name\n1,a\n", "test.csv"),  # POST /versions copies the latest, maybe the upload
+    ])
     async def test_transformation_version_key_embeds_version_id(
-        self, versioning_service, mock_dataset_metadata
+        self, versioning_service, mock_dataset_metadata, content, name
     ):
-        """S3 key is keyed by version_id (UUID), not the racy version number (#276)."""
+        """S3 key is keyed by version_id (UUID), not the racy version number (#276), and
+        named for what the object holds, not for the upload (#888)."""
         parent = MagicMock(version_id="v1", dataset_id="ds1", version_number=1,
                            num_rows=100, num_columns=5, user_id="user1")
         with patch('app.services.versioning_service.DatasetVersion') as MockDV:
@@ -225,13 +230,13 @@ class TestVersionCreation:
             versioning_service._create_lineage = AsyncMock(return_value=MagicMock(lineage_id="lg"))
 
             await versioning_service.create_transformation_version(
-                parent_version_id="v1", transformed_content=b"data",
+                parent_version_id="v1", transformed_content=content,
                 transformation_steps=[], dataset_metadata=mock_dataset_metadata,
                 user_id="user1",
             )
 
             key = versioning_service.s3_client.put_object.call_args.kwargs["Key"]
-            assert "/versions/" in key
+            assert "/versions/" in key and key.endswith(f"/{name}")
             assert "/v2/" not in key  # no version-number segment that could collide
 
     @pytest.mark.asyncio

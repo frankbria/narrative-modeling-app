@@ -1694,3 +1694,29 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A stale `.git/index.lock` in the main checkout blocks the post-merge pull.** It was
   30 minutes old and empty with no git process alive (`pgrep -x git`), left while another
   session was working in the repo. Check both before removing it.
+
+## 2026-10-11 — #888 (a version object is named for the parquet it holds)
+
+- **Run lizard on the functions a plan touches before writing the change.** The one-line
+  key fix sat inside `create_transformation_version` (cc 12). The CRAP gate only said so
+  after the cross-family review and the demo, so the split needed a third review pass and
+  a second demo run. `lizard <file> | grep <function>` during planning puts the split in
+  the first commit.
+- **`crap.sh --lcov <file>` still runs the configured coverage command.** To reuse a
+  suite run, pass `--coverage-command "cp <lcov> \$QUARTERMASTER_COVERAGE_DIR/lcov.info"`.
+  Otherwise the gate suite runs twice, ten minutes each.
+- **An ad-hoc pytest run while the gate suite is running needs its own database.** Both
+  use `narrative_modeling_test`, and the second run's setup drops the first one's
+  collections. Set `TEST_MONGODB_DB` and `TEST_MONGODB_URI` to a scratch name for the
+  ad-hoc run.
+- **When a name can lie about content, decide from the bytes at the one place that reads
+  the name.** `record_new_file` is the only writer of `file_type` after a move, so the
+  check for pre-fix version objects went there and undo, redo and jump needed no change.
+  Put a possible download before the function's own snapshot of the row, never between
+  the snapshot and the write (the #723 window).
+- **A LocalStack fixture must clear `S3Service.is_mock_mode`.** The singleton is built at
+  import. With no AWS credentials in the environment yet, it stays in mock mode after the
+  fixture patches its client, and a test run on its own (`-k`) refuses every download.
+- **A demo step that is expected to fail must not sit in an `&&` chain.** `showboat exec`
+  returns the command's exit status, so recording the failing-on-main test run stopped the
+  rest of the recording.
