@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from beanie import PydanticObjectId
+from pymongo.errors import BulkWriteError
 
 from app.models.column_stats import (
     CategoricalValueCounts,
@@ -9,6 +10,8 @@ from app.models.column_stats import (
     NumericHistogram,
 )
 from app.models.user_data import UserData
+
+_DUPLICATE_KEY = 11000  # MongoDB's E11000
 
 
 async def calculate_and_store_column_stats(
@@ -23,7 +26,8 @@ async def calculate_and_store_column_stats(
         user_id: The ID of the user who owns the dataset
 
     Returns:
-        List of ColumnStats objects that were created
+        The computed ColumnStats, complete even when a concurrent recompute
+        stored the rows first (see _store)
     """
     # Get the dataset document
     dataset = await UserData.get(dataset_id)
@@ -34,62 +38,69 @@ async def calculate_and_store_column_stats(
     if dataset.user_id != user_id:
         raise ValueError(f"User {user_id} does not own dataset {dataset_id}")
 
-    # Create a list to store the ColumnStats objects
-    column_stats_list = []
-
-    # Process each column
-    for column_name in df.columns:
-        series = df[column_name]
-
-        # Skip empty columns
-        if series.empty:
-            continue
-
-        # Determine data type
-        data_type = _determine_data_type(series)
-
-        # Calculate basic statistics
-        count = len(series)
-        missing = series.isna().sum()
-        unique = series.nunique()
-
-        # Create a ColumnStats object
-        column_stats = ColumnStats(
-            dataset_id=dataset,
-            user_id=user_id,
-            column_name=column_name,
-            data_type=data_type,
-            count=count,
-            missing=missing,
-            unique=unique,
-        )
-
-        # Calculate type-specific statistics
-        if data_type == "numeric":
-            _add_numeric_stats(column_stats, series)
-        elif data_type == "categorical":
-            _add_categorical_stats(column_stats, series)
-        elif data_type == "date":
-            _add_date_stats(column_stats, series)
-        elif data_type == "text":
-            _add_text_stats(column_stats, series)
-
-        # Assign the id up front so a single bulk write can replace the
-        # per-column inserts below without leaving these objects id-less.
-        column_stats.id = PydanticObjectId()
-        column_stats_list.append(column_stats)
-
-    # One bulk write rather than an insert per column. `recalculate` has to
-    # delete the old rows before writing the new ones (its delete matches on
-    # dataset_id, so it would otherwise remove what was just inserted), which
-    # leaves a window where a failure part-way through the loop destroyed a
-    # complete set of stats and left a partial one. A single insert_many
-    # narrows that window to one operation — and is a round trip per dataset
-    # instead of one per column.
-    if column_stats_list:
-        await ColumnStats.insert_many(column_stats_list)
-
+    column_stats_list = [
+        _column_stats(df[column_name], column_name, dataset, user_id)
+        for column_name in df.columns
+        if not df[column_name].empty
+    ]
+    await _store(column_stats_list)
     return column_stats_list
+
+
+def _column_stats(
+    series: pd.Series, column_name: str, dataset: UserData, user_id: str
+) -> ColumnStats:
+    """One column's statistics, not yet stored."""
+    data_type = _determine_data_type(series)
+
+    column_stats = ColumnStats(
+        dataset_id=dataset,
+        user_id=user_id,
+        column_name=column_name,
+        data_type=data_type,
+        count=len(series),
+        missing=series.isna().sum(),
+        unique=series.nunique(),
+    )
+
+    if data_type == "numeric":
+        _add_numeric_stats(column_stats, series)
+    elif data_type == "categorical":
+        _add_categorical_stats(column_stats, series)
+    elif data_type == "date":
+        _add_date_stats(column_stats, series)
+    elif data_type == "text":
+        _add_text_stats(column_stats, series)
+
+    # Assign the id up front so the single bulk write in _store does not
+    # leave these objects id-less.
+    column_stats.id = PydanticObjectId()
+    return column_stats
+
+
+async def _store(column_stats_list: list[ColumnStats]) -> None:
+    """Write a dataset's stats in one bulk write; lose a concurrent race quietly.
+
+    One insert_many rather than an insert per column: `recalculate` deletes the
+    old rows first, so per-column inserts left a long window in which a failure
+    destroyed a complete set and left a partial one.
+
+    A duplicate key on dataset_column_unique (#543) means another request is
+    storing this same dataset's stats. The caller keeps the list it computed
+    and must not re-read instead (#715): insert_many is not atomic across
+    documents, so the winner may have written only some of its rows. Any other
+    bulk failure raises, without the document it failed on.
+    """
+    if not column_stats_list:
+        return
+    try:
+        await ColumnStats.insert_many(column_stats_list)
+    except BulkWriteError as e:
+        codes = {err.get("code") for err in e.details.get("writeErrors", [])}
+        if codes != {_DUPLICATE_KEY}:
+            # Not a bare `raise`: a BulkWriteError's message carries the failing
+            # document, so the caller's log line would hold the column's values.
+            raise RuntimeError(f"column stats bulk write failed: codes {codes}") from None
 
 
 def _determine_data_type(series: pd.Series) -> str:

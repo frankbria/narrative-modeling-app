@@ -1,16 +1,17 @@
 # app/api/routes/column_stats.py
 
+import csv
 import io
 import logging
 
 import pandas as pd
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException
-from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.column_stats import ColumnStats
 from app.models.user_data import UserData
+from app.services.dataset_link import _file_type_of
 from app.utils.column_stats import calculate_and_store_column_stats
 from app.utils.s3 import get_file_from_s3
 
@@ -81,6 +82,37 @@ async def _require_owned_dataset(dataset_id: str, user_id: str) -> UserData:
     return dataset
 
 
+def _load_dataframe(dataset: UserData) -> pd.DataFrame:
+    """Download and parse the dataset's current file."""
+    # Download through the one validated reader (#531): bucket allowlist,
+    # traversal and namespace checks, size cap.
+    file_content = get_file_from_s3(dataset.s3_url).getvalue()
+
+    # Dispatch on where the file is now, not on `filename`: a transformation
+    # rewrites it as parquet and moves `s3_url`, but never renames the upload.
+    file_type = _file_type_of(dataset.s3_url)
+    try:
+        if file_type == "csv":
+            return pd.read_csv(io.BytesIO(file_content))
+        if file_type in ("xlsx", "xls"):
+            return pd.read_excel(io.BytesIO(file_content))
+        if file_type == "parquet":
+            return pd.read_parquet(io.BytesIO(file_content))
+        # Try to read as CSV with different settings
+        return pd.read_csv(io.BytesIO(file_content), sep=None, engine="python")
+    except (
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+        csv.Error,  # the sniffer's "Could not determine delimiter"; not a ValueError
+        ValueError,
+        UnicodeDecodeError,
+    ) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
+        )
+
+
 @router.get("/dataset/{dataset_id}", response_model=list[ColumnStats])
 async def get_column_stats(
     dataset_id: str, user_id: str = Depends(get_current_user_id)
@@ -108,28 +140,7 @@ async def get_column_stats(
     # If no stats exist, calculate them
     if not column_stats:
         try:
-            # Download through the one validated reader (#531): bucket allowlist,
-            # traversal and namespace checks, size cap.
-            file_content = get_file_from_s3(dataset.s3_url).getvalue()
-
-            # Read the data into a pandas DataFrame
-            if dataset.filename.endswith(".csv"):
-                df = pd.read_csv(io.BytesIO(file_content))
-            elif dataset.filename.endswith(".xlsx") or dataset.filename.endswith(
-                ".xls"
-            ):
-                df = pd.read_excel(io.BytesIO(file_content))
-            else:
-                # Try to read as CSV with different settings
-                try:
-                    df = pd.read_csv(
-                        io.BytesIO(file_content), sep=None, engine="python"
-                    )
-                except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError) as e:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
-                    )
+            df = _load_dataframe(dataset)
 
             # Drop unservable legacy rows for this dataset BEFORE recomputing.
             # Rows written before #449 carry no user_id, so the scoped read
@@ -160,14 +171,6 @@ async def get_column_stats(
 
         except HTTPException:
             raise
-        except (BulkWriteError, DuplicateKeyError):
-            # Lost a concurrent recompute race: another request missed the cache
-            # for this same dataset and inserted first, so this insert collided
-            # on the dataset_column_unique index (#543). The winner's rows are
-            # correct and complete — an ordered insert_many stops at the first
-            # duplicate, so this loser wrote nothing partial — so just serve
-            # them, rather than 500-ing on what is really a cache hit.
-            column_stats = await _read_scoped_stats(dataset_id, user_id)
         except Exception as e:
             logger.error(f"Error calculating column stats: {e}")
             raise HTTPException(
@@ -194,24 +197,7 @@ async def recalculate_column_stats(
     dataset = await _require_owned_dataset(dataset_id, user_id)
 
     try:
-        # Download through the one validated reader (#531): bucket allowlist,
-        # traversal and namespace checks, size cap.
-        file_content = get_file_from_s3(dataset.s3_url).getvalue()
-
-        # Read the data into a pandas DataFrame
-        if dataset.filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(file_content))
-        elif dataset.filename.endswith(".xlsx") or dataset.filename.endswith(".xls"):
-            df = pd.read_excel(io.BytesIO(file_content))
-        else:
-            # Try to read as CSV with different settings
-            try:
-                df = pd.read_csv(io.BytesIO(file_content), sep=None, engine="python")
-            except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError) as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
-                )
+        df = _load_dataframe(dataset)
 
         # Replace the existing rows only now that the new content is parsed and
         # in hand. Deleting before the S3 download (where this used to sit) meant
@@ -232,12 +218,6 @@ async def recalculate_column_stats(
 
     except HTTPException:
         raise
-    except (BulkWriteError, DuplicateKeyError):
-        # A concurrent recompute (another recalculate, or a GET cache-miss) won
-        # the race and wrote fresh rows under the dataset_column_unique index
-        # (#543) before this insert; the data is already recalculated, so report
-        # success rather than 500 on the collision.
-        return {"message": "Column statistics recalculated successfully"}
     except Exception as e:
         logger.error(f"Error recalculating column stats: {e}")
         raise HTTPException(

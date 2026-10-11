@@ -22,14 +22,21 @@ from app.models.user_data import UserData
 OTHER_USER = "other_user_449"
 
 
-async def make_user_data(user_id: str) -> UserData:
-    """A minimal persisted UserData owned by `user_id`."""
+async def make_user_data(
+    user_id: str, filename: str = "payroll.csv", stored_as: str | None = None
+) -> UserData:
+    """A minimal persisted UserData owned by `user_id`.
+
+    `stored_as` is the object's name when it differs from the upload's: a
+    transformation rewrites the file as parquet and never touches `filename`.
+    """
+    stored_as = stored_as or filename
     dataset = UserData(
         user_id=user_id,
-        filename="payroll.csv",
+        filename=filename,
         original_filename="payroll.csv",
-        s3_url=f"s3://test-bucket/{user_id}/payroll.csv",
-        file_path=f"{user_id}/payroll.csv",
+        s3_url=f"s3://test-bucket/{user_id}/{stored_as}",
+        file_path=f"{user_id}/{stored_as}",
         num_rows=100,
         num_columns=2,
         data_schema=[],
@@ -60,6 +67,23 @@ async def seed_cached_stats(
         max_value=480000.0,
         mean=118000.0,
     ).insert()
+
+
+def winner_mid_write(dataset: UserData, owner_id: str):
+    """Patch ``ColumnStats.insert_many`` so a concurrent recompute's FIRST row lands
+    just before this request's own insert, and no more of them.
+
+    That is the window #715 is about: the request has already missed the cache, the
+    winner is part-way through a non-atomic ``insert_many``, and the real insert that
+    follows collides on the real ``dataset_column_unique`` index.
+    """
+    real_insert_many = ColumnStats.insert_many
+
+    async def insert_after_the_winners_first_row(documents, *args, **kwargs):
+        await seed_cached_stats(dataset, owner_id, "salary")
+        return await real_insert_many(documents, *args, **kwargs)
+
+    return patch.object(ColumnStats, "insert_many", insert_after_the_winners_first_row)
 
 
 class TestColumnStatsTenantIsolation:
@@ -335,32 +359,152 @@ class TestColumnStatsTenantIsolation:
         assert sorted(c["column_name"] for c in second.json()) == ["dept", "salary"]
 
     @pytest.mark.asyncio
-    async def test_concurrent_recompute_loser_serves_winner_rows_not_500(
+    async def test_concurrent_recompute_loser_serves_every_column_not_a_partial_winner(
         self, async_authorized_client: AsyncClient, setup_database,
         mock_user_id: str, monkeypatch
     ):
-        """#543: with the dataset_column_unique index, a request that loses a
-        concurrent cache-miss recompute race hits a duplicate-key error on its
-        insert. It must serve the winner's rows, not 500."""
+        """#715: a request that loses a concurrent cache-miss recompute race collides
+        on dataset_column_unique. The winner's insert_many is not atomic, so at that
+        moment it may have written only some of its rows; the loser must still serve
+        every column, as 200."""
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ), winner_mid_write(mine, mock_user_id):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_recalculate_that_loses_the_race_still_reports_success(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """#715: the collision is handled where the write happens, so recalculate
+        answers 200 on it exactly as it did when the route caught it."""
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ), winner_mid_write(mine, mock_user_id):
+            response = await async_authorized_client.post(
+                f"/api/v1/column_stats/dataset/{mine.id}/recalculate"
+            )
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_a_bulk_write_failure_that_is_not_a_duplicate_key_is_not_served_as_success(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch, caplog
+    ):
+        """#715: only a duplicate key means "someone else stored this". Any other
+        bulk write failure must not answer 200, and must not put the failing
+        document (the column's values) in the log."""
         from pymongo.errors import BulkWriteError
 
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
-
-        async def winner_writes_then_this_insert_collides(df, dataset_id, user_id):
-            # Stand in for another request winning the race: its rows now exist,
-            # so this (losing) insert would violate the unique index.
-            await seed_cached_stats(mine, mock_user_id, "salary")
-            await seed_cached_stats(mine, mock_user_id, "dept")
-            raise BulkWriteError({})
+        not_a_duplicate = BulkWriteError(
+            {"writeErrors": [{
+                "index": 0, "code": 121, "errmsg": "Document failed validation",
+                "op": {"column_name": "salary", "max_value": 480000.0},
+            }]}
+        )
 
         with patch(
             "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
-        ), patch(
-            "app.api.routes.column_stats.calculate_and_store_column_stats",
-            side_effect=winner_writes_then_this_insert_collides,
+        ), patch.object(ColumnStats, "insert_many", side_effect=not_a_duplicate):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 500
+        assert "121" in caplog.text
+        assert "480000" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_file_that_is_not_named_csv_has_its_delimiter_sniffed(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, filename="payroll.tsv")
+        fake_body = io.BytesIO(b"salary\tdept\n100\ta\n200\tb\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
         ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_a_file_that_cannot_be_parsed_is_a_400_and_stores_nothing(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, filename="payroll.dat")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=io.BytesIO(b"")
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 400
+        assert await ColumnStats.get_motor_collection().count_documents(
+            {"dataset_id.$id": mine.id}
+        ) == 0
+
+    @pytest.mark.asyncio
+    async def test_a_malformed_csv_is_a_400_like_any_other_unparseable_file(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)  # payroll.csv
+        ragged = io.BytesIO(b"salary,dept\n100,a\n200,b,c,d\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=ragged
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_a_transformed_dataset_is_read_as_the_parquet_it_now_is(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """A transformation moves `s3_url` to a parquet object and leaves `filename`
+        as the upload's .csv name, so the loader must dispatch on the location."""
+        import pandas as pd
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, stored_as="3f2a.parquet")
+        body = io.BytesIO()
+        pd.DataFrame({"salary": [100, 200], "dept": ["a", "b"]}).to_parquet(body)
+        body.seek(0)
+
+        with patch("app.api.routes.column_stats.get_file_from_s3", return_value=body):
             response = await async_authorized_client.get(
                 f"/api/v1/column_stats/dataset/{mine.id}"
             )
