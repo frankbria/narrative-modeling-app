@@ -1,5 +1,6 @@
 # app/api/routes/column_stats.py
 
+import csv
 import io
 import logging
 
@@ -93,7 +94,13 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
     # Try to read as CSV with different settings
     try:
         return pd.read_csv(io.BytesIO(file_content), sep=None, engine="python")
-    except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError) as e:
+    except (
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+        csv.Error,  # the sniffer's "Could not determine delimiter"; not a ValueError
+        ValueError,
+        UnicodeDecodeError,
+    ) as e:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",

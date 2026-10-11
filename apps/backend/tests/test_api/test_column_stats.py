@@ -22,11 +22,11 @@ from app.models.user_data import UserData
 OTHER_USER = "other_user_449"
 
 
-async def make_user_data(user_id: str) -> UserData:
+async def make_user_data(user_id: str, filename: str = "payroll.csv") -> UserData:
     """A minimal persisted UserData owned by `user_id`."""
     dataset = UserData(
         user_id=user_id,
-        filename="payroll.csv",
+        filename=filename,
         original_filename="payroll.csv",
         s3_url=f"s3://test-bucket/{user_id}/payroll.csv",
         file_path=f"{user_id}/payroll.csv",
@@ -418,3 +418,42 @@ class TestColumnStatsTenantIsolation:
             )
 
         assert response.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_a_file_that_is_not_named_csv_has_its_delimiter_sniffed(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, filename="payroll.tsv")
+        fake_body = io.BytesIO(b"salary\tdept\n100\ta\n200\tb\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_a_file_that_cannot_be_parsed_is_a_400_and_stores_nothing(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, filename="payroll.dat")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=io.BytesIO(b"")
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 400
+        assert await ColumnStats.get_motor_collection().count_documents(
+            {"dataset_id.$id": mine.id}
+        ) == 0
