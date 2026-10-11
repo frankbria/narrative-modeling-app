@@ -170,6 +170,33 @@ async def test_a_presigned_url_that_percent_encodes_the_key_is_a_reference(
     deleted.assert_not_awaited()
 
 
+async def test_the_lookup_reads_only_the_keys_own_tenant(setup_database, deleted, monkeypatch):
+    """Scoped to the tenant in the key so it uses the `user_id` index, not a scan of
+    every tenant's rows on each failed upload."""
+    seen: list[dict] = []
+    real_find_one = UserData.find_one
+
+    def recording(query, *args, **kwargs):
+        seen.append(query)
+        return real_find_one(query, *args, **kwargs)
+
+    monkeypatch.setattr(UserData, "find_one", recording)
+
+    assert await _post("/fails-after-the-put") == 500
+
+    assert [q["user_id"] for q in seen] == ["tenant-735"]
+
+
+async def test_a_key_with_no_tenant_segment_is_left(setup_database, deleted, monkeypatch, caplog):
+    monkeypatch.setattr("tests.test_middleware.test_upload_cleanup.KEY", "0b0f6c1e.csv")
+
+    with caplog.at_level(logging.ERROR, logger="app.middleware.upload_cleanup"):
+        assert await _post("/fails-after-the-put") == 500
+
+    deleted.assert_not_awaited()
+    assert "may be orphaned: 0b0f6c1e.csv" in caplog.text
+
+
 async def test_a_key_that_only_shares_a_prefix_is_not_a_reference(setup_database, deleted):
     await UserData(
         user_id="tenant-735", filename="d.csv", original_filename="d.csv",

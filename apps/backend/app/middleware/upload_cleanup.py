@@ -60,7 +60,7 @@ class UnownedUploadCleanupMiddleware(BaseHTTPMiddleware):
 
 async def _delete_unowned(keys: list[str]) -> None:
     # Emptied first: an exception path can reach this twice otherwise.
-    pending, keys[:] = list(keys), []
+    pending, keys[:] = list(dict.fromkeys(keys)), []
     for key in pending:
         try:
             if not await _is_referenced(key):
@@ -77,18 +77,21 @@ async def _delete_unowned(keys: list[str]) -> None:
 
 
 async def _is_referenced(key: str) -> bool:
-    """Whether any document names this object.
+    """Whether any document of the key's tenant names this object.
 
     Asked of the database, not inferred from where the request failed: an insert can
     land and then raise, and `/datasets/upload` writes two documents.
     """
+    # Every writer keys its object `{namespace}/{user_id}/…`, and every owner indexes
+    # `user_id`, so the regex only runs over that tenant's documents. A key of any
+    # other shape raises here and is kept by the caller.
+    tenant = key.split("/")[1]
     # A stored location is the bare key, a URL ending in it, or a presigned URL, which
     # percent-encodes the key and appends `?…`.
-    # shortcut: unindexed regexes on the failure path only; store a normalised key and
-    # index it if failed uploads ever become frequent.
     spellings = "|".join(sorted({re.escape(key), re.escape(quote(key))}))
     names_key = {"$regex": f"({spellings})(\\?|$)"}
     for model, fields in _OWNERS:
-        if await model.find_one({"$or": [{field: names_key} for field in fields]}) is not None:
+        query = {"user_id": tenant, "$or": [{field: names_key} for field in fields]}
+        if await model.find_one(query) is not None:
             return True
     return False
