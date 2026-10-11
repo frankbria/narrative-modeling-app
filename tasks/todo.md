@@ -33,9 +33,9 @@ does not answer the new name, and static assets are served without HSTS.
 6. Cutover runbook on #830 for the steps that need the owner's OAuth and Stripe consoles.
 
 ## Acceptance criteria
-- [ ] AC1 certificate for dev.sheetpredict.app, renewal dry run (box)
-- [ ] AC2 `.env.staging` carries the new host; edge shipped by a deploy, no drift (cutover)
-- [ ] AC3 OAuth callbacks and Stripe webhook point at the new host (owner consoles)
+- [x] AC1 certificate for dev.sheetpredict.app, renewal dry run (box)
+- [x] AC2 `.env.staging` carries the new host; edge shipped by a deploy, no drift (cutover)
+- [x] AC3 OAuth callbacks and Stripe webhook point at the new host (owner consoles)
 - [x] AC4 `X-Robots-Tag: noindex, nofollow` on every staging response, pinned by a test
-- [ ] AC5 old name retired, decision recorded (cutover)
-- [ ] AC6 health gates and hand smoke checks against the new host (cutover)
+- [x] AC5 old name retired, decision recorded (cutover)
+- [x] AC6 health gates and hand smoke checks against the new host (cutover)
