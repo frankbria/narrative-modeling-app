@@ -52,8 +52,11 @@ async def _audit(model, *, apply: bool) -> dict[str, int]:
         checked += 1
         try:
             expected = await file_type_at(location)
-        except Exception:
+        except Exception as e:
             # A version object that could not be read: its name proves nothing (#888).
+            # Say why, by class only (this output gets pasted into public issues), so
+            # missing S3 settings do not pass for "nothing to fix".
+            print(f"unreadable version object: {type(e).__name__}", file=sys.stderr)
             expected = None
         if expected is None:
             undetermined += 1
