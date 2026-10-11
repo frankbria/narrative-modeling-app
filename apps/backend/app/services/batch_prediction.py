@@ -373,9 +373,9 @@ class BatchPredictionService:
         try:
             await self._admit(job)
         except Exception:
-            # No job row was written (usually: lost the race for the last slot after
-            # uploading), so nothing will ever read or erase the input. Take it back.
-            await self._discard_input(input_path)
+            # Usually: lost the race for the last slot after uploading. With no job
+            # row, nothing will ever read or erase the input, so take it back.
+            await self._discard_unowned_input(job)
             raise
 
         # Start processing asynchronously
@@ -403,13 +403,18 @@ class BatchPredictionService:
             MAX_CONCURRENT_BATCH_JOBS_PER_USER, MAX_CONCURRENT_BATCH_JOBS_PER_USER
         )
 
-    async def _discard_input(self, input_path: str) -> None:
-        """Best-effort delete of an input this service just uploaded for a job that
-        was then refused; the key is the job's own (`batch-jobs/{user}/{model}/{job_id}/`)."""
+    async def _discard_unowned_input(self, job: BatchJob) -> None:
+        """Best-effort delete of the input uploaded for a job whose row was not written.
+
+        Looked up, not assumed: an insert can fail after the server applied it, and
+        deleting the input of a job that exists would make every run of it fail. When
+        the lookup or the delete fails, the input is left (#735's rule).
+        """
         try:
-            await self.s3_service.delete_file(input_path)
+            if job.input_path and await BatchJob.find_one(BatchJob.job_id == job.job_id) is None:
+                await self.s3_service.delete_file(job.input_path)
         except Exception:
-            logger.warning("Could not delete the input of a refused batch job", exc_info=True)
+            logger.warning("Could not clean up the input of a batch job that was not created", exc_info=True)
 
     async def _prepare_input_data(
         self, input_data: Any, user_id: str, model_id: str, job_id: str
@@ -464,7 +469,9 @@ class BatchPredictionService:
         """Process a batch prediction job asynchronously"""
 
         # Keep the heartbeat fresh through a slow chunk, so the stale-job reaper
-        # (#484) never reaps this live run between per-chunk progress writes.
+        # (#484) never reaps this live run between per-chunk progress writes. The
+        # queued path already holds a pump over its wait; this one is for callers
+        # that run a job directly, and two pumps only write the same field twice.
         async with heartbeat_pump(job):
             run = asyncio.ensure_future(self._run_batch_job(job))
             try:
@@ -502,6 +509,7 @@ class BatchPredictionService:
         if job.status != JobStatus.COMPLETED:
             # FAILED just now, or CANCELLED while the run was too stuck to reach the
             # check where it refunds a cancel. `_refund_remainder` refunds once.
+            # `job` is the object the run itself updates, so its progress is current.
             await self._refund_remainder(job, job.progress.processed_records)
 
     async def _run_batch_job(self, job: BatchJob) -> None:
@@ -723,7 +731,9 @@ class BatchPredictionService:
         """Refund the predictions reserved for records a cancelled run never
         processed (#485 AC3), against the period the reservation was taken from."""
         remainder = max(0, job.progress.total_records - processed)
-        if remainder > 0 and await self._claim_refund(job.job_id):
+        # Claimed even when nothing is owed, so "this run's remainder is settled" does
+        # not depend on every caller computing the same remainder.
+        if await self._claim_refund(job.job_id) and remainder > 0:
             await metering.refund(
                 job.user_id,
                 "predictions",

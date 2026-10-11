@@ -1380,6 +1380,13 @@ async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_da
         await _asyncio.gather(*[svc._refund_remainder(job, 4) for _ in range(5)])
         assert refunds.await_count == 1
 
+        # A caller that owes nothing still settles the run: a later, larger claim
+        # for the same run finds it settled.
+        settled = await _running_job(user, "batch_settled_653")
+        await svc._refund_remainder(settled, 10)
+        await svc._refund_remainder(settled, 0)
+        assert refunds.await_count == 1
+
         await BatchJob.get_motor_collection().update_one(
             {"job_id": job.job_id}, {"$set": {"status": JobStatus.FAILED.value}}
         )
@@ -1456,6 +1463,33 @@ async def test_a_failed_insert_that_is_not_a_full_tenant_is_raised_and_its_input
 
     svc.s3_service.delete_file.assert_awaited_once()
     assert await BatchJob.find(BatchJob.user_id == user).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_an_insert_that_landed_and_then_raised_keeps_its_input(setup_database, monkeypatch):
+    """A write can fail after the server applied it. The job exists then, and deleting
+    its input would make every run of it fail, so the row is looked up first."""
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(), "landed_insert_653"
+    real_create = BatchJob.create
+
+    async def create_then_time_out(self, *args, **kwargs):
+        await real_create(self, *args, **kwargs)
+        raise ConnectionError("the reply was lost")
+
+    monkeypatch.setattr(BatchJob, "create", create_then_time_out)
+    try:
+        with pytest.raises(ConnectionError):
+            await svc.create_batch_prediction_job(
+                user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False
+            )
+
+        assert await BatchJob.find(BatchJob.user_id == user).count() == 1
+        svc.s3_service.delete_file.assert_not_awaited()
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
 
 
 @pytest.mark.asyncio
