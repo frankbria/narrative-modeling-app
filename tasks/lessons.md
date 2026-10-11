@@ -1663,3 +1663,8 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Remove the worktree before `gh pr merge --delete-branch`.** The merge succeeds, the
   local branch delete fails because the worktree holds it, and the remote branch is left
   behind for a second command.
+- **Read the bot reviews in one command and merge in the next.** PR #885 was merged by the
+  same command that printed a Major finding (`SIGN_IN_ERRORS[code]` resolving `__proto__`
+  to an inherited member and crashing the sign-in page). A chained merge cannot act on
+  what the read shows. The same lookup in the older auth error page had the bug too:
+  a caller-supplied key into a plain object needs `Object.hasOwn` or a `Map`.

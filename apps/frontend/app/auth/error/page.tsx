@@ -36,7 +36,9 @@ export default function AuthErrorPage() {
     Default: 'An unexpected error occurred.',
   };
 
-  const errorMessage = error ? (errorMessages[error] ?? errorMessages.Default) : errorMessages.Default;
+  // `error` is caller-controlled, and `errorMessages['__proto__']` is not a miss.
+  const errorKey = error && Object.hasOwn(errorMessages, error) ? error : 'Default';
+  const errorMessage = errorMessages[errorKey];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted">
