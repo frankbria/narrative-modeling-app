@@ -12,7 +12,9 @@ from httpx import ASGITransport, AsyncClient
 
 from app.middleware import upload_cleanup
 from app.middleware.upload_cleanup import UnownedUploadCleanupMiddleware
+from app.models.bulk_transformation import BulkTransformationJob
 from app.models.dataset import DatasetMetadata
+from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.utils.s3 import _recorded
 
@@ -110,6 +112,36 @@ async def test_the_metadata_twin_alone_is_enough_to_keep_it(setup_database, dele
     await DatasetMetadata(
         user_id="tenant-735", dataset_id="ds", filename="d.csv", original_filename="d.csv",
         file_type="csv", file_path=KEY, s3_url=URL, num_rows=1, num_columns=1,
+    ).insert()
+
+    assert await _post("/fails-after-the-put") == 500
+
+    deleted.assert_not_awaited()
+
+
+@pytest.mark.parametrize("model, field", [
+    (TransformationConfig, "current_file_path"),  # written before the dataset moves
+    (BulkTransformationJob, "output_file_path"),
+])
+async def test_a_transformation_record_naming_the_object_keeps_it(setup_database, deleted, model, field):
+    await model.get_motor_collection().insert_one({"user_id": "tenant-735", field: URL})
+
+    assert await _post("/fails-after-the-put") == 500
+
+    deleted.assert_not_awaited()
+
+
+async def test_a_presigned_url_that_percent_encodes_the_key_is_a_reference(
+    setup_database, deleted, monkeypatch
+):
+    """/upload/ stores a presigned URL. A tenant id with a `|` or a space is encoded in
+    it, so the raw key alone would miss the row and delete its file."""
+    key = "datasets/auth0|tenant 735/0b0f6c1e.csv"
+    monkeypatch.setattr("tests.test_middleware.test_upload_cleanup.KEY", key)
+    await UserData(
+        user_id="auth0|tenant 735", filename="d.csv", original_filename="d.csv",
+        s3_url="https://bucket.s3.amazonaws.com/datasets/auth0%7Ctenant%20735/0b0f6c1e.csv?X-Amz-Signature=abc",
+        num_rows=1, num_columns=1, data_schema=[],
     ).insert()
 
     assert await _post("/fails-after-the-put") == 500

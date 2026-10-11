@@ -12,11 +12,14 @@ it writes; this deletes what no document references once the request has failed.
 
 import logging
 import re
+from urllib.parse import quote
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from app.models.bulk_transformation import BulkTransformationJob
 from app.models.dataset import DatasetMetadata
+from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.services.s3_service import s3_service
 from app.utils.s3 import record_request_uploads
@@ -24,7 +27,14 @@ from app.utils.s3 import record_request_uploads
 logger = logging.getLogger(__name__)
 
 # Every field that can name a dataset's object, current or not.
-_LOCATION_FIELDS = ("s3_url", "file_path", "source_s3_url", "superseded_s3_urls")
+_DATASET_LOCATIONS = ("s3_url", "file_path", "source_s3_url", "superseded_s3_urls")
+_OWNERS = (
+    (UserData, _DATASET_LOCATIONS),
+    (DatasetMetadata, _DATASET_LOCATIONS),
+    # Written before the dataset itself moves to a transformed file.
+    (TransformationConfig, ("current_file_path",)),
+    (BulkTransformationJob, ("output_file_path",)),
+)
 
 
 class UnownedUploadCleanupMiddleware(BaseHTTPMiddleware):
@@ -64,17 +74,18 @@ async def _delete_unowned(keys: list[str]) -> None:
 
 
 async def _is_referenced(key: str) -> bool:
-    """Whether any dataset document names this object.
+    """Whether any document names this object.
 
     Asked of the database, not inferred from where the request failed: an insert can
     land and then raise, and `/datasets/upload` writes two documents.
     """
-    # A stored location is the bare key, a URL ending in it, or a presigned URL (`?…`).
-    # shortcut: an unindexed regex over two collections, on the failure path only; store
-    # a normalised key and index it if failed uploads ever become frequent.
-    names_key = {"$regex": f"{re.escape(key)}(\\?|$)"}
-    query = {"$or": [{field: names_key} for field in _LOCATION_FIELDS]}
-    for model in (UserData, DatasetMetadata):
-        if await model.find_one(query) is not None:
+    # A stored location is the bare key, a URL ending in it, or a presigned URL, which
+    # percent-encodes the key and appends `?…`.
+    # shortcut: unindexed regexes on the failure path only; store a normalised key and
+    # index it if failed uploads ever become frequent.
+    spellings = "|".join(sorted({re.escape(key), re.escape(quote(key))}))
+    names_key = {"$regex": f"({spellings})(\\?|$)"}
+    for model, fields in _OWNERS:
+        if await model.find_one({"$or": [{field: names_key} for field in fields]}) is not None:
             return True
     return False
