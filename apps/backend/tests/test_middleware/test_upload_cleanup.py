@@ -22,6 +22,7 @@ pytestmark = pytest.mark.asyncio
 
 KEY = "datasets/tenant-735/0b0f6c1e.csv"
 URL = f"https://bucket.s3.amazonaws.com/{KEY}"
+OTHER_KEY = "datasets/tenant-735/9d4e7a22.csv"
 
 
 @_recorded
@@ -43,6 +44,12 @@ def _app() -> FastAPI:
     async def crashes_after_the_put():
         put(b"rows", KEY)
         raise RuntimeError("the database went away")
+
+    @app.post("/fails-after-two-puts")
+    async def fails_after_two_puts():
+        put(b"rows", KEY)
+        put(b"rows", OTHER_KEY)
+        raise HTTPException(status_code=500, detail="the second write failed")
 
     @app.post("/succeeds")
     async def succeeds():
@@ -71,10 +78,24 @@ async def _post(path: str) -> int:
 
 
 @pytest.mark.parametrize("path", ["/fails-after-the-put", "/crashes-after-the-put"])
-async def test_a_failed_request_deletes_the_object_it_wrote(setup_database, deleted, path):
-    assert await _post(path) == 500
+async def test_a_failed_request_deletes_the_object_it_wrote(setup_database, deleted, path, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.middleware.upload_cleanup"):
+        assert await _post(path) == 500
 
     deleted.assert_awaited_once_with(KEY)
+    assert KEY in caplog.text, "the log line is the only record of which object was deleted"
+
+
+async def test_each_object_is_judged_on_its_own(setup_database, deleted):
+    """Two puts in one failed request: the one a row names stays, the other goes."""
+    await UserData(
+        user_id="tenant-735", filename="d.csv", original_filename="d.csv",
+        s3_url=URL, num_rows=1, num_columns=1, data_schema=[],
+    ).insert()
+
+    assert await _post("/fails-after-two-puts") == 500
+
+    deleted.assert_awaited_once_with(OTHER_KEY)
 
 
 async def test_a_successful_request_keeps_its_object(setup_database, deleted):
@@ -180,7 +201,7 @@ async def test_a_delete_that_fails_does_not_change_the_response(setup_database, 
     with caplog.at_level(logging.ERROR, logger="app.middleware.upload_cleanup"):
         assert await _post("/fails-after-the-put") == 500
 
-    assert "may be orphaned" in caplog.text
+    assert f"may be orphaned: {KEY}" in caplog.text
 
 
 async def test_an_upload_outside_a_request_is_not_recorded():

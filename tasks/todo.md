@@ -24,15 +24,18 @@ Self-authored plan (the issue lists two options, no plan and no acceptance crite
 - `upload_file_to_s3` is cc 8, so the recording is a decorator on it, not an edit inside it.
 - Not covered: a request cancelled by a client disconnect (the refund middleware has the
   same limit), and a 2xx that reports failure in its body after uploading.
+- From review: `TransformationConfig.current_file_path` and
+  `BulkTransformationJob.output_file_path` also count as ownership, the key is matched raw
+  or percent-encoded, and both log lines name the key.
 
 ## Acceptance criteria (derived from the issue)
-- [ ] AC1: a request that fails after the S3 put on `/upload/secure`,
+- [x] AC1: a request that fails after the S3 put on `/upload/secure`,
       `/upload/confirm-pii-upload` or chunked `complete` leaves no object in the bucket.
-- [ ] AC2: the same holds for the other writers through the helper, shown on
+- [x] AC2: the same holds for the other writers through the helper, shown on
       `/datasets/upload` with a file that fails processing (no fault injection).
-- [ ] AC3: a successful upload keeps its object, and an object a document references is
+- [x] AC3: a successful upload keeps its object, and an object a document references is
       never deleted even when the request then fails.
-- [ ] AC4: a cleanup that cannot run (lookup or delete fails) does not change the
+- [x] AC4: a cleanup that cannot run (lookup or delete fails) does not change the
       response, and is logged.
 
 ## Steps

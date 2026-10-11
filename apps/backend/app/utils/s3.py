@@ -237,6 +237,8 @@ def _recorded(upload):
         success, url = upload(file_content, s3_filename, content_type)
         uploads = _request_uploads.get()
         if success and uploads is not None:
+            # Appended to the middleware's own list, never re-set: the route runs in a
+            # copy of the middleware's context, so a new value here would not reach it.
             uploads.append(s3_filename)
         return success, url
 

@@ -27,10 +27,9 @@ from app.utils.s3 import record_request_uploads
 logger = logging.getLogger(__name__)
 
 # Every field that can name a dataset's object, current or not.
-_DATASET_LOCATIONS = ("s3_url", "file_path", "source_s3_url", "superseded_s3_urls")
 _OWNERS = (
-    (UserData, _DATASET_LOCATIONS),
-    (DatasetMetadata, _DATASET_LOCATIONS),
+    (UserData, ("s3_url", "file_path", "superseded_s3_urls")),
+    (DatasetMetadata, ("s3_url", "file_path", "source_s3_url", "superseded_s3_urls")),
     # Written before the dataset itself moves to a transformed file.
     (TransformationConfig, ("current_file_path",)),
     (BulkTransformationJob, ("output_file_path",)),
@@ -66,11 +65,15 @@ async def _delete_unowned(keys: list[str]) -> None:
         try:
             if not await _is_referenced(key):
                 await s3_service.delete_file(key)
-                logger.warning("Deleted an object a failed request uploaded and left unowned")
+                # The key, as the upload's own log line gives it: this is the only
+                # record that the object existed.
+                logger.warning("Deleted an object a failed request uploaded and left unowned: %s", key)
         except Exception:
             # Left in place: an orphan is reported by the inventory script, while a
             # deleted object that a row still points at is the customer's file gone.
-            logger.exception("Could not clean up an object a failed request uploaded; it may be orphaned")
+            logger.exception(
+                "Could not clean up an object a failed request uploaded; it may be orphaned: %s", key
+            )
 
 
 async def _is_referenced(key: str) -> bool:

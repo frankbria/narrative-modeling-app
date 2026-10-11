@@ -1720,3 +1720,24 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A demo step that is expected to fail must not sit in an `&&` chain.** `showboat exec`
   returns the command's exit status, so recording the failing-on-main test run stopped the
   rest of the recording.
+
+## 2026-10-11 — #735 (a failed upload deletes the object nothing owns)
+
+- **When every function a fix would touch is over the CRAP ceiling, look for a seam
+  outside them before planning the splits.** The issue sketched a guard in each upload
+  route. `lizard` at planning time showed the five handlers at cc 8 to 23, so that plan
+  was five splits of the upload surface. A middleware plus a decorator on the one shared
+  helper touched none of them and also covered the writers the issue did not list.
+- **For a cleanup that deletes, decide ownership by looking, and resolve every doubt to
+  keeping.** "The request failed" does not mean the insert did not land, and
+  `/datasets/upload` writes two rows. The middleware asks the database whether anything
+  names the key, and leaves the object when the lookup or the delete fails. The
+  cross-family reviewer then found two more records that name a transformed object; ask a
+  reviewer to hunt for exactly that direction by name.
+- **Look for a repro that needs no fault injection.** Three routes needed a patched insert
+  or schema inference to fail after the put. `/datasets/upload` orphaned an object for any
+  file it could not parse, with nothing patched, which made the first demo line and showed
+  the bug was not hypothetical.
+- **Send the reviewer the tests with the follow-up diff.** I sent only `app/` for the second
+  pass, and its one finding was that the new behaviour had no tests. They were in the same
+  commit.
