@@ -40,6 +40,8 @@ def real_s3_env(monkeypatch, test_s3_bucket, s3_client):
 
     monkeypatch.setattr(s3_service, "s3_client", s3_client)
     monkeypatch.setattr(s3_service, "bucket_name", test_s3_bucket)
+    # Built at import, in mock mode when no AWS credentials were in the environment yet.
+    monkeypatch.setattr(s3_service, "is_mock_mode", False)
     return test_s3_bucket
 
 

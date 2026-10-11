@@ -205,51 +205,93 @@ class VersioningService(BaseService[DatasetVersion]):
 
         # Check for duplicate content (deduplication)
         content_hash = DatasetVersion.compute_content_hash(transformed_content)
-        existing_version = await DatasetVersion.find_one(
-            DatasetVersion.dataset_id == parent_version.dataset_id,
-            DatasetVersion.content_hash == content_hash,
-            # Owner predicate is load-bearing: without it a foreign row sharing
-            # this dataset_id and hash is returned to the caller and has their
-            # description written onto it (found reviewing #447).
-            DatasetVersion.user_id == user_id
+        lineage_args: dict[str, Any] = dict(
+            parent_version=parent_version,
+            transformation_steps=transformation_steps,
+            dataset_metadata=dataset_metadata,
+            user_id=user_id,
+            transformation_config_id=transformation_config_id,
+            quality_before=quality_before,
+            quality_after=quality_after,
         )
-
+        existing_version = await self._duplicate_of(parent_version.dataset_id, content_hash, user_id, description)
         if existing_version:
-            logger.info(f"Duplicate content detected, updating existing version {existing_version.version_id} with new metadata")
-
-            # Update description if provided
-            if description:
-                existing_version.description = description
-                await existing_version.save()
-
             # Still create lineage to track this transformation
-            lineage = await self._create_lineage(
-                parent_version=parent_version,
-                child_version=existing_version,
-                transformation_steps=transformation_steps,
-                dataset_metadata=dataset_metadata,
-                user_id=user_id,
-                transformation_config_id=transformation_config_id,
-                quality_before=quality_before,
-                quality_after=quality_after
-            )
-            return existing_version, lineage
+            return existing_version, await self._create_lineage(child_version=existing_version, **lineage_args)
 
         # Upload transformed file to S3 under a collision-proof key (issue #276).
         # The key embeds version_id (a UUID), NOT the racy version number, so two
         # concurrent transforms can never put_object to the same key and silently
         # overwrite each other's content.
         version_id = str(uuid.uuid4())
-        # Named for what it holds, not for the upload: an undo makes this object the
-        # dataset's current file, and file_type is then read off its name (#888).
-        name = "data.parquet" if holds_parquet(transformed_content) else dataset_metadata.filename
-        versioned_file_path = f"datasets/{user_id}/{parent_version.dataset_id}/versions/{version_id}/{name}"
+        versioned_file_path, s3_url = self._upload_version(
+            f"datasets/{user_id}/{parent_version.dataset_id}/versions/{version_id}",
+            transformed_content,
+            dataset_metadata.filename,
+        )
 
+        new_version = await self._insert_version(parent_version, dict(
+            version_id=version_id,
+            dataset_id=parent_version.dataset_id,
+            user_id=user_id,
+            content_hash=content_hash,
+            file_size=len(transformed_content),
+            file_path=versioned_file_path,
+            s3_url=s3_url,
+            description=description or f"Transformation from v{parent_version.version_number}",
+            num_rows=dataset_metadata.num_rows,
+            num_columns=dataset_metadata.num_columns,
+            columns=dataset_metadata.columns,
+            schema_hash=self._schema_hash(dataset_metadata),
+            parent_version_id=parent_version_id,
+            is_base_version=False,
+            created_by=user_id,
+        ))
+
+        # Create lineage tracking
+        lineage = await self._create_lineage(child_version=new_version, **lineage_args)
+
+        # Link lineage to version
+        new_version.transformation_lineage_id = lineage.lineage_id
+        await new_version.save()
+
+        return new_version, lineage
+
+    async def _duplicate_of(
+        self, dataset_id: str, content_hash: str, user_id: str, description: str | None
+    ) -> DatasetVersion | None:
+        """The caller's existing version of this dataset with the same content, if any,
+        carrying the new description."""
+        existing_version = await DatasetVersion.find_one(
+            DatasetVersion.dataset_id == dataset_id,
+            DatasetVersion.content_hash == content_hash,
+            # Owner predicate is load-bearing: without it a foreign row sharing
+            # this dataset_id and hash is returned to the caller and has their
+            # description written onto it (found reviewing #447).
+            DatasetVersion.user_id == user_id
+        )
+        if not existing_version:
+            return None
+        logger.info(f"Duplicate content detected, updating existing version {existing_version.version_id} with new metadata")
+        # Update description if provided
+        if description:
+            existing_version.description = description
+            await existing_version.save()
+        return existing_version
+
+    def _upload_version(self, prefix: str, content: bytes, upload_filename: str) -> tuple[str, str]:
+        """Store a version's content under `prefix`; its (key, s3 url).
+
+        Named for what it holds, not for the upload: an undo makes this object the
+        dataset's current file, and file_type is then read off its name (#888).
+        """
+        name = "data.parquet" if holds_parquet(content) else upload_filename
+        versioned_file_path = f"{prefix}/{name}"
         try:
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=versioned_file_path,
-                Body=transformed_content
+                Body=content
             )
             s3_url = f"s3://{self.bucket_name}/{versioned_file_path}"
             logger.info(f"Uploaded version to {s3_url}")
@@ -260,78 +302,46 @@ class VersioningService(BaseService[DatasetVersion]):
                 operation="s3_upload",
                 original_error=e
             )
+        return versioned_file_path, s3_url
 
-        # Compute schema hash
+    @staticmethod
+    def _schema_hash(dataset_metadata: DatasetMetadata) -> str:
         dtypes = {}
         for field in dataset_metadata.data_schema:
             dtypes[field.field_name] = field.inferred_dtype
-        schema_hash = DatasetVersion.compute_schema_hash(
+        return DatasetVersion.compute_schema_hash(
             dataset_metadata.columns,
             dtypes
         )
 
-        # Insert with optimistic retry on the unique (dataset_id, version_number)
-        # index (issue #276): recompute the next number each attempt so a concurrent
-        # writer that grabbed the same number loses one race, not the data. The S3
-        # object is already keyed by version_id, so a retry never re-uploads.
-        new_version: DatasetVersion | None = None
+    async def _insert_version(self, parent_version: DatasetVersion, fields: dict[str, Any]) -> DatasetVersion:
+        """Insert the version with the dataset's next version number.
+
+        Optimistic retry on the unique (dataset_id, version_number) index (issue #276):
+        recompute the next number each attempt so a concurrent writer that grabbed the
+        same number loses one race, not the data. The S3 object is already keyed by
+        version_id, so a retry never re-uploads.
+        """
         for attempt in range(_MAX_VERSION_INSERT_RETRIES):
             next_version_number = await self._get_next_version_number(parent_version.dataset_id)
-            new_version = DatasetVersion(
-                version_id=version_id,
-                dataset_id=parent_version.dataset_id,
-                version_number=next_version_number,
-                user_id=user_id,
-                content_hash=content_hash,
-                file_size=len(transformed_content),
-                file_path=versioned_file_path,
-                s3_url=s3_url,
-                description=description or f"Transformation from v{parent_version.version_number}",
-                num_rows=dataset_metadata.num_rows,
-                num_columns=dataset_metadata.num_columns,
-                columns=dataset_metadata.columns,
-                schema_hash=schema_hash,
-                parent_version_id=parent_version_id,
-                is_base_version=False,
-                created_by=user_id
-            )
+            new_version = DatasetVersion(version_number=next_version_number, **fields)
             try:
                 await new_version.insert()
-                logger.info(f"Created transformation version {version_id} (v{next_version_number})")
-                break
+                logger.info(f"Created transformation version {fields['version_id']} (v{next_version_number})")
+                return new_version
             except DuplicateKeyError:
-                if attempt == _MAX_VERSION_INSERT_RETRIES - 1:
-                    logger.error(
-                        f"Version number contention for dataset {parent_version.dataset_id} "
-                        f"exhausted {_MAX_VERSION_INSERT_RETRIES} retries"
-                    )
-                    raise OperationError(
-                        message="Failed to assign a unique version number after retries",
-                        operation="version_insert",
-                    )
                 logger.warning(
                     f"Version number {next_version_number} collided for dataset "
                     f"{parent_version.dataset_id}; retrying (attempt {attempt + 1})"
                 )
-        assert new_version is not None  # loop either inserts-then-breaks or raises
-
-        # Create lineage tracking
-        lineage = await self._create_lineage(
-            parent_version=parent_version,
-            child_version=new_version,
-            transformation_steps=transformation_steps,
-            dataset_metadata=dataset_metadata,
-            user_id=user_id,
-            transformation_config_id=transformation_config_id,
-            quality_before=quality_before,
-            quality_after=quality_after
+        logger.error(
+            f"Version number contention for dataset {parent_version.dataset_id} "
+            f"exhausted {_MAX_VERSION_INSERT_RETRIES} retries"
         )
-
-        # Link lineage to version
-        new_version.transformation_lineage_id = lineage.lineage_id
-        await new_version.save()
-
-        return new_version, lineage
+        raise OperationError(
+            message="Failed to assign a unique version number after retries",
+            operation="version_insert",
+        )
 
     async def _create_lineage(
         self,

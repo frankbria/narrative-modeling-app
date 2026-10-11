@@ -90,15 +90,16 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
 
     # Dispatch on where the file is now, not on `filename`: a transformation
     # rewrites it as parquet and moves `s3_url`, but never renames the upload.
-    # The bytes first: a version written before #888 is parquet under that upload's name.
-    file_type = "parquet" if holds_parquet(file_content) else _file_type_of(dataset.s3_url)
+    file_type = _file_type_of(dataset.s3_url)
     try:
+        # Parquet by its bytes, not its name: a version written before #888 is
+        # parquet under the upload's own .csv name.
+        if holds_parquet(file_content):
+            return pd.read_parquet(io.BytesIO(file_content))
         if file_type == "csv":
             return pd.read_csv(io.BytesIO(file_content))
         if file_type in ("xlsx", "xls"):
             return pd.read_excel(io.BytesIO(file_content))
-        if file_type == "parquet":
-            return pd.read_parquet(io.BytesIO(file_content))
         # Try to read as CSV with different settings
         return pd.read_csv(io.BytesIO(file_content), sep=None, engine="python")
     except (
