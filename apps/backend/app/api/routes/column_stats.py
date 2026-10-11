@@ -93,7 +93,8 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
     file_type = _file_type_of(dataset.s3_url)
     try:
         # Parquet by its bytes, not its name: a version written before #888 is
-        # parquet under the upload's own .csv name.
+        # parquet under the upload's own .csv name. Other bytes under a .parquet
+        # name fall through to the sniffer below.
         if holds_parquet(file_content):
             return pd.read_parquet(io.BytesIO(file_content))
         if file_type == "csv":

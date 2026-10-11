@@ -17,17 +17,20 @@ Self-authored plan (the issue has a definition of done, no plan).
   mis-named version instead of confirming `csv`. A download it cannot make is
   `undetermined` and the row is left alone.
 - No re-keying of existing objects: the row's `file_type` is made true, the name stays.
-  `column_stats` dispatches on the name, so it still misreads a pre-#888 version; nothing
-  calls that route (#889 asks whether it stays).
+  `column_stats` dispatched on the name alone, so its loader now takes the parquet
+  branch on the bytes it already holds (cross-family review).
+- `create_transformation_version` was cc 12 and the naming line is inside it, so the
+  CRAP gate required splitting it (`_duplicate_of`, `_upload_version`, `_schema_hash`,
+  `_insert_version`).
 
 ## Acceptance criteria (the issue's definition of done)
-- [ ] AC1: a test reproduces it first (CSV upload, two steps, undo, read the way a
+- [x] AC1: a test reproduces it first (CSV upload, two steps, undo, read the way a
       training-stage reader does) and fails on main.
-- [ ] AC2: a new version object's key extension matches its content.
-- [ ] AC3: a dataset restored to, or already sitting on, a mis-named version still loads:
+- [x] AC2: a new version object's key extension matches its content.
+- [x] AC3: a dataset restored to, or already sitting on, a mis-named version still loads:
       the restore stamps `parquet`, and the audit script corrects an existing row.
-- [ ] AC4: undo, then train, works on a CSV upload, against real bytes in LocalStack.
-- [ ] AC5: column stats on a restored (new-style) version return every column.
+- [x] AC4: undo, then train, works on a CSV upload, against real bytes in LocalStack.
+- [x] AC5: column stats on a restored (new-style) version return every column.
 
 ## Steps
 1. Tests first, in `tests/test_integration/test_transformation_history_localstack.py`:
