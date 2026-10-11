@@ -8,35 +8,41 @@ import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
 import { COMPANY } from '@/lib/legal/company';
 
+// Where rejected users request an invite. Configurable per deploy; falls back
+// to the company support mailbox so the "request access" path always works
+// (issues #261, #770).
+const REQUEST_ACCESS_URL =
+  process.env.NEXT_PUBLIC_INVITE_REQUEST_URL ??
+  `mailto:${COMPANY.supportEmail}?subject=Beta%20access%20request`;
+
+const ERROR_MESSAGES: Record<string, string> = {
+  Configuration: 'There is a problem with the server configuration.',
+  AccessDenied:
+    "This is a private, invite-only beta. The email you used isn't on the invite list yet.",
+  Verification: 'The verification token has expired or has already been used.',
+  OAuthSignin: 'Error in constructing an authorization URL.',
+  OAuthCallback: 'Error in handling the response from OAuth provider.',
+  OAuthCreateAccount: 'Could not create OAuth provider user in the database.',
+  EmailCreateAccount: 'Could not create email provider user in the database.',
+  Callback: 'Error in the OAuth callback handler route.',
+  OAuthAccountNotLinked: 'This account is already associated with another user.',
+  EmailSignin: 'Check if there is an issue with the email provider.',
+  CredentialsSignin: 'Sign in failed. Check the details you provided are correct.',
+  SessionRequired: 'Please sign in to access this page.',
+  Default: 'An unexpected error occurred.',
+};
+
+/** `error` is caller-controlled, and `ERROR_MESSAGES['__proto__']` is not a miss. */
+function authErrorMessage(error: string | null): string {
+  const key = error && Object.hasOwn(ERROR_MESSAGES, error) ? error : 'Default';
+  return ERROR_MESSAGES[key];
+}
+
 export default function AuthErrorPage() {
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
 
-  // Where rejected users request an invite. Configurable per deploy; falls back
-  // to the company support mailbox so the "request access" path always works
-  // (issues #261, #770).
-  const requestAccessUrl =
-    process.env.NEXT_PUBLIC_INVITE_REQUEST_URL ??
-    `mailto:${COMPANY.supportEmail}?subject=Beta%20access%20request`;
-
-  const errorMessages: Record<string, string> = {
-    Configuration: 'There is a problem with the server configuration.',
-    AccessDenied:
-      "This is a private, invite-only beta. The email you used isn't on the invite list yet.",
-    Verification: 'The verification token has expired or has already been used.',
-    OAuthSignin: 'Error in constructing an authorization URL.',
-    OAuthCallback: 'Error in handling the response from OAuth provider.',
-    OAuthCreateAccount: 'Could not create OAuth provider user in the database.',
-    EmailCreateAccount: 'Could not create email provider user in the database.',
-    Callback: 'Error in the OAuth callback handler route.',
-    OAuthAccountNotLinked: 'This account is already associated with another user.',
-    EmailSignin: 'Check if there is an issue with the email provider.',
-    CredentialsSignin: 'Sign in failed. Check the details you provided are correct.',
-    SessionRequired: 'Please sign in to access this page.',
-    Default: 'An unexpected error occurred.',
-  };
-
-  const errorMessage = error ? (errorMessages[error] ?? errorMessages.Default) : errorMessages.Default;
+  const errorMessage = authErrorMessage(error);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted">
@@ -57,7 +63,7 @@ export default function AuthErrorPage() {
               real <button> inside an anchor is invalid HTML and breaks a11y. */}
           {error === 'AccessDenied' && (
             <Button asChild className="w-full">
-              <a href={requestAccessUrl}>Request access</a>
+              <a href={REQUEST_ACCESS_URL}>Request access</a>
             </Button>
           )}
           <Button

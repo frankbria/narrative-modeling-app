@@ -17,17 +17,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Auth.js sends a failed sign-in back to this page as `?error=<type>`. The
 // parameter is caller-controlled, so it only ever selects one of these strings.
-const SIGN_IN_ERRORS: Record<string, string> = {
-  OAuthAccountNotLinked:
+// A Map, not an object: `obj['__proto__']` finds an inherited member, not a miss.
+const SIGN_IN_ERRORS = new Map([
+  [
+    'OAuthAccountNotLinked',
     'This email is already registered with a different sign-in method. Sign in with the provider you used the first time.',
-};
+  ],
+]);
 
 function SignInError(props: { code: string | null }) {
   const { code } = props;
   if (!code) return null;
   return (
     <Alert variant="destructive">
-      <AlertDescription>{SIGN_IN_ERRORS[code] ?? 'Sign-in failed. Please try again.'}</AlertDescription>
+      <AlertDescription>{SIGN_IN_ERRORS.get(code) ?? 'Sign-in failed. Please try again.'}</AlertDescription>
     </Alert>
   );
 }

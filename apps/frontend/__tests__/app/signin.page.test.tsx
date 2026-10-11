@@ -98,6 +98,17 @@ describe('SignInPage sign-in errors', () => {
     expect(alert).not.toHaveTextContent('SomethingElse');
   });
 
+  // A plain-object lookup resolves these to Object.prototype members, which
+  // React cannot render: `?error=__proto__` used to crash the page.
+  it.each(['__proto__', 'toString', 'constructor'])(
+    'treats the inherited key %s as an unknown error',
+    (key) => {
+      search = new URLSearchParams({ error: key });
+      render(<SignInPage />);
+      expect(screen.getByRole('alert')).toHaveTextContent(/sign-in failed/i);
+    },
+  );
+
   it('shows nothing when there is no error', () => {
     search = new URLSearchParams();
     render(<SignInPage />);

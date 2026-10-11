@@ -34,6 +34,15 @@ describe('AuthErrorPage', () => {
     );
   });
 
+  it.each(['__proto__', 'toString', 'constructor'])(
+    'shows the default message for the inherited key %s instead of crashing',
+    (key) => {
+      mockError = key;
+      render(<AuthErrorPage />);
+      expect(screen.getByText('An unexpected error occurred.')).toBeInTheDocument();
+    },
+  );
+
   it('shows no Request access action for unrelated errors', () => {
     mockError = 'Configuration';
     render(<AuthErrorPage />);
