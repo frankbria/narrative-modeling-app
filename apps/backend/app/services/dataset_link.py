@@ -69,6 +69,11 @@ async def record_new_file(doc: Dataset, new_url: str) -> None:
     full-document save: a save of the caller's in-memory snapshot reverted whatever
     another writer had changed since it was loaded (#723, the class #520 fixed).
     """
+    # Every writer uploads the transformed frame as parquet, so a dataset uploaded as CSV
+    # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
+    # Resolved before the re-read below, never after: this can be a download, and a
+    # concurrent move landing during it would be reverted from a stale snapshot (#723).
+    file_type = await file_type_at(new_url) or doc.file_type
     # Look the twin up at the dataset's CURRENT stored location, not the one this
     # in-memory `doc` was loaded with: two overlapping transformations each load the
     # dataset, the first moves both twins, and the second would otherwise search the
@@ -76,9 +81,7 @@ async def record_new_file(doc: Dataset, new_url: str) -> None:
     current = await _stored(doc)
     old_url = _current_url(current, doc)
     twin = await _find_twin(doc, old_url)
-    # Every writer uploads the transformed frame as parquet, so a dataset uploaded as CSV
-    # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
-    doc.file_type = await file_type_at(new_url) or doc.file_type
+    doc.file_type = file_type
     await _move_all(_erasure_order(doc, twin), doc, current, old_url, new_url)
 
 

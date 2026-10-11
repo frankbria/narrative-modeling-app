@@ -13,7 +13,7 @@ from app.models.column_stats import ColumnStats
 from app.models.user_data import UserData
 from app.services.dataset_link import _file_type_of
 from app.utils.column_stats import calculate_and_store_column_stats
-from app.utils.s3 import get_file_from_s3
+from app.utils.s3 import get_file_from_s3, holds_parquet
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -90,7 +90,8 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
 
     # Dispatch on where the file is now, not on `filename`: a transformation
     # rewrites it as parquet and moves `s3_url`, but never renames the upload.
-    file_type = _file_type_of(dataset.s3_url)
+    # The bytes first: a version written before #888 is parquet under that upload's name.
+    file_type = "parquet" if holds_parquet(file_content) else _file_type_of(dataset.s3_url)
     try:
         if file_type == "csv":
             return pd.read_csv(io.BytesIO(file_content))

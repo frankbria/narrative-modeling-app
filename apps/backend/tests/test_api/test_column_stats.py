@@ -490,16 +490,21 @@ class TestColumnStatsTenantIsolation:
         assert response.status_code == 400
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("stored_as", [
+        "3f2a.parquet",  # a transformation's output
+        "payroll.csv",  # a version restored by undo, written before #888 under the upload's name
+    ])
     async def test_a_transformed_dataset_is_read_as_the_parquet_it_now_is(
         self, async_authorized_client: AsyncClient, setup_database,
-        mock_user_id: str, monkeypatch
+        mock_user_id: str, monkeypatch, stored_as: str
     ):
         """A transformation moves `s3_url` to a parquet object and leaves `filename`
-        as the upload's .csv name, so the loader must dispatch on the location."""
+        as the upload's .csv name, so the loader must dispatch on the location, and
+        on the bytes where the location's own name is the upload's."""
         import pandas as pd
 
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
-        mine = await make_user_data(mock_user_id, stored_as="3f2a.parquet")
+        mine = await make_user_data(mock_user_id, stored_as=stored_as)
         body = io.BytesIO()
         pd.DataFrame({"salary": [100, 200], "dept": ["a", "b"]}).to_parquet(body)
         body.seek(0)
