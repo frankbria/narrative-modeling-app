@@ -62,6 +62,23 @@ async def seed_cached_stats(
     ).insert()
 
 
+def winner_mid_write(dataset: UserData, owner_id: str):
+    """Patch ``ColumnStats.insert_many`` so a concurrent recompute's FIRST row lands
+    just before this request's own insert, and no more of them.
+
+    That is the window #715 is about: the request has already missed the cache, the
+    winner is part-way through a non-atomic ``insert_many``, and the real insert that
+    follows collides on the real ``dataset_column_unique`` index.
+    """
+    real_insert_many = ColumnStats.insert_many
+
+    async def insert_after_the_winners_first_row(documents, *args, **kwargs):
+        await seed_cached_stats(dataset, owner_id, "salary")
+        return await real_insert_many(documents, *args, **kwargs)
+
+    return patch.object(ColumnStats, "insert_many", insert_after_the_winners_first_row)
+
+
 class TestColumnStatsTenantIsolation:
     """The ownership check must not depend on the cache being cold.
 
@@ -335,35 +352,69 @@ class TestColumnStatsTenantIsolation:
         assert sorted(c["column_name"] for c in second.json()) == ["dept", "salary"]
 
     @pytest.mark.asyncio
-    async def test_concurrent_recompute_loser_serves_winner_rows_not_500(
+    async def test_concurrent_recompute_loser_serves_every_column_not_a_partial_winner(
         self, async_authorized_client: AsyncClient, setup_database,
         mock_user_id: str, monkeypatch
     ):
-        """#543: with the dataset_column_unique index, a request that loses a
-        concurrent cache-miss recompute race hits a duplicate-key error on its
-        insert. It must serve the winner's rows, not 500."""
-        from pymongo.errors import BulkWriteError
-
+        """#715: a request that loses a concurrent cache-miss recompute race collides
+        on dataset_column_unique. The winner's insert_many is not atomic, so at that
+        moment it may have written only some of its rows; the loser must still serve
+        every column, as 200."""
         monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
         mine = await make_user_data(mock_user_id)
         fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
 
-        async def winner_writes_then_this_insert_collides(df, dataset_id, user_id):
-            # Stand in for another request winning the race: its rows now exist,
-            # so this (losing) insert would violate the unique index.
-            await seed_cached_stats(mine, mock_user_id, "salary")
-            await seed_cached_stats(mine, mock_user_id, "dept")
-            raise BulkWriteError({})
-
         with patch(
             "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
-        ), patch(
-            "app.api.routes.column_stats.calculate_and_store_column_stats",
-            side_effect=winner_writes_then_this_insert_collides,
-        ):
+        ), winner_mid_write(mine, mock_user_id):
             response = await async_authorized_client.get(
                 f"/api/v1/column_stats/dataset/{mine.id}"
             )
 
         assert response.status_code == 200
         assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+
+    @pytest.mark.asyncio
+    async def test_recalculate_that_loses_the_race_still_reports_success(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """#715: the collision is handled where the write happens, so recalculate
+        answers 200 on it exactly as it did when the route caught it."""
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ), winner_mid_write(mine, mock_user_id):
+            response = await async_authorized_client.post(
+                f"/api/v1/column_stats/dataset/{mine.id}/recalculate"
+            )
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_a_bulk_write_failure_that_is_not_a_duplicate_key_is_not_served_as_success(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """#715: only a duplicate key means "someone else stored this". Any other
+        bulk write failure stored nothing and must not answer 200."""
+        from pymongo.errors import BulkWriteError
+
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+        not_a_duplicate = BulkWriteError(
+            {"writeErrors": [{"index": 0, "code": 121, "errmsg": "Document failed validation"}]}
+        )
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ), patch.object(ColumnStats, "insert_many", side_effect=not_a_duplicate):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 500

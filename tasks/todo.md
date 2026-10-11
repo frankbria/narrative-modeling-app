@@ -1,41 +1,37 @@
-# #830 — Move staging to dev.sheetpredict.app (P1.59)
+# #715 — column_stats concurrent cache-miss: loser can serve a partial winner write (P1.60)
 
-Self-authored plan (the issue carries acceptance criteria, no plan). Read-only probe of
-the box on 2026-10-10: the edge is in sync with the repo, `NGINX_SERVER_NAME` is still the
-old name, six `.env.staging` lines carry it, `/var/www/letsencrypt` does not exist, port 80
-does not answer the new name, and static assets are served without HSTS.
+Self-authored plan (the issue lists options, no plan and no explicit acceptance criteria).
 
-## Decisions made here
-- **AC4 guard lives in the template, keyed on the hostname.** #832 AC4 renders production
-  from this same template with only the placeholders differing, so a hard-coded header
-  would ship `noindex` to production. A `map $host` defaults to `noindex, nofollow` and
-  maps only `www.sheetpredict.app` to empty (nginx omits an empty header). It fails
-  closed and needs no new env variable or script change.
-- **Every response means every location.** nginx drops all inherited `add_header` lines in
-  a location that declares its own. The static-asset location does, which is why those
-  responses carry no HSTS today. That line is deleted (Next.js sets Cache-Control itself) and a
-  test bans nested `add_header`.
-- **AC5: the old name is removed, not redirected.** Staging has no users or search
-  presence to carry over, and a 301 needs conditional rendering in a `sed` template.
-  The old certificate is deleted at the cutover so its renewal stops.
-- **First certificate uses certbot's nginx authenticator**, as the box's other
-  certificates do, because port 80 cannot serve the webroot for the new name until the
-  cutover renders it. It moves to the webroot after the cutover (AC1's renewal check).
+## Decision made here
+- **The loser serves what it computed, not what it re-reads** (the issue's option 2).
+  `calculate_and_store_column_stats` already holds the complete in-memory list when its
+  `insert_many` collides on `dataset_column_unique`. It catches a duplicate-key-only
+  `BulkWriteError` and returns that list, so no reader ever depends on how far the
+  winner's non-atomic write has got. No retry loop, no sleep, no transaction (the local
+  mongod is standalone). A bulk error that is anything other than a duplicate key still
+  raises.
+- Both routes' `except (BulkWriteError, DuplicateKeyError)` branches go away: the helper is
+  the one place the collision is handled. `recalculate` keeps reporting success.
+
+## Acceptance criteria (derived from the issue)
+- [ ] AC1: a GET that loses the recompute race returns every column of the dataset, even
+      when the winner has written only some of its rows at the moment of the collision.
+- [ ] AC2: a test pins that window with a real duplicate-key error from the real index
+      (the issue's repro sketch), and fails on the old code.
+- [ ] AC3: the loser still answers 200, not 500, and `recalculate` still reports success on
+      a collision.
+- [ ] AC4: a bulk write error that is not a duplicate key is not swallowed.
 
 ## Steps
-1. RED: `tests/test_security/test_nginx_noindex.py`.
-2. GREEN: `nginx-staging.conf` (map, header in both server blocks, no nested `add_header`).
-3. Docs: `.env.staging.example` (`NGINX_SERVER_NAME`), compose comment, STAGING.md,
-   CLAUDE.md edge bullet.
-4. Demo: render the template into a real nginx container and curl both hostnames.
-5. After merge: deploy applies the edge; verify the header live. Box: create the
-   webroot, issue the certificate.
-6. Cutover runbook on #830 for the steps that need the owner's OAuth and Stripe consoles.
+1. RED: in `tests/test_api/test_column_stats.py`, replace the full-set race test with one
+   that seeds one of two winner rows just before the real `insert_many`; add the
+   recalculate collision test and the non-duplicate error test.
+2. GREEN: handle the collision in `app/utils/column_stats.py`; delete the two route
+   branches and the now-unused import in `app/api/routes/column_stats.py`.
+3. Update the #543 paragraph in `CLAUDE.md`.
 
-## Acceptance criteria
-- [x] AC1 certificate for dev.sheetpredict.app, renewal dry run (box)
-- [x] AC2 `.env.staging` carries the new host; edge shipped by a deploy, no drift (cutover)
-- [x] AC3 OAuth callbacks and Stripe webhook point at the new host (owner consoles)
-- [x] AC4 `X-Robots-Tag: noindex, nofollow` on every staging response, pinned by a test
-- [x] AC5 old name retired, decision recorded (cutover)
-- [x] AC6 health gates and hand smoke checks against the new host (cutover)
+## Out of scope, to be filed
+- A plain reader (no recompute) that arrives while a winner is mid-`insert_many` sees a
+  non-empty partial set and serves it as a cache hit. Nothing checks a cached set is
+  complete. Different path, same root; needs its own decision on what "complete" is
+  measured against.
