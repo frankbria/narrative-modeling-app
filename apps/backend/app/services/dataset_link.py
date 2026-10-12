@@ -145,12 +145,19 @@ async def _close_history(docs: list[Dataset]) -> None:
     move left before #851. No transaction spans the two collections.
     """
     kept = {"$max": [{"$add": ["$current_position", 1]}, 0]}
+    # At the start (before the first step: reachable since #962 by undoing it) no step
+    # describes the edited file, so none is kept, and the version recorded for "before
+    # the first step" is no longer where the dataset is. `$slice` cannot take zero.
+    at_the_start = {"$eq": [kept, 0]}
     await TransformationConfig.get_motor_collection().update_many(
         {"user_id": docs[0].user_id, "dataset_id": {"$in": [_history_id(d) for d in docs]}},
         [
             {"$set": {
                 "undo_floor": kept,
-                "transformation_steps": {"$slice": ["$transformation_steps", 0, {"$max": [kept, 1]}]},
+                "transformation_steps": {
+                    "$cond": [at_the_start, [], {"$slice": ["$transformation_steps", 0, {"$max": [kept, 1]}]}]
+                },
+                "base_version_id": {"$cond": [at_the_start, None, "$base_version_id"]},
             }},
             {"$set": {"total_transformations": {"$size": "$transformation_steps"}}},
         ],

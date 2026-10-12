@@ -173,6 +173,9 @@ class TransformationConfig(Document):
     # Raised by a writer that moves the dataset without recording a step (#851): the
     # steps below it describe data from before that edit, so restoring one would discard it.
     undo_floor: int = Field(default=0, ge=0, description="Lowest history position that can still be restored")
+    # The version the dataset was at before its first step, when that is known for
+    # certain (#962). With it, position -1 is somewhere undo can go.
+    base_version_id: str | None = Field(None, description="Version of the dataset before its first step")
 
     # Current state
     current_file_path: str | None = Field(None, description="Current file path after transformations")
@@ -377,7 +380,13 @@ class TransformationConfig(Document):
 
     def can_reach(self, position: int) -> bool:
         """Whether `position` is a step whose data can still be restored: it exists, and
-        no edit outside the history has happened since it (#851)."""
+        no edit outside the history has happened since it (#851).
+
+        Position -1 is the dataset before its first step (#962). It can be restored
+        when the version it was at then was recorded and nothing has closed the history.
+        """
+        if position == -1:
+            return self.base_version_id is not None and self.undo_floor == 0
         return max(self.undo_floor, 0) <= position < len(self.transformation_steps)
 
     def can_redo(self) -> bool:

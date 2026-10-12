@@ -1,17 +1,27 @@
-# Issue #960: charts keep showing the data from before a transformation
+# Issue #962: the first transformation on a dataset cannot be undone
 
 ## Problem
-The histogram (default bins), box plot and correlation matrix are cached per dataset in
-Redis (`viz:{id}:…`) and in the `VisualizationCache` collection, which never expires.
-Nothing clears either when the dataset moves to a new file, so after a transformation,
-an undo or a data-issue fix the charts answer with the old data for good.
+The history has no position for "the dataset before any step". `current_position` is 0
+after the first step and undo moves to `position - 1`, which must be a step. So undo
+works from the second step back to the first and never further.
+
+## Design
+Position -1 becomes reachable when, and only when, the version the dataset was at before
+its first step is known for certain:
+
+- `TransformationConfig.base_version_id`: set when the first step of a history is
+  recorded, to that step's parent version, if the dataset had never moved before
+  (`source_s3_url` unset). Then the parent is the upload itself. If the dataset had
+  already been moved by an edit the history holds no step for, the latest version is not
+  the file being transformed, and nothing is recorded: the first step stays not undoable.
+- `can_reach(-1)`: the base is known and no outside edit has closed the history.
+- `_close_history` at position -1 (an outside edit after undoing to the start) forgets
+  the base and drops every step: none of them describes the edited file.
+- Undo to -1 restores the base version through the same `_move_to_step` as any other
+  undo; redo from -1 is the existing code.
 
 ## Plan
-- [ ] RED: `tests/test_services/test_moved_dataset_forgets_what_was_computed.py`: a move
-      through `record_new_file` drops this dataset's chart rows and Redis keys, and its
-      column statistics; another dataset's stay; a failure to clear does not fail the move.
-- [ ] `dataset_link.record_new_file` clears them after the move. It is the one place
-      every writer that moves a dataset goes through (apply, pipeline, bulk, data-issue
-      fixes, undo, redo, jump).
-- [ ] LocalStack test through the routes: a box plot before and after a transformation.
-- [ ] Column statistics (`ColumnStats`): cleared by the same hook; noted on #889.
+- [ ] RED: model tests, a `_close_history` test, and a LocalStack test through the
+      routes (upload, one step, undo, redo, watching the box plot's median).
+- [ ] Model, service, `dataset_link`, the apply path.
+- [ ] Existing tests that pin "position 0 cannot be undone".

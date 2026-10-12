@@ -9,7 +9,7 @@ Tests cover:
 - add_transformation_step() with branching (truncates forward history)
 """
 
-from app.models.transformation import TransformationConfig
+from app.models.transformation import TransformationConfig, TransformationStep
 
 
 class TestTransformationConfigHistory:
@@ -259,3 +259,33 @@ class TestTransformationConfigHistory:
         assert config.transformation_steps[1].transformation_type == "scale"
         assert config.transformation_steps[2].transformation_type == "fill_missing"
         assert config.current_position == 2
+
+
+class TestTheFirstStepCanBeUndone:
+    """#962: position -1 is the dataset before any step, reachable only when the
+    version it was at then is known and no outside edit has closed the history."""
+
+    @staticmethod
+    def _after_one_step(base_version_id: str | None = None) -> TransformationConfig:
+        step = TransformationStep.model_construct(transformation_type="remove_duplicates", version_id="v2")
+        return TransformationConfig.model_construct(
+            user_id="u", dataset_id="d", config_id="c", transformation_steps=[step],
+            current_position=0, undo_floor=0, base_version_id=base_version_id,
+        )
+
+    def test_with_the_base_known_the_first_step_can_be_undone(self):
+        assert self._after_one_step(base_version_id="v1").can_undo() is True
+
+    def test_without_it_the_first_step_stays_where_it_is(self):
+        assert self._after_one_step().can_undo() is False
+
+    def test_an_outside_edit_since_closes_the_way_back(self):
+        config = self._after_one_step(base_version_id="v1")
+        config.undo_floor = 1
+        assert config.can_undo() is False
+
+    def test_at_the_start_there_is_nothing_further_back_and_the_step_can_be_redone(self):
+        config = self._after_one_step(base_version_id="v1")
+        config.current_position = -1
+        assert (config.can_undo(), config.can_redo()) == (False, True)
+

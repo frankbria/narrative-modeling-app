@@ -711,8 +711,51 @@ class TransformationService(BaseService[TransformationConfig]):
                     dataset_id, user_id, timestamp, dataset.s3_url
                 )
             recorded.append(await self._versioned(dataset, dataset_id, user_id, step, done))
+            if len(recorded) == 1:
+                await self._remember_the_start(done["transformation_id"], dataset, recorded[0]["version_id"])
             last = step.after
         return recorded, last
+
+    async def _remember_the_start(self, config_id: str, dataset: Any, first_version_id: str | None) -> None:
+        """Record the version the dataset was at before the first step of its history,
+        so that step can be undone (#962). Only when that is certain.
+
+        Best effort: a transformation is not failed because its undo could not be
+        prepared. Without the record the first step stays where it is, as before.
+        """
+        try:
+            base = await self._version_before(config_id, dataset, first_version_id)
+            if base:
+                await TransformationConfig.find_one(TransformationConfig.config_id == config_id).update(
+                    {"$set": {"base_version_id": base}}
+                )
+        except Exception:
+            logger.warning("Could not record the starting version of history %s", config_id, exc_info=True)
+
+    async def _version_before(self, config_id: str, dataset: Any, first_version_id: str | None) -> str | None:
+        """The version the dataset was at before its first step, if that is known.
+
+        The first step's parent is the latest version, which is the file being
+        transformed only if the dataset has never moved before: then it is the upload
+        itself. A dataset already moved by an edit the history holds no step for has no
+        version of its current file, so there is no answer. A history that was undone
+        to its start keeps the base it has: that is the file the dataset was restored to.
+        """
+        from app.services.versioning_service import versioning_service
+
+        config = await self.get_by_id(config_id, check_ownership=False)
+        if not self._starts_from_the_upload(config, dataset) or not first_version_id:
+            return None
+        first = await versioning_service.get_version(first_version_id, mark_accessed=False)
+        return getattr(first, "parent_version_id", None)
+
+    @staticmethod
+    def _starts_from_the_upload(config: Any, dataset: Any) -> bool:
+        """A history with no step yet and no base recorded, on a dataset that has never
+        moved off the file it was uploaded as."""
+        if config is None or config.current_position != -1 or config.base_version_id:
+            return False
+        return not getattr(dataset, "source_s3_url", None)
 
     async def _move_to(
         self, dataset: Any, dataset_id: str, user_id: str, recorded: list[dict[str, Any]],
