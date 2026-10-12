@@ -1985,6 +1985,29 @@ def _serving_endpoint_for(model: MLModel, http_request: Request) -> str:
     )
 
 
+async def _sdk_inputs(model: MLModel, user_id: str) -> tuple[list[str], dict[str, Any]]:
+    """The raw inputs the serving route requires, and for each categorical one a
+    value the model knows (#512). The stored ``feature_names`` are the ENGINEERED
+    columns, and a sample built from them is refused by the route the SDK calls.
+    Falls back to them when the artifacts cannot be loaded, as the prediction
+    form's schema does."""
+    try:
+        _, feature_engineer = await ModelStorageService().load_model(model.model_id, user_id)
+    except Exception as exc:  # noqa: BLE001 - degrade, never fail the SDK on a load
+        logger.warning("Could not load artifacts for %s SDK inputs: %s", model.model_id, exc)
+        return list(model.feature_names), {}
+    return required_input_features(feature_engineer, model), _categorical_samples(feature_engineer)
+
+
+def _categorical_samples(feature_engineer) -> dict[str, Any]:
+    samples = {}
+    for name in getattr(feature_engineer, "categorical_features", None) or []:
+        options = _categorical_options(feature_engineer, name)
+        if options:
+            samples[name] = options[0]
+    return samples
+
+
 async def _build_sdk_generator(
     model_id: str, user_id: str, http_request: Request
 ) -> SDKGenerator:
@@ -1997,10 +2020,12 @@ async def _build_sdk_generator(
     )
     if model is None:
         raise HTTPException(status_code=404, detail="Model not found")
+    inputs, sample_values = await _sdk_inputs(model, user_id)
     return SDKGenerator(
         model_id=model.model_id,
         model_name=model.name,
-        feature_names=model.feature_names,
+        feature_names=inputs,
+        sample_values=sample_values,
         problem_type=model.problem_type,
         serving_endpoint=_serving_endpoint_for(model, http_request),
     )

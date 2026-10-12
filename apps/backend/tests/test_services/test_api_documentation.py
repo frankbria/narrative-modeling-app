@@ -1,352 +1,128 @@
+"""#512: the published API description states what the running app does.
+
+The old service layered hand-written claims over the generated document: a blanket
+authentication rule, rate limits no code enforced, an MIT licence, a production
+host on a domain the product does not own, and whole client libraries for
+endpoints that do not exist. These tests hold the description to the app itself.
 """
-Tests for API documentation service
-"""
-from unittest.mock import patch
+
+import json
+import re
 
 import pytest
-from fastapi import FastAPI
+from starlette.routing import Match
 
-from app.config import SUPPORT_EMAIL
-from app.services.api_documentation import APIDocumentationService
+from app.billing.plans import PLAN_LIMITS
+from app.config import settings
+from app.main import app
+from app.models.subscription import PlanTier
+from app.services.api_documentation import api_description, published_spec
+
+BASE_URL = "https://api.example.test"
+
+
+@pytest.fixture(scope="module")
+def spec() -> dict:
+    return published_spec(app, BASE_URL)
+
+
+def _is_served(path: str, method: str) -> bool:
+    """Whether the live route table answers this method on this path."""
+    scope = {"type": "http", "path": re.sub(r"\{[^}]+\}", "x", path), "method": method.upper()}
+    return any(route.matches(scope)[0] == Match.FULL for route in app.routes)
+
+
+def test_every_documented_operation_is_a_live_route(spec):
+    operations = [
+        (path, method)
+        for path, item in spec["paths"].items()
+        for method in item
+        if method in {"get", "post", "put", "patch", "delete"}
+    ]
+
+    assert len(operations) > 100  # the whole API, not a hand-picked subset
+    assert [op for op in operations if not _is_served(*op)] == []
+
+
+def test_the_document_is_the_apps_own_route_table(spec):
+    assert spec["paths"] == app.openapi()["paths"]
+    assert spec["components"] == app.openapi()["components"]
+
+
+def test_building_the_document_does_not_change_the_apps_cached_one():
+    published_spec(app, BASE_URL)
+
+    assert app.openapi()["info"].get("description") is None
+    assert "servers" not in app.openapi()
+
+
+def test_the_description_names_no_path_the_app_does_not_serve():
+    paths = set(re.findall(r"`(?:GET|POST|PUT|PATCH|DELETE) (/[^`\s]+)`", api_description()))
+
+    assert paths, "the description should point at real routes"
+    for path in paths:
+        assert any(_is_served(path, method) for method in ("GET", "POST")), path
 
 
 @pytest.fixture
-def mock_app():
-    """Create a mock FastAPI app"""
-    app = FastAPI(title="Test API", version="1.0.0")
-    
-    # Add some mock routes
-    @app.get("/test")
-    def test_route():
-        return {"message": "test"}
-    
-    @app.post("/users")
-    def create_user():
-        return {"user": "created"}
-    
-    return app
+def limiter_on(monkeypatch):
+    """The test environment runs with the limiter off, as the middleware reads it."""
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", True)
 
 
-@pytest.fixture
-def doc_service(mock_app):
-    """Create documentation service with mock app"""
-    return APIDocumentationService(mock_app)
+def test_the_rate_limits_are_the_ones_enforced(limiter_on):
+    text = api_description()
+
+    assert (
+        f"{settings.RATE_LIMIT_DEFAULT_REQUESTS} requests per "
+        f"{settings.RATE_LIMIT_DEFAULT_WINDOW_SECONDS} seconds"
+    ) in text
+    for tier in PlanTier:
+        assert f"{tier.value.capitalize()}: {PLAN_LIMITS[tier].api_key_rate_limit:,}" in text
+    # The numbers the old description advertised and nothing enforced.
+    assert "100 requests/hour" not in text and "Custom limits" not in text
 
 
-class TestAPIDocumentationService:
-    """Test cases for APIDocumentationService"""
-    
-    def test_init_without_app(self):
-        """Test initialization without FastAPI app"""
-        service = APIDocumentationService()
-        assert service.app is None
-    
-    def test_init_with_app(self, mock_app):
-        """Test initialization with FastAPI app"""
-        service = APIDocumentationService(mock_app)
-        assert service.app == mock_app
-    
-    @patch('app.services.api_documentation.settings')
-    def test_generate_openapi_spec_success(self, mock_settings, doc_service):
-        """Test successful OpenAPI spec generation"""
-        
-        # Setup settings mock
-        mock_settings.PROJECT_NAME = "Test API"
-        mock_settings.API_BASE_URL = "https://api.test.com"
-        
-        spec = doc_service.generate_openapi_spec()
-        
-        # Verify basic structure
-        assert isinstance(spec, dict)
-        assert "openapi" in spec
-        assert "info" in spec
-        assert "paths" in spec
-        assert "components" in spec
-        
-        # Verify enhanced information
-        assert spec["info"]["title"] == "Test API"
-        assert spec["info"]["version"] == "1.0.0"
-        assert "contact" in spec["info"]
-        assert "license" in spec["info"]
-        
-        # Verify servers
-        assert "servers" in spec
-        assert len(spec["servers"]) == 2
-        assert spec["servers"][0]["url"] == "https://api.test.com"
-        assert spec["servers"][1]["url"] == "http://localhost:8000"
-        
-        # Verify security schemes
-        assert "securitySchemes" in spec["components"]
-        assert "BearerAuth" in spec["components"]["securitySchemes"]
-        assert "ApiKeyAuth" in spec["components"]["securitySchemes"]
-        
-        # Verify global security
-        assert "security" in spec
-        assert {"BearerAuth": []} in spec["security"]
-        assert {"ApiKeyAuth": []} in spec["security"]
-        
-        # Verify tags
-        assert "tags" in spec
-        tag_names = [tag["name"] for tag in spec["tags"]]
-        assert "upload" in tag_names
-        assert "models" in tag_names
-        assert "predictions" in tag_names
-    
-    def test_generate_openapi_spec_without_app(self):
-        """Test OpenAPI spec generation without app raises error"""
-        service = APIDocumentationService()
-        
-        with pytest.raises(ValueError, match="FastAPI app instance required"):
-            service.generate_openapi_spec()
-    
-    def test_get_api_description(self, doc_service):
-        """Test API description generation"""
-        description = doc_service._get_api_description()
-        
-        assert isinstance(description, str)
-        assert len(description) > 500  # Should be comprehensive
-        assert "Narrative Modeling API" in description
-        assert "Machine Learning" in description
-        assert "Data Processing" in description
-        assert "Authorization: Bearer" in description
-        assert "rate-limited" in description
-    
-    def test_enhance_openapi_spec(self, doc_service):
-        """Test OpenAPI spec enhancement"""
-        
-        # Basic spec
-        base_spec = {
-            "openapi": "3.0.0",
-            "info": {"title": "Test", "version": "1.0.0"},
-            "paths": {},
-            "components": {}
-        }
-        
-        enhanced_spec = doc_service._enhance_openapi_spec(base_spec)
-        
-        # Verify enhancements
-        assert "contact" in enhanced_spec["info"]
-        assert "license" in enhanced_spec["info"]
-        # No docs site exists, so there is no externalDocs link (#770)
-        assert "externalDocs" not in enhanced_spec
-        assert "securitySchemes" in enhanced_spec["components"]
-        assert "security" in enhanced_spec
-        assert "tags" in enhanced_spec
-        
-        # Verify contact info
-        contact = enhanced_spec["info"]["contact"]
-        assert "name" in contact
-        assert contact["email"] == SUPPORT_EMAIL
-        
-        # Verify license
-        license_info = enhanced_spec["info"]["license"]
-        assert license_info["name"] == "MIT"
+def test_the_description_follows_the_settings(monkeypatch, limiter_on):
+    monkeypatch.setattr(settings, "RATE_LIMIT_DEFAULT_REQUESTS", 7)
+    monkeypatch.setattr(settings, "RATE_LIMIT_DEFAULT_WINDOW_SECONDS", 13)
 
-    
-    def test_add_response_examples(self, doc_service):
-        """Test adding response examples to OpenAPI spec"""
-        
-        spec = {
-            "components": {
-                "schemas": {
-                    "PredictionResponse": {"type": "object"},
-                    "ModelMetadata": {"type": "object"},
-                    "ErrorResponse": {"type": "object"}
-                }
-            }
-        }
-        
-        doc_service._add_response_examples(spec)
-        
-        # Verify examples were added
-        schemas = spec["components"]["schemas"]
-        assert "example" in schemas["PredictionResponse"]
-        assert "example" in schemas["ModelMetadata"]
-        assert "example" in schemas["ErrorResponse"]
-        
-        # Verify example content
-        pred_example = schemas["PredictionResponse"]["example"]
-        assert "predictions" in pred_example
-        assert "model_id" in pred_example
-        assert "timestamp" in pred_example
-        
-        model_example = schemas["ModelMetadata"]["example"]
-        assert "model_id" in model_example
-        assert "algorithm" in model_example
-        assert "accuracy" in model_example
-    
-    def test_generate_client_libraries(self, doc_service):
-        """Test client library generation"""
-        
-        libraries = doc_service.generate_client_libraries()
-        
-        assert isinstance(libraries, dict)
-        assert "python" in libraries
-        assert "javascript" in libraries
-        assert "curl" in libraries
-        
-        # Verify Python client
-        python_client = libraries["python"]
-        assert "class NarrativeModelingClient" in python_client
-        assert "def upload_data" in python_client
-        assert "def train_model" in python_client
-        assert "def predict" in python_client
-        assert "def export_model" in python_client
-        
-        # Verify JavaScript client
-        js_client = libraries["javascript"]
-        assert "class NarrativeModelingClient" in js_client
-        assert "async uploadData" in js_client
-        assert "async trainModel" in js_client
-        assert "async predict" in js_client
-        
-        # Verify cURL examples
-        curl_examples = libraries["curl"]
-        assert "curl -X POST" in curl_examples
-        assert "Authorization: Bearer" in curl_examples
-        assert "/api/v1/upload/file" in curl_examples
-        assert "/api/v1/ml/train" in curl_examples
-    
-    def test_generate_python_client(self, doc_service):
-        """Test Python client generation"""
-        
-        python_client = doc_service._generate_python_client()
-        
-        # Check class definition
-        assert "class NarrativeModelingClient:" in python_client
-        
-        # Check methods
-        assert "def __init__(self" in python_client
-        assert "def upload_data(self" in python_client
-        assert "def train_model(self" in python_client
-        assert "def predict(self" in python_client
-        assert "def export_model(self" in python_client
-        assert "def get_model_info(self" in python_client
-        
-        # Check imports
-        assert "import requests" in python_client
-        assert "from typing import" in python_client
-        
-        # Check example usage
-        assert "if __name__ == \"__main__\":" in python_client
-        assert "client = NarrativeModelingClient" in python_client
-    
-    def test_generate_javascript_client(self, doc_service):
-        """Test JavaScript client generation"""
-        
-        js_client = doc_service._generate_javascript_client()
-        
-        # Check class definition
-        assert "class NarrativeModelingClient" in js_client
-        
-        # Check methods
-        assert "constructor(apiKey" in js_client
-        assert "async uploadData(" in js_client
-        assert "async trainModel(" in js_client
-        assert "async predict(" in js_client
-        assert "async exportModel(" in js_client
-        
-        # Check fetch usage
-        assert "fetch(" in js_client
-        assert "FormData" in js_client
-        assert "JSON.stringify" in js_client
-        
-        # Check example usage
-        assert "const client = new NarrativeModelingClient" in js_client
-    
-    def test_generate_curl_examples(self, doc_service):
-        """Test cURL examples generation"""
-        
-        curl_examples = doc_service._generate_curl_examples()
-        
-        # Check environment variables
-        assert "export API_KEY=" in curl_examples
-        assert "export BASE_URL=" in curl_examples
-        
-        # Check endpoints
-        assert "curl -X POST" in curl_examples
-        assert "curl -X GET" in curl_examples
-        assert "/api/v1/upload/file" in curl_examples
-        assert "/api/v1/ml/train" in curl_examples
-        assert "/api/v1/models/" in curl_examples
-        assert "/export/python" in curl_examples
-        assert "/export/docker" in curl_examples
-        
-        # Check headers
-        assert "Authorization: Bearer $API_KEY" in curl_examples
-        assert "Content-Type: application/json" in curl_examples
-        
-        # Check data
-        assert "-d '{" in curl_examples
-        assert '"dataset_id":' in curl_examples
-        assert '"target_column":' in curl_examples
-    
-    def test_generate_integration_examples(self, doc_service):
-        """Test integration examples generation"""
-        
-        examples = doc_service.generate_integration_examples()
-        
-        assert isinstance(examples, dict)
-        assert "jupyter" in examples
-        assert "google_colab" in examples
-        assert "streamlit" in examples
-        assert "flask" in examples
-        
-        # Verify Jupyter example
-        jupyter_example = examples["jupyter"]
-        assert "import pandas as pd" in jupyter_example
-        assert "class NMClient:" in jupyter_example
-        assert "plt.figure" in jupyter_example
-        
-        # Verify Streamlit example
-        streamlit_example = examples["streamlit"]
-        assert "import streamlit as st" in streamlit_example
-        assert "st.title" in streamlit_example
-        assert "st.file_uploader" in streamlit_example
-        
-        # Verify Flask example
-        flask_example = examples["flask"]
-        assert "from flask import Flask" in flask_example
-        assert "@app.route" in flask_example
-        assert "def upload_file():" in flask_example
-    
-    def test_generate_postman_collection(self, doc_service):
-        """Test Postman collection generation"""
-        
-        collection = doc_service.generate_postman_collection()
-        
-        assert isinstance(collection, dict)
-        assert "info" in collection
-        assert "auth" in collection
-        assert "variable" in collection
-        assert "item" in collection
-        
-        # Verify collection info
-        info = collection["info"]
-        assert info["name"] == "Narrative Modeling API"
-        assert "version" in info
-        assert "schema" in info
-        
-        # Verify authentication
-        auth = collection["auth"]
-        assert auth["type"] == "bearer"
-        
-        # Verify variables
-        variables = collection["variable"]
-        var_keys = [var["key"] for var in variables]
-        assert "base_url" in var_keys
-        assert "api_token" in var_keys
-        
-        # Verify request groups
-        items = collection["item"]
-        group_names = [item["name"] for item in items]
-        assert "Data Management" in group_names
-        assert "Model Training" in group_names
-        assert "Predictions" in group_names
-        assert "Model Export" in group_names
-        
-        # Verify specific requests in groups
-        data_management = next(item for item in items if item["name"] == "Data Management")
-        request_names = [req["name"] for req in data_management["item"]]
-        assert "Upload File" in request_names
-        assert "Get Data Summary" in request_names
+    assert "7 requests per 13 seconds" in api_description()
+
+
+def test_a_disabled_limiter_is_not_described_as_a_limit(monkeypatch):
+    monkeypatch.setattr(settings, "RATE_LIMIT_ENABLED", False)
+
+    text = api_description()
+
+    assert "requests per" not in text.split("## API keys")[0].split("## Rate limits")[1]
+    assert "not rate limited on this instance" in text
+
+
+def test_authentication_is_stated_per_route_not_as_a_blanket_rule(spec):
+    assert "security" not in spec  # no top-level rule covering every operation
+
+    live = spec["paths"]["/health/live"]["get"]
+    assert not live.get("security")
+    serving = spec["paths"]["/api/v1/production/v1/models/{model_id}/predict"]["post"]
+    assert ("X-API-Key", "header") in [(p["name"], p["in"]) for p in serving["parameters"]]
+    training = spec["paths"]["/api/v1/ml/train"]["post"]
+    assert training["security"] == [{"HTTPBearer": []}]
+
+
+def test_the_server_is_the_instance_that_answered(spec):
+    assert spec["servers"] == [{"url": BASE_URL, "description": "This instance"}]
+    assert published_spec(app, BASE_URL + "/")["servers"][0]["url"] == BASE_URL
+
+
+def test_the_licence_and_contact_are_the_projects(spec):
+    from app.config import SUPPORT_EMAIL
+
+    assert spec["info"]["license"]["name"] == "AGPL-3.0-or-later"
+    assert spec["info"]["contact"]["email"] == SUPPORT_EMAIL
+
+
+def test_nothing_published_names_a_domain_the_product_does_not_own(spec):
+    published = json.dumps(spec)
+
+    assert "narrativeml.com" not in published and "narrativemodeling.ai" not in published

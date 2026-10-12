@@ -136,3 +136,49 @@ class TestSdkPostman:
             v for v in collection["variable"] if v["key"] == "endpoint"
         )
         assert endpoint_var["value"].endswith("/api/v1/production/v1/models/sdk-1")
+
+
+class TestSdkSampleUsesTheInputsServingRequires:
+    """#512: the generated clients' sample record was built from the model's
+    engineered feature names (`plan_basic`, `plan_pro`), which the serving route
+    refuses for missing the raw input (`plan`). Found by running the generated
+    client against a live server."""
+
+    @pytest.mark.asyncio
+    async def test_the_sample_is_the_raw_inputs_with_a_category_the_model_knows(
+        self, async_authorized_client
+    ):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import numpy as np
+        import pandas as pd
+
+        from app.services.model_training.feature_engineer import (
+            FeatureEngineer,
+            FeatureEngineeringConfig,
+        )
+
+        rng = np.random.RandomState(0)
+        frame = pd.DataFrame(
+            {"plan": rng.choice(["basic", "pro"], 200), "spend": rng.uniform(1, 100, 200)}
+        )
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(frame)
+        model = _model("sdk-raw")
+        model.feature_names = fe.feature_names  # spend, plan_basic, plan_pro
+        await model.insert()
+
+        try:
+            with patch(
+                "app.services.model_storage.ModelStorageService.load_model",
+                new_callable=AsyncMock,
+                return_value=(MagicMock(), fe),
+            ):
+                info = (await async_authorized_client.get("/api/v1/ml/sdk-raw/sdk")).json()
+                source = (await async_authorized_client.get("/api/v1/ml/sdk-raw/sdk/python")).text
+        finally:
+            await MLModel.find(MLModel.model_id == "sdk-raw").delete()
+
+        assert info["feature_names"] == ["spend", "plan"]
+        assert info["sample_record"] == {"spend": 0, "plan": "basic"}
+        assert '"plan": "basic"' in source and "plan_basic" not in source
