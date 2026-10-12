@@ -110,11 +110,12 @@ test.describe('Data Preparation Page', () => {
     // Verify page title
     await expect(authenticatedPage.locator('h1:has-text("Prepare Data")')).toBeVisible({ timeout: 10000 });
 
-    // Verify dataset metadata is displayed. Scope to the "<n> rows"/"<n> columns"
-    // shape: a bare /rows/ also matches transformation descriptions in the
-    // sidebar ("Remove rows with missing values") and trips strict mode.
-    await expect(authenticatedPage.locator('text=/\\d+ rows/')).toBeVisible();
-    await expect(authenticatedPage.locator('text=/\\d+ columns/')).toBeVisible();
+    // Verify dataset metadata is displayed: the header line, "<file> • <n> rows • <n> columns".
+    // The whole shape, not "<n> rows" alone: the data preview's footer ("Showing first 100
+    // rows") matches that too, and whenever the preview rendered before this line strict
+    // mode failed the test on all three attempts. A bare /rows/ also matches the sidebar's
+    // transformation descriptions ("Remove rows with missing values").
+    await expect(authenticatedPage.getByText(/\d+ rows • \d+ columns/)).toBeVisible();
 
     // Verify back button exists. The Back control is an <a> wrapping a <button>,
     // so the combined selector matches two nodes — assert on the first.
@@ -239,8 +240,7 @@ test.describe('Data Preparation Page', () => {
     await expect(filenameElement.first()).toBeVisible({ timeout: 10000 });
 
     // Verify row and column counts
-    await expect(authenticatedPage.locator('text=/\\d+ rows/')).toBeVisible();
-    await expect(authenticatedPage.locator('text=/\\d+ columns/')).toBeVisible();
+    await expect(authenticatedPage.getByText(/\d+ rows • \d+ columns/)).toBeVisible();
   });
 
   test('should load with proper accessibility attributes @a11y', async ({ authenticatedPage }) => {
