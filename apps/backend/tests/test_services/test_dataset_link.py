@@ -413,6 +413,22 @@ class TestAnEditOutsideTheHistory:
         assert sealed.can_undo() is False
 
 
+    async def test_clearing_the_history_lifts_the_floor(self, setup_database):
+        """With no step left, an earlier outside edit stands between nothing: the steps
+        recorded after a clear must be undoable among themselves."""
+        meta, _ = await _twins()
+        config = await _history("ds", steps=3, position=2)
+        await record_new_file(meta, NEW)
+
+        sealed = await _reloaded(config)
+        sealed.clear_transformations()
+        sealed.current_position = -1
+        sealed.add_transformation_step("trim_whitespace", columns=["name"], version_id="v1")
+        sealed.add_transformation_step("drop_missing", columns=["name"], version_id="v2")
+
+        assert sealed.undo_floor == 0 and sealed.can_undo() is True
+
+
 def test_only_the_history_itself_marks_a_move_as_its_own():
     """`in_history=True` exempts a move from closing the history, so it belongs to the
     apply that records the step and to undo/redo, and to nothing else (#851). A new

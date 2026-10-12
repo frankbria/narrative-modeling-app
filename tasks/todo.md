@@ -17,6 +17,10 @@ Self-authored plan.
   every step on the frame first (all or nothing, as before), then records each as its
   own step and version, exactly as a single apply does. `apply_transformation` is now a
   one-step pipeline. The pipeline route, auto-clean and recipe apply all go through it.
+- **Storage first, the database after.** Every step's version and the dataset's one new
+  file are written before any history step is recorded or the dataset is moved, so a
+  failed upload part-way leaves the dataset and its history as they were. Only the last
+  step's frame becomes a `transformed/` file; undo restores the others from versions.
 - **Two passes, not a kept list.** The dry run discards its frames and the steps run
   again while being recorded: twice the CPU for a multi-step pipeline, never more than
   two frames in memory. A single apply skips the dry run.

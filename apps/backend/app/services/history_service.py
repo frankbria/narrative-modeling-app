@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 _OUTSIDE_EDIT = (
-    "the dataset was changed after it by an edit that is not in this history, "
+    "the dataset has since been changed by an edit that is not in this history, "
     "and going back would discard that change"
 )
 

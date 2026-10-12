@@ -668,58 +668,76 @@ class TransformationService(BaseService[TransformationConfig]):
     async def _record_steps(
         self, dataset: Any, dataset_id: str, user_id: str, ran: Iterator["_RanStep"], started: float
     ) -> dict[str, Any]:
+        """Record what ran: a version per step, then the history steps and one move.
+
+        Storage first, the database after. Every version and the dataset's new file are
+        written before any history step is recorded or the dataset is moved, so a failed
+        upload part-way through a pipeline leaves the dataset and its history exactly as
+        they were. Only the last step's frame becomes a `transformed/` file: undo restores
+        the earlier ones from their versions.
+        """
+        from datetime import datetime
+
         from app.services.redis_cache import cache_service
+        from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
 
         done: dict[str, Any] = {
             "success": True,
             "dataset_id": dataset_id,
+            "transformation_id": "",
             "affected_rows": 0,
             "affected_columns": [],
             "warnings": [],
+            "schema": {},
         }
-        for step in ran:
-            done["transformation_id"] = await self._record_step(dataset, dataset_id, user_id, step, started)
-            done["affected_rows"] += step.result.affected_rows
-            done["affected_columns"] = sorted({*done["affected_columns"], *step.result.affected_columns})
-            done["warnings"] += step.result.warnings
-            done["schema"] = {str(col): str(dtype) for col, dtype in step.after.dtypes.items()}
-        await cache_service.delete_pattern(f"stats_{dataset_id}_*")
-        return {**done, "execution_time_ms": _elapsed_ms(started)}
-
-    async def _record_step(
-        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", started: float
-    ) -> str:
-        """Write one transformed frame as the dataset's current file, a version and a
-        history step; the history config's id."""
-        from datetime import datetime
-
-        from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
-
         timestamp = datetime.now(UTC).timestamp()
+        recorded: list[dict[str, Any]] = []
+        last: pd.DataFrame | None = None
+        for step in ran:
+            if not recorded:
+                done["transformation_id"] = await self._history_config_id(
+                    dataset_id, user_id, timestamp, dataset.s3_url
+                )
+            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, started, done))
+            last = step.after
+        if last is None:
+            # Nothing was asked for (auto-clean with every option off): nothing to write.
+            return {**done, "execution_time_ms": _elapsed_ms(started)}
         new_file_path = await upload_dataframe_to_s3(
-            step.after, f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
+            last, f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
         )
-        config_id = await self._history_config_id(dataset_id, user_id, timestamp, new_file_path)
-        version_id = await self._version_for(
-            dataset, dataset_id, user_id, step.before, step.after, step.transformation_type,
-            step.parameters, step.result.affected_rows, _elapsed_ms(started), config_id,
-        )
-        await self.add_transformation_step(
-            config_id=config_id,
-            transformation_type=step.transformation_type,
-            column=step.parameters.get("column"),
-            # With no column named the engine picks them, so list the ones it changed.
-            columns=step.parameters.get("columns") or step.result.affected_columns or None,
-            parameters=step.parameters,
-            version_id=version_id
-        )
-        await self.mark_transformations_applied(config_id=config_id, file_path=new_file_path)
+        done["schema"] = {str(col): str(dtype) for col, dtype in last.dtypes.items()}
+        for step_fields in recorded:
+            await self.add_transformation_step(config_id=done["transformation_id"], **step_fields)
+        await self.mark_transformations_applied(config_id=done["transformation_id"], file_path=new_file_path)
         # Move the dataset AND its dual-written UserData twin to the transformed
         # artifact (#276, #467): leaving s3_url stale served pre-transform data, and
         # moving only this side severed the (user_id, s3_url) join the twin lives on.
-        # in_history: this move has its step, so it must not close the history (#851).
+        # in_history: this move has its steps, so it must not close the history (#851).
         await record_new_file(dataset, new_file_path, in_history=True)
-        return config_id
+        await cache_service.delete_pattern(f"stats_{dataset_id}_*")
+        return {**done, "execution_time_ms": _elapsed_ms(started)}
+
+    async def _versioned(
+        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", started: float,
+        done: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Write one step's version and add it to the totals; the history step to record for it."""
+        version_id = await self._version_for(
+            dataset, dataset_id, user_id, step.before, step.after, step.transformation_type,
+            step.parameters, step.result.affected_rows, _elapsed_ms(started), done["transformation_id"],
+        )
+        done["affected_rows"] += step.result.affected_rows
+        done["affected_columns"] = sorted({*done["affected_columns"], *step.result.affected_columns})
+        done["warnings"] += step.result.warnings
+        return {
+            "transformation_type": step.transformation_type,
+            "column": step.parameters.get("column"),
+            # With no column named the engine picks them, so list the ones it changed.
+            "columns": step.parameters.get("columns") or step.result.affected_columns or None,
+            "parameters": step.parameters,
+            "version_id": version_id,
+        }
 
     async def get_transformation_history(
         self,

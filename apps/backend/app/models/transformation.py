@@ -351,6 +351,8 @@ class TransformationConfig(Document):
     def clear_transformations(self) -> None:
         """Clear all transformation steps."""
         self.transformation_steps = []
+        # No step is left for an earlier outside edit to stand between (#851).
+        self.undo_floor = 0
         self.total_transformations = 0
         self.total_data_loss = 0.0
         self.is_applied = False

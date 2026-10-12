@@ -158,6 +158,39 @@ class TestThePipelineRecordsItsSteps:
         recorded.assert_called_once()
         assert await _listed(async_authorized_client, str(upload.id)) == ["trim_whitespace"]
 
+    async def test_a_failed_upload_leaves_the_dataset_and_its_history_as_they_were(
+        self, async_authorized_client, setup_database, s3_stubbed
+    ):
+        """Versions and the new file are written before any step is recorded or the
+        dataset moved, so storage failing part-way cannot leave half a pipeline applied."""
+        upload = await seed()
+        with patch(
+            "app.services.transformation_engine.data_utils.upload_file_to_s3", return_value=(False, None)
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/transformations/pipeline/apply",
+                json={"dataset_id": str(upload.id), "transformations": _PIPELINE},
+            )
+
+        assert response.status_code == 200 and response.json()["success"] is False, response.text
+        assert await _listed(async_authorized_client, str(upload.id)) == []
+        assert (await UserData.get(upload.id)).s3_url == upload.s3_url
+
+    async def test_auto_clean_with_nothing_to_do_changes_nothing(
+        self, async_authorized_client, setup_database, s3_stubbed
+    ):
+        upload = await seed()
+
+        response = await async_authorized_client.post(
+            "/api/v1/transformations/auto-clean",
+            json={"dataset_id": str(upload.id), "options": {"remove_duplicates": False, "trim_whitespace": False}},
+        )
+
+        assert response.status_code == 200 and response.json()["success"] is True, response.text
+        assert response.json()["affected_rows"] == 0
+        assert await _listed(async_authorized_client, str(upload.id)) == []
+        assert (await UserData.get(upload.id)).s3_url == upload.s3_url
+
     async def test_one_history_whichever_id_names_the_dataset(
         self, async_authorized_client, setup_database, s3_stubbed
     ):
