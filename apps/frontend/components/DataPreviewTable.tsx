@@ -33,10 +33,8 @@ interface PreviewData {
 
 const ROWS_PER_PAGE = 50
 
-type Preview = PreviewData | null | undefined
-
 /** What to show in place of the table, if there is no table to show. */
-function unavailable(loading: boolean, error: string | null, preview: Preview, page: number) {
+function unavailable(loading: boolean, error: string | null, preview: PreviewData | null | undefined, page: number) {
   if (loading) return { text: 'Loading preview data...', tone: 'text-muted-foreground' }
   if (error) return { text: `Error: ${error}`, tone: 'text-destructive' }
   if (nothingToShow(preview, page)) return { text: 'No data available', tone: 'text-muted-foreground' }
@@ -46,7 +44,7 @@ function unavailable(loading: boolean, error: string | null, preview: Preview, p
 /** No rows at all. A later page that came back empty is not that: an estimated total
  *  (#720) can run one page past the end, and the pager has to stay so the reader can
  *  go back. */
-function nothingToShow(preview: Preview, page: number): boolean {
+function nothingToShow(preview: PreviewData | null | undefined, page: number): boolean {
   if (!preview) return true
   return preview.data.length === 0 && page === 0
 }
