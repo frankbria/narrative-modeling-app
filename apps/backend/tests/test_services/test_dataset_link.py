@@ -319,12 +319,11 @@ class TestEnsureMetadataTwin:
         assert await ensure_metadata_twin("not-an-id", USER) is None
         assert await ensure_metadata_twin(str(ud.id), "someone_else") is None
 
-    @pytest.mark.parametrize("file_type, name", [("txt", "t.txt"), ("excel", "t.xlsx"), ("json", "t.json")])
+    @pytest.mark.parametrize("file_type, name", [("txt", "t.txt"), ("tsv", "t.tsv")])
     async def test_a_file_the_transformation_reader_cannot_parse_is_refused(self, setup_database, file_type, name):
-        """The reader infers csv-then-parquet. A TSV ("txt") or JSON file parses into junk
-        columns, and the apply then overwrites the live file on both twins; Excel cannot be
-        read at all (#857 review). Such uploads are refused, naming their type, and no twin
-        is written."""
+        """A tab-separated file reads as one junk column, and the apply would then
+        overwrite the live file on both twins (#857 review). Such uploads are refused,
+        naming their type, and no twin is written."""
         from app.services.dataset_link import ensure_metadata_twin
         from app.services.exceptions import NotFoundError
 
@@ -333,9 +332,29 @@ class TestEnsureMetadataTwin:
             s3_url=f"s3://test-bucket/datasets/{USER}/{name}",
             num_rows=2, num_columns=2, data_schema=[], file_type=file_type,
         ).insert()
-        with pytest.raises(NotFoundError, match=f"support CSV and Parquet.*{file_type}"):
+        with pytest.raises(NotFoundError, match=f"support CSV, Excel, JSON and Parquet.*{file_type}"):
             await ensure_metadata_twin(str(ud.id), USER)
         assert await DatasetMetadata.find(DatasetMetadata.dataset_id == str(ud.id)).count() == 0
+
+    @pytest.mark.parametrize("file_type, name, twin_type", [
+        ("excel", "t.xlsx", "xlsx"),  # /upload/secure stores "excel"; the name says which kind
+        ("excel", "t.xls", "xls"),
+        ("json", "t.json", "json"),
+    ])
+    async def test_excel_and_json_uploads_get_a_twin(self, setup_database, file_type, name, twin_type):
+        """#858: the transformation reader tells these apart by their bytes now, so the
+        refusal that kept them from being overwritten with a misread frame is lifted."""
+        from app.services.dataset_link import ensure_metadata_twin
+
+        ud = await UserData(
+            user_id=USER, filename=name, original_filename=name,
+            s3_url=f"s3://test-bucket/datasets/{USER}/{name}",
+            num_rows=2, num_columns=2, data_schema=[], file_type=file_type,
+        ).insert()
+
+        twin = await ensure_metadata_twin(str(ud.id), USER)
+
+        assert (twin.dataset_id, twin.file_type) == (str(ud.id), twin_type)
 
 
 # #851: a writer that moves the dataset without recording a history step (a bulk change,

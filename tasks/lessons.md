@@ -1999,3 +1999,15 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A resolver that can create should run before the thing it guards is created.**
   Resolving the dataset before the job exists is what turns an unreadable upload into a
   refusal instead of a failed job.
+
+## #858 — the transformation reader (2026-10-12)
+- **"Try one parser, fall back to the next" is only safe when the first one fails.**
+  `read_csv` accepts almost any text, so JSON came back as columns named after its
+  first row. Identify the format from the bytes, then parse once.
+- **A fallback added for a rare input can reopen the bug for a common one.** JSON with a
+  byte-order mark failed `read_json`, took the "bracket-header CSV" fallback and came
+  back as junk. The test for the fallback's trigger has to sit next to a test that real
+  JSON never reaches it.
+- **Two readers, two vocabularies.** The upload stores `"excel"`; one reader knew only
+  `xlsx`/`xls`, another knew all three. Grep every reader when a stored value has an
+  alias.
