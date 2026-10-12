@@ -1,21 +1,20 @@
-# Issue #584: chunked-upload session expiry is advisory
+# Issue #718: the AI summary's masked frame leaks a silhouette of each value
 
 ## Problem
-1. Only `resume_upload` compares `expires_at` with now. `upload_chunk`, `claim_upload`
-   and `abort_upload` do not, so a session past its window can still be appended to
-   and completed.
-2. `cleanup_expired_sessions` walks the in-memory store only. A session's metadata is
-   also on disk so it survives a restart; after one, the pair is on disk and not in the
-   store, and the sweep never reaps it.
+`_summary_frame` masks the frame bound for OpenAI with the storage masks. Those keep
+part of the value on purpose, for a user who wants the stored copy readable:
+`_mask_generic` keeps the first and last character and the length (`"J******e"`),
+`_mask_sensitive` the last four digits of an SSN or card, `_mask_email` the first
+character and the domain, `_mask_phone` the area code and last two digits. The issue
+names the first; the summary path has all four.
 
 ## Plan
-- [ ] RED: `tests/test_services/test_chunked_session_expiry.py`.
-- [ ] Expiry is enforced where a session is resolved: `get_session` answers 410 for the
-      caller's own expired session (a foreign or unknown id is still None, checked first,
-      so 410 confirms nothing about another tenant). `abort_upload` passes
-      `expired_ok=True`: discarding an expired session is the point of abort.
-- [ ] The sweep also reads `{temp_dir}/*.json` for sessions this process does not hold,
-      and deletes the expired ones' files. It does not load live ones into the store:
-      another worker may own them, and a cached copy goes stale.
-- [ ] AC4: no scheduler. The sweep already runs on every `/upload/secure` and chunked
-      `init`, so disk-only sessions are now reaped at the next upload.
+- [ ] RED: tests in `tests/test_api/test_ai_summary_safe.py` and one assertion in the
+      `/upload/secure` payload test.
+- [ ] `_summary_frame` replaces every flagged column's values with numbered tokens
+      (`[redacted 1]`, `[redacted 2]`, …). Distinct values stay distinct and missing ones
+      stay missing, so the summary's counts for the column remain true; nothing of a
+      value's length or characters is left.
+- [ ] `mask_pii` loses `min_confidence`, which only the summary passed. Its body is cc 7,
+      so the edit is also a split (a mask-per-type lookup).
+- [ ] CLAUDE.md (the #490/#679 paragraph), gate, review, demo, PR.

@@ -178,6 +178,8 @@ class TestSecureUploadAPI:
         # the flagged 'name' column — mask_pii replaces it before the summary.
         payload = str(openai_spy.await_args.args)
         assert "John Doe" not in payload
+        # Nor its silhouette: first and last character with the length between (#718).
+        assert "J******e" not in payload
 
     async def test_secure_upload_low_confidence_pattern_column_is_masked_before_openai(
         self, setup_database, async_authorized_client
