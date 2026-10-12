@@ -230,6 +230,28 @@ class TestBulkJob:
         assert len(written) == 1 and "_bulk_" in written[0]
         deleted.assert_awaited_once_with(written[0])
 
+    async def test_the_file_is_gone_by_the_time_the_job_says_it_failed(self, setup_database, written, monkeypatch):
+        """A client polls the job's status; "failed" with the file still there is a
+        window in which it looks like nothing cleaned up."""
+        from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
+        from app.services.bulk_transformation_service import BulkTransformationService
+
+        upload = await _upload()
+        service = BulkTransformationService()
+        status_when_deleted: list[BulkJobStatus] = []
+
+        async def delete(_key: str) -> bool:
+            job = await BulkTransformationJob.find_one({"user_id": USER})
+            status_when_deleted.append(job.status)
+            return True
+
+        monkeypatch.setattr(upload_cleanup.s3_service, "delete_file", delete)
+        with _fails("app.services.bulk_transformation_service.record_new_file"):
+            job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
+            await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
+
+        assert status_when_deleted == [BulkJobStatus.RUNNING]
+
     async def test_a_job_that_finishes_keeps_its_file(self, setup_database, written, deleted):
         from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
         from app.services.bulk_transformation_service import BulkTransformationService

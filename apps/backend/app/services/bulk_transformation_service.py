@@ -500,12 +500,13 @@ class BulkTransformationService:
 
         except Exception:
             logger.exception(f"Bulk transformation job {job.job_id} failed")
+            # The result file may have been written before the failure; delete it unless
+            # a document already names it. Before the job is marked failed, so a client
+            # that sees "failed" does not also find the file still in the bucket.
+            await discard_unowned_uploads(uploads)
             # error_message is read back verbatim by the job-status route (#637).
             job.mark_failed(internal_error_message("Bulk transformation job"))
             await job.save()
-            # The result file may have been written before the failure; delete it
-            # unless a document already names it.
-            await discard_unowned_uploads(uploads)
 
     async def _run_columns(self, job: BulkTransformationJob, df: pd.DataFrame) -> _ColumnRun | None:
         """Transform the job's columns in order, each on the frame the one before left.
