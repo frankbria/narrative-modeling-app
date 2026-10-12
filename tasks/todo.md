@@ -16,7 +16,9 @@ Self-authored plan (the issue has four acceptance criteria).
   bearer token or an API key" (the native document already states each route's own
   requirement), tags for groups that do not exist, examples for schemas that do not
   exist, an MIT licence (the project is AGPL), and a production server on a domain the
-  product does not own. The server is the instance that answered.
+  product does not own. No server is named at all: a document without one describes the
+  host it was fetched from, which stays true behind the TLS proxy, where
+  `request.base_url` reports `http`.
 - **Rate limits in the description are read from the running settings and the plan
   table**, not typed: the per-caller limit on `/api/v1`, and each plan's ceiling for an
   API key on the serving routes. A test changes a setting and expects the text to follow.

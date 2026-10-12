@@ -15,12 +15,12 @@ def client():
     return TestClient(app)
 
 
-def test_openapi_json_is_served_for_this_instance(client):
+def test_openapi_json_is_served(client):
     response = client.get(f"{API}/openapi.json")
 
     assert response.status_code == 200
     spec = response.json()
-    assert spec["servers"] == [{"url": "http://testserver", "description": "This instance"}]
+    assert "servers" not in spec
     assert "/api/v1/ml/train" in spec["paths"]
     assert "## Rate limits" in spec["info"]["description"]
 

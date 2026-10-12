@@ -3,8 +3,9 @@
 One rule: nothing here is typed by hand that the running app can state itself.
 The paths, schemas and each route's own authentication requirement are FastAPI's
 generated document, which is the live route table. The rate limits are read from
-the settings and the plan table that enforce them. The server is the instance
-that answered.
+the settings and the plan table that enforce them. No server is named: a
+document without one describes the host it was fetched from, which is true behind
+any proxy, where the app cannot reliably know its own public scheme.
 
 The service this replaces layered claims over that document which were not true:
 a rule that every endpoint takes a bearer token or an API key, per-plan rate
@@ -102,8 +103,8 @@ pointed at its serving URL.
 """
 
 
-def published_spec(app: FastAPI, base_url: str) -> dict[str, Any]:
-    """FastAPI's generated document for ``app``, described for the instance at ``base_url``.
+def published_spec(app: FastAPI) -> dict[str, Any]:
+    """FastAPI's generated document for ``app``, with what it cannot say for itself.
 
     A copy: ``app.openapi()`` caches and returns one dict, which also backs
     ``/api/v1/openapi.json`` and the interactive docs."""
@@ -111,5 +112,4 @@ def published_spec(app: FastAPI, base_url: str) -> dict[str, Any]:
     spec["info"]["description"] = api_description()
     spec["info"]["contact"] = {"name": "Support", "email": SUPPORT_EMAIL}
     spec["info"]["license"] = _LICENSE
-    spec["servers"] = [{"url": base_url.rstrip("/"), "description": "This instance"}]
     return spec

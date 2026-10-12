@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -441,19 +441,19 @@ async def metrics():
 
 
 # The published API description (#512): FastAPI's generated document, which is
-# the live route table, described for the instance that answers.
+# the live route table.
 @app.get(f"{settings.API_V1_STR}/docs/openapi.json", tags=["documentation"])
-async def get_published_openapi(request: Request):
+async def get_published_openapi():
     """The OpenAPI document for this instance: every route it serves, what each
     requires, and the rate limits it enforces."""
-    return published_spec(app, str(request.base_url))
+    return published_spec(app)
 
 
 @app.get(f"{settings.API_V1_STR}/docs/openapi.yaml", tags=["documentation"])
-async def get_published_openapi_yaml(request: Request):
+async def get_published_openapi_yaml():
     """The same document as YAML."""
     import yaml
 
-    spec = published_spec(app, str(request.base_url))
+    spec = published_spec(app)
     yaml_content = yaml.dump(spec, default_flow_style=False, sort_keys=False)
     return Response(content=yaml_content, media_type="application/x-yaml")

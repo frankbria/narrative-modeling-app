@@ -18,12 +18,10 @@ from app.main import app
 from app.models.subscription import PlanTier
 from app.services.api_documentation import api_description, published_spec
 
-BASE_URL = "https://api.example.test"
-
 
 @pytest.fixture(scope="module")
 def spec() -> dict:
-    return published_spec(app, BASE_URL)
+    return published_spec(app)
 
 
 def _is_served(path: str, method: str) -> bool:
@@ -50,10 +48,10 @@ def test_the_document_is_the_apps_own_route_table(spec):
 
 
 def test_building_the_document_does_not_change_the_apps_cached_one():
-    published_spec(app, BASE_URL)
+    published_spec(app)["info"]["title"] = "changed by a caller"
 
     assert app.openapi()["info"].get("description") is None
-    assert "servers" not in app.openapi()
+    assert app.openapi()["info"]["title"] == settings.PROJECT_NAME
 
 
 def test_the_description_names_no_path_the_app_does_not_serve():
@@ -110,9 +108,11 @@ def test_authentication_is_stated_per_route_not_as_a_blanket_rule(spec):
     assert training["security"] == [{"HTTPBearer": []}]
 
 
-def test_the_server_is_the_instance_that_answered(spec):
-    assert spec["servers"] == [{"url": BASE_URL, "description": "This instance"}]
-    assert published_spec(app, BASE_URL + "/")["servers"][0]["url"] == BASE_URL
+def test_no_server_is_named(spec):
+    """Without one the document describes the host it was fetched from. Behind the
+    TLS proxy the app does not know its own public scheme, and the service this
+    replaces named a production host on a domain the product does not own."""
+    assert "servers" not in spec
 
 
 def test_the_licence_and_contact_are_the_projects(spec):
