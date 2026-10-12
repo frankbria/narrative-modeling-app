@@ -2061,3 +2061,13 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A background task inherits the request's context variables.** The bulk job's upload
   was recorded in the list of a request that had already answered. Work that outlives
   its request needs its own record.
+
+## #901 — queued training jobs and the reaper (2026-10-12)
+- **"Not reproduced" in an issue is a first step, not a note.** Three reviewers read the
+  bug out of the code. Holding every slot and shortening the reaper's timeout showed
+  both halves in under a second, and those two tests are what the fix is held to.
+- **A liveness signal has to cover waiting, not only working.** The pump started once the
+  job had a slot, so the longer a job queued the deader it looked.
+- **A guard against a rare event still needs the check after it.** The pump over the wait
+  makes a reap unlikely; the re-read on taking the slot is what makes training after one
+  impossible.
