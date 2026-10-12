@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { mockPipelineFetch } from '@/__tests__/utils/pipelineFetch';
+import recipeLists from '@/__tests__/fixtures/recipeLists.json';
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
 
 /**
@@ -138,3 +139,115 @@ describe('TransformationPipeline actions (#855)', () => {
     expect(screen.queryByText('Recipe Manager')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * #859: Browse listed from a route that does not exist, so it was always empty, and a
+ * recipe was loaded from a field the API does not send. The lists served here are the
+ * API's own responses (recipeLists.json).
+ */
+describe('TransformationPipeline recipes (#859)', () => {
+  const mine = recipeLists['GET /transformations/recipes'].response;
+  const popular = {
+    ...recipeLists['GET /transformations/recipes/popular'].response,
+    recipes: [{ ...recipeLists['GET /transformations/recipes/popular'].response.recipes[0], name: 'Crowd favourite', usage_count: 7 }],
+  };
+
+  /** Serve the recipe lists by exact path; record every list request made. */
+  function serveRecipes(lists: Record<string, unknown>) {
+    const requested: string[] = [];
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) => {
+      const path = String(url).split('/api/v1').pop()!;
+      if (!path.startsWith('/transformations/recipes') || init?.method === 'POST') return mountTime(url, init);
+      requested.push(path);
+      return path in lists
+        ? { ok: true, json: async () => lists[path] }
+        : { ok: false, status: 404, json: async () => ({ detail: 'Not Found' }) };
+    });
+    return requested;
+  }
+
+  async function openRecipes() {
+    const user = userEvent.setup();
+    render(<TransformationPipeline datasetId="dataset-1" onComplete={onComplete} />);
+    await user.click(await screen.findByTitle('Manage Recipes'));
+    return user;
+  }
+
+  it('lists the recipes the API returns, with their step counts', async () => {
+    const requested = serveRecipes({ '/transformations/recipes': mine });
+
+    await openRecipes();
+
+    expect(await screen.findByText('Tidy names')).toBeInTheDocument();
+    expect(screen.getByText('2 steps')).toBeInTheDocument();
+    expect(requested).toEqual(['/transformations/recipes']);
+  });
+
+  it('reads each filter from its own route', async () => {
+    const requested = serveRecipes({
+      '/transformations/recipes': mine,
+      '/transformations/recipes?include_public=false': { ...mine, recipes: [] },
+      '/transformations/recipes/popular': popular,
+    });
+    const user = await openRecipes();
+    await screen.findByText('Tidy names');
+
+    await user.click(screen.getByRole('button', { name: /popular/i }));
+    expect(await screen.findByText('Crowd favourite')).toBeInTheDocument();
+    expect(screen.getByText('7 uses')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /my recipes/i }));
+    expect(await screen.findByText('No recipes found')).toBeInTheDocument();
+    expect(requested).toEqual([
+      '/transformations/recipes',
+      '/transformations/recipes/popular',
+      '/transformations/recipes?include_public=false',
+    ]);
+  });
+
+  it('builds the pipeline from the steps of the recipe that is picked', async () => {
+    serveRecipes({ '/transformations/recipes': mine });
+    const user = await openRecipes();
+
+    await user.click(await screen.findByText('Tidy names'));
+    expect(screen.queryByText('Recipe Manager')).not.toBeInTheDocument();
+    respond('/transformations/preview', { success: true, preview_data: [], stats_before: {}, stats_after: {} });
+    await user.click(screen.getByRole('button', { name: /^preview$/i }));
+
+    await waitFor(() => {
+      const preview = fetchMock().mock.calls.find(([url]) => String(url).endsWith('/transformations/preview'));
+      expect(JSON.parse(preview![1].body).transformation_steps).toEqual([
+        { transformation_type: 'trim_whitespace', parameters: { columns: ['name'] } },
+        { transformation_type: 'fill_missing', parameters: { columns: ['score'], method: 'mean' } },
+      ]);
+    });
+  });
+
+  it('says so when the recipes cannot be loaded', async () => {
+    serveRecipes({});
+
+    await openRecipes();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load recipes/i);
+    expect(screen.queryByText('No recipes found')).not.toBeInTheDocument();
+  });
+
+  it('saves a recipe as public when the box is ticked', async () => {
+    serveRecipes({ '/transformations/recipes': mine });
+    const user = await addTrimWhitespace();
+
+    await user.click(screen.getByTitle('Manage Recipes'));
+    await user.click(screen.getAllByRole('button', { name: /save recipe/i })[0]);
+    await user.type(screen.getByPlaceholderText('Enter a descriptive name'), 'Tidy');
+    await user.type(screen.getByPlaceholderText('Describe what this recipe does...'), 'trims');
+    await user.click(screen.getByLabelText(/make this recipe public/i));
+    await user.click(screen.getAllByRole('button', { name: /save recipe/i }).at(-1)!);
+
+    await waitFor(() => {
+      const saved = fetchMock().mock.calls.find(([url, init]) => String(url).endsWith('/transformations/recipes') && init?.method === 'POST');
+      expect(JSON.parse(saved![1].body)).toMatchObject({ name: 'Tidy', is_public: true });
+    });
+  });
+});
+

@@ -1,0 +1,103 @@
+{
+  "GET /transformations/recipes": {
+    "query": [
+      "include_public",
+      "page",
+      "per_page",
+      "tags"
+    ],
+    "response": {
+      "page": 1,
+      "per_page": 20,
+      "recipes": [
+        {
+          "created_at": "2026-10-01T00:00:00",
+          "description": "Trim the names, then fill the scores",
+          "id": "recipe-1",
+          "is_public": true,
+          "name": "Tidy names",
+          "rating": null,
+          "steps": [
+            {
+              "description": null,
+              "order": 0,
+              "parameters": {
+                "columns": [
+                  "name"
+                ]
+              },
+              "step_id": "step-1",
+              "type": "trim_whitespace"
+            },
+            {
+              "description": null,
+              "order": 1,
+              "parameters": {
+                "columns": [
+                  "score"
+                ],
+                "method": "mean"
+              },
+              "step_id": "step-2",
+              "type": "fill_missing"
+            }
+          ],
+          "tags": [],
+          "updated_at": "2026-10-01T00:00:00",
+          "usage_count": 0,
+          "user_id": "test_user_123"
+        }
+      ],
+      "total": 1
+    }
+  },
+  "GET /transformations/recipes/popular": {
+    "query": [
+      "limit"
+    ],
+    "response": {
+      "page": 1,
+      "per_page": 10,
+      "recipes": [
+        {
+          "created_at": "2026-10-01T00:00:00",
+          "description": "Trim the names, then fill the scores",
+          "id": "recipe-1",
+          "is_public": true,
+          "name": "Tidy names",
+          "rating": null,
+          "steps": [
+            {
+              "description": null,
+              "order": 0,
+              "parameters": {
+                "columns": [
+                  "name"
+                ]
+              },
+              "step_id": "step-1",
+              "type": "trim_whitespace"
+            },
+            {
+              "description": null,
+              "order": 1,
+              "parameters": {
+                "columns": [
+                  "score"
+                ],
+                "method": "mean"
+              },
+              "step_id": "step-2",
+              "type": "fill_missing"
+            }
+          ],
+          "tags": [],
+          "updated_at": "2026-10-01T00:00:00",
+          "usage_count": 0,
+          "user_id": "test_user_123"
+        }
+      ],
+      "total": 1
+    }
+  }
+}
