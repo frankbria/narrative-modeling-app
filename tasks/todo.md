@@ -1,31 +1,16 @@
-# #914 — three public handlers in authenticated routers, and a guard for the class (P1.71)
+# #722 — `download_file_from_s3` reuses the shared S3 client (P2.52)
 
-Self-authored plan (the issue has four acceptance criteria). Found in review of #512.
+Self-authored plan. One function, one line.
 
 ## Decisions made here
-- `GET /transformations/available` and `GET /transformations/recipes/popular` take the
-  session dependency. Both frontend callers already send the token.
-- `GET /upload/test` is removed. Nothing calls it.
-- **A recipe's `user_id` is returned to its owner only**, in every handler that can
-  return another account's recipe: the popular list, the caller's own list (which
-  includes public recipes) and a single public recipe. The issue names the popular list;
-  the other two return the same field to any signed-in reader. One helper,
-  `_recipe_response(recipe, viewer_id)`, builds the response for all three. The field
-  becomes nullable; the frontend's only use of it is `recipe.user_id === currentUserId`.
-- **The registry test walks the route table's dependency trees**, not the OpenAPI
-  document: a route is authenticated when its dependant reaches `get_current_user_id`,
-  `verify_api_key` or `require_admin`, including through router-level dependencies.
-  Public routes are allow-listed by `module.function` with the reason, and the list
-  fails when an entry stops existing or stops being public.
-- **A duplicate does not carry its source's owner** (cross-family review).
-  `duplicate_recipe` wrote `original_owner` into the copy's metadata, which the export and
-  the version history return. It is no longer written, and a validator on
-  `TransformationRecipe.metadata` drops it when a stored copy is loaded, so no reader
-  surface has to remember to.
-- `get_recipe` was cc 7, so its access check moves to `_require_readable`.
+- `get_s3_client() or create_s3_client()`. The shared client is built once and rebuilt
+  when the credentials, endpoint or region change (#519). It is `None` only when the
+  credentials are missing; then the downloader builds one as it always did, so the
+  failure a caller sees in that case is the one boto3 raised before.
+- No change to the size check, the allowlist or the circuit breaker around the function.
 
 ## Steps
-- [x] Registry test; anonymous-request tests for the three routes.
-- [x] Owner-id tests for the three recipe handlers.
-- [x] The auth dependencies, the removal, `_recipe_response`; frontend type.
-- [ ] CLAUDE.md, gate, cross-family review, PR, demo, CI, merge.
+- [x] Tests: three downloads build one client; a rotated secret builds a second; with no
+      credentials the per-call build is kept.
+- [x] The one-line change; CLAUDE.md's "known residual" sentence.
+- [ ] Gate, cross-family review, PR, demo against LocalStack, CI, merge.

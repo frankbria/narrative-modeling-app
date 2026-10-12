@@ -104,7 +104,7 @@ class TestEveryEntryPointRefuses:
         from app.services import s3_service
 
         client = MagicMock()
-        with patch.object(s3_service, "create_s3_client", return_value=client):
+        with patch.object(s3_service, "get_s3_client", return_value=client):
             with pytest.raises(Exception):  # noqa: B017 - ValueError, or the breaker's wrapper
                 s3_service.download_file_from_s3(bad_url)
         client.download_file.assert_not_called()
@@ -114,7 +114,7 @@ class TestEveryEntryPointRefuses:
         from app.services import s3_service
 
         client = MagicMock()
-        with patch.object(s3_service, "create_s3_client", return_value=client):
+        with patch.object(s3_service, "get_s3_client", return_value=client):
             with pytest.raises(Exception):  # noqa: B017
                 s3_service.load_dataframe_from_s3(bad_url)
         client.download_file.assert_not_called()

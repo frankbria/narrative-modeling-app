@@ -57,6 +57,18 @@ if TYPE_CHECKING:
     from app.models.user_data import UserData
 
 
+@pytest.fixture(autouse=True)
+def _fresh_shared_s3_client():
+    """The shared S3 client is cached for the life of the process (#519), and every
+    S3 reader uses it since #722. A test that stubs boto3 must not be handed a
+    client an earlier test built, so the cache starts and ends each test empty."""
+    from app.utils.s3 import reset_s3_client
+
+    reset_s3_client()
+    yield
+    reset_s3_client()
+
+
 def _point_app_at_test_database():
     """Make the app lifespan use the test database.
 
