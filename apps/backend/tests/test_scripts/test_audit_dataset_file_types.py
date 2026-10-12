@@ -89,3 +89,51 @@ async def test_a_version_object_that_cannot_be_read_is_undetermined_not_confirme
     assert (await UserData.get(doc.id)).file_type == "parquet"
     err = capsys.readouterr().err
     assert "unreadable version object" in err and "some-other-bucket" not in err
+
+
+# #902: rows written by /upload/secure hold "excel". The models now show such a row
+# under its extension, so the audit has to read what is stored, not what the model shows.
+
+
+async def _stored_as_excel(url: str) -> UserData:
+    doc = await _ud(url, "xlsx")
+    await UserData.get_motor_collection().update_one({"_id": doc.id}, {"$set": {"file_type": "excel"}})
+    return doc
+
+
+async def _raw_type(doc: UserData) -> str:
+    return (await UserData.get_motor_collection().find_one({"_id": doc.id}))["file_type"]
+
+
+async def test_a_row_stored_as_excel_is_reported(setup_database):
+    mod = _load()
+    doc = await _stored_as_excel("s3://b/datasets/u/d.xlsx")
+
+    result = await mod._audit(UserData, apply=False)
+
+    assert result["mismatched"] == 1 and result["fixed"] == 0
+    assert await _raw_type(doc) == "excel"
+
+
+@pytest.mark.parametrize("url, stored", [("s3://b/datasets/u/d.xlsx", "xlsx"), ("s3://b/datasets/u/d.xls", "xls")])
+async def test_apply_rewrites_excel_to_the_extension(setup_database, url, stored):
+    mod = _load()
+    doc = await _stored_as_excel(url)
+
+    result = await mod._audit(UserData, apply=True)
+
+    assert result["mismatched"] == 1 and result["fixed"] == 1
+    assert await _raw_type(doc) == stored
+
+
+async def test_apply_changes_only_the_file_type(setup_database):
+    """A targeted write: a full save of the audit's copy would write back every field
+    as the audit read it, over whatever changed in the meantime."""
+    mod = _load()
+    doc = await _stored_as_excel("s3://b/datasets/u/d.xlsx")
+    await UserData.get_motor_collection().update_one({"_id": doc.id}, {"$set": {"num_rows": 99}})
+
+    await mod._audit(UserData, apply=True)
+
+    raw = await UserData.get_motor_collection().find_one({"_id": doc.id})
+    assert (raw["file_type"], raw["num_rows"]) == ("xlsx", 99)

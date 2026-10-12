@@ -5,6 +5,7 @@ Tests for Secure Upload API endpoints
 import io
 from unittest.mock import AsyncMock, patch
 
+import pandas as pd
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
@@ -258,3 +259,40 @@ class TestChunkedCompletionSizeCap:
 
         assert exc.value.status_code == 413
         assert not assembled.exists()  # oversized temp file cleaned up, not read
+
+
+class TestAWorkbookIsStoredUnderItsExtension:
+    """#902: `/upload/secure` typed an Excel upload `"excel"`, a spelling half the
+    readers did not know. The real route and a real document; the same model stores
+    every other writer's row (`tests/test_models/test_excel_file_type.py`)."""
+
+    XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    def _stubs(self, name: str):
+        return (
+            patch("app.api.routes.secure_upload.upload_file_to_s3", autospec=True,
+                  return_value=(True, f"s3://test-bucket/datasets/test_user_123/0b0f6c1e.{name.rsplit('.', 1)[-1]}")),
+            patch("app.utils.ai_summary.generate_dataset_summary", autospec=True),
+            patch("app.api.routes.secure_upload.generate_ai_summary_safe", autospec=True),
+        )
+
+    @staticmethod
+    def _workbook(frame: pd.DataFrame) -> bytes:
+        buffer = io.BytesIO()
+        frame.to_excel(buffer, index=False)
+        return buffer.getvalue()
+
+    async def _stored_type(self, name: str) -> str:
+        raw = await UserData.get_motor_collection().find_one({"user_id": "test_user_123", "filename": name})
+        return raw["file_type"]
+
+    async def test_secure_upload(self, setup_database, async_authorized_client):
+        book = self._workbook(pd.DataFrame({"product_id": [1001, 1002], "price": [19.99, 29.99]}))
+        s3, summary, safe_summary = self._stubs("prices.xlsx")
+        with s3, summary, safe_summary:
+            response = await async_authorized_client.post(
+                "/api/v1/upload/secure", files={"file": ("prices.xlsx", io.BytesIO(book), self.XLSX)}
+            )
+
+        assert response.status_code == 200 and response.json()["status"] == "success", response.text
+        assert await self._stored_type("prices.xlsx") == "xlsx"

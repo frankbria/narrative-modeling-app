@@ -170,7 +170,7 @@ def _read_parquet(local_path: str, nrows: int | None):
     return df.head(nrows) if nrows else df
 
 
-# "excel" is what /upload/secure stores for an .xls or .xlsx file.
+# "excel" is what the secure upload routes stored before #902.
 _READERS = {
     "csv": _read_csv,
     "xlsx": _read_excel,

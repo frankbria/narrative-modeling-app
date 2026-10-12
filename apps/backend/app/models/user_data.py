@@ -12,9 +12,9 @@ from beanie import (
     after_event,
     before_event,
 )
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
-from app.utils.filenames import SafeFilename
+from app.utils.filenames import SafeFilename, excel_under_its_extension
 
 
 def get_current_time() -> datetime:
@@ -110,6 +110,11 @@ class UserData(Document):
         await product_events.record(
             self.user_id, product_events.FIRST_UPLOAD, once=product_events.FIRST_UPLOAD
         )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _excel_under_its_extension(cls, data: Any) -> Any:
+        return excel_under_its_extension(data)
 
     class Settings:
         name = "user_data"

@@ -300,7 +300,8 @@ def _twin_file_type(upload: UserData) -> str:
 
     An apply on a misread frame overwrites the live file on both twins (#857 review: a
     TSV typed "csv" collapsed into one column), so anything else is refused with its
-    type named. /upload/secure stores Excel as "excel", so the URL's extension names it.
+    type named. A row stored as "excel" before #902 reads as its extension through the
+    model; the URL's extension is still consulted for a type the model does not rewrite.
     """
     kind = _transformable_kind(upload)
     if kind is None:

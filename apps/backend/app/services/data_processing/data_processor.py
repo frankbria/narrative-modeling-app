@@ -18,6 +18,11 @@ from .statistics_engine import DatasetStatistics, StatisticsEngine
 logger = logging.getLogger(__name__)
 
 
+def _reader_type(file_type: str | None) -> str | None:
+    """A stored workbook's type is its extension (#902); the readers here call it "excel"."""
+    return "excel" if file_type in ("xls", "xlsx") else file_type
+
+
 class ProcessedData:
     """Container for processed data and metadata"""
     
@@ -172,9 +177,7 @@ class DataProcessor:
         Returns:
             ProcessedData object
         """
-        # Detect file type from filename if not provided
-        if not file_type:
-            file_type = self._detect_file_type(filename)
+        file_type = _reader_type(file_type) or self._detect_file_type(filename)
         
         # Create file-like object
         file_obj = io.BytesIO(file_bytes)

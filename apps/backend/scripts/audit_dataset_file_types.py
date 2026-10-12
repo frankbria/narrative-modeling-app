@@ -43,36 +43,57 @@ from app.models.user_data import UserData
 from app.services.dataset_link import file_type_at
 
 
+async def _expected_type(location: str) -> str | None:
+    """What the object at ``location`` holds, by its extension; None when that cannot be told."""
+    try:
+        return await file_type_at(location)
+    except Exception as e:
+        # A version object that could not be read: its name proves nothing (#888).
+        # Say why, by class only (this output gets pasted into public issues), so
+        # missing S3 settings do not pass for "nothing to fix".
+        print(f"unreadable version object: {type(e).__name__}", file=sys.stderr)
+        return None
+
+
 async def _audit(model, *, apply: bool) -> dict[str, int]:
-    checked = mismatched = fixed = undetermined = 0
-    async for doc in model.find_all():
-        location = doc.s3_url or getattr(doc, "file_path", None)
-        if not location:
-            continue
-        checked += 1
-        try:
-            expected = await file_type_at(location)
-        except Exception as e:
-            # A version object that could not be read: its name proves nothing (#888).
-            # Say why, by class only (this output gets pasted into public issues), so
-            # missing S3 settings do not pass for "nothing to fix".
-            print(f"unreadable version object: {type(e).__name__}", file=sys.stderr)
-            expected = None
-        if expected is None:
-            undetermined += 1
-            continue
-        if (doc.file_type or "").lower() != expected:
-            mismatched += 1
-            if apply:
-                doc.file_type = expected
-                await doc.save()
-                fixed += 1
-    return {
-        "checked": checked,
-        "mismatched": mismatched,
-        "fixed": fixed,
-        "undetermined": undetermined,
-    }
+    # The stored documents, not the models: a model shows a row stored as "excel"
+    # under its extension (#902), which is exactly the row this has to find.
+    collection = model.get_motor_collection()
+    counts = {"checked": 0, "mismatched": 0, "fixed": 0, "undetermined": 0}
+    async for doc in collection.find({}, {"file_type": 1, "s3_url": 1, "file_path": 1}):
+        for outcome in await _outcomes(collection, doc, apply):
+            counts[outcome] += 1
+    return counts
+
+
+def _location(doc: dict) -> str | None:
+    return doc.get("s3_url") or doc.get("file_path")
+
+
+def _stored_type(doc: dict) -> str:
+    return (doc.get("file_type") or "").lower()
+
+
+async def _outcomes(collection, doc: dict, apply: bool) -> list[str]:
+    """What one stored row adds to the counts."""
+    location = _location(doc)
+    if not location:
+        return []
+    expected = await _expected_type(location)
+    if expected is None:
+        return ["checked", "undetermined"]
+    if _stored_type(doc) == expected:
+        return ["checked"]
+    return ["checked", "mismatched", *await _fix(collection, doc["_id"], expected, apply)]
+
+
+async def _fix(collection, doc_id, expected: str, apply: bool) -> list[str]:
+    """A targeted $set, for the reason a move is one (#723): a save of this run's copy
+    would write every other field back as it was when the audit read it."""
+    if not apply:
+        return []
+    await collection.update_one({"_id": doc_id}, {"$set": {"file_type": expected}})
+    return ["fixed"]
 
 
 async def main() -> int:
