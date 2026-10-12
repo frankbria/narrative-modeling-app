@@ -61,13 +61,13 @@ DATE_PARSE_RATIO = 0.95
 _DATE_SAMPLE = 1000
 _MONTH_NAME = r"[A-Za-z]{3,9}\.?"
 _DATE_SHAPE = re.compile(
-    r"^\s*(?:"
+    r"^\s*(?:[A-Za-z]{3,9},? )?(?:"  # an optional weekday: "Wed, 31 Jan 2024"
     r"\d{4}[-/.]\d{1,2}[-/.]\d{1,2}"  # 2024-01-31
     r"|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})"  # 01/31/2024, 1/2/24
     r"|\d{1,2}\.\d{1,2}\.\d{4}"  # 31.01.2024
     rf"|\d{{1,2}}[ -]{_MONTH_NAME}[ ,-]+\d{{2,4}}"  # 31 Jan 2024, 31-Jan-24
     rf"|{_MONTH_NAME} \d{{1,2}},? \d{{4}}"  # Jan 31, 2024
-    r")(?:[T ]\d{1,2}:\d{2}.*)?$"  # an optional time
+    r")(?:[T ]\d{1,2}:\d{2}.*)?\s*$"  # an optional time
 )
 
 
@@ -88,7 +88,9 @@ def _is_date_column(s: pd.Series) -> bool:
         return True
     if not _is_text(s):
         return False
-    sample = s.dropna().astype(str).head(_DATE_SAMPLE)
+    filled = s.dropna()
+    # Drawn from the whole column: a sorted file's first rows can be unlike the rest.
+    sample = filled.sample(n=min(len(filled), _DATE_SAMPLE), random_state=0).astype(str)
     return bool(len(sample)) and _date_share(sample) >= DATE_PARSE_RATIO
 
 
@@ -276,6 +278,7 @@ class FeatureEngineer:
             FeatureEngineeringResult with transformed features
         """
         X_transformed = self._exclude_unlearnable(self._coerce_booleans(X.copy()))
+        X_transformed = self._kept_datetimes_as_text(X_transformed)
         self._identify_feature_types(X_transformed)
         X_transformed = await self._fit_categorical_steps(X_transformed)
         X_transformed = await self._fit_numeric_steps(X_transformed)
@@ -317,6 +320,16 @@ class FeatureEngineer:
             )
         logger.info("Excluding identifier and date columns from features: %s", self.excluded_features)
         return X.drop(columns=self.excluded_features)
+
+    @staticmethod
+    def _kept_datetimes_as_text(X: pd.DataFrame) -> pd.DataFrame:
+        """A datetime column still here was kept by the caller (``keep_columns``).
+        It is in neither feature list as it is, and the estimator cannot take it, so
+        it becomes the text a CSV would have held, which is also what serving sends.
+        A blank stays a blank."""
+        for col in X.columns[[pd.api.types.is_datetime64_any_dtype(t) for t in X.dtypes]]:
+            X[col] = X[col].astype(str).where(X[col].notna())
+        return X
 
     def _excluded_identifiers(self) -> list[str]:
         # getattr: engineers pickled before #806 / #840 lack one list or the other.
@@ -544,7 +557,8 @@ class FeatureEngineer:
     @staticmethod
     def _date_columns(df: pd.DataFrame, keep: list[str]) -> list[str]:
         """Date columns, which are not one-hot encoded (#840). ``keep`` is the
-        caller's override, and a kept date is encoded as the text it is."""
+        caller's override: a kept date is encoded as text (``_kept_datetimes_as_text``
+        makes text of a datetime column first)."""
         return [col for col in df.columns if col not in keep and _is_date_column(df[col])]
 
     def _identify_feature_types(self, df: pd.DataFrame):

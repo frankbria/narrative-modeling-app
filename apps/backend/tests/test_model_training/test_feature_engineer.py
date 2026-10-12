@@ -895,6 +895,11 @@ class TestWhatReadsAsADate:
             ["31 Jan 2024", "1 Feb 2024"],
             ["31-Jan-24", "01-Feb-24"],
             ["Jan 31, 2024", "February 1, 2024"],
+            ["Wed, 31 Jan 2024", "Thu, 1 Feb 2024"],
+            ["Wednesday, January 31, 2024", "Thursday, February 1, 2024"],
+            ["01/31/2024 10:15 AM", "02/01/2024 3:05 PM"],
+            ["2024-01-31T10:15:00+02:00", "2024-02-01T08:00:00-05:00"],
+            ["2024-01-31  ", " 2024-02-01"],  # padded, as some exports write them
         ],
         ids=lambda v: v[0],
     )
@@ -918,6 +923,9 @@ class TestWhatReadsAsADate:
             ["555-12-3456", "555-98-7654"],
             ["12345", "67890"],
             ["99/99/2024", "45/45/2024"],  # the shape of a date, but no such day
+            ["10:15:00", "08:00:00"],  # a time of day
+            ["10.0.0.1", "192.168.1.20"],
+            ["Mon 10", "Tue 11"],
         ],
         ids=lambda v: v[0],
     )
@@ -938,6 +946,15 @@ class TestWhatReadsAsADate:
         assert not _is_date_column(pd.Series([2021, 2022, 2023]))
         assert not _is_date_column(pd.Series([20240131, 20240201]))
 
+    def test_the_sample_is_drawn_from_the_whole_column_not_its_first_rows(self):
+        """A file sorted so that its first thousand rows are unlike the rest must not
+        be judged on those rows alone."""
+        from app.services.model_training.feature_engineer import _is_date_column
+
+        dates = [f"2024-01-{d:02d}" for d in range(1, 29)]
+        assert not _is_date_column(pd.Series(dates * 40 + ["free text"] * 9000))
+        assert _is_date_column(pd.Series(["pending"] * 200 + dates * 400))
+
     def test_a_few_stray_values_and_blanks_do_not_hide_a_date_column(self):
         from app.services.model_training.feature_engineer import _is_date_column
 
@@ -945,6 +962,17 @@ class TestWhatReadsAsADate:
         assert _is_date_column(pd.Series(dates + ["unknown"] * 3 + [None] * 20))
         assert not _is_date_column(pd.Series(dates + ["unknown"] * 30))
         assert not _is_date_column(pd.Series([None, None], dtype=object))
+
+    @pytest.mark.parametrize(
+        "values",
+        [[b"2024-01-31", b"x"], [[1, 2], [3]], [1, "a", None, 2.5], ["x" * 50_000, "y" * 50_000]],
+        ids=["bytes", "lists", "mixed types", "very long text"],
+    )
+    def test_an_odd_column_is_simply_not_a_date(self, values):
+        """Detection runs on every column of every training run, so it must not raise."""
+        from app.services.model_training.feature_engineer import _is_date_column
+
+        assert not _is_date_column(pd.Series(values, dtype=object))
 
 
 def _orders(n: int = 300) -> tuple[pd.DataFrame, pd.Series]:
@@ -1017,6 +1045,34 @@ class TestDateColumnsAreExcluded:
 
         assert fe.excluded_dates == ["shipped_at"]
         assert "order_date" in fe.categorical_features
+
+    @pytest.mark.asyncio
+    async def test_a_kept_datetime_column_is_encoded_as_text(self):
+        """A datetime64 column is in neither feature list, so keeping it as it is
+        handed the estimator raw timestamps and the fit raised."""
+        X, y = _orders()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, keep_columns=["shipped_at"]))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_dates == ["order_date"]
+        assert "shipped_at" in fe.categorical_features
+        assert "shipped_at_2025-01-01" in result.feature_names
+        assert all(pd.api.types.is_numeric_dtype(t) for t in result.X_transformed.dtypes)
+        # Serving sends a date as text, which selects the category fit made of it.
+        out = await _served(fe, [{"shipped_at": "2025-01-01", "plan": "pro", "spend": 80.0}])
+        assert out.loc[0, "shipped_at_2025-01-01"] == 1.0
+        assert _block(out, "shipped_at").to_numpy().sum() == 1.0
+
+    @pytest.mark.asyncio
+    async def test_a_kept_datetime_column_keeps_its_blanks_as_blanks(self):
+        X, y = _orders()
+        X.loc[:9, "shipped_at"] = pd.NaT
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, keep_columns=["shipped_at"]))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert not any("NaT" in name for name in result.feature_names)
 
     @pytest.mark.asyncio
     async def test_a_frame_of_only_ids_and_dates_fails_with_a_clear_message(self):
