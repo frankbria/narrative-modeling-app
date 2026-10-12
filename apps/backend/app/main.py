@@ -80,7 +80,7 @@ from app.api.routes import (
     visualizations,
     workflows,
 )
-from app.services.api_documentation import APIDocumentationService
+from app.services.api_documentation import published_spec
 from app.auth.nextauth_auth import SKIP_AUTH, require_admin
 from app.config import current_signup_mode, get_environment, settings, is_production_like
 from app.models.registry import DOCUMENT_MODELS
@@ -201,11 +201,6 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
-
-# Initialize API documentation service
-# Note: Don't override app.openapi() as it causes recursion.
-# The enhanced spec is available at /api/v1/docs/openapi.json
-doc_service = APIDocumentationService(app)
 
 # Default so the attribute exists before lifespan runs (middleware resolves the
 # real store from app.state per request; None ⇒ fail open). See lifespan above.
@@ -445,110 +440,20 @@ async def metrics():
     return Response(content=get_metrics(), media_type=CONTENT_TYPE_LATEST)
 
 
-# API Documentation endpoints
+# The published API description (#512): FastAPI's generated document, which is
+# the live route table.
 @app.get(f"{settings.API_V1_STR}/docs/openapi.json", tags=["documentation"])
-async def get_enhanced_openapi():
-    """
-    Get enhanced OpenAPI specification with security schemes and examples.
-
-    Returns the complete API specification including:
-    - All endpoints with request/response schemas
-    - Authentication schemes (JWT Bearer, API Key)
-    - Error response examples
-    - Comprehensive descriptions and metadata
-    """
-    return doc_service.generate_openapi_spec()
+async def get_published_openapi():
+    """The OpenAPI document for this instance: every route it serves, what each
+    requires, and the rate limits it enforces."""
+    return published_spec(app)
 
 
 @app.get(f"{settings.API_V1_STR}/docs/openapi.yaml", tags=["documentation"])
-async def get_enhanced_openapi_yaml():
-    """
-    Get enhanced OpenAPI specification in YAML format.
-
-    Returns the same specification as the JSON endpoint but in YAML format
-    for better readability and certain tooling compatibility.
-    """
+async def get_published_openapi_yaml():
+    """The same document as YAML."""
     import yaml
 
-    spec = doc_service.generate_openapi_spec()
+    spec = published_spec(app)
     yaml_content = yaml.dump(spec, default_flow_style=False, sort_keys=False)
     return Response(content=yaml_content, media_type="application/x-yaml")
-
-
-@app.get(f"{settings.API_V1_STR}/docs/clients/{{language}}", tags=["documentation"])
-async def get_client_library(language: str):
-    """
-    Get client library code for the specified language.
-
-    Supported languages:
-    - python: Complete Python client with authentication and error handling
-    - javascript: JavaScript/TypeScript client for Node.js and browsers
-    - curl: cURL examples for all major endpoints
-
-    Args:
-        language: Programming language for the client library
-
-    Returns:
-        Source code for the client library
-
-    Raises:
-        404: If the language is not supported
-    """
-    from fastapi import HTTPException
-
-    libraries = doc_service.generate_client_libraries()
-    if language not in libraries:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Language '{language}' not supported. Available: {', '.join(libraries.keys())}",
-        )
-    return Response(content=libraries[language], media_type="text/plain")
-
-
-@app.get(
-    f"{settings.API_V1_STR}/docs/integrations/{{framework}}", tags=["documentation"]
-)
-async def get_integration_example(framework: str):
-    """
-    Get integration example for the specified framework.
-
-    Supported frameworks:
-    - jupyter: Jupyter notebook integration example
-    - colab: Google Colab integration example
-    - streamlit: Streamlit app integration example
-    - flask: Flask application integration example
-
-    Args:
-        framework: Framework for the integration example
-
-    Returns:
-        Source code for the integration example
-
-    Raises:
-        404: If the framework is not supported
-    """
-    from fastapi import HTTPException
-
-    examples = doc_service.generate_integration_examples()
-    if framework not in examples:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Framework '{framework}' not supported. Available: {', '.join(examples.keys())}",
-        )
-    return Response(content=examples[framework], media_type="text/plain")
-
-
-@app.get(f"{settings.API_V1_STR}/docs/postman", tags=["documentation"])
-async def get_postman_collection():
-    """
-    Get Postman collection for API testing.
-
-    Returns a complete Postman collection including:
-    - All API endpoints with examples
-    - Authentication configuration
-    - Environment variables
-    - Pre-request scripts for token management
-
-    The collection can be imported directly into Postman for interactive testing.
-    """
-    return doc_service.generate_postman_collection()

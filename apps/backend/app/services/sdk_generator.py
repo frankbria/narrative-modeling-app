@@ -3,9 +3,9 @@ SDK Generator Service (issue #86 — P5.6).
 
 Generates **per-deployment** client SDKs (Python / TypeScript / JavaScript / cURL),
 a Postman collection, framework integration samples, and per-SDK README docs for a
-trained model. Unlike the generic ``APIDocumentationService`` (which hardcodes a fake
-host and the wrong predict route), these target the **real** production serving
-contract:
+trained model. They target the production serving contract, at the model's own
+serving URL, and ``test_generated_sdk_runs_against_a_live_server.py`` runs the
+generated Python client against a real server (#512):
 
     POST {serving_endpoint}/predict
     Header: X-API-Key: sk_live_...
@@ -53,6 +53,8 @@ class SDKGenerator:
         model_id: The model's id (path segment in the serving URL).
         model_name: Human-readable model name (drives the client class name).
         feature_names: Raw input feature names (drives the sample record).
+        sample_values: A value for an input that must not be ``0`` in the sample
+            record: a category the model knows, for a categorical input.
         problem_type: ``classification`` / ``regression`` / ... (for doc copy).
         serving_endpoint: The deployment URL ``{host}/api/v1/production/v1/models/{id}``.
             ``/predict`` and ``/info`` are appended by the generated code.
@@ -66,11 +68,13 @@ class SDKGenerator:
         feature_names: list[str] | None,
         problem_type: str,
         serving_endpoint: str,
+        sample_values: dict[str, Any] | None = None,
     ) -> None:
         self.model_id = model_id
         # Sanitized for safe embedding in generated source/comments (user input).
         self.model_name = _safe_display_name(model_name or model_id)
         self.feature_names = list(feature_names or [])
+        self.sample_values = dict(sample_values or {})
         self.problem_type = problem_type or "classification"
         self.serving_endpoint = serving_endpoint.rstrip("/")
         # Derive the class name from the already-sanitized display name so both
@@ -80,8 +84,8 @@ class SDKGenerator:
     # -- shared helpers -------------------------------------------------------
 
     def sample_record(self) -> dict[str, Any]:
-        """A single example input record (every feature defaulted to 0)."""
-        return {name: 0 for name in self.feature_names}
+        """A single example input record: 0 for a number, a known category otherwise."""
+        return {name: self.sample_values.get(name, 0) for name in self.feature_names}
 
     def languages(self) -> dict[str, str]:
         """All source SDKs keyed by language."""

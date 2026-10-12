@@ -1,30 +1,39 @@
-# #911 — a file with an entirely empty column trains (P1.70)
+# #512 — the published API surface describes what exists (P2.16)
 
-Self-authored plan (the issue has five acceptance criteria). Found in review of #840.
+Self-authored plan (the issue has four acceptance criteria).
 
 ## Decisions made here
-- **An empty column is a third kind of column left out of the features**, beside
-  identifiers (#806) and dates (#840): `excluded_empty` on the engineer, in
-  `excluded_features` (what `transform` and the export drop), reported in the training
-  log, `training_config["excluded_empty_columns"]` and the model report. Serving, the
-  form and the export then agree with the fit with no new code on those paths.
-- **`keep_columns` does not keep an empty column.** There is no value to encode, and
-  keeping it is what crashed. An all-blank date is reported as empty, not as a date.
-- **`_handle_missing_values` loses both of its recovery branches.** One dropped every
-  categorical column when the imputer returned fewer columns than it was given, which is
-  what turned one empty column into a `KeyError` (and would otherwise have trained a
-  model with no categoricals, in silence). The other swallowed a `ValueError` and left
-  the blanks in. With empty columns gone before imputation, neither can be reached.
-- "Empty" is judged on the rows the engineer is fitted on (the training split), which is
-  the frame the imputer sees.
-- **The three `training_config` keys are written by one helper**, `_recorded_exclusions`,
-  so `train_model_task` (over the CRAP ceiling, standing exemption) loses two statements
-  and gains one, and a fourth kind would not touch it.
+- **The hand-written SDK surface is deleted**: `/docs/clients/{language}`,
+  `/docs/integrations/{framework}`, `/docs/postman` and the 800 lines that produced
+  them. They described endpoints that do not exist (`/models/train`, `/data/upload`),
+  nothing in the frontend calls them, and a second, real SDK already exists: the
+  per-model one (`/ml/{id}/sdk`, #86), generated for a deployment against its actual
+  serving URL. Regenerating a general SDK from the route table would be a third thing to
+  keep honest; the OpenAPI document is the general description.
+- **`/docs/openapi.json` and `.yaml` stay, and are the live route table**: FastAPI's own
+  `app.openapi()`, plus a description, a contact, the licence and the server. What was
+  layered on top is removed because it was false: a blanket "every endpoint takes a
+  bearer token or an API key" (the native document already states each route's own
+  requirement), tags for groups that do not exist, examples for schemas that do not
+  exist, an MIT licence (the project is AGPL), and a production server on a domain the
+  product does not own. No server is named at all: a document without one describes the
+  host it was fetched from, which stays true behind the TLS proxy, where
+  `request.base_url` reports `http`.
+- **Rate limits in the description are read from the running settings and the plan
+  table**, not typed: the per-caller limit on `/api/v1`, and each plan's ceiling for an
+  API key on the serving routes. A test changes a setting and expects the text to follow.
+- **The SDK smoke test runs the real server as a subprocess** (integration-marked: it
+  needs MongoDB and LocalStack): upload, train, fetch the model's generated Python SDK,
+  mint an API key through the API, execute the SDK source and call `predict`. Only a
+  running instance can show that a generated client reaches a real endpoint.
+- AC4 (re-check after the A/B decision) stays open on #502, which is gated on the owner.
+  Because the document is now the route table, removing those routes removes them here
+  with no further change.
 
 ## Steps
-- [x] Engineer tests: an empty numeric-read column, an empty text column, an all-blank
-      date kept by the caller, other categoricals intact, all-empty frame message,
-      serving and export, an older pickle.
-- [x] `_empty_columns`, `_find_unlearnable`, simplified `_handle_missing_values`.
-- [x] Persistence helper, model report (JSON, Markdown, page), failure wording.
-- [ ] CLAUDE.md, gate, cross-family review, PR, demo through the real routes, CI, merge.
+- [x] Tests: the document is the route table; the description names no path and no limit
+      the app does not have; removed endpoints 404; the dead-domain guard loses its exception.
+- [x] `api_documentation.py` reduced to the published document; routes in `main.py`.
+- [x] SDK smoke test against a live server. It found that the generated sample record
+      used engineered feature names; fixed in `_sdk_inputs`.
+- [ ] Gate, cross-family review, PR, demo, CI, merge.

@@ -82,15 +82,12 @@ def test_backend_support_email_is_the_one_the_legal_pages_publish():
 def test_no_dead_product_domain_in_backend_code():
     """AC6: the company domain comes from one constant; the old product domains are fiction.
 
-    One exception: the generated SDK in api_documentation.py still defaults to an
-    `api.narrativeml.com` host. That surface is #512's, and the real production
-    hostname waits on #765, so only that host in that file is tolerated.
+    No exception: the generated SDK that defaulted to `api.narrativeml.com` is gone (#512).
     """
     offenders = [
         f"{p.relative_to(_BACKEND_APP)}:{i}"
         for p in _BACKEND_APP.rglob("*.py")
         for i, line in enumerate(p.read_text().splitlines(), 1)
         if re.search(r"narrativeml\.com|narrativemodeling\.ai", line)
-        and not (p.name == "api_documentation.py" and "api.narrativeml.com" in line)
     ]
     assert offenders == []

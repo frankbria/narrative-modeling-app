@@ -1900,3 +1900,20 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **An old test that asserts "no error" on degenerate input may be asserting the bug.**
   `test_handle_edge_cases` expected an all-NaN frame to fit. It now expects the plain
   message that there is nothing to learn from.
+
+## 2026-10-12 — #512 (the published API surface describes what exists)
+
+- **Generated code is tested by running it.** The acceptance criterion asked for a smoke
+  test of the SDK against a running instance. Writing it found a second defect nobody had
+  reported: every generated client's sample record used the engineered feature names, so
+  the serving route refused it with a 422. Unit tests of the generator compared strings.
+- **Delete the hand-written twin of a thing the app can state itself.** 800 lines of
+  clients, examples and a Postman collection described routes that never existed, beside
+  a blanket security rule, typed rate limits, a licence and a host, all false. The honest
+  document is `app.openapi()` plus text whose numbers are read from what enforces them.
+- **The in-process ASGI transport runs background tasks before the response returns.**
+  Every demo this session read a trained model straight after `POST /ml/train`. A real
+  server answers first and trains afterwards, so a live-server test has to wait.
+- **A quoted heredoc keeps `\\n` as two characters.** A test file written through
+  `<<'EOF'` with `"\\n".join(...)` produced a one-line CSV and a training failure that
+  looked like a product bug. Check generated test data before reading the failure.
