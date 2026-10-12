@@ -2071,3 +2071,13 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A guard against a rare event still needs the check after it.** The pump over the wait
   makes a reap unlikely; the re-read on taking the slot is what makes training after one
   impossible.
+
+## #902 — one spelling for an Excel dataset (2026-10-12)
+- **A value every writer sets is set best where every writer passes.** Five routes build
+  the same two documents; a validator on those covers them and the next route.
+- **A normaliser that runs on read hides the stored value from tools that go through
+  the model.** The audit script would have reported nothing. Anything whose job is to
+  see what is stored has to read the collection.
+- **Asserting the obvious on a second route found the worse bug.** The same test,
+  pointed at the PII confirmation route, came back `None`: that route stores no type at
+  all, and training cannot read such a row (#937).

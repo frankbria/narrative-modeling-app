@@ -10,9 +10,9 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from beanie import Document, Indexed, PydanticObjectId
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.utils.filenames import SafeFilename
+from app.utils.filenames import SafeFilename, excel_under_its_extension
 
 
 def get_current_time() -> datetime:
@@ -187,6 +187,11 @@ class DatasetMetadata(Document):
             datetime: lambda dt: dt.isoformat()
         }
     }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _excel_under_its_extension(cls, data: Any) -> Any:
+        return excel_under_its_extension(data)
 
     @field_validator('file_type')
     @classmethod

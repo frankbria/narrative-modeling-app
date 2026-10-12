@@ -8,7 +8,7 @@ path (traversal) from them. Normalise once, at ingestion, and store only that.
 
 import re
 import unicodedata
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import AfterValidator
 
@@ -55,3 +55,30 @@ def sanitize_filename(name: str, max_length: int = MAX_FILENAME_LENGTH) -> str:
 #: Field type for a client-supplied filename: validated once, shared by every
 #: document that stores one (#585), so the two models cannot drift apart.
 SafeFilename = Annotated[str, AfterValidator(sanitize_filename)]
+
+
+def excel_file_type(*names: str | None) -> str:
+    """``"xls"`` or ``"xlsx"``: the first of ``names`` (a filename, an object URL) whose
+    extension says which. A workbook nothing names is the current format."""
+    for name in names:
+        extension = (name or "").split("?", 1)[0].rsplit(".", 1)[-1].lower()
+        if extension in ("xls", "xlsx"):
+            return extension
+    return "xlsx"
+
+
+def excel_under_its_extension(document: Any) -> Any:
+    """Store an Excel dataset's ``file_type`` as its extension, never ``"excel"`` (#902).
+
+    The body of a ``model_validator(mode="before")`` on both dataset documents. Three
+    upload routes wrote ``"excel"`` and two wrote ``"xls"``/``"xlsx"``, and readers
+    disagreed about which they knew, so a workbook uploaded through the UI failed at
+    whichever stage met a reader that knew only the extensions. One spelling, set where
+    every writer passes; and because validators also run when a row is read, a row
+    stored before this reads back under its extension, so no reader needs the old one.
+    """
+    if not isinstance(document, dict) or str(document.get("file_type") or "").lower() != "excel":
+        return document
+    names = (document.get(key) for key in ("original_filename", "filename", "s3_url", "file_path"))
+    return {**document, "file_type": excel_file_type(*names)}
+
