@@ -218,7 +218,9 @@ class RecipeResponse(BaseModel):
     id: str
     name: str
     description: str | None = None
-    user_id: str
+    # The owner's id, returned to the owner only. A public recipe read by another
+    # account carries None (#914).
+    user_id: str | None = None
     steps: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
