@@ -849,6 +849,10 @@ async def train_model_task(
         training_config["excluded_identifier_columns"] = result.metadata.get(
             "feature_engineering", {}
         ).get("excluded_features", [])
+        # Date columns it left out too (#840), reported apart from the identifiers.
+        training_config["excluded_date_columns"] = result.metadata.get(
+            "feature_engineering", {}
+        ).get("excluded_date_columns", [])
         # What the model report could only call "not recorded" (#801): the seed the
         # engine actually used, and the settings the winning candidate ran with.
         training_config["random_seed"] = engine.random_state

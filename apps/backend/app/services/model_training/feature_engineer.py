@@ -5,6 +5,7 @@ Feature engineering for AutoML
 import json
 import logging
 import re
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -51,12 +52,53 @@ _IDENTIFIER_NAME = re.compile(
 )
 
 
+# A date column is left out of the features too (#840): read from CSV it is text,
+# and one-hot encoding it makes a feature per distinct date. Text counts as a date
+# when this share of a sample is WRITTEN as a full date and parses as one. Parsing
+# alone is not enough: dateutil also reads "Jan", "Mon" and "1/2" as dates, and
+# those are categories.
+DATE_PARSE_RATIO = 0.95
+_DATE_SAMPLE = 1000
+_MONTH_NAME = r"[A-Za-z]{3,9}\.?"
+_DATE_SHAPE = re.compile(
+    r"^\s*(?:"
+    r"\d{4}[-/.]\d{1,2}[-/.]\d{1,2}"  # 2024-01-31
+    r"|\d{1,2}[-/]\d{1,2}[-/](?:\d{4}|\d{2})"  # 01/31/2024, 1/2/24
+    r"|\d{1,2}\.\d{1,2}\.\d{4}"  # 31.01.2024
+    rf"|\d{{1,2}}[ -]{_MONTH_NAME}[ ,-]+\d{{2,4}}"  # 31 Jan 2024, 31-Jan-24
+    rf"|{_MONTH_NAME} \d{{1,2}},? \d{{4}}"  # Jan 31, 2024
+    r")(?:[T ]\d{1,2}:\d{2}.*)?$"  # an optional time
+)
+
+
+def _is_text(s: pd.Series) -> bool:
+    return s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s)
+
+
 def _is_text_identifier(s: pd.Series) -> bool:
     """Text that is (nearly) unique over its filled cells; blanks don't make an ID
     less unique."""
-    text = s.dtype == object or isinstance(s.dtype, pd.CategoricalDtype) or pd.api.types.is_string_dtype(s)
     filled = s.notna().sum()
-    return text and bool(filled) and s.nunique() / filled >= IDENTIFIER_UNIQUE_RATIO
+    return _is_text(s) and bool(filled) and s.nunique() / filled >= IDENTIFIER_UNIQUE_RATIO
+
+
+def _is_date_column(s: pd.Series) -> bool:
+    """A datetime column (Parquet keeps the type), or text written as full dates."""
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return True
+    if not _is_text(s):
+        return False
+    sample = s.dropna().astype(str).head(_DATE_SAMPLE)
+    return bool(len(sample)) and _date_share(sample) >= DATE_PARSE_RATIO
+
+
+def _date_share(sample: pd.Series) -> float:
+    """The share of the values that are shaped like a full date and parse as one."""
+    shaped = sample[sample.str.match(_DATE_SHAPE)]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # "mixed" parses each value on its own
+        parsed = pd.to_datetime(shaped, errors="coerce", format="mixed", utc=True)
+    return float(parsed.notna().sum()) / len(sample)
 
 
 def _is_row_counter(name: Any, s: pd.Series) -> bool:
@@ -214,6 +256,7 @@ class FeatureEngineer:
         self.numeric_features: list[str] = []
         self.categorical_features: list[str] = []
         self.excluded_features: list[str] = []
+        self.excluded_dates: list[str] = []
 
     async def fit_transform(
         self,
@@ -232,7 +275,7 @@ class FeatureEngineer:
         Returns:
             FeatureEngineeringResult with transformed features
         """
-        X_transformed = self._exclude_identifiers(self._coerce_booleans(X.copy()))
+        X_transformed = self._exclude_unlearnable(self._coerce_booleans(X.copy()))
         self._identify_feature_types(X_transformed)
         X_transformed = await self._fit_categorical_steps(X_transformed)
         X_transformed = await self._fit_numeric_steps(X_transformed)
@@ -250,20 +293,47 @@ class FeatureEngineer:
                 "original_features": list(X.columns),
                 "numeric_features": self.numeric_features,
                 "categorical_features": self.categorical_features,
-                "excluded_features": self.excluded_features,
+                # Identifiers only: train_model_task persists this key as
+                # ``excluded_identifier_columns``. Dates are reported apart (#840).
+                "excluded_features": self._excluded_identifiers(),
+                "excluded_date_columns": self.excluded_dates,
                 "final_feature_count": len(self.feature_names)
             }
         )
     
-    def _exclude_identifiers(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Record and drop the per-row identifier columns (#806)."""
-        self.excluded_features = self._identifier_columns(X, self.config.keep_columns)
+    def _exclude_unlearnable(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Record and drop the columns left out of the features: per-row identifiers
+        (#806) and dates (#840). ``excluded_features`` holds both, in column order,
+        and is what ``transform`` and the export drop."""
+        keep = self.config.keep_columns
+        self.excluded_dates = self._date_columns(X, keep)
+        left_out = {*self.excluded_dates, *self._identifier_columns(X, keep)}
+        self.excluded_features = [col for col in X.columns if col in left_out]
         if not self.excluded_features:
             return X
         if len(self.excluded_features) == X.shape[1]:
-            raise ValueError("Every feature column is a per-row identifier, so there is nothing to learn from")
-        logger.info("Excluding identifier columns from features: %s", self.excluded_features)
+            raise ValueError(
+                "Every feature column is a per-row identifier or a date, so there is nothing to learn from"
+            )
+        logger.info("Excluding identifier and date columns from features: %s", self.excluded_features)
         return X.drop(columns=self.excluded_features)
+
+    def _excluded_identifiers(self) -> list[str]:
+        # getattr: engineers pickled before #806 / #840 lack one list or the other.
+        dates = getattr(self, "excluded_dates", [])
+        return [col for col in getattr(self, "excluded_features", []) if col not in dates]
+
+    def exclusion_notes(self) -> list[str]:
+        """One sentence for the training log per kind of column left out of the features."""
+        kinds = (
+            ("per-row identifier", self._excluded_identifiers()),
+            ("date", getattr(self, "excluded_dates", [])),
+        )
+        return [
+            f"Excluded {kind} columns from the features: {', '.join(columns)}"
+            for kind, columns in kinds
+            if columns
+        ]
 
     async def _fit_categorical_steps(self, X: pd.DataFrame) -> pd.DataFrame:
         """Impute missing values, then encode the categoricals."""
@@ -470,6 +540,12 @@ class FeatureEngineer:
             for col in df.columns
             if col not in keep and (_is_text_identifier(df[col]) or _is_row_counter(col, df[col]))
         ]
+
+    @staticmethod
+    def _date_columns(df: pd.DataFrame, keep: list[str]) -> list[str]:
+        """Date columns, which are not one-hot encoded (#840). ``keep`` is the
+        caller's override, and a kept date is encoded as the text it is."""
+        return [col for col in df.columns if col not in keep and _is_date_column(df[col])]
 
     def _identify_feature_types(self, df: pd.DataFrame):
         """Identify numeric and categorical features"""

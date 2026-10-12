@@ -35,6 +35,8 @@ export interface ModelReport {
     feature_names: string[];
     /** Columns dropped from the features as per-row identifiers (#806). */
     excluded_columns: string[];
+    /** Date columns left out of the features (#840). Absent on older responses. */
+    excluded_date_columns?: string[];
   };
   leaderboard: ReportSection & { rows: LeaderboardRow[] };
   winner: ReportSection & {

@@ -876,3 +876,204 @@ async def test_a_null_number_is_served_as_a_blank_one():
 
     pd.testing.assert_frame_equal(out, await _served(fe, [{**_CLEAN, "spend": np.nan}]), check_dtype=False)
     assert out.loc[0, "spend"] == pytest.approx(0.0, abs=1e-9)  # the training mean, scaled
+
+
+class TestWhatReadsAsADate:
+    """#840: a date read from CSV is text, so it was one-hot encoded into a feature
+    per distinct date. What counts as a date has to leave real categoricals alone."""
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            ["2024-01-31", "2024-02-01", "2024-02-01"],
+            ["2024/1/31", "2024/2/1"],
+            ["01/31/2024", "02/01/2024"],
+            ["31/01/2024", "28/02/2024"],
+            ["1/2/24", "3/4/24"],
+            ["31.01.2024", "01.02.2024"],
+            ["2024-01-31 10:15:00", "2024-02-01T08:00:00Z"],
+            ["31 Jan 2024", "1 Feb 2024"],
+            ["31-Jan-24", "01-Feb-24"],
+            ["Jan 31, 2024", "February 1, 2024"],
+        ],
+        ids=lambda v: v[0],
+    )
+    def test_text_written_as_full_dates_is_a_date(self, values):
+        from app.services.model_training.feature_engineer import _is_date_column
+
+        assert _is_date_column(pd.Series(values))
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            ["Jan", "Feb", "Mar"],  # a month is a category
+            ["Mon", "Tue", "Wed"],
+            ["basic", "pro", "premium"],
+            ["10-12", "13-17"],  # an age band
+            ["1/2", "3/4"],
+            ["1.2.10", "1.2.11"],  # a version
+            ["Q1 2024", "Q2 2024"],
+            ["2023-24", "2024-25"],  # a season
+            ["2024-AB-01", "2024-CD-02"],
+            ["555-12-3456", "555-98-7654"],
+            ["12345", "67890"],
+            ["99/99/2024", "45/45/2024"],  # the shape of a date, but no such day
+        ],
+        ids=lambda v: v[0],
+    )
+    def test_text_that_only_resembles_a_date_is_not(self, values):
+        from app.services.model_training.feature_engineer import _is_date_column
+
+        assert not _is_date_column(pd.Series(values))
+
+    def test_datetime_columns_are_dates_and_numbers_are_not(self):
+        from datetime import date
+
+        from app.services.model_training.feature_engineer import _is_date_column
+
+        stamps = pd.date_range("2026-01-01", periods=5, freq="D")
+        assert _is_date_column(pd.Series(stamps))
+        assert _is_date_column(pd.Series(stamps.tz_localize("UTC")))
+        assert _is_date_column(pd.Series([date(2026, 1, 1), date(2026, 1, 2)], dtype=object))
+        assert not _is_date_column(pd.Series([2021, 2022, 2023]))
+        assert not _is_date_column(pd.Series([20240131, 20240201]))
+
+    def test_a_few_stray_values_and_blanks_do_not_hide_a_date_column(self):
+        from app.services.model_training.feature_engineer import _is_date_column
+
+        dates = [f"2024-01-{d:02d}" for d in range(1, 29)] * 4  # 112 values
+        assert _is_date_column(pd.Series(dates + ["unknown"] * 3 + [None] * 20))
+        assert not _is_date_column(pd.Series(dates + ["unknown"] * 30))
+        assert not _is_date_column(pd.Series([None, None], dtype=object))
+
+
+def _orders(n: int = 300) -> tuple[pd.DataFrame, pd.Series]:
+    """Orders with a date that repeats (so it is no identifier) and a Parquet-style
+    datetime column."""
+    rng = np.random.RandomState(4)
+    days = pd.date_range("2025-01-01", periods=60, freq="D")
+    X = pd.DataFrame(
+        {
+            "customer_id": [f"C{i:05d}" for i in range(n)],
+            "order_date": rng.choice(days.strftime("%Y-%m-%d"), n),
+            "shipped_at": rng.choice(days, n),
+            "plan": rng.choice(["basic", "pro", "premium"], n),
+            "spend": rng.uniform(5, 500, n).round(2),
+        }
+    )
+    return X, pd.Series(rng.choice([0, 1], n))
+
+
+class TestDateColumnsAreExcluded:
+    """#840: a date column is left out of the features and reported, like an
+    identifier (#806), so nothing is one-hot encoded per distinct date."""
+
+    @pytest.mark.asyncio
+    async def test_dates_are_excluded_at_fit_and_reported_apart_from_identifiers(self):
+        X, y = _orders()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_features == ["customer_id", "order_date", "shipped_at"]
+        assert fe.excluded_dates == ["order_date", "shipped_at"]
+        assert result.metadata["excluded_features"] == ["customer_id"]
+        assert result.metadata["excluded_date_columns"] == ["order_date", "shipped_at"]
+        assert fe.numeric_features == ["spend"] and fe.categorical_features == ["plan"]
+        assert result.feature_names == ["spend", "plan_basic", "plan_premium", "plan_pro"]
+        assert all(pd.api.types.is_numeric_dtype(t) for t in result.X_transformed.dtypes)
+
+    @pytest.mark.asyncio
+    async def test_a_timestamp_unique_on_every_row_is_reported_as_a_date(self):
+        X, y = _orders()
+        X["placed_at"] = pd.date_range("2025-01-01", periods=len(X), freq="min").strftime("%Y-%m-%d %H:%M:%S")
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert "placed_at" in fe.excluded_dates
+        assert result.metadata["excluded_features"] == ["customer_id"]
+
+    @pytest.mark.asyncio
+    async def test_serving_and_the_export_drop_a_date_whether_or_not_it_is_sent(self):
+        X, y = _orders()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(X, y, "binary_classification")
+        record = {"plan": "pro", "spend": 80.0}
+
+        without = await _served(fe, [record])
+        with_dates = await _served(fe, [{**record, "order_date": "2030-12-31", "shipped_at": "2030-12-31"}])
+
+        pd.testing.assert_frame_equal(without, with_dates)
+        assert list(without.columns) == fe.feature_names
+        assert feature_engineer_state(fe)["excluded_features"] == fe.excluded_features
+
+    @pytest.mark.asyncio
+    async def test_keep_columns_keeps_a_date_in(self):
+        X, y = _orders()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, keep_columns=["order_date"]))
+
+        await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_dates == ["shipped_at"]
+        assert "order_date" in fe.categorical_features
+
+    @pytest.mark.asyncio
+    async def test_a_frame_of_only_ids_and_dates_fails_with_a_clear_message(self):
+        X, y = _orders()
+
+        with pytest.raises(ValueError, match="per-row identifier or a date"):
+            await FeatureEngineer().fit_transform(X[["customer_id", "order_date"]], y, "binary_classification")
+
+    @pytest.mark.asyncio
+    async def test_the_training_log_gets_a_sentence_per_kind_of_exclusion(self):
+        X, y = _orders()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        assert fe.exclusion_notes() == []
+
+        await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.exclusion_notes() == [
+            "Excluded per-row identifier columns from the features: customer_id",
+            "Excluded date columns from the features: order_date, shipped_at",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_engineer_pickled_before_840_still_serves_and_reports(self):
+        X, y = _with_ids()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(X, y, "binary_classification")
+        old = pickle.loads(pickle.dumps(fe))
+        del old.__dict__["excluded_dates"]  # the attribute did not exist before #840
+
+        out = await old.transform(X.head(3))
+
+        assert list(out.columns) == fe.feature_names
+        assert old.exclusion_notes() == [
+            "Excluded per-row identifier columns from the features: customer_id, row_number"
+        ]
+
+
+@pytest.mark.asyncio
+async def test_the_engine_excludes_dates_and_says_so_in_the_training_log():
+    """#840 on the real pipeline: the date never reaches an estimator, the log names
+    it, and the exclusion lands under the metadata key train_model_task persists."""
+    from app.services.model_training.automl_engine import AutoMLEngine
+
+    df = _churn_frame(200, seed=3)
+    days = pd.date_range("2025-01-01", periods=40, freq="D").strftime("%m/%d/%Y")
+    df.insert(0, "signup_date", np.random.RandomState(0).choice(days, len(df)))
+    events = []
+
+    async def on_event(event):
+        events.append(event.message)
+
+    engine = AutoMLEngine(max_models=1, cv_folds=2, random_state=0)
+    result = await engine.run(
+        df, "churned", FeatureEngineeringConfig(select_features=False), event_callback=on_event
+    )
+
+    assert result.metadata["feature_engineering"]["excluded_date_columns"] == ["signup_date"]
+    assert result.metadata["feature_engineering"]["excluded_features"] == []
+    assert "Excluded date columns from the features: signup_date" in events
+    assert not any(name.startswith("signup_date") for name in engine.feature_engineer.feature_names)

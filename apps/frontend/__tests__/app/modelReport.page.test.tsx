@@ -132,11 +132,29 @@ describe('ModelReportPage', () => {
     expect(screen.getByText('Excluded as identifiers')).toBeInTheDocument();
   });
 
+  it('names the date columns left out, apart from the identifiers (#840)', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      dataset: {
+        ...base.dataset,
+        excluded_columns: ['customer_id'],
+        excluded_date_columns: ['order_date', 'shipped_at'],
+      },
+    });
+    render(<ModelReportPage />);
+
+    await waitFor(() => expect(screen.getByText('order_date, shipped_at')).toBeInTheDocument());
+    expect(screen.getByText('Excluded as dates')).toBeInTheDocument();
+    expect(screen.getByText('Excluded as identifiers')).toBeInTheDocument();
+    expect(screen.getByText('customer_id')).toBeInTheDocument();
+  });
+
   it('shows no exclusion row when nothing was excluded', async () => {
     render(<ModelReportPage />);
 
     await waitFor(() => expect(screen.getByText('Training rows')).toBeInTheDocument());
     expect(screen.queryByText('Excluded as identifiers')).not.toBeInTheDocument();
+    expect(screen.queryByText('Excluded as dates')).not.toBeInTheDocument();
   });
 
   it('surfaces caveats', async () => {

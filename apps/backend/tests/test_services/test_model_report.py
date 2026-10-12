@@ -683,7 +683,27 @@ class TestFreeTextCannotInjectStructure:
         report = await build_model_report(_model("m-old"), USER)
 
         assert report.dataset.excluded_columns == []
-        assert "Excluded as identifiers" not in render_markdown(report)
+        assert report.dataset.excluded_date_columns == []
+        md = render_markdown(report)
+        assert "Excluded as identifiers" not in md and "Excluded as dates" not in md
+
+    @pytest.mark.asyncio
+    async def test_excluded_date_columns_are_reported_apart_from_identifiers(self, setup_database):
+        """#840: a date left out of the features is named, under its own heading."""
+        model = _model(
+            "m-dates",
+            training_config={
+                "excluded_identifier_columns": ["customer_id"],
+                "excluded_date_columns": ["order_date", "shipped_at"],
+            },
+        )
+
+        report = await build_model_report(model, USER)
+
+        assert report.dataset.excluded_date_columns == ["order_date", "shipped_at"]
+        md = render_markdown(report)
+        assert "Excluded as identifiers: `customer_id`" in md
+        assert "Excluded as dates: `order_date`, `shipped_at`" in md
 
     @pytest.mark.asyncio
     async def test_exactly_one_row_is_the_winner_when_a_job_exists(

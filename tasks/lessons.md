@@ -1857,3 +1857,19 @@ checked, and the fix is always the same: the claim is a query, so run it.
   gate and should be in the estimate.
 - **`MagicMock(name="X")` names the mock; it does not set `.name`.** A metadata assertion
   compared a string with a child mock. Set the attribute after construction.
+
+## 2026-10-12 — #840 (date columns are excluded from the features and reported)
+
+- **A permissive parser is not a detector.** `pd.to_datetime` reads "Jan", "Mon" and
+  "1/2" as dates. Asking "does it parse" would have removed month and weekday columns,
+  which are exactly the date-derived features worth keeping. Check the written shape
+  first, then parse to reject impossible values. Write the negative cases before the
+  positive ones: they are what decides the design.
+- **Reuse the exclusion mechanism, and the acceptance criteria about serving, the form
+  and the export hold without new code.** #806 built `excluded_features`, which both
+  transforms drop and which the form never lists. Dates joined that list; only the
+  reporting needed a second name.
+- **A metadata key that another function persists under a different name keeps its old
+  meaning.** The fit metadata's `excluded_features` feeds
+  `training_config["excluded_identifier_columns"]`, so it stays identifiers-only even
+  though the engineer attribute of the same name now holds dates too. Say so at the key.

@@ -30,12 +30,12 @@ export function Absent(props: { section: ReportSection }) {
   );
 }
 
-function ExcludedColumns(props: { columns: string[] | undefined }) {
+function ExcludedColumns(props: { label: string; columns: string[] | undefined }) {
   const columns = props.columns ?? [];
   if (columns.length === 0) return null;
   return (
     <div className="col-span-3">
-      <dt className="text-muted-foreground">Excluded as identifiers</dt>
+      <dt className="text-muted-foreground">{props.label}</dt>
       <dd className="text-foreground">{columns.join(', ')}</dd>
     </div>
   );
@@ -59,7 +59,8 @@ export function DataSection(props: Report) {
           <dt className="text-muted-foreground">Features</dt>
           <dd className="text-foreground">{orDash(dataset.n_features)}</dd>
         </div>
-        <ExcludedColumns columns={dataset.excluded_columns} />
+        <ExcludedColumns label="Excluded as identifiers" columns={dataset.excluded_columns} />
+        <ExcludedColumns label="Excluded as dates" columns={dataset.excluded_date_columns} />
       </dl>
     </section>
   );
