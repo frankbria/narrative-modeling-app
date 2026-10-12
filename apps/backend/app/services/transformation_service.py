@@ -48,6 +48,7 @@ class _RanStep:
     before: pd.DataFrame
     after: pd.DataFrame
     result: Any
+    elapsed_ms: int
 
 
 class _StepFailed(Exception):
@@ -652,7 +653,10 @@ class TransformationService(BaseService[TransformationConfig]):
 
         Raises _StepFailed at the first step that reports failure. A single step keeps
         the engine's own message; in a longer pipeline the message names the step."""
+        import time
+
         for transformation_type, parameters in steps:
+            step_started = time.time()  # each step's own time, not the pipeline's so far
             # Keep the DataFrame across steps, no per-step list-of-dicts round-trip (#542).
             after, result = self.engine.apply_transformation_frame(
                 df=df, transformation_type=TransformationType(transformation_type), parameters=parameters
@@ -662,7 +666,7 @@ class TransformationService(BaseService[TransformationConfig]):
                     result.error if len(steps) == 1
                     else f"Transformation '{transformation_type}' failed: {result.error}"
                 )
-            yield _RanStep(transformation_type, parameters, df, after, result)
+            yield _RanStep(transformation_type, parameters, df, after, result, _elapsed_ms(step_started))
             df = after
 
     async def _record_steps(
@@ -688,14 +692,14 @@ class TransformationService(BaseService[TransformationConfig]):
             "schema": {},
         }
         timestamp = datetime.now(UTC).timestamp()
-        recorded, last = await self._write_versions(dataset, dataset_id, user_id, ran, started, done, timestamp)
+        recorded, last = await self._write_versions(dataset, dataset_id, user_id, ran, done, timestamp)
         if last is not None:
             await self._move_to(dataset, dataset_id, user_id, recorded, last, done, timestamp)
         # else nothing was asked for (auto-clean with every option off): nothing to write.
         return {**done, "execution_time_ms": _elapsed_ms(started)}
 
     async def _write_versions(
-        self, dataset: Any, dataset_id: str, user_id: str, ran: Iterator["_RanStep"], started: float,
+        self, dataset: Any, dataset_id: str, user_id: str, ran: Iterator["_RanStep"],
         done: dict[str, Any], timestamp: float,
     ) -> tuple[list[dict[str, Any]], pd.DataFrame | None]:
         """Write each step's version; the history steps to record, and the last frame."""
@@ -706,7 +710,7 @@ class TransformationService(BaseService[TransformationConfig]):
                 done["transformation_id"] = await self._history_config_id(
                     dataset_id, user_id, timestamp, dataset.s3_url
                 )
-            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, started, done))
+            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, done))
             last = step.after
         return recorded, last
 
@@ -733,13 +737,12 @@ class TransformationService(BaseService[TransformationConfig]):
         await cache_service.delete_pattern(f"stats_{dataset_id}_*")
 
     async def _versioned(
-        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", started: float,
-        done: dict[str, Any],
+        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", done: dict[str, Any]
     ) -> dict[str, Any]:
         """Write one step's version and add it to the totals; the history step to record for it."""
         version_id = await self._version_for(
             dataset, dataset_id, user_id, step.before, step.after, step.transformation_type,
-            step.parameters, step.result.affected_rows, _elapsed_ms(started), done["transformation_id"],
+            step.parameters, step.result.affected_rows, step.elapsed_ms, done["transformation_id"],
         )
         done["affected_rows"] += step.result.affected_rows
         done["affected_columns"] = sorted({*done["affected_columns"], *step.result.affected_columns})

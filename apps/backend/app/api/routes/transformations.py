@@ -257,7 +257,12 @@ async def apply_transformation_pipeline(
     request: TransformationPipelineRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Apply multiple transformations in sequence, all or nothing."""
+    """Apply multiple transformations in sequence, all or nothing.
+
+    The dataset may be named by either of its ids, so an id that names nothing is a
+    404 here, where the sibling routes that take only an upload's id answer 400 for a
+    malformed one.
+    """
     try:
         return await _run_pipeline(request, current_user_id)
     except NotFoundError as e:

@@ -107,6 +107,10 @@ async def _close_history(docs: list[Dataset]) -> None:
     one would silently discard that edit; a step recorded later can still be undone,
     down to the first one recorded after it. One pipeline update on the stored
     document, so it cannot revert a step another request is recording.
+
+    A second write, after the move: if it fails the caller's request fails with the
+    dataset already moved and the history still open, which is the state every such
+    move left before #851. No transaction spans the two collections.
     """
     kept = {"$max": [{"$add": ["$current_position", 1]}, 0]}
     await TransformationConfig.get_motor_collection().update_many(

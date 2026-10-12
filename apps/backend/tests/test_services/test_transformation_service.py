@@ -531,3 +531,26 @@ class TestQualityAssessmentHelpers:
         # A column-less frame must not blow up the version path; returns a dict or None.
         result = await transformation_service._assess_quality_dict(pd.DataFrame())
         assert result is None or "score_0_100" in result
+
+
+class TestEachPipelineStepIsTimedOnItsOwn:
+    """#851 review: a step's recorded duration was the time since the whole pipeline
+    began, dry run included, so every later step looked slower than the one before."""
+
+    def test_a_fast_step_after_a_slow_one_is_recorded_as_fast(self, transformation_service):
+        import time
+
+        frame = pd.DataFrame({"a": [1]})
+
+        def run(df, transformation_type, parameters):
+            time.sleep(parameters["takes"])
+            return df, MagicMock(success=True)
+
+        with patch.object(transformation_service.engine, "apply_transformation_frame", side_effect=run):
+            slow, fast = transformation_service._run(
+                frame, [("trim_whitespace", {"takes": 0.2}), ("trim_whitespace", {"takes": 0.0})]
+            )
+
+        assert slow.elapsed_ms >= 200
+        assert fast.elapsed_ms < 100, "the second step must not carry the first one's time"
+
