@@ -382,6 +382,58 @@ class TestProductionServing:
         assert all(0.0 <= c <= 1.0 for c in body["confidence"])
 
     @pytest.mark.asyncio
+    async def test_serving_flags_unseen_and_missing_inputs(
+        self, async_authorized_client, setup_database
+    ):
+        """#838: the production response names, per record, the inputs the model did
+        not learn this value from. Real key, real model row, a really fitted
+        engineer and estimator; only the artifact download is stubbed."""
+        import pandas as pd
+
+        from app.services.model_training.feature_engineer import (
+            FeatureEngineer,
+            FeatureEngineeringConfig,
+        )
+
+        rng = np.random.RandomState(0)
+        frame = pd.DataFrame(
+            {
+                "plan": rng.choice(["basic", "pro"], 200, p=[0.7, 0.3]),
+                "spend": rng.uniform(1, 100, 200),
+            }
+        )
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        fitted = await fe.fit_transform(frame)
+        clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(
+            fitted.X_transformed, (frame["plan"] == "pro").astype(int)
+        )
+        await _make_model(feature_names=fe.feature_names).insert()
+        raw = "sk_live_e2e_serving_key_0000000838"
+        await _make_api_key(raw, model_ids=[]).insert()
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+            return_value=(clf, fe),
+        ):
+            resp = await async_authorized_client.post(
+                "/api/v1/production/v1/models/model_123/predict",
+                json={
+                    "data": [
+                        {"plan": "pro", "spend": 5.0},
+                        {"plan": "enterprise", "spend": 5.0},
+                        {"plan": None, "spend": 5.0},
+                    ]
+                },
+                headers={"X-API-Key": raw},
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["input_warnings"] == [{}, {"plan": "unseen"}, {"plan": "missing"}]
+        assert len(body["predictions"]) == 3
+
+    @pytest.mark.asyncio
     async def test_missing_required_feature_returns_422_over_http(
         self, async_authorized_client, setup_database
     ):
@@ -721,6 +773,7 @@ class TestProductionPredictErrorHandling:
             response = await production_predict("model_123", request, self._api_key())
 
         assert response.predictions == [0, 1]
+        assert response.input_warnings is None  # no fitted engineer
         trained.predict.assert_called_once()
         trained.predict_proba.assert_called_once()
         # Enrichment pipeline ran end-to-end: confidence derived from proba.

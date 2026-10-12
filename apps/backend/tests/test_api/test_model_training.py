@@ -298,6 +298,8 @@ class TestModelTrainingEndpoints:
                 assert data["predictions"] == [0, 1, 0]
                 assert len(data["probabilities"]) == 3
                 assert data["feature_names"] == ["feature1", "feature2", "feature3"]
+                # No fitted engineer: nothing is known about the training values.
+                assert data["input_warnings"] is None
 
     @pytest.mark.asyncio
     async def test_delete_model_endpoint(self, async_authorized_client):
@@ -407,6 +409,71 @@ class TestModelTrainingEndpoints:
         assert response.status_code == 200, response.text
         served = mock_model.predict.call_args[0][0]
         assert served[["tier_1", "tier_2", "tier_3"]].values.tolist() == [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+
+    @pytest.mark.asyncio
+    async def test_predict_flags_unseen_and_missing_inputs(self, async_authorized_client):
+        """#838: one object per record names the inputs the model did not learn this
+        value from, and a JSON null is served as the training fill."""
+        import pandas as pd
+
+        from app.services.model_training.feature_engineer import (
+            FeatureEngineer,
+            FeatureEngineeringConfig,
+        )
+
+        rng = np.random.RandomState(0)
+        frame = pd.DataFrame(
+            {
+                "plan": rng.choice(["basic", "pro"], 200, p=[0.7, 0.3]),
+                "spend": rng.uniform(1, 100, 200),
+            }
+        )
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(frame)
+        mock_model = MagicMock(spec=["predict"])
+        mock_model.predict.return_value = np.array([1.0, 2.0, 3.0])
+
+        with (
+            patch(
+                "app.services.model_storage.ModelStorageService.load_model",
+                new_callable=AsyncMock,
+                return_value=(mock_model, fe),
+            ),
+            patch(
+                "app.models.ml_model.MLModel.find_one",
+                new_callable=AsyncMock,
+                return_value=MagicMock(
+                    feature_names=fe.feature_names,
+                    problem_type="regression",
+                    algorithm="Linear",
+                    target_column="y",
+                    is_calibrated=False,
+                    calibration_method=None,
+                    residual_std=None,
+                    feature_importance=None,
+                ),
+            ),
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/ml/model_123/predict",
+                json={
+                    "data": [
+                        {"plan": "pro", "spend": 5.0},
+                        {"plan": "enterprise", "spend": 5.0},
+                        {"plan": None, "spend": None},
+                    ]
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["input_warnings"] == [
+            {},
+            {"plan": "unseen"},
+            {"plan": "missing", "spend": "missing"},
+        ]
+        served = mock_model.predict.call_args[0][0]
+        # The null is served as the most frequent plan, not as an all-zeros block.
+        assert served[["plan_basic", "plan_pro"]].values.tolist()[2] == [1.0, 0.0]
 
     @pytest.mark.asyncio
     async def test_predict_model_not_found(self, async_authorized_client):

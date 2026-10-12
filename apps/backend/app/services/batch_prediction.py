@@ -127,9 +127,14 @@ _RESERVED_OUTPUT_COLUMNS = frozenset(
         "prediction_interval",
         "probabilities",
         "explanation",
+        "input_warnings",
         "error",
     }
 )
+
+
+def _unchanged(value: Any) -> Any:
+    return value
 
 
 class _BatchSummaryAccumulator:
@@ -896,7 +901,7 @@ class BatchPredictionService:
         error isolation. Explanations stay batched via ``_attach_explanations``.
         """
         try:
-            return await self._predict_chunk_vectorized(
+            results = await self._predict_chunk_vectorized(
                 chunk_df, trained_model, feature_engineer, model, config
             )
         except Exception as exc:  # noqa: BLE001 - fall back to per-row isolation
@@ -907,9 +912,26 @@ class BatchPredictionService:
                 exc,
                 exc_info=True,
             )
-            return await self._predict_chunk_sequential(
+            results = await self._predict_chunk_sequential(
                 chunk_df, trained_model, feature_engineer, model, config
             )
+        return self._with_input_warnings(results, chunk_df, feature_engineer)
+
+    @staticmethod
+    def _with_input_warnings(
+        results: list[dict[str, Any]], chunk_df: pd.DataFrame, feature_engineer: Any
+    ) -> list[dict[str, Any]]:
+        """Mark each row whose input the model did not learn from (#838).
+
+        Both inference paths return one record per chunk row, in order, error rows
+        included, so the engineer's per-row report lines up by position. A clean
+        row gets no key."""
+        if feature_engineer is None:
+            return results
+        for result, warnings in zip(results, feature_engineer.input_warnings(chunk_df)):
+            if warnings:
+                result["input_warnings"] = warnings
+        return results
 
     async def _predict_chunk_vectorized(
         self,
@@ -1236,39 +1258,53 @@ class BatchPredictionService:
         """
         cols = [c for c in input_columns if c not in _RESERVED_OUTPUT_COLUMNS]
         cols.append("prediction")
-        if want_proba:
-            cols += ["confidence", "low_confidence"]
-        if not is_classification and getattr(model, "residual_std", None) is not None:
+        cols += self._enrichment_columns(is_classification, want_proba, model, config)
+        if config.include_explanations:
+            cols.append("explanation")
+        # Always present, blank for a clean row, so the header does not depend on
+        # what the first chunk held (#838).
+        return [*cols, "input_warnings", "error"]
+
+    @staticmethod
+    def _enrichment_columns(
+        is_classification: bool, want_proba: bool, model: MLModel, config: BatchPredictionConfig
+    ) -> list[str]:
+        cols = ["confidence", "low_confidence"] if want_proba else []
+        if BatchPredictionService._has_interval(is_classification, model):
             cols.append("prediction_interval")
         if want_proba and config.include_probabilities:
             cols.append("probabilities")
-        if config.include_explanations:
-            cols.append("explanation")
-        cols.append("error")
         return cols
+
+    @staticmethod
+    def _has_interval(is_classification: bool, model: MLModel) -> bool:
+        return not is_classification and getattr(model, "residual_std", None) is not None
+
+    # (result key, CSV column, how the value is written), in column order.
+    _CSV_OUTPUTS: tuple[tuple[str, str, Any], ...] = (
+        ("confidence", "confidence", _unchanged),
+        ("low_confidence", "low_confidence", _unchanged),
+        ("prediction_interval", "prediction_interval", json.dumps),
+        ("probabilities", "probabilities", json.dumps),
+        ("explanation_text", "explanation", _unchanged),
+        ("input_warnings", "input_warnings", json.dumps),
+        ("error", "error", _unchanged),
+    )
 
     def _results_to_dataframe(self, predictions: list[dict[str, Any]]) -> pd.DataFrame:
         """Flatten prediction records into a clean tabular frame for CSV export:
         the original input columns plus prediction/confidence/error columns."""
-        rows: list[dict[str, Any]] = []
-        for p in predictions:
-            row: dict[str, Any] = dict(p.get("input_data", {}) or {})
-            if "prediction" in p:
-                row["prediction"] = p["prediction"]
-            if p.get("confidence") is not None:
-                row["confidence"] = p["confidence"]
-            if p.get("low_confidence") is not None:
-                row["low_confidence"] = p["low_confidence"]
-            if p.get("prediction_interval") is not None:
-                row["prediction_interval"] = json.dumps(p["prediction_interval"])
-            if p.get("probabilities") is not None:
-                row["probabilities"] = json.dumps(p["probabilities"])
-            if p.get("explanation_text") is not None:
-                row["explanation"] = p["explanation_text"]
-            if p.get("error") is not None:
-                row["error"] = p["error"]
-            rows.append(row)
-        return pd.DataFrame(rows)
+        return pd.DataFrame([self._csv_row(p) for p in predictions])
+
+    @classmethod
+    def _csv_row(cls, p: dict[str, Any]) -> dict[str, Any]:
+        row: dict[str, Any] = dict(p.get("input_data", {}) or {})
+        if "prediction" in p:
+            row["prediction"] = p["prediction"]
+        for key, column, write in cls._CSV_OUTPUTS:
+            if p.get(key) is not None:
+                row[column] = write(p[key])
+        return row
 
     async def _upload_results_file(
         self,

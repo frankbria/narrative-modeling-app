@@ -7,7 +7,6 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pandas as pd
 from beanie import PydanticObjectId
 from beanie.odm.operators.update.general import Inc, Set
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -17,7 +16,8 @@ from pydantic import BaseModel, Field
 # the two twins stay in lockstep (#264) instead of drifting a second copy.
 from app.api.routes.model_training import (
     MAX_PREDICT_RECORDS,
-    required_input_features,
+    infer_records,
+    require_input_features,
 )
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.api_keys import clamped_rate_limit
@@ -26,7 +26,7 @@ from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
-from app.services.model_storage import ModelStorageService, run_locked_inference
+from app.services.model_storage import ModelStorageService
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.prediction_monitoring import prediction_log
 
@@ -166,6 +166,10 @@ class ProductionPredictResponse(BaseModel):
     confidence_threshold: float = DEFAULT_LOW_CONFIDENCE_THRESHOLD
     prediction_intervals: list[list[float] | None] | None = None
     explanations: list[PredictionExplanation | None] | None = None
+    # Per record, the inputs the model did not learn this value from (#838):
+    # {column: "unseen" | "missing"}, empty for a clean record. None when the
+    # model has no fitted feature engineer.
+    input_warnings: list[dict[str, str]] | None = None
 
 
 class APIKeyListResponse(BaseModel):
@@ -340,6 +344,143 @@ async def _quota_predictions(
     await reserve_records(request, api_key.user_id, "predictions")
 
 
+async def _deployed_model(model_id: str, api_key: APIKey) -> MLModel:
+    """The active model this key may serve: 403 without access, 404 when absent."""
+    if not api_key.has_model_access(model_id):
+        raise HTTPException(
+            status_code=403, detail="API key does not have access to this model"
+        )
+    model = await MLModel.find_one(
+        {"model_id": model_id, "user_id": api_key.user_id, "is_active": True}
+    )
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found or inactive")
+    return model
+
+
+async def _load_deployed(model: MLModel, model_id: str, user_id: str):
+    """The estimator and its fitted engineer, or 503.
+
+    load_model returns a (model, feature_engineer) tuple keyed by
+    (model_id, user_id), not a dict keyed by S3 path (issue #82 bugfix).
+    """
+    try:
+        # The caller read the model doc fresh (no await between that read and
+        # load_model's cache read, so it is authoritative for this process), so
+        # pass its generation to skip load_model's own freshness query on this
+        # hot paid path (#489). ponytail: a sibling worker bumping the generation
+        # in the microsecond after our read serves the just-current artifact for
+        # this one request and self-heals on the next — an irreducible TOCTOU that
+        # re-reading inside load_model would not close, only make cost 2 doc reads.
+        return await ModelStorageService().load_model(
+            model_id, user_id, expected_generation=model.cache_generation
+        )
+    except ValueError as e:
+        # The model record was already found + ownership-verified, so a load
+        # failure here means the artifact is missing/corrupt — the model exists,
+        # its deployment is broken. Return 503 (not 404, which would misdirect
+        # operators to a "bad model id") and never echo str(e), which may carry
+        # S3 paths / internal detail on this untrusted path (#264).
+        logger.warning("Model load failed for %s: %s", model_id, e)
+        raise HTTPException(status_code=503, detail="Model temporarily unavailable")
+
+
+def _wants_proba(model: MLModel, trained_model: Any) -> bool:
+    return model.problem_type.endswith("classification") and hasattr(trained_model, "predict_proba")
+
+
+def _response_metadata(model: MLModel, include: bool) -> dict[str, Any] | None:
+    if not include:
+        return None
+    return {
+        "model_name": model.name,
+        "algorithm": model.algorithm,
+        "problem_type": model.problem_type,
+        "feature_count": model.n_features,
+        "training_date": model.created_at.isoformat(),
+    }
+
+
+async def _serve(
+    model: MLModel,
+    trained_model: Any,
+    feature_engineer: Any,
+    request: ProductionPredictRequest,
+    api_key: APIKey,
+    model_id: str,
+    request_start: datetime,
+) -> ProductionPredictResponse:
+    """Transform, predict, enrich and record one validated request."""
+    try:
+        # Probabilities drive confidence + low-confidence flags regardless of
+        # whether the caller asked to see the full vectors (issue #83).
+        served = await infer_records(
+            trained_model,
+            feature_engineer,
+            request.data,
+            model_id=model_id,
+            user_id=api_key.user_id,
+            want_proba=_wants_proba(model, trained_model),
+            columns=model.feature_names,
+        )
+    except (ValueError, KeyError) as exc:
+        # A client-supplied bad value (wrong dtype, a column the model needs).
+        # Return a fixed sanitized 422 — the raw sklearn/pandas message can echo
+        # internal column names / input values, so it's logged, not returned
+        # (#264, stricter than the internal twin because this path is public).
+        logger.info("Invalid feature value for model %s: %s", model_id, exc)
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid feature value(s) in one or more records.",
+        )
+
+    predictions_list = served.predictions.tolist()
+
+    # Confidence / uncertainty / explanation enrichment (issue #83).
+    enricher = _prediction_enricher
+    confidence, low_confidence = enricher.per_record_confidence(served.probabilities)
+    explanations = None
+    if request.include_explanations:
+        explanations = enricher.explanations(
+            trained_model,
+            served.features,
+            model.feature_names,
+            predictions_list,
+            model.problem_type,
+            feature_importance=model.feature_importance,
+        )
+
+    # Record per-request monitoring metrics (issue #85) — best-effort.
+    latency_ms = (datetime.now(UTC) - request_start).total_seconds() * 1000
+    await _record_serving_metrics(
+        model_id=model_id,
+        request_data=request.data,
+        predictions=predictions_list,
+        confidence=confidence,
+        latency_ms=latency_ms,
+        api_key_id=api_key.key_id,
+    )
+
+    return ProductionPredictResponse(
+        predictions=predictions_list,
+        probabilities=served.probabilities if request.include_probabilities else None,
+        model_version=model.version,
+        prediction_id=f"pred_{PydanticObjectId()}",
+        timestamp=datetime.now(UTC),
+        metadata=_response_metadata(model, request.include_metadata),
+        confidence=confidence,
+        low_confidence=low_confidence,
+        is_calibrated=bool(getattr(model, "is_calibrated", False)),
+        calibration_method=getattr(model, "calibration_method", None),
+        confidence_threshold=enricher.threshold,
+        prediction_intervals=enricher.prediction_intervals(
+            predictions_list, getattr(model, "residual_std", None)
+        ),
+        explanations=explanations,
+        input_warnings=served.input_warnings,
+    )
+
+
 @router.post(
     "/v1/models/{model_id}/predict",
     response_model=ProductionPredictResponse,
@@ -354,168 +495,20 @@ async def production_predict(
 
     Rate limiting is enforced globally by RateLimitMiddleware (#151).
     """
-
-    # Verify model access
-    if not api_key.has_model_access(model_id):
-        raise HTTPException(
-            status_code=403, detail="API key does not have access to this model"
-        )
-
-    # Get the model
-    model = await MLModel.find_one(
-        {"model_id": model_id, "user_id": api_key.user_id, "is_active": True}
-    )
-
-    if not model:
-        raise HTTPException(status_code=404, detail="Model not found or inactive")
-
-    # Load the model
-    storage_service = ModelStorageService()
-
+    model = await _deployed_model(model_id, api_key)
     request_start = datetime.now(UTC)
-
-    # load_model returns a (model, feature_engineer) tuple keyed by
-    # (model_id, user_id) — not a dict keyed by S3 path (issue #82 bugfix).
-    try:
-        # We already read the model doc fresh above (no await between that read
-        # and load_model's cache read, so it is authoritative for this process),
-        # so pass its generation to skip load_model's own freshness query on this
-        # hot paid path (#489). ponytail: a sibling worker bumping the generation
-        # in the microsecond after our read serves the just-current artifact for
-        # this one request and self-heals on the next — an irreducible TOCTOU that
-        # re-reading inside load_model would not close, only make cost 2 doc reads.
-        trained_model, feature_engineer = await storage_service.load_model(
-            model_id, api_key.user_id, expected_generation=model.cache_generation
-        )
-    except ValueError as e:
-        # The model record was already found + ownership-verified above, so a
-        # load failure here means the artifact is missing/corrupt — the model
-        # exists, its deployment is broken. Return 503 (not 404, which would
-        # misdirect operators to a "bad model id") and never echo str(e), which
-        # may carry S3 paths / internal detail on this untrusted path (#264).
-        logger.warning("Model load failed for %s: %s", model_id, e)
-        raise HTTPException(status_code=503, detail="Model temporarily unavailable")
+    trained_model, feature_engineer = await _load_deployed(model, model_id, api_key.user_id)
 
     # Validate the request BEFORE running inference, mirroring the internal
-    # /ml/{id}/predict twin (#264): a missing feature / unknown category is a
-    # client error → 422 with a sanitized message, never a 500 that echoes an
-    # internal traceback on the least-trusted (paying-customer) path.
-    if not request.data:
-        raise HTTPException(status_code=422, detail="No input records provided")
-
-    required = required_input_features(feature_engineer, model)
-    missing = sorted({f for record in request.data for f in required if f not in record})
-    if missing:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Missing required feature(s): {', '.join(missing)}",
-        )
+    # /ml/{id}/predict twin (#264): a missing feature is a client error → 422
+    # with a sanitized message, never a 500 that echoes an internal traceback on
+    # the least-trusted (paying-customer) path.
+    require_input_features(feature_engineer, model, request.data)
 
     try:
-        df = pd.DataFrame(request.data)
-
-        # Transform + predict. A bad feature value (e.g. an unknown category the
-        # encoder never saw) surfaces as a sklearn ValueError/KeyError → 422, not
-        # a 500 leak. Inference is CPU-bound, so it runs off the event loop.
-        want_proba = model.problem_type.endswith("classification") and hasattr(
-            trained_model, "predict_proba"
+        return await _serve(
+            model, trained_model, feature_engineer, request, api_key, model_id, request_start
         )
-
-        def _infer(X):
-            preds = trained_model.predict(X)
-            proba = None
-            if want_proba:
-                try:
-                    proba = trained_model.predict_proba(X)
-                except Exception:  # noqa: BLE001 - probabilities are optional
-                    proba = None
-            return preds, proba
-
-        try:
-            if feature_engineer:
-                X_transformed = await feature_engineer.transform(df)
-            else:
-                X_transformed = df[model.feature_names]
-
-            # Inference runs off the loop and serialized per model on the shared
-            # cached estimator (issue #265). Probabilities drive confidence +
-            # low-confidence flags regardless of whether the caller asked to see
-            # the full vectors (issue #83).
-            predictions, proba_arr = await run_locked_inference(
-                model_id, api_key.user_id, lambda: _infer(X_transformed)
-            )
-            proba_list = proba_arr.tolist() if proba_arr is not None else None
-        except (ValueError, KeyError) as exc:
-            # A client-supplied bad value (unknown category, wrong dtype). Return
-            # a fixed sanitized 422 — the raw sklearn/pandas message can echo
-            # internal column names / input values, so it's logged, not returned
-            # (#264, stricter than the internal twin because this path is public).
-            logger.info("Invalid feature value for model %s: %s", model_id, exc)
-            raise HTTPException(
-                status_code=422,
-                detail="Invalid feature value(s) in one or more records.",
-            )
-
-        predictions_list = predictions.tolist()
-
-        # Confidence / uncertainty / explanation enrichment (issue #83).
-        enricher = _prediction_enricher
-        confidence, low_confidence = enricher.per_record_confidence(proba_list)
-        prediction_intervals = enricher.prediction_intervals(
-            predictions_list, getattr(model, "residual_std", None)
-        )
-        explanations = None
-        if request.include_explanations:
-            explanations = enricher.explanations(
-                trained_model,
-                X_transformed,
-                model.feature_names,
-                predictions_list,
-                model.problem_type,
-                feature_importance=model.feature_importance,
-            )
-
-        # Create prediction ID for tracking
-        prediction_id = f"pred_{PydanticObjectId()}"
-
-        # Prepare metadata if requested
-        metadata = None
-        if request.include_metadata:
-            metadata = {
-                "model_name": model.name,
-                "algorithm": model.algorithm,
-                "problem_type": model.problem_type,
-                "feature_count": model.n_features,
-                "training_date": model.created_at.isoformat(),
-            }
-
-        # Record per-request monitoring metrics (issue #85) — best-effort.
-        latency_ms = (datetime.now(UTC) - request_start).total_seconds() * 1000
-        await _record_serving_metrics(
-            model_id=model_id,
-            request_data=request.data,
-            predictions=predictions_list,
-            confidence=confidence,
-            latency_ms=latency_ms,
-            api_key_id=api_key.key_id,
-        )
-
-        return ProductionPredictResponse(
-            predictions=predictions_list,
-            probabilities=proba_list if request.include_probabilities else None,
-            model_version=model.version,
-            prediction_id=prediction_id,
-            timestamp=datetime.now(UTC),
-            metadata=metadata,
-            confidence=confidence,
-            low_confidence=low_confidence,
-            is_calibrated=bool(getattr(model, "is_calibrated", False)),
-            calibration_method=getattr(model, "calibration_method", None),
-            confidence_threshold=enricher.threshold,
-            prediction_intervals=prediction_intervals,
-            explanations=explanations,
-        )
-
     except HTTPException:
         # Client errors (404/422) raised above are already correct — don't let
         # the catch-all below re-wrap them into a 500 (#264).

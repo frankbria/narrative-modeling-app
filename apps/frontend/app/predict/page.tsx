@@ -7,6 +7,7 @@ import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { Target, Upload, FileText, Send, CheckCircle, AlertTriangle } from 'lucide-react';
+import { SinglePredictionPanel } from '@/components/predict/SinglePredictionPanel';
 import { useSession } from 'next-auth/react';
 import {
   modelService,
@@ -307,200 +308,21 @@ export default function PredictPage() {
           </div>
         </div>
 
-        {predictionMode === 'single' ? (
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Enter Feature Values</h3>
-
-            <div className="grid grid-cols-2 gap-4">
-              {features.map((feature, index) => {
-                // Real validity vs. whether to display it: only show once the
-                // field is touched (no pristine error).
-                const err = fieldError(feature);
-                const showErr = touched[feature.name] ? err : null;
-                // Index-based ids are inherently ID-safe and unique: a raw name
-                // with spaces would break aria-describedby (a space-separated
-                // IDREF list), and two names that sanitize alike would collide
-                // (#282). data-feature carries the raw name for e2e selectors.
-                const fieldId = `field-${index}`;
-                const errorId = `field-error-${index}`;
-                const markTouched = () =>
-                  setTouched((prev) => ({ ...prev, [feature.name]: true }));
-                return (
-                  <div key={feature.name}>
-                    <label className="block text-sm font-medium mb-1" htmlFor={fieldId}>
-                      {feature.name}
-                    </label>
-                    {feature.type === 'categorical' && feature.options?.length ? (
-                      <select
-                        id={fieldId}
-                        name={feature.name}
-                        data-feature={feature.name}
-                        value={predictionInput[feature.name] ?? ''}
-                        onChange={(e) =>
-                          setPredictionInput((prev) => ({
-                            ...prev,
-                            [feature.name]: e.target.value,
-                          }))
-                        }
-                        onBlur={markTouched}
-                        aria-invalid={showErr ? true : undefined}
-                        aria-describedby={showErr ? errorId : undefined}
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          showErr ? 'border-red-400' : 'border-border'
-                        }`}
-                      >
-                        {feature.options.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        id={fieldId}
-                        name={feature.name}
-                        data-feature={feature.name}
-                        type={feature.type === 'number' ? 'number' : 'text'}
-                        value={predictionInput[feature.name] ?? ''}
-                        onChange={(e) =>
-                          setPredictionInput((prev) => ({
-                            ...prev,
-                            [feature.name]: e.target.value,
-                          }))
-                        }
-                        onBlur={markTouched}
-                        aria-invalid={showErr ? true : undefined}
-                        aria-describedby={showErr ? errorId : undefined}
-                        className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          showErr ? 'border-red-400' : 'border-border'
-                        }`}
-                      />
-                    )}
-                    {showErr && (
-                      <p
-                        id={errorId}
-                        role="alert"
-                        className="mt-1 text-xs text-red-600"
-                        data-testid={`field-error-${feature.name}`}
-                      >
-                        {showErr}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {prediction && (
-              <div
-                data-testid="prediction-result"
-                className="prediction-output mt-6 p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900"
-              >
-                <h4 className="font-semibold mb-2 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  Prediction Result
-                </h4>
-                <div
-                  data-testid="prediction-value"
-                  className="prediction-value text-2xl font-bold text-foreground"
-                >
-                  {String(prediction.predictions?.[0])}
-                </div>
-                {prediction.confidence?.[0] != null && (
-                  <div className="mt-2">
-                    <span className="text-sm text-muted-foreground">Confidence: </span>
-                    <span data-testid="confidence-score" className="confidence font-medium">
-                      {(prediction.confidence[0] * 100).toFixed(1)}%
-                    </span>
-                    {prediction.is_calibrated && (
-                      <span className="ml-2 text-xs text-muted-foreground">(calibrated)</span>
-                    )}
-                  </div>
-                )}
-                {prediction.low_confidence?.[0] && (
-                  <div
-                    data-testid="low-confidence-warning"
-                    className="mt-2 flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-2 text-sm text-amber-800 dark:text-amber-200"
-                  >
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>
-                      Low confidence — this prediction is below the{' '}
-                      {prediction.confidence_threshold != null
-                        ? `${(prediction.confidence_threshold * 100).toFixed(0)}%`
-                        : 'recommended'}{' '}
-                      confidence threshold. Treat it with caution.
-                    </span>
-                  </div>
-                )}
-                {/* Regression prediction interval (#83). */}
-                {prediction.prediction_intervals?.[0] && (
-                  <div className="mt-2 text-sm text-foreground">
-                    <span className="text-muted-foreground">Estimated range: </span>
-                    <span data-testid="prediction-interval" className="font-medium">
-                      {prediction.prediction_intervals[0][0].toFixed(2)} –{' '}
-                      {prediction.prediction_intervals[0][1].toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                {prediction.probabilities?.[0] && (
-                  <div className="mt-3 space-y-1">
-                    <p className="text-sm text-muted-foreground">Class Probabilities:</p>
-                    {prediction.probabilities[0].map((prob, idx) => (
-                      <div key={idx} className="flex justify-between text-sm">
-                        <span>{prediction.class_labels?.[idx] ?? `Class ${idx}`}:</span>
-                        <span className="font-medium">{(prob * 100).toFixed(1)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Plain-language explanation + feature contributions (#83). */}
-                {prediction.explanations?.[0] && (
-                  <div
-                    data-testid="prediction-explanation"
-                    className="mt-4 border-t border-green-200 dark:border-green-900 pt-3"
-                  >
-                    <p className="text-sm font-medium text-foreground mb-1">
-                      What drove this prediction
-                    </p>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      {prediction.explanations[0]!.explanation_text}
-                    </p>
-                    <div className="space-y-1">
-                      {prediction.explanations[0]!.top_features.map((f) => (
-                        <div key={f.feature_name} className="flex justify-between text-sm">
-                          <span>{f.feature_name}</span>
-                          <span
-                            className={`font-medium ${
-                              f.contribution >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
-                            }`}
-                          >
-                            {f.contribution >= 0 ? '+' : ''}
-                            {f.contribution.toFixed(3)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <button
-              type="button"
-              data-testid="make-prediction"
-              onClick={handleSinglePrediction}
-              disabled={loading || !formValid}
-              className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
-                !loading && formValid
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
-              }`}
-            >
-              <Send className="w-5 h-5" />
-              {loading ? 'Making Prediction...' : 'Make Prediction'}
-            </button>
-          </div>
-        ) : (
+        {predictionMode === 'single' && (
+          <SinglePredictionPanel
+            features={features}
+            values={predictionInput}
+            touched={touched}
+            fieldError={fieldError}
+            onChange={(name, value) => setPredictionInput((prev) => ({ ...prev, [name]: value }))}
+            onTouched={(name) => setTouched((prev) => ({ ...prev, [name]: true }))}
+            prediction={prediction}
+            loading={loading}
+            formValid={formValid}
+            onSubmit={handleSinglePrediction}
+          />
+        )}
+        {predictionMode === 'batch' && (
           <div className="space-y-4">
             <h3 className="font-semibold text-lg">Upload Batch File</h3>
 

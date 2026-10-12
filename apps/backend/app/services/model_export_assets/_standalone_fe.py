@@ -47,9 +47,7 @@ class StandaloneFeatureEngineer:
         return s.map(lambda v: str(int(v)) if isinstance(v, (float, np.floating)) and float(v).is_integer() else str(v))
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        X_transformed = self._coerce_booleans(X.copy())
-        X_transformed = X_transformed.drop(columns=self.excluded_features, errors="ignore")
-        X_transformed = self._apply_imputers(X_transformed)
+        X_transformed = self._apply_imputers(self._prepare(X))
         X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:
             X_transformed[self.numeric_features] = self.transformers["scaler"].transform(
@@ -60,6 +58,16 @@ class StandaloneFeatureEngineer:
             available = [f for f in self.transformers["selected_features"] if f in X_transformed.columns]
             X_transformed = X_transformed[available]
         return X_transformed
+
+    def _prepare(self, X: pd.DataFrame) -> pd.DataFrame:
+        # Same as the platform: a JSON null (None) in a categorical column becomes the
+        # NaN a blank cell is, which is the only thing the imputers fill (#838).
+        X = self._coerce_booleans(X.copy())
+        X = X.drop(columns=self.excluded_features, errors="ignore")
+        for col in self.categorical_features:
+            if col in X.columns:
+                X[col] = X[col].where(X[col].notna(), np.nan)
+        return X
 
     def _apply_imputers(self, X: pd.DataFrame) -> pd.DataFrame:
         t = self.transformers
@@ -88,15 +96,19 @@ class StandaloneFeatureEngineer:
         # so "1" selects a category fitted as the int 1 (#906).
         blocks = []
         for col, categories in zip(self.categorical_features, self.transformers["encoder"].categories_):
-            # By value: the imputer hands fit an object block, so the dtype says nothing.
-            numeric = pd.api.types.infer_dtype(categories, skipna=True) in self._NUMERIC_CATEGORIES
-            fitted = self._match_keys(pd.Series(categories, dtype=object), numeric)
-            position = {key: i for i, key in enumerate(fitted)}
-            hit = np.array([position.get(key, -1) for key in self._match_keys(X[col], numeric)], dtype=int)
+            hit = self._hits(X[col], categories)
             block = np.zeros((len(X), len(categories)))
             block[hit >= 0, hit[hit >= 0]] = 1.0
             blocks.append(block)
         return pd.DataFrame(np.hstack(blocks), columns=self.transformers["encoded_columns"], index=X.index)
+
+    def _hits(self, values, categories):
+        # The position of each value's fitted category, -1 where it has none.
+        # By value: the imputer hands fit an object block, so the dtype says nothing.
+        numeric = pd.api.types.infer_dtype(categories, skipna=True) in self._NUMERIC_CATEGORIES
+        fitted = self._match_keys(pd.Series(categories, dtype=object), numeric)
+        position = {key: i for i, key in enumerate(fitted)}
+        return np.array([position.get(key, -1) for key in self._match_keys(values, numeric)], dtype=int)
 
     @staticmethod
     def _match_keys(values: pd.Series, numeric: bool) -> list:

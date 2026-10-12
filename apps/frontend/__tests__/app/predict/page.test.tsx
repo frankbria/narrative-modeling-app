@@ -188,6 +188,48 @@ describe('PredictPage — enrichment panels (#83)', () => {
     expect(warning).toHaveTextContent('70%');
   });
 
+  it('names each input the model had not seen, and why (#838)', async () => {
+    svc.predict.mockResolvedValue({
+      ...basePredictResponse,
+      input_warnings: [{ city: 'unseen', age: 'missing' }],
+    } as never);
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    const warnings = await screen.findByTestId('input-warnings');
+    expect(warnings).toHaveTextContent(/had not seen/i);
+    expect(screen.getByTestId('input-warning-city')).toHaveTextContent(
+      'city: this value was not in the training data'
+    );
+    expect(screen.getByTestId('input-warning-age')).toHaveTextContent(
+      'age: no value was given, so a typical training value was used'
+    );
+  });
+
+  it.each([
+    ['an empty object', [{}]],
+    ['null (no fitted pipeline)', null],
+    ['an absent field', undefined],
+  ])('shows no input warning for %s', async (_label, inputWarnings) => {
+    svc.predict.mockResolvedValue({ ...basePredictResponse, input_warnings: inputWarnings } as never);
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    await screen.findByTestId('prediction-result');
+    expect(screen.queryByTestId('input-warnings')).not.toBeInTheDocument();
+  });
+
+  it('shows a reason it does not know as the backend sent it', async () => {
+    svc.predict.mockResolvedValue({
+      ...basePredictResponse,
+      input_warnings: [{ city: 'out_of_range' }],
+    } as never);
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('input-warning-city')).toHaveTextContent('city: out_of_range');
+  });
+
   it('does NOT show the low-confidence warning for a confident prediction', async () => {
     svc.predict.mockResolvedValue({ ...basePredictResponse, low_confidence: [false] } as any);
     await renderReadyForm();
