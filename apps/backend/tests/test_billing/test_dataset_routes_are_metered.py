@@ -7,24 +7,31 @@ healthy, because the one route they exercised (`/datasets/upload`) is one the UI
 calls.
 
 So the assertion runs the other way round: walk the app's real route table and fail on
-any POST route **under the prefixes listed in `_IN_SCOPE_PREFIXES`** that this file has
-no opinion about. A new route under one of those then fails here, with instructions,
-rather than silently joining the gap.
+any route this file has no opinion about. Two things put a route in scope:
 
-That scope is the honest limit of this test, and it is worth stating rather than
-implying it covers everything: a dataset-creating route mounted on some *other* prefix
-is invisible here. That is not hypothetical — the onboarding sample-dataset loader was
-exactly that, creating a full UserData row per call with no guard, and a review caught it
-only because a human went looking outside the prefixes. When a new router starts creating
-datasets, add its prefix here.
+* **where it is mounted**: any POST under the prefixes in `_IN_SCOPE_PREFIXES`; and
+* **what it does** (#609): any write route, on any prefix, whose handler can reach the
+  construction of a `UserData` or a `DatasetMetadata`. The onboarding sample loader
+  created a full dataset row per call on a prefix nobody had listed, and a reviewer
+  found it only by looking outside the list. `_chains_to_a_dataset_document` follows
+  calls through `app/` so the next one is found by the suite.
+
+The honest limit of the second: it matches calls by **simple name**. Two functions that
+share a name share a verdict, so it asks about some routes that are fine (they are in
+`_EXEMPT_BY_REACH` with the reason). And a construction reached by something it cannot
+read as a call, such as `getattr(module, name)(...)`, is invisible to it.
 
 Enforcement is the only thing that counts these metrics (CLAUDE.md) — an unguarded route
 is not "counted later", it is never counted at all, and the limit becomes advisory.
 """
 
+import ast
+from pathlib import Path
+
 import pytest
 from fastapi.routing import APIRoute
 
+import app as app_package
 from app.main import app
 
 #: Prefixes whose POST routes are in scope.
@@ -103,6 +110,41 @@ _EXEMPT = {
 }
 
 
+#: Why most routes found by reach are fine: they resolve the dataset they act on through
+#: `dataset_link.ensure_metadata_twin`, which creates the `DatasetMetadata` twin of an
+#: upload the first time a transformation touches it (#850).
+_TWIN = "Creates at most the DatasetMetadata twin of an upload already charged at upload (#850)."
+
+#: Write routes outside `_IN_SCOPE_PREFIXES` whose handler can reach a dataset document,
+#: and why each creates no new dataset.
+_EXEMPT_BY_REACH = {
+    "/api/v1/transformations/apply": _TWIN,
+    "/api/v1/transformations/preview": _TWIN,
+    "/api/v1/transformations/pipeline/apply": _TWIN,
+    "/api/v1/transformations/auto-clean": _TWIN,
+    "/api/v1/transformations/recipes/{recipe_id}/apply": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/bulk-apply": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/bulk-preview": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/bulk-jobs/{job_id}/retry": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/columns/select-pattern": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/history/undo": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/history/redo": _TWIN,
+    "/api/v1/transformations/datasets/{dataset_id}/history/jump": _TWIN,
+    "/api/v1/data-issues/preview-fix": _TWIN,
+    "/api/v1/data-issues/apply-fix": _TWIN,
+    "/api/v1/data-issues/batch-fix": _TWIN,
+    "/api/v1/batch/jobs/{job_id}/retry": (
+        "A name, not a call: `retry_job` is also the bulk transformation service's method, "
+        "which is the chain reported. This one re-runs a batch prediction job."
+    ),
+    "/api/v1/feature-store/features/{feature_id}/apply": (
+        "A name, not a call: its handler is called `apply_feature`, like features.py's "
+        "(which is conditionally metered above). FeatureStoreService.apply_feature "
+        "computes the column to validate the feature and persists no dataset."
+    ),
+}
+
+
 def _post_routes(
     prefixes: tuple[str, ...] = _IN_SCOPE_PREFIXES,
     methods: tuple[str, ...] = ("POST",),
@@ -137,6 +179,70 @@ def _post_routes(
 
     walk(app.routes)
     return found
+
+
+#: The documents a dataset is. A handler that can construct one may be creating a dataset.
+_DATASET_DOCUMENTS = {"UserData", "DatasetMetadata"}
+_APP_DIR = Path(app_package.__file__).parent
+
+
+def _called_names(function: ast.AST) -> set[str]:
+    """The simple names a function calls: `f(...)` and `anything.f(...)` both give `f`."""
+    names = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call):
+            target = node.func
+            names.add(getattr(target, "id", None) or getattr(target, "attr", None))
+    return names - {None}
+
+
+def _call_index() -> dict[str, set[str]]:
+    """Every function and method under app/, by simple name, with the names it calls."""
+    index: dict[str, set[str]] = {}
+    for path in _APP_DIR.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                index.setdefault(node.name, set()).update(_called_names(node))
+    return index
+
+
+def _chains_to_a_dataset_document() -> dict[str, list[str]]:
+    """Each function name that can reach the construction of a dataset document, with
+    one chain of calls that gets there (`[name, ..., "UserData"]`).
+
+    By simple name, so it over-reaches: two functions that share a name share a verdict.
+    That errs toward asking about a route that is fine, which costs one line in
+    `_EXEMPT_BY_REACH`; the other direction is the bug this file exists for.
+    """
+    index = _call_index()
+    chains: dict[str, list[str]] = {document: [document] for document in _DATASET_DOCUMENTS}
+    while _extend(chains, index):
+        pass
+    return chains
+
+
+def _extend(chains: dict[str, list[str]], index: dict[str, set[str]]) -> bool:
+    """One pass: a chain for every function that calls one which already has one.
+    True while that still adds any."""
+    added = {
+        name: [name, *chains[via]]
+        for name, called in index.items()
+        if name not in chains
+        for via in sorted(called & chains.keys())[:1]
+    }
+    chains.update(added)
+    return bool(added)
+
+
+def _routes_that_can_create_a_dataset() -> dict[str, list[str]]:
+    """Every mounted write route, on any prefix, whose handler can reach one: path -> chain."""
+    chains = _chains_to_a_dataset_document()
+    routes = _post_routes(prefixes=("",), methods=("POST", "PUT", "PATCH"))
+    return {
+        path: chains[route.endpoint.__name__]
+        for path, route in routes.items()
+        if route.endpoint.__name__ in chains
+    }
 
 
 def _metered_metric(route: APIRoute) -> str | None:
@@ -194,6 +300,38 @@ class TestEveryDatasetRouteIsMetered:
             "  * creates none -> add it to _EXEMPT with the reason."
         )
 
+    def test_the_reachability_pass_finds_what_is_known_to_create_datasets(self):
+        """Its own smoke test: an empty or blind pass would report nothing to classify."""
+        chains = _chains_to_a_dataset_document()
+        assert {"create_dataset", "_create_twin", "secure_upload", "load_sample_dataset"} <= set(chains)
+        # Every route listed as a creator is one the pass would have found unlisted.
+        assert _MUST_BE_METERED <= set(_routes_that_can_create_a_dataset())
+
+    def test_no_route_on_any_prefix_that_can_create_a_dataset_is_unaccounted_for(self):
+        """#609: scope by what a handler can do, wherever it is mounted."""
+        known = _MUST_BE_METERED | _CONDITIONALLY_METERED | set(_EXEMPT) | set(_EXEMPT_BY_REACH)
+        found = _routes_that_can_create_a_dataset()
+        unaccounted = {path: " -> ".join(chain) for path, chain in found.items() if path not in known}
+
+        assert not unaccounted, (
+            "Write route(s) whose handler can reach the construction of a dataset document, "
+            "with the calls that lead there:\n"
+            + "\n".join(f"  {path}\n    {chain}" for path, chain in sorted(unaccounted.items()))
+            + "\nDecide which each is and record it here:\n"
+            '  * always creates a dataset -> add dependencies=[Depends(quota("uploads"))]'
+            " and add the path to _MUST_BE_METERED;\n"
+            "  * creates one on a branch -> reserve inside the handler and add it to "
+            "_CONDITIONALLY_METERED;\n"
+            "  * creates none (the chain is a twin of an existing upload, or only a shared "
+            "function name) -> add it to _EXEMPT_BY_REACH with the reason."
+        )
+
+    def test_no_exemption_by_reach_outlives_its_reason(self):
+        """An entry for a route the pass no longer flags reads as a question considered
+        for a route that never raised it."""
+        stale = set(_EXEMPT_BY_REACH) - set(_routes_that_can_create_a_dataset())
+        assert not stale, f"no longer reachable, drop from _EXEMPT_BY_REACH: {sorted(stale)}"
+
     def test_the_registry_does_not_name_routes_that_are_gone(self):
         """A stale entry reads to the next person as evidence the question was
         considered for a route that no longer exists."""
@@ -205,6 +343,7 @@ class TestEveryDatasetRouteIsMetered:
         assert not (_MUST_BE_METERED & _CONDITIONALLY_METERED)
         assert not (_MUST_BE_METERED & set(_EXEMPT))
         assert not (_CONDITIONALLY_METERED & set(_EXEMPT))
+        assert not (set(_EXEMPT_BY_REACH) & (_MUST_BE_METERED | _CONDITIONALLY_METERED | set(_EXEMPT)))
 
     @pytest.mark.parametrize("path", sorted(_CONDITIONALLY_METERED))
     def test_a_conditional_route_does_not_also_carry_a_route_dependency(self, path):
