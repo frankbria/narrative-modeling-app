@@ -7,7 +7,7 @@ Handles navigation through transformation history, restoring previous dataset ve
 import logging
 from typing import TYPE_CHECKING, Any
 
-from app.services.dataset_link import ensure_metadata_twin, record_new_file
+from app.services.dataset_link import ensure_metadata_twin, history_key, record_new_file
 from app.services.exceptions import (
     NotFoundError,
     ValidationError,
@@ -18,6 +18,19 @@ if TYPE_CHECKING:
     from app.services.transformation_service import TransformationService
 
 logger = logging.getLogger(__name__)
+
+
+_OUTSIDE_EDIT = (
+    "the dataset has since been changed by an edit that is not in this history, "
+    "and going back would discard that change"
+)
+
+
+def _cannot_undo(position: int) -> str:
+    """Position 0 is the first step; above it, only an outside edit stops undo (#851)."""
+    if position <= 0:
+        return "Cannot undo: already at the beginning of history"
+    return f"Cannot undo: {_OUTSIDE_EDIT}"
 
 
 class HistoryService:
@@ -46,7 +59,11 @@ class HistoryService:
         route answered 404. Scoped to the owner, so another tenant's dataset answers the
         same NotFoundError as an unknown one rather than a distinguishable 403.
         """
-        config = await self.transformation_service.get_dataset_config(dataset_id, user_id)
+        # Under the dataset's own id: a `/datasets` upload has a second one (its upload
+        # record's), and the steps are recorded under the first (#851).
+        config = await self.transformation_service.get_dataset_config(
+            await history_key(dataset_id, user_id), user_id
+        )
         if not config:
             raise NotFoundError(
                 resource_type="Transformation config",
@@ -83,7 +100,7 @@ class HistoryService:
         # setting file_path alone left the twin (which training reads by ObjectId) and
         # s3_url at the pre-navigation file, so training silently used the state the user
         # had just navigated away from, the same twin-drift #467 fixed for forward writers.
-        await record_new_file(dataset, version.s3_url)
+        await record_new_file(dataset, version.s3_url, in_history=True)
         logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
 
     async def undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
@@ -106,7 +123,7 @@ class HistoryService:
         # Check if can undo
         if not config.can_undo():
             raise ValidationError(
-                message="Cannot undo: already at the beginning of history",
+                message=_cannot_undo(config.current_position),
                 details={"current_position": config.current_position}
             )
 
@@ -200,6 +217,12 @@ class HistoryService:
                     "position": position,
                     "valid_range": f"0-{len(config.transformation_steps) - 1}"
                 }
+            )
+
+        if not config.can_reach(position):
+            raise ValidationError(
+                message=f"Cannot go back to step {position}: {_OUTSIDE_EDIT}",
+                details={"position": position},
             )
 
         # Update position

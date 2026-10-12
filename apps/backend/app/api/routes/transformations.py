@@ -4,7 +4,6 @@ API routes for data transformation pipeline
 import asyncio
 import logging
 import time
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -57,7 +56,6 @@ from app.schemas.transformation import (
     ValidationResponse,
 )
 from app.services.bulk_transformation_service import BulkTransformationService
-from app.services.dataset_link import record_new_file
 from app.services.exceptions import (
     NotFoundError,
     OperationError,
@@ -67,14 +65,10 @@ from app.services.exceptions import (
 from app.services.history_service import HistoryService
 from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
-    upload_dataframe_to_s3,
 )
 from app.services.transformation_engine.recipe_manager import (
     RecipeCompatibilityChecker,
     RecipeManager,
-)
-from app.services.transformation_engine.transformation_engine import (
-    TransformationEngine,
 )
 from app.services.transformation_engine.transformation_engine import (
     TransformationType as EngineTransformationType,
@@ -214,116 +208,69 @@ async def apply_transformation(
         )
 
 
+def _pipeline_failure(dataset_id: str, error: str) -> TransformationApplyResponse:
+    return TransformationApplyResponse(
+        success=False, dataset_id=dataset_id, transformation_id="", execution_time_ms=0, error=error
+    )
+
+
+async def _save_pipeline_as_recipe(
+    request: TransformationPipelineRequest, name: str, user_id: str, schema: dict[str, str]
+) -> None:
+    await RecipeManager.create_recipe(
+        name=name,
+        steps=[
+            {"type": step.type, "parameters": step.parameters, "description": step.description}
+            for step in request.transformations
+        ],
+        user_id=user_id,
+        description=request.recipe_description,
+        dataset_id=request.dataset_id,
+        schema_snapshot=schema,
+    )
+
+
+async def _run_pipeline(request: TransformationPipelineRequest, user_id: str) -> TransformationApplyResponse:
+    from app.services.transformation_service import TransformationService
+
+    # Each step becomes its own history step and version, so undo walks back through
+    # the pipeline instead of restoring a version from before it (#851).
+    result = await TransformationService().apply_pipeline(
+        user_id, request.dataset_id, [(step.type, step.parameters) for step in request.transformations]
+    )
+    if result["success"] and request.save_as_recipe and request.recipe_name:
+        await _save_pipeline_as_recipe(request, request.recipe_name, user_id, result["schema"])
+    return TransformationApplyResponse(
+        success=result["success"],
+        dataset_id=request.dataset_id,
+        transformation_id=result["transformation_id"],
+        affected_rows=result.get("affected_rows", 0),
+        affected_columns=result.get("affected_columns", []),
+        execution_time_ms=result["execution_time_ms"],
+        error=result.get("error"),
+        warnings=result.get("warnings", []),
+    )
+
+
 @router.post("/pipeline/apply", response_model=TransformationApplyResponse)
 async def apply_transformation_pipeline(
     request: TransformationPipelineRequest,
     current_user_id: str = Depends(get_current_user_id)
 ):
-    """Apply multiple transformations in sequence"""
+    """Apply multiple transformations in sequence, all or nothing.
+
+    The dataset may be named by either of its ids, so an id that names nothing is a
+    404 here, where the sibling routes that take only an upload's id answer 400 for a
+    malformed one.
+    """
     try:
-        start_time = time.time()
-        
-        # Get dataset
-        user_data = await UserData.find_one({
-            "user_id": current_user_id,
-            "_id": require_object_id(request.dataset_id, "dataset_id"),  # (#465)
-        })
-        
-        if not user_data:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Load data from S3
-        file_path = downloadable_url(user_data.file_path, user_data.s3_url)  # a raw key must not reach the URL-only downloader (#466)
-        df = await get_dataframe_from_s3(file_path)
-        
-        # Create transformation engine
-        engine = TransformationEngine()
-        
-        total_affected_rows = 0
-        all_affected_columns = set()
-        
-        # Apply each transformation in sequence
-        for step in request.transformations:
-            # Validate transformation type against whitelist
-            try:
-                transformation_type = EngineTransformationType(step.type)
-            except ValueError:
-                # Invalid transformation type - reject request
-                valid_types = [t.value for t in EngineTransformationType]
-                return TransformationApplyResponse(
-                    success=False,
-                    dataset_id=request.dataset_id,
-                    transformation_id="",
-                    execution_time_ms=int((time.time() - start_time) * 1000),
-                    error=f"Invalid transformation type '{step.type}'. Allowed types: {', '.join(valid_types)}"
-                )
-
-            # Keep the DataFrame across steps — no per-step list-of-dicts round-trip (#542).
-            transformed_df, result = engine.apply_transformation_frame(
-                df=df,
-                transformation_type=transformation_type,
-                parameters=step.parameters
-            )
-
-            if not result.success or transformed_df is None:
-                return TransformationApplyResponse(
-                    success=False,
-                    dataset_id=request.dataset_id,
-                    transformation_id="",
-                    execution_time_ms=int((time.time() - start_time) * 1000),
-                    error=f"Transformation '{step.type}' failed: {result.error}"
-                )
-
-            df = transformed_df
-            total_affected_rows += result.affected_rows
-            all_affected_columns.update(result.affected_columns)
-        
-        # Save transformed data
-        new_file_path = await upload_dataframe_to_s3(
-            df,
-            f"transformed/{current_user_id}/{request.dataset_id}_{datetime.now(UTC).timestamp()}.parquet"
-        )
-        
-        # Update user data — and its dual-written DatasetMetadata twin (#467, #627)
-        await record_new_file(user_data, new_file_path)
-        
-        # Save as recipe if requested
-        if request.save_as_recipe and request.recipe_name:
-            _ = await RecipeManager.create_recipe(
-                name=request.recipe_name,
-                steps=[{
-                    "type": step.type,
-                    "parameters": step.parameters,
-                    "description": step.description
-                } for step in request.transformations],
-                user_id=current_user_id,
-                description=request.recipe_description,
-                dataset_id=request.dataset_id,
-                schema_snapshot={col: str(dtype) for col, dtype in df.dtypes.items()}
-            )
-        
-        execution_time_ms = int((time.time() - start_time) * 1000)
-        
-        return TransformationApplyResponse(
-            success=True,
-            dataset_id=request.dataset_id,
-            transformation_id=f"pipeline_{datetime.now(UTC).timestamp()}",
-            affected_rows=total_affected_rows,
-            affected_columns=list(all_affected_columns),
-            execution_time_ms=execution_time_ms
-        )
-        
-    except HTTPException:
-        raise  # 400/404 from the lookup must reach the client, not become success=False (#465)
+        return await _run_pipeline(request, current_user_id)
+    except NotFoundError as e:
+        # A 404 must reach the client, not become success=False (#465).
+        raise HTTPException(status_code=404, detail=e.message)
     except Exception:
         logger.exception("Apply pipeline failed")
-        return TransformationApplyResponse(
-            success=False,
-            dataset_id=request.dataset_id,
-            transformation_id="",
-            execution_time_ms=0,
-            error=internal_error_message("Apply pipeline")
-        )
+        return _pipeline_failure(request.dataset_id, internal_error_message("Apply pipeline"))
 
 
 @router.post("/validate", response_model=ValidationResponse)

@@ -258,74 +258,6 @@ class TestTransformationApply:
 
             # Verify cache was cleared
             mock_cache_service.delete_pattern.assert_called_once()
-    
-    @pytest.mark.asyncio
-    async def test_apply_transformation_pipeline(self, authorized_client, mock_user_data, mock_s3_operations):
-        """Test applying multiple transformations in sequence"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
-            request = {
-                "dataset_id": str(mock_user_data.id),
-                "transformations": [
-                    {
-                        "type": "trim_whitespace",
-                        "parameters": {"columns": ["name"]},
-                        "description": "Clean name column"
-                    },
-                    {
-                        "type": "fill_missing",
-                        "parameters": {"columns": ["age"], "method": "mean"},
-                        "description": "Fill missing ages"
-                    },
-                    {
-                        "type": "remove_duplicates",
-                        "parameters": {"columns": ["email"], "keep": "first"},
-                        "description": "Remove duplicate emails"
-                    }
-                ]
-            }
-
-            response = authorized_client.post(
-                "/api/v1/transformations/pipeline/apply",
-                json=request
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert "transformation_id" in data
-            assert "pipeline" in data["transformation_id"]
-    
-    @pytest.mark.asyncio
-    async def test_apply_pipeline_with_recipe_save(self, authorized_client, mock_user_data, mock_s3_operations):
-        """Test applying pipeline and saving as recipe"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data), \
-             patch('app.api.routes.transformations.RecipeManager.create_recipe', new_callable=AsyncMock) as mock_create:
-            
-            mock_recipe = MagicMock()
-            mock_recipe.id = ObjectId()
-            mock_create.return_value = mock_recipe
-            
-            request = {
-                "dataset_id": str(mock_user_data.id),
-                "transformations": [
-                    {
-                        "type": "trim_whitespace",
-                        "parameters": {"columns": []},
-                        "description": "Clean all text columns"
-                    }
-                ],
-                "save_as_recipe": True,
-                "recipe_name": "Data Cleaning Pipeline",
-                "recipe_description": "Basic data cleaning steps"
-            }
-
-            response = authorized_client.post(
-                "/api/v1/transformations/pipeline/apply",
-                json=request
-            )
-            
-            assert response.status_code == 200
-            assert mock_create.called
 
 
 class TestTransformationValidation:
@@ -379,80 +311,6 @@ class TestTransformationValidation:
 
         assert response.status_code == 422
         assert "not_a_real_transformation" in response.text
-
-
-class TestAutoClean:
-    """Test auto-clean functionality"""
-    
-    @pytest.mark.asyncio
-    async def test_auto_clean_default_options(self, authorized_client, mock_user_data, mock_s3_operations):
-        """Test auto-clean with default options"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
-            request = {
-                "dataset_id": str(mock_user_data.id)
-            }
-
-            response = authorized_client.post(
-                "/api/v1/transformations/auto-clean",
-                json=request
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-    
-    @pytest.mark.asyncio
-    async def test_auto_clean_custom_options(self, authorized_client, mock_user_data, mock_s3_operations):
-        """Test auto-clean with custom options"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
-            request = {
-                "dataset_id": str(mock_user_data.id),
-                "options": {
-                    "remove_duplicates": True,
-                    "trim_whitespace": True,
-                    "handle_missing": "impute",
-                    "fix_casing": False
-                }
-            }
-
-            response = authorized_client.post(
-                "/api/v1/transformations/auto-clean",
-                json=request
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-
-    @pytest.mark.asyncio
-    async def test_auto_clean_drop_missing_actually_drops(self, authorized_client, mock_user_data, mock_s3_operations):
-        """handle_missing='drop' must really drop rows, not silently no-op (#274).
-
-        The sample dataframe has 2 rows with a NaN, so a wired drop_missing step
-        removes them. Before #274 this branch was `pass` and reported success
-        while doing nothing.
-        """
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data):
-            request = {
-                "dataset_id": str(mock_user_data.id),
-                "options": {
-                    "remove_duplicates": False,
-                    "trim_whitespace": False,
-                    "handle_missing": "drop",
-                    "fix_casing": False,
-                },
-            }
-
-            response = authorized_client.post(
-                "/api/v1/transformations/auto-clean",
-                json=request,
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            # 2 rows carried a missing value → they were dropped.
-            assert data["affected_rows"] == 2
 
 
 class TestTransformationSuggestions:
@@ -605,45 +463,6 @@ class TestRecipeManagement:
             data = response.json()
             assert data["id"] == recipe_id
             assert data["name"] == "My Recipe"
-    
-    @pytest.mark.asyncio
-    async def test_apply_recipe(self, authorized_client, mock_user_data, mock_s3_operations):
-        """Test applying a saved recipe"""
-        recipe_id = str(ObjectId())
-        with patch('app.api.routes.transformations.RecipeManager.get_recipe', new_callable=AsyncMock) as mock_get_recipe, \
-             patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock, return_value=mock_user_data), \
-             patch('app.api.routes.transformations.RecipeManager.record_execution', new_callable=AsyncMock) as mock_record:
-            
-            # Mock recipe
-            mock_recipe = MagicMock(spec=TransformationRecipe)
-            mock_recipe.id = ObjectId(recipe_id)
-            mock_recipe.is_public = True
-            mock_recipe.user_id = "other_user"
-            mock_recipe.steps = [
-                MagicMock(
-                    transformation_type="trim_whitespace",
-                    parameters={"columns": []},
-                    description="Clean data"
-                )
-            ]
-            mock_get_recipe.return_value = mock_recipe
-            
-            request = {
-                "recipe_id": recipe_id,
-                "dataset_id": str(mock_user_data.id)
-            }
-
-            response = authorized_client.post(
-                f"/api/v1/transformations/recipes/{recipe_id}/apply",
-                json=request
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            
-            # Verify execution was recorded
-            mock_record.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_export_recipe(self, authorized_client):

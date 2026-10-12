@@ -125,7 +125,9 @@ class TestHistoryServiceUndo:
             mock_transformation_config.save.assert_called_once()
 
             # Verify the twin-aware move helper was called with the version's URL (#629)
-            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
+            mock_rnf.assert_called_once_with(
+                mock_dataset, mock_versioning_service.get_version.return_value.s3_url, in_history=True
+            )
 
     @pytest.mark.asyncio
     async def test_undo_when_cannot_undo(
@@ -213,7 +215,9 @@ class TestHistoryServiceRedo:
             assert "Redone to" in result["message"]
 
             # Verify the twin-aware move helper was called with the version's URL (#629)
-            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
+            mock_rnf.assert_called_once_with(
+                mock_dataset, mock_versioning_service.get_version.return_value.s3_url, in_history=True
+            )
 
     @pytest.mark.asyncio
     async def test_redo_when_cannot_redo(
@@ -284,7 +288,9 @@ class TestHistoryServiceJumpToPosition:
             assert "Jumped to position 0" in result["message"]
 
             # Verify the twin-aware move helper was called with the version's URL (#629)
-            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
+            mock_rnf.assert_called_once_with(
+                mock_dataset, mock_versioning_service.get_version.return_value.s3_url, in_history=True
+            )
 
     @pytest.mark.asyncio
     async def test_jump_to_invalid_position(
@@ -493,7 +499,9 @@ class TestHistoryServiceBranching:
             assert result1["current_position"] == 1
 
             # Verify the twin-aware move helper was called with the version's URL (#629)
-            mock_rnf.assert_called_once_with(mock_dataset, mock_versioning_service.get_version.return_value.s3_url)
+            mock_rnf.assert_called_once_with(
+                mock_dataset, mock_versioning_service.get_version.return_value.s3_url, in_history=True
+            )
 
             # At this point, if a new transformation is applied, it should
             # truncate the history (tested in transformation_service tests)
@@ -581,3 +589,42 @@ async def test_navigating_to_a_step_without_a_saved_version_fails_loudly(
         await history_service.undo("ds1", "user1")
 
     mock_transformation_config.save.assert_not_awaited()
+
+
+class TestAnEditOutsideTheHistory:
+    """#851: a step from before an edit the history does not list cannot be restored."""
+
+    @staticmethod
+    def _sealed(position: int, floor: int):
+        from app.models.transformation import TransformationConfig
+
+        config = TransformationConfig(user_id="user1", dataset_id="ds1", config_id="c1")
+        for n in range(4):
+            config.add_transformation_step("trim_whitespace", columns=["a"], version_id=f"v{n}")
+        config.current_position = position
+        config.undo_floor = floor
+        return config
+
+    @pytest.mark.asyncio
+    async def test_undo_says_why_it_stops(self, setup_database, history_service, mock_transformation_service):
+        mock_transformation_service.get_dataset_config.return_value = self._sealed(position=2, floor=2)
+
+        with pytest.raises(ValidationError, match="not in this history"):
+            await history_service.undo("ds1", "user1")
+
+    @pytest.mark.asyncio
+    async def test_a_jump_below_the_edit_is_refused(self, setup_database, history_service, mock_transformation_service):
+        mock_transformation_service.get_dataset_config.return_value = self._sealed(position=3, floor=2)
+
+        with pytest.raises(ValidationError, match="not in this history"):
+            await history_service.jump_to_position("ds1", 1, "user1")
+
+    @pytest.mark.asyncio
+    async def test_the_listing_reports_that_undo_is_unavailable(
+        self, setup_database, history_service, mock_transformation_service
+    ):
+        mock_transformation_service.get_dataset_config.return_value = self._sealed(position=2, floor=2)
+
+        listing = await history_service.get_history("ds1", "user1")
+
+        assert listing["can_undo"] is False and listing["current_position"] == 2

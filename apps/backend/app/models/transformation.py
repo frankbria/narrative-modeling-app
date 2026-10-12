@@ -113,8 +113,10 @@ class TransformationStep(BaseModel):
     @model_validator(mode='after')
     def validate_column_specification(self) -> 'TransformationStep':
         """Validate that either column or columns is specified when required."""
+        # Not fill_missing: the engine fills every column when none is named, and a step
+        # that ran must be recordable, or the apply fails after its file is written (#851).
         column_required_types = {
-            'encode', 'scale', 'impute', 'fill_missing',
+            'encode', 'scale', 'impute',
             'label_encode', 'normalize', 'standardize'
         }
 
@@ -168,6 +170,9 @@ class TransformationConfig(Document):
     # Transformation history
     transformation_steps: list[TransformationStep] = Field(default_factory=list, description="Applied transformation steps")
     current_position: int = Field(default=-1, description="Current position in transformation history (-1 = no transformations)")
+    # Raised by a writer that moves the dataset without recording a step (#851): the
+    # steps below it describe data from before that edit, so restoring one would discard it.
+    undo_floor: int = Field(default=0, ge=0, description="Lowest history position that can still be restored")
 
     # Current state
     current_file_path: str | None = Field(None, description="Current file path after transformations")
@@ -346,6 +351,8 @@ class TransformationConfig(Document):
     def clear_transformations(self) -> None:
         """Clear all transformation steps."""
         self.transformation_steps = []
+        # No step is left for an earlier outside edit to stand between (#851).
+        self.undo_floor = 0
         self.total_transformations = 0
         self.total_data_loss = 0.0
         self.is_applied = False
@@ -365,13 +372,13 @@ class TransformationConfig(Document):
         return list(affected)
 
     def can_undo(self) -> bool:
-        """
-        Check if undo operation is possible.
+        """Whether the step before the current one can be restored."""
+        return self.can_reach(self.current_position - 1)
 
-        Returns:
-            True if current_position > 0, False otherwise
-        """
-        return self.current_position > 0
+    def can_reach(self, position: int) -> bool:
+        """Whether `position` is a step whose data can still be restored: it exists, and
+        no edit outside the history has happened since it (#851)."""
+        return max(self.undo_floor, 0) <= position < len(self.transformation_steps)
 
     def can_redo(self) -> bool:
         """

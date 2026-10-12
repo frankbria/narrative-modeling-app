@@ -74,7 +74,10 @@ def s3_stubbed():
                return_value=frame.to_csv(index=False).encode()), \
          patch("app.services.s3_service.s3_service.get_file_size", new_callable=AsyncMock, return_value=10), \
          patch("app.services.s3_service.s3_service.upload_file_obj", new_callable=AsyncMock), \
-         patch("app.services.s3_service.s3_service.generate_presigned_url", return_value="https://x"):
+         patch("app.services.s3_service.s3_service.generate_presigned_url", return_value="https://x"), \
+         patch("app.services.versioning_service.versioning_service.s3_client"):
+        # ^ a transformation writes a version copy through its own client (#851): unstubbed,
+        #   that is a real PutObject wherever this machine's AWS credentials point.
         yield
     os.unlink(path)
 
@@ -128,7 +131,10 @@ class TestObjectIdLookups:
                                        label, method, path, body):
         await seed()
         response = await _call(async_authorized_client, method, path, body, MALFORMED)
-        assert response.status_code == 400, f"{label}: {response.status_code} {response.text}"
+        # The pipeline takes either id space since #851, and a DatasetMetadata id is not an
+        # ObjectId: an id that names nothing there is unknown, not malformed.
+        expected = 404 if label == "transformations/pipeline" else 400
+        assert response.status_code == expected, f"{label}: {response.status_code} {response.text}"
 
     @pytest.mark.parametrize("label, method, path, body", ENDPOINTS, ids=IDS)
     async def test_unknown_id_is_404(self, async_authorized_client, setup_database, s3_stubbed,

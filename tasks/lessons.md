@@ -1971,3 +1971,20 @@ checked, and the fix is always the same: the claim is a query, so run it.
   mocked in another page's suite, and no page imported it.
 - **`data_schema` is not where column names live.** `/datasets/upload` stores it empty;
   `columns` is the field every writer and `record_new_file` keep current.
+
+## #851 — pipeline history (2026-10-12)
+- **A model validator stricter than the engine fails the write after the side effects.**
+  The history step required a column for `fill_missing`; the engine does not. The apply
+  uploaded the file, wrote a version, then raised while recording the step. When two
+  layers validate the same request, the later one must accept everything the earlier
+  one lets through, or it has to run first.
+- **Put the safety rule where every writer already passes.** Seven call sites move a
+  dataset. Making each record a step would have meant touching four large functions;
+  a default on the one function they all call covers them and the next one.
+- **A request model's validator can make a route's own check unreachable.** The pipeline
+  route's "Invalid transformation type" branch could never run: the request model
+  rejects the type with a 422 first. I carried it into the rewrite before a test showed
+  the 422.
+- **A test stub for storage has to cover every client, not every helper.** The id-lookup
+  suite stubbed the S3 helpers, and the versioning service has its own client. With
+  this machine's credentials exported, a recorded step made a real `PutObject`.

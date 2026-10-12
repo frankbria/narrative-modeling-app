@@ -1,25 +1,41 @@
-# #841 — the training page shows what was left out and can retrain keeping it (P2.53)
+# #851 — every move of a dataset is either a history step or closes the history (P2.54)
 
-Self-authored plan. Also closes #919 (P0.46), found by this issue's own demo.
+Self-authored plan.
+
+## What was wrong
+- `POST /transformations/pipeline/apply` moved the dataset with no history step and no
+  version. So did the two routes that run through it in-process: auto-clean and recipe
+  apply. Undo afterwards restored an earlier step's version and the edit was gone.
+- Four more writers move the dataset through `record_new_file` with no step: bulk
+  transformations, the two data-issue fix routes, and a feature column added in place.
+- Found on the way: a history step refused `fill_missing` with no column named, though
+  the engine runs it. `POST /transformations/apply` with that request failed *after*
+  writing its file and version.
 
 ## Decisions made here
-- The issue names `components/ModelTrainingButton.tsx`, which no page renders. The live
-  form is `app/model/page.tsx`, so the work is there and the dead component is deleted.
-- The panel reads the model report (`excluded_identifier_columns`, `excluded_date_columns`,
-  `excluded_empty_columns`), so it appears after a run. Identifiers and dates can be kept;
-  an empty column has nothing to learn from and is listed without a checkbox.
-- "Retrain keeping N columns" reruns the same target and mode with
-  `feature_config.keep_columns` = everything kept so far plus the ticked ones.
-- The page was one component at CRAP 41. It is now a shell over `useTrainingRun`,
-  `useTrainingOptions`, `TrainingSetup`, `TrainingRunView` and `ExcludedColumnsPanel`.
-- #919: the target list read `GET /datasets/{id}` → `data_schema`, which is a 404 for an
-  upload's id and always `[]` for a `/datasets` upload. It now reads the upload's own
-  record first (`columns`, else `data_schema[].field_name`), then `/datasets/{id}`.
+- **Engine transformations record steps.** `TransformationService.apply_pipeline` runs
+  every step on the frame first (all or nothing, as before), then records each as its
+  own step and version, exactly as a single apply does. `apply_transformation` is now a
+  one-step pipeline. The pipeline route, auto-clean and recipe apply all go through it.
+- **Storage first, the database after.** Every step's version and the dataset's one new
+  file are written before any history step is recorded or the dataset is moved, so a
+  failed upload part-way leaves the dataset and its history as they were. Only the last
+  step's frame becomes a `transformed/` file; undo restores the others from versions.
+- **Two passes, not a kept list.** The dry run discards its frames and the steps run
+  again while being recorded: twice the CPU for a multi-step pipeline, never more than
+  two frames in memory. A single apply skips the dry run.
+- **Everything else closes the history.** `record_new_file` takes `in_history` (default
+  False). A move that is not the history's own sets `undo_floor` to just past the current
+  step and drops the redo tail, so undo and jump refuse to go back past the edit. The
+  default is the safe side: a new writer that says nothing cannot be undone past.
+  The other four writers are unchanged; they get this through the default.
+- The pipeline route takes either id space now (it resolves through
+  `ensure_metadata_twin`), so an id that names nothing is a 404, not a 400.
 
 ## Steps
-- [x] Split the page; jest for the moved branches.
-- [x] Panel + retrain; jest incl. the request body and the union on a second retrain.
-- [x] #919: failing jest per id-space, the loader fix, a real-stack `@smoke` spec that
-      picks a target from the list and starts a run through the form.
-- [x] Real-stack demo: panel, tick, retrain, `keep_columns` on the wire.
-- [ ] Gate, cross-family review, PR, CI, merge.
+- [x] Undo floor: model, `record_new_file`, undo / jump / listing; tests on real documents.
+- [x] `apply_pipeline` + `_record_step`; route rewritten over it; the six mocked route
+      tests replaced with real-document ones that read the history back.
+- [x] `fill_missing` with no column is a recordable step.
+- [x] LocalStack: apply → pipeline → undo twice; undo refused after an outside move.
+- [ ] Gate, cross-family review, PR, demo, CI, merge.

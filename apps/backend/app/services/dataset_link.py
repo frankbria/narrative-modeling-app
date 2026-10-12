@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from bson import ObjectId
 
 from app.models.dataset import DatasetMetadata
+from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.services.exceptions import NotFoundError
 from app.utils.s3 import get_file_from_s3, holds_parquet
@@ -58,8 +59,13 @@ _SHAPE_FIELDS = ("num_rows", "num_columns", "columns", "file_type")
 Dataset = DatasetMetadata | UserData
 
 
-async def record_new_file(doc: Dataset, new_url: str) -> None:
+async def record_new_file(doc: Dataset, new_url: str, *, in_history: bool = False) -> None:
     """Point `doc` AND its dual-written twin at `new_url` (a full, downloadable URL).
+
+    `in_history` is for the two callers the transformation history itself drives: the
+    apply that records a step for this move, and undo/redo. Every other move is an edit
+    no step describes, so the history is closed behind it (`_close_history`, #851).
+    The default is the safe one: a writer that says nothing cannot be undone past.
 
     The twin is found through the *old* `(user_id, s3_url)` before either changes. A
     dataset with no twin (only one side was ever written) moves alone. The original
@@ -82,7 +88,41 @@ async def record_new_file(doc: Dataset, new_url: str) -> None:
     old_url = _current_url(current, doc)
     twin = await _find_twin(doc, old_url)
     doc.file_type = file_type
-    await _move_all(_erasure_order(doc, twin), doc, current, old_url, new_url)
+    docs = _erasure_order(doc, twin)
+    await _move_all(docs, doc, current, old_url, new_url)
+    if not in_history:
+        await _close_history(docs)
+
+
+def _history_id(d: Dataset) -> str:
+    """The id a transformation request names the dataset by: its own, in either id space."""
+    return d.dataset_id if isinstance(d, DatasetMetadata) else str(d.id)
+
+
+async def _close_history(docs: list[Dataset]) -> None:
+    """Make every step up to now unrestorable, and drop the redo tail (#851).
+
+    The dataset has just been changed by an edit the history holds no step for. Undo
+    restores a step's saved version, so going back to the current step or any earlier
+    one would silently discard that edit; a step recorded later can still be undone,
+    down to the first one recorded after it. One pipeline update on the stored
+    document, so it cannot revert a step another request is recording.
+
+    A second write, after the move: if it fails the caller's request fails with the
+    dataset already moved and the history still open, which is the state every such
+    move left before #851. No transaction spans the two collections.
+    """
+    kept = {"$max": [{"$add": ["$current_position", 1]}, 0]}
+    await TransformationConfig.get_motor_collection().update_many(
+        {"user_id": docs[0].user_id, "dataset_id": {"$in": [_history_id(d) for d in docs]}},
+        [
+            {"$set": {
+                "undo_floor": kept,
+                "transformation_steps": {"$slice": ["$transformation_steps", 0, {"$max": [kept, 1]}]},
+            }},
+            {"$set": {"total_transformations": {"$size": "$transformation_steps"}}},
+        ],
+    )
 
 
 def _current_url(current: Dataset | None, doc: Dataset) -> str | None:
@@ -201,6 +241,21 @@ async def ensure_metadata_twin(dataset_id: str, user_id: str) -> DatasetMetadata
         DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
     )
     return twin or await _create_twin(upload)
+
+
+async def history_key(dataset_id: str, user_id: str) -> str:
+    """The id a dataset's history is kept under, whichever id the request named it by (#851).
+
+    That is its `DatasetMetadata` id. Read-only, unlike `ensure_metadata_twin`: reading a
+    history must not create a twin. An id that names no upload comes back as it is.
+    """
+    upload = await _owned_upload(dataset_id, user_id)
+    if upload is None:
+        return dataset_id
+    twin = await DatasetMetadata.find_one(
+        DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
+    )
+    return twin.dataset_id if twin else dataset_id
 
 
 async def _owned_upload(dataset_id: str, user_id: str) -> UserData | None:
