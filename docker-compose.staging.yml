@@ -54,6 +54,10 @@ services:
       # $remote_addr, so the limiter may key anonymous requests on it. Without this
       # every anonymous request behind nginx shares nginx's container IP as its bucket.
       RATE_LIMIT_TRUST_PROXY: "true"
+      # The API as customers reach it (#915): the same https://host/api/v1 the frontend
+      # is built with. Behind nginx the request itself says http://, and that is what
+      # went into every deployment endpoint and generated SDK.
+      PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
 
       # Database (MongoDB Atlas — values come from .env.staging)
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}

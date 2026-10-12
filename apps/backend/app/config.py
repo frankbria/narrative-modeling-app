@@ -277,6 +277,19 @@ def resolve_s3_bucket() -> str | None:
     return None
 
 
+def public_api_url() -> str | None:
+    """The API's base URL as a customer reaches it (`https://host/api/v1`), from
+    `PUBLIC_API_URL`; None when unset or blank (#915).
+
+    A deployed instance cannot learn this from the request: gunicorn trusts
+    `X-Forwarded-Proto` from loopback only and nginx connects from the Docker bridge,
+    so `request.base_url` says `http://`. Trusting the forwarded headers instead would
+    also make uvicorn rewrite the client address from `X-Forwarded-For`, which the rate
+    limiter never reads (#455). A configured value trusts nothing a client can send.
+    """
+    return os.getenv("PUBLIC_API_URL", "").strip().rstrip("/") or None
+
+
 def resolve_configured_bucket() -> str | None:
     """The deployment's ONE bucket, for readers and writers alike (#567, #622).
 
