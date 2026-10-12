@@ -26,7 +26,7 @@ from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.schemas.model import PredictionExplanation
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
-from app.services.model_storage import ModelStorageService
+from app.services.model_storage import ModelStorageService, stamp_last_used
 from app.services.prediction_enrichment import PredictionEnricher
 from app.services.prediction_monitoring import prediction_log
 
@@ -460,6 +460,7 @@ async def _serve(
         latency_ms=latency_ms,
         api_key_id=api_key.key_id,
     )
+    await stamp_last_used(model)
 
     return ProductionPredictResponse(
         predictions=predictions_list,

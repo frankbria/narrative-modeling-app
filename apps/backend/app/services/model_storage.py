@@ -13,12 +13,12 @@ import time
 import uuid
 from collections import OrderedDict
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import joblib
 import numpy as np
-from beanie.odm.operators.update.general import Inc
+from beanie.odm.operators.update.general import Inc, Set
 
 from app.models.ml_model import MLModel
 from app.services.model_training.automl_engine import ModelCandidate
@@ -29,6 +29,7 @@ from app.services.model_versioning_service import (
 )
 from app.services.s3_service import S3Service
 from app.utils.artifact_signing import sign_bytes, verify_bytes
+from app.utils.datetime import as_utc
 from app.utils.s3 import parse_s3_url
 
 logger = logging.getLogger(__name__)
@@ -251,6 +252,33 @@ def _key_of(stored_path: str) -> str:
     return stored_path
 
 
+#: A model serving steadily is stamped once per this interval, not once per prediction.
+LAST_USED_STAMP_INTERVAL = timedelta(minutes=5)
+
+
+async def stamp_last_used(ml_model: MLModel) -> None:
+    """Record that ``ml_model`` has just served a prediction (#725).
+
+    Loading the artifacts stamps ``last_used_at`` too, but only on a cache miss, so a
+    model that stays cached kept the time of its first load after the last restart,
+    and the monitor page shows the field as the time of the last prediction.
+
+    The serving routes read the model's row fresh on every request, so its own
+    ``last_used_at`` says whether a write is due: no extra read, and at most one write
+    per model per interval. A targeted ``$set``, never a save of the route's copy
+    (#520). Never raises: a prediction that was served is not failed by its bookkeeping.
+    """
+    try:
+        now = datetime.now(UTC)
+        if ml_model.last_used_at and now - as_utc(ml_model.last_used_at) < LAST_USED_STAMP_INTERVAL:
+            return
+        await MLModel.find_one(
+            MLModel.model_id == ml_model.model_id, MLModel.user_id == ml_model.user_id
+        ).update(Set({MLModel.last_used_at: now}))
+    except Exception:
+        logger.warning("Could not stamp last_used_at for model %s", ml_model.model_id, exc_info=True)
+
+
 class ModelStorageService:
     """Service for storing and retrieving ML models"""
     
@@ -461,6 +489,41 @@ class ModelStorageService:
 
         return await asyncio.to_thread(_verify_then_load)
 
+    @staticmethod
+    async def _cached_if_current(
+        model_id: str, user_id: str, expected_generation: int | None
+    ) -> tuple[Any, FeatureEngineer | None] | None:
+        """The cached artifacts, if the cache holds the model's current generation.
+
+        Serve hot artifacts from the cache — but a cache hit is only valid if it
+        matches the model's current generation in Mongo. The cache is process-local
+        and the container runs 2 workers, so without this check a sibling worker's
+        delete/deploy/retrain would go unseen until the local TTL expired, serving a
+        stale (or deleted) model (#489). The key encodes user_id, so a validated hit
+        is already ownership-scoped (issue #265).
+        """
+        cache_key = (model_id, user_id)
+        cached = _model_cache.get(cache_key)
+        if cached is None:
+            return None
+        cached_generation, artifact = cached
+        current_generation = expected_generation
+        if current_generation is None:
+            # No caller-supplied generation: one indexed lookup (no S3) to
+            # learn the current generation and confirm the model still exists.
+            doc = await MLModel.find_one(
+                MLModel.model_id == model_id, MLModel.user_id == user_id
+            )
+            if doc is None:
+                _model_cache.invalidate(cache_key)
+                raise ValueError(f"Model {model_id} not found for user {user_id}")
+            current_generation = doc.cache_generation
+        if cached_generation == current_generation:
+            return artifact
+        # Stale: a sibling (or this) worker bumped the generation — reload.
+        _model_cache.invalidate(cache_key)
+        return None
+
     async def load_model(
         self,
         model_id: str,
@@ -482,33 +545,10 @@ class ModelStorageService:
         Returns:
             Tuple of (model, feature_engineer)
         """
-        # Serve hot artifacts from the cache — but a cache hit is only valid if it
-        # matches the model's current generation in Mongo. The cache is
-        # process-local and the container runs 2 workers, so without this check a
-        # sibling worker's delete/deploy/retrain would go unseen until the local
-        # TTL expired, serving a stale (or deleted) model (#489). The key encodes
-        # user_id, so a validated hit is already ownership-scoped (issue #265).
         cache_key = (model_id, user_id)
-        cached = _model_cache.get(cache_key)
+        cached = await self._cached_if_current(model_id, user_id, expected_generation)
         if cached is not None:
-            cached_generation, artifact = cached
-            current_generation = expected_generation
-            if current_generation is None:
-                # No caller-supplied generation: one indexed lookup (no S3) to
-                # learn the current generation and confirm the model still exists.
-                doc = await MLModel.find_one(
-                    MLModel.model_id == model_id, MLModel.user_id == user_id
-                )
-                if doc is None:
-                    _model_cache.invalidate(cache_key)
-                    raise ValueError(
-                        f"Model {model_id} not found for user {user_id}"
-                    )
-                current_generation = doc.cache_generation
-            if cached_generation == current_generation:
-                return artifact
-            # Stale: a sibling (or this) worker bumped the generation — reload.
-            _model_cache.invalidate(cache_key)
+            return cached
 
         # Get model metadata
         ml_model = await MLModel.find_one(
@@ -540,11 +580,10 @@ class ModelStorageService:
                 "feature_transformer",
             )
 
-        # Update last used timestamp. ponytail: only stamped on a cache miss —
-        # the production serving path also updates it per-prediction via the
-        # monitoring service, so the hot path stays free of a DB write. Atomic
-        # single-field $set (not a full-document save()) so a concurrent update
-        # — e.g. a deploy flag flip — isn't clobbered (#279).
+        # Update last used timestamp. This runs only on a cache miss; the serving
+        # routes call stamp_last_used() for a model that is already cached (#725).
+        # Atomic single-field $set (not a full-document save()) so a concurrent
+        # update — e.g. a deploy flag flip — isn't clobbered (#279).
         await ml_model.set({MLModel.last_used_at: datetime.now(UTC)})
 
         result = (model, feature_engineer)

@@ -382,6 +382,43 @@ class TestProductionServing:
         assert all(0.0 <= c <= 1.0 for c in body["confidence"])
 
     @pytest.mark.asyncio
+    async def test_serving_a_cached_model_records_when_it_was_last_used(
+        self, async_authorized_client, setup_database
+    ):
+        """#725: `load_model` is stubbed here, which is exactly what a model already in
+        the cache looks like: nothing is loaded from S3, so nothing stamps the row. The
+        serving path has to."""
+        from datetime import UTC, datetime, timedelta
+
+        from app.utils.datetime import as_utc
+
+        features = ["feature1", "feature2", "feature3"]
+        model = _make_model(feature_names=features)
+        model.last_used_at = datetime(2026, 1, 1, tzinfo=UTC)
+        await model.insert()
+        raw = "sk_live_last_used_key_00000000725"
+        await _make_api_key(raw, model_ids=[]).insert()
+        import pandas as pd
+
+        X = pd.DataFrame(np.random.default_rng(0).random((40, 3)), columns=features)
+        clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(X, (X["feature1"] > 0.5).astype(int))
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+            return_value=(clf, None),
+        ):
+            resp = await async_authorized_client.post(
+                "/api/v1/production/v1/models/model_123/predict",
+                json={"data": [{"feature1": 0.9, "feature2": 0.1, "feature3": 0.2}]},
+                headers={"X-API-Key": raw},
+            )
+
+        assert resp.status_code == 200, resp.text
+        stored = await MLModel.find_one(MLModel.model_id == "model_123")
+        assert datetime.now(UTC) - as_utc(stored.last_used_at) < timedelta(minutes=1)
+
+    @pytest.mark.asyncio
     async def test_serving_flags_unseen_and_missing_inputs(
         self, async_authorized_client, setup_database
     ):

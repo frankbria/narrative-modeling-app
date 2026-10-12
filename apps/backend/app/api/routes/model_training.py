@@ -91,6 +91,7 @@ from app.services.model_storage import (
     build_shap_payload,
     invalidate_model_cache,
     run_locked_inference,
+    stamp_last_used,
 )
 from app.services.model_training import (
     AutoMLEngine,
@@ -2504,6 +2505,7 @@ async def predict(
             feature_importance=ml_model.feature_importance,
         )
 
+    await stamp_last_used(ml_model)
     return PredictResponse(
         predictions=predictions,
         probabilities=served.probabilities if request.include_probabilities else None,
