@@ -1941,3 +1941,13 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A demo that compares two trees should print which tree it loaded.** A second
   `sys.path.insert(0, ...)` put the branch ahead of the "main" export, and the "before"
   run showed the fixed behaviour. It now prints the code under test on every run.
+
+## 2026-10-12 — #722 (`download_file_from_s3` reuses the shared S3 client)
+
+- **A red test with fake credentials still talks to the real service.** The failing run
+  of the reuse tests built a real boto3 client and sent `HeadObject` to AWS for a bucket
+  name I had made up; it came back 403. Point `AWS_ENDPOINT_URL` at a dead local address
+  in any test that sets credentials, so a client built for real fails on this machine.
+- **`or` keeps an error path that a `None` guard would replace.** The issue worried that
+  the cached accessor returns `None` where the factory raised. Falling back to the factory
+  keeps whatever the caller saw before, with no new error type to choose.

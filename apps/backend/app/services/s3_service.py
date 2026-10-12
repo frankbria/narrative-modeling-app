@@ -13,6 +13,7 @@ from app.utils.s3 import (
     check_object_size,
     configured_bucket,
     create_s3_client,
+    get_s3_client,
     resolve_validated_object,
     validate_object_key,
 )
@@ -56,8 +57,10 @@ def download_file_from_s3(s3_url: str) -> str:
         # allowlist, traversal + namespace checks.
         bucket_name, object_key = resolve_validated_object(s3_url)
 
-        # Initialize S3 client
-        s3_client = create_s3_client()
+        # The shared, bounded client (#519/#722), not one built per call. It is
+        # unavailable only when the credentials are missing from the environment;
+        # then build one as before, and boto3 reports what is missing on the request.
+        s3_client = get_s3_client() or create_s3_client()
 
         # SECURITY: Check file size before downloading to prevent DoS
         file_size = check_object_size(s3_client, bucket_name, object_key)
