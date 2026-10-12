@@ -1704,3 +1704,20 @@ def test_an_input_column_named_like_an_output_does_not_fill_that_output():
     assert list(df.columns) == ["age", "prediction", "input_warnings", "error"]
     assert pd.isna(df.loc[0, "input_warnings"]) and df["error"].isna().all()
     assert json.loads(df.loc[1, "input_warnings"]) == {"age": "missing"}
+
+
+@pytest.mark.asyncio
+async def test_a_report_that_does_not_cover_every_row_fails_the_chunk():
+    """Warnings are matched to rows by position, so a short report must not be
+    zipped onto the first rows."""
+
+    class _ShortReport(_FakeFeatureEngineer):
+        def input_warnings(self, df):
+            return [{"age": "missing"}]
+
+    chunk = pd.DataFrame([{"age": 30}, {"age": 41}])
+
+    with pytest.raises(ValueError):
+        await _service()._predict_chunk(
+            chunk, _FakeClassifier(), _ShortReport(), _model(), BatchPredictionConfig(model_id="m")
+        )

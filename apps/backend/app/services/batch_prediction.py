@@ -12,7 +12,7 @@ import os
 import socket
 import tempfile
 import weakref
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime
 from io import BytesIO, StringIO
 from typing import Any
@@ -931,10 +931,11 @@ class BatchPredictionService:
 
         Both inference paths return one record per chunk row, in order, error rows
         included, so the engineer's per-row report lines up by position. A clean
-        row gets no key."""
+        row gets no key. ``strict``: a path that ever returns fewer records fails
+        the chunk here, where a silent truncation would put a flag on the wrong row."""
         if feature_engineer is None:
             return results
-        for result, warnings in zip(results, feature_engineer.input_warnings(chunk_df)):
+        for result, warnings in zip(results, feature_engineer.input_warnings(chunk_df), strict=True):
             if warnings:
                 result["input_warnings"] = warnings
         return results
@@ -1287,7 +1288,7 @@ class BatchPredictionService:
         return not is_classification and getattr(model, "residual_std", None) is not None
 
     # (result key, CSV column, how the value is written), in column order.
-    _CSV_OUTPUTS: tuple[tuple[str, str, Any], ...] = (
+    _CSV_OUTPUTS: tuple[tuple[str, str, Callable[[Any], Any]], ...] = (
         ("confidence", "confidence", _unchanged),
         ("low_confidence", "low_confidence", _unchanged),
         ("prediction_interval", "prediction_interval", json.dumps),
