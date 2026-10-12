@@ -9,6 +9,8 @@ import asyncio
 import logging
 import re
 import time
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
 from threading import Thread
 from typing import Any
@@ -27,7 +29,7 @@ from app.models.bulk_transformation import (
     PatternType,
 )
 from app.models.dataset import DatasetMetadata, SchemaField
-from app.services.dataset_link import record_new_file
+from app.services.dataset_link import ensure_metadata_twin, record_new_file
 from app.services.exceptions import NotFoundError, OperationError, ValidationError
 from app.services.redis_cache import cache_service
 from app.services.transformation_engine.data_utils import (
@@ -91,6 +93,124 @@ def safe_regex_search(pattern: str, text: str, timeout: int = REGEX_TIMEOUT_SECO
     return result['match']
 
 
+@dataclass
+class _ColumnRun:
+    """What a job's columns produced: the frame after them, and each column's outcome."""
+
+    df: pd.DataFrame
+    results: list[ColumnResult] = dataclass_field(default_factory=list)
+    succeeded: list[str] = dataclass_field(default_factory=list)
+    failed: list[dict[str, Any]] = dataclass_field(default_factory=list)
+
+    def add(self, column: str, new_df: pd.DataFrame, result: ColumnResult) -> None:
+        self.results.append(result)
+        if result.success:
+            self.succeeded.append(column)
+            self.df = new_df
+        else:
+            self.failed.append({"column_name": column, "error": result.error})
+
+
+def _column_params(
+    column: str, global_parameters: dict[str, Any], per_column_params: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """The parameters one column runs with: the job's, then its own overrides."""
+    return {**global_parameters, **per_column_params.get(column, {}), "column": column}
+
+
+def _failed_preview(column: str) -> dict[str, Any]:
+    return {
+        "column_name": column,
+        "success": False,
+        "preview_data": None,
+        "stats_before": None,
+        "stats_after": None,
+        "affected_rows": 0,
+        # Returned inside a 200 body; never str(e) (#637).
+        "error": internal_error_message(f"Preview for column {column!r}"),
+        "warnings": [],
+    }
+
+
+def _preview_summary(column_previews: list[dict[str, Any]]) -> dict[str, Any]:
+    succeeded = [p for p in column_previews if p["success"]]
+    failed = len(column_previews) - len(succeeded)
+    return {
+        "success": failed == 0,
+        "column_previews": column_previews,
+        "total_estimated_rows_affected": sum(p["affected_rows"] for p in succeeded),
+        "total_columns": len(column_previews),
+        "successful_previews": len(succeeded),
+        "failed_previews": failed,
+        "error": None if failed == 0 else f"{failed} column(s) failed preview",
+        "warnings": [],
+    }
+
+
+def _require_valid_columns(selected_columns: list[str]) -> None:
+    if not selected_columns:
+        raise ValidationError(message="selected_columns cannot be empty", field="selected_columns")
+    if len(selected_columns) > MAX_COLUMNS_PER_JOB:
+        raise ValidationError(
+            message=f"Cannot transform more than {MAX_COLUMNS_PER_JOB} columns at once",
+            field="selected_columns",
+        )
+    if len(selected_columns) != len(set(selected_columns)):
+        raise ValidationError(message="Duplicate column names in selected_columns", field="selected_columns")
+
+
+def _require_valid_request(selected_columns: list[str], transformation_type: str) -> None:
+    """Refuse a bulk request before anything is looked up or created."""
+    _require_valid_columns(selected_columns)
+    try:
+        TransformationType(transformation_type)
+    except ValueError:
+        raise ValidationError(
+            message=f"Invalid transformation_type: {transformation_type}", field="transformation_type"
+        )
+
+
+def _require_columns(df: pd.DataFrame, selected_columns: list[str]) -> None:
+    invalid_columns = [c for c in selected_columns if c not in df.columns]
+    if invalid_columns:
+        raise OperationError(
+            message=f"Invalid columns: {invalid_columns}",
+            operation="preview_bulk_transformation",
+            details={"invalid_columns": invalid_columns},
+        )
+
+
+async def _require_job_slot(user_id: str) -> None:
+    """Rate limit: a user's unfinished bulk jobs are capped."""
+    active_jobs = await BulkTransformationJob.find({
+        "user_id": user_id,
+        "status": {"$in": [BulkJobStatus.PENDING, BulkJobStatus.RUNNING]},
+    }).count()
+    if active_jobs >= MAX_CONCURRENT_JOBS_PER_USER:
+        raise OperationError(
+            message=f"Maximum concurrent bulk transformation jobs ({MAX_CONCURRENT_JOBS_PER_USER}) reached. "
+                    "Please wait for existing jobs to complete.",
+            operation="apply_bulk_transformation",
+            details={"active_jobs": active_jobs, "limit": MAX_CONCURRENT_JOBS_PER_USER},
+        )
+
+
+async def _owned_dataset(user_id: str, dataset_id: str) -> DatasetMetadata:
+    """The caller's dataset, named by either of its ids (#856).
+
+    The upload page hands every later stage a `UserData` id; looked up as a
+    `DatasetMetadata` id alone, every bulk route answered 404 for it.
+    """
+    dataset = await ensure_metadata_twin(dataset_id, user_id)
+    if not dataset:
+        raise NotFoundError(
+            resource_type="Dataset",
+            resource_id=dataset_id,
+            message=f"Dataset {dataset_id} not found or not owned by user",
+        )
+    return dataset
+
+
 class BulkTransformationService:
     """Service for bulk transformation operations on multiple columns."""
 
@@ -131,17 +251,7 @@ class BulkTransformationService:
         Raises:
             NotFoundError: If dataset not found
         """
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
-
-        if not dataset:
-            raise NotFoundError(
-                resource_type="Dataset",
-                resource_id=dataset_id,
-                message=f"Dataset {dataset_id} not found or not owned by user"
-            )
+        dataset = await _owned_dataset(user_id, dataset_id)
 
         matching_columns = []
 
@@ -245,100 +355,19 @@ class BulkTransformationService:
             NotFoundError: If dataset not found
             OperationError: If preview fails
         """
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
-
-        if not dataset:
-            raise NotFoundError(
-                resource_type="Dataset",
-                resource_id=dataset_id,
-                message=f"Dataset {dataset_id} not found or not owned by user"
-            )
-
-        per_column_params = per_column_params or {}
+        dataset = await _owned_dataset(user_id, dataset_id)
 
         try:
-            # Load data from S3
-            file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
-            df = await get_dataframe_from_s3(file_path)
-
-            # Validate selected columns exist
-            invalid_columns = [c for c in selected_columns if c not in df.columns]
-            if invalid_columns:
-                raise OperationError(
-                    message=f"Invalid columns: {invalid_columns}",
-                    operation="preview_bulk_transformation",
-                    details={"invalid_columns": invalid_columns}
+            # a raw key must not reach the URL-only downloader (#466)
+            df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
+            _require_columns(df, selected_columns)
+            overrides = per_column_params or {}
+            return _preview_summary([
+                self._preview_column(
+                    df, transformation_type, _column_params(column, global_parameters, overrides), preview_rows
                 )
-
-            # Preview each column
-            column_previews = []
-            total_estimated_rows = 0
-            successful = 0
-            failed = 0
-
-            for column in selected_columns:
-                # Get column-specific parameters
-                params = {**global_parameters}
-                if column in per_column_params:
-                    params.update(per_column_params[column])
-
-                # Add column to params if transformation expects it
-                params["column"] = column
-
-                try:
-                    result = self.engine.preview_transformation(
-                        df=df,
-                        transformation_type=TransformationType(transformation_type),
-                        parameters=params,
-                        n_rows=preview_rows
-                    )
-
-                    column_previews.append({
-                        "column_name": column,
-                        "success": result.success,
-                        "preview_data": result.preview_data,
-                        "stats_before": result.stats_before,
-                        "stats_after": result.stats_after,
-                        "affected_rows": result.affected_rows,
-                        "error": result.error,
-                        "warnings": result.warnings,
-                    })
-
-                    if result.success:
-                        successful += 1
-                        total_estimated_rows += result.affected_rows
-                    else:
-                        failed += 1
-
-                except Exception:
-                    logger.exception(f"Preview failed for column {column}")
-                    column_previews.append({
-                        "column_name": column,
-                        "success": False,
-                        "preview_data": None,
-                        "stats_before": None,
-                        "stats_after": None,
-                        "affected_rows": 0,
-                        # Returned inside a 200 body; never str(e) (#637).
-                        "error": internal_error_message(f"Preview for column {column!r}"),
-                        "warnings": [],
-                    })
-                    failed += 1
-
-            return {
-                "success": failed == 0,
-                "column_previews": column_previews,
-                "total_estimated_rows_affected": total_estimated_rows,
-                "total_columns": len(selected_columns),
-                "successful_previews": successful,
-                "failed_previews": failed,
-                "error": None if failed == 0 else f"{failed} column(s) failed preview",
-                "warnings": [],
-            }
-
+                for column in selected_columns
+            ])
         except Exception as e:
             logger.exception("Bulk preview failed")
             raise OperationError(
@@ -347,6 +376,32 @@ class BulkTransformationService:
                 original_error=e,
                 details={"dataset_id": dataset_id}
             )
+
+    def _preview_column(
+        self, df: pd.DataFrame, transformation_type: str, params: dict[str, Any], preview_rows: int
+    ) -> dict[str, Any]:
+        """One column's preview; a column that raises is reported, and the rest still run."""
+        column = params["column"]
+        try:
+            result = self.engine.preview_transformation(
+                df=df,
+                transformation_type=TransformationType(transformation_type),
+                parameters=params,
+                n_rows=preview_rows
+            )
+        except Exception:
+            logger.exception(f"Preview failed for column {column}")
+            return _failed_preview(column)
+        return {
+            "column_name": column,
+            "success": result.success,
+            "preview_data": result.preview_data,
+            "stats_before": result.stats_before,
+            "stats_after": result.stats_after,
+            "affected_rows": result.affected_rows,
+            "error": result.error,
+            "warnings": result.warnings,
+        }
 
     async def apply_bulk_transformation(
         self,
@@ -378,63 +433,12 @@ class BulkTransformationService:
             ValidationError: If validation fails
             OperationError: If rate limit exceeded
         """
-        # Input validation
-        if not selected_columns:
-            raise ValidationError(
-                message="selected_columns cannot be empty",
-                field="selected_columns"
-            )
+        _require_valid_request(selected_columns, transformation_type)
+        await _require_job_slot(user_id)
+        # Resolved before the job exists, so an upload the reader cannot parse (#857) or
+        # one the caller does not own is refused with nothing created.
+        await _owned_dataset(user_id, dataset_id)
 
-        if len(selected_columns) > MAX_COLUMNS_PER_JOB:
-            raise ValidationError(
-                message=f"Cannot transform more than {MAX_COLUMNS_PER_JOB} columns at once",
-                field="selected_columns"
-            )
-
-        # Check for duplicate columns
-        if len(selected_columns) != len(set(selected_columns)):
-            raise ValidationError(
-                message="Duplicate column names in selected_columns",
-                field="selected_columns"
-            )
-
-        # Validate transformation type
-        try:
-            TransformationType(transformation_type)
-        except ValueError:
-            raise ValidationError(
-                message=f"Invalid transformation_type: {transformation_type}",
-                field="transformation_type"
-            )
-
-        # Rate limiting - check user's active jobs
-        active_jobs = await BulkTransformationJob.find({
-            "user_id": user_id,
-            "status": {"$in": [BulkJobStatus.PENDING, BulkJobStatus.RUNNING]}
-        }).count()
-
-        if active_jobs >= MAX_CONCURRENT_JOBS_PER_USER:
-            raise OperationError(
-                message=f"Maximum concurrent bulk transformation jobs ({MAX_CONCURRENT_JOBS_PER_USER}) reached. "
-                        "Please wait for existing jobs to complete.",
-                operation="apply_bulk_transformation",
-                details={"active_jobs": active_jobs, "limit": MAX_CONCURRENT_JOBS_PER_USER}
-            )
-
-        # Verify dataset exists
-        dataset = await DatasetMetadata.find_one({
-            "dataset_id": dataset_id,
-            "user_id": user_id
-        })
-
-        if not dataset:
-            raise NotFoundError(
-                resource_type="Dataset",
-                resource_id=dataset_id,
-                message=f"Dataset {dataset_id} not found or not owned by user"
-            )
-
-        # Create job
         job_id = f"bulk_{PydanticObjectId()}"
         job = BulkTransformationJob(
             job_id=job_id,
@@ -474,133 +478,114 @@ class BulkTransformationService:
         start_time = time.time()
 
         try:
-            # Mark job as started
             job.mark_started()
             await job.save()
 
-            # Load dataset
-            dataset = await DatasetMetadata.find_one({
-                "dataset_id": job.dataset_id,
-                "user_id": job.user_id
-            })
-
+            # Either id space, like the routes that created the job (#856).
+            dataset = await ensure_metadata_twin(job.dataset_id, job.user_id)
             if not dataset:
                 job.mark_failed("Dataset not found")
                 await job.save()
                 return
 
-            # Load data from S3
-            file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
-            df = await get_dataframe_from_s3(file_path)
-
-            # Track results
-            column_results: list[ColumnResult] = []
-            successful_columns: list[str] = []
-            failed_columns: list[dict[str, Any]] = []
-
-            # Process columns sequentially for DataFrame modifications
-            for i, column in enumerate(job.selected_columns):
-                # Check for cancellation by reloading job status from DB
-                # This ensures we detect cancellation requests promptly
-                current_job = await BulkTransformationJob.find_one({"job_id": job.job_id})
-                if not current_job:
-                    logger.warning(f"Job {job.job_id} was deleted, stopping processing")
-                    return
-                if current_job.status == BulkJobStatus.CANCELLED:
-                    logger.info(f"Job {job.job_id} was cancelled, stopping processing")
-                    return
-
-                # Sync progress from database to avoid overwriting external updates
-                # but keep our local progress tracking for the current batch
-                job.progress = current_job.progress
-                job.update_progress(current_column=column)
-
-                # Apply transformation and get result
-                new_df, apply_result = await self._apply_column_transformation(
-                    df=df,
-                    column=column,
-                    transformation_type=job.transformation_type,
-                    global_parameters=job.global_parameters,
-                    per_column_params=job.per_column_params,
-                )
-
-                column_results.append(apply_result)
-
-                if apply_result.success:
-                    successful_columns.append(column)
-                    df = new_df
-                else:
-                    failed_columns.append({
-                        "column_name": column,
-                        "error": apply_result.error,
-                    })
-
-                    if job.stop_on_error:
-                        job.mark_failed(f"Stopped at column {column}: {apply_result.error}")
-                        await job.save()
-                        return
-
-                # Update progress in memory
-                job.update_progress(
-                    processed_columns=i + 1,
-                    successful_columns=len(successful_columns),
-                    failed_columns=len(failed_columns),
-                )
-
-                # Batch database updates: save every N columns or on the last column
-                is_last_column = (i == len(job.selected_columns) - 1)
-                should_save = (i + 1) % PROGRESS_UPDATE_FREQUENCY == 0 or is_last_column
-                if should_save:
-                    await job.save()
-
-            # Calculate total time
-            total_time_ms = int((time.time() - start_time) * 1000)
-            total_rows_affected = sum(r.affected_rows for r in column_results if r.success)
-
-            # Create result
-            result = BulkTransformationResult(
-                successful_columns=successful_columns,
-                failed_columns=failed_columns,
-                column_results=column_results,
-                total_time_ms=total_time_ms,
-                total_rows_affected=total_rows_affected,
-            )
-
-            # Save transformed data to S3 if any columns succeeded
-            if successful_columns:
-                timestamp = datetime.now(UTC).timestamp()
-                new_file_path = await upload_dataframe_to_s3(
-                    df,
-                    f"transformed/{job.user_id}/{job.dataset_id}_bulk_{timestamp}.parquet"
-                )
-
-                # Update dataset — and its dual-written twin (#467, #627). No transaction spans
-                # the two documents: if this raises after one side moved, the job is marked
-                # failed below while the dataset is half-moved (logged at ERROR by the helper;
-                # scripts/inventory_dataset_links.py finds it). Accepted, see dataset_link.py.
-                dataset.num_rows = len(df)
-                dataset.num_columns = len(df.columns)
-                dataset.columns = df.columns.tolist()
-                await record_new_file(dataset, new_file_path)
-
-                # Clear cache
-                await cache_service.delete_pattern(f"stats_{job.dataset_id}_*")
-
-                job.output_file_path = new_file_path
-
-            # Mark job status
-            if failed_columns:
-                job.mark_partially_completed(result)
-            else:
-                job.mark_completed(result)
-
-            await job.save()
+            # a raw key must not reach the URL-only downloader (#466)
+            df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
+            run = await self._run_columns(job, df)
+            if run is not None:
+                await self._finish_job(job, dataset, run, start_time)
 
         except Exception:
             logger.exception(f"Bulk transformation job {job.job_id} failed")
             # error_message is read back verbatim by the job-status route (#637).
             job.mark_failed(internal_error_message("Bulk transformation job"))
             await job.save()
+
+    async def _run_columns(self, job: BulkTransformationJob, df: pd.DataFrame) -> _ColumnRun | None:
+        """Transform the job's columns in order, each on the frame the one before left.
+
+        None when the job ended early and there is nothing to finish: it was cancelled
+        or deleted, or a column failed under `stop_on_error` (the job is then FAILED).
+        """
+        run = _ColumnRun(df)
+        for i, column in enumerate(job.selected_columns):
+            if not await self._still_wanted(job, column):
+                return None
+            new_df, result = await self._apply_column_transformation(
+                df=run.df,
+                column=column,
+                transformation_type=job.transformation_type,
+                global_parameters=job.global_parameters,
+                per_column_params=job.per_column_params,
+            )
+            run.add(column, new_df, result)
+            if not result.success and job.stop_on_error:
+                job.mark_failed(f"Stopped at column {column}: {result.error}")
+                await job.save()
+                return None
+            await self._record_progress(job, i, run)
+        return run
+
+    async def _still_wanted(self, job: BulkTransformationJob, column: str) -> bool:
+        """Re-read the job before each column, so a cancel request is seen promptly."""
+        current_job = await BulkTransformationJob.find_one({"job_id": job.job_id})
+        if not current_job:
+            logger.warning(f"Job {job.job_id} was deleted, stopping processing")
+            return False
+        if current_job.status == BulkJobStatus.CANCELLED:
+            logger.info(f"Job {job.job_id} was cancelled, stopping processing")
+            return False
+        # Sync progress from database to avoid overwriting external updates
+        # but keep our local progress tracking for the current batch
+        job.progress = current_job.progress
+        job.update_progress(current_column=column)
+        return True
+
+    async def _record_progress(self, job: BulkTransformationJob, index: int, run: _ColumnRun) -> None:
+        job.update_progress(
+            processed_columns=index + 1,
+            successful_columns=len(run.succeeded),
+            failed_columns=len(run.failed),
+        )
+        # Batch database updates: save every N columns or on the last column
+        is_last_column = index == len(job.selected_columns) - 1
+        if (index + 1) % PROGRESS_UPDATE_FREQUENCY == 0 or is_last_column:
+            await job.save()
+
+    async def _finish_job(
+        self, job: BulkTransformationJob, dataset: DatasetMetadata, run: _ColumnRun, start_time: float
+    ) -> None:
+        """Write the result, move the dataset to it if any column worked, and close the job."""
+        result = BulkTransformationResult(
+            successful_columns=run.succeeded,
+            failed_columns=run.failed,
+            column_results=run.results,
+            total_time_ms=int((time.time() - start_time) * 1000),
+            total_rows_affected=sum(r.affected_rows for r in run.results if r.success),
+        )
+        if run.succeeded:
+            job.output_file_path = await self._move_dataset(job, dataset, run.df)
+        if run.failed:
+            job.mark_partially_completed(result)
+        else:
+            job.mark_completed(result)
+        await job.save()
+
+    async def _move_dataset(self, job: BulkTransformationJob, dataset: DatasetMetadata, df: pd.DataFrame) -> str:
+        """Upload the transformed frame and point the dataset at it; the new file's URL."""
+        timestamp = datetime.now(UTC).timestamp()
+        new_file_path = await upload_dataframe_to_s3(
+            df, f"transformed/{job.user_id}/{job.dataset_id}_bulk_{timestamp}.parquet"
+        )
+        # Update dataset — and its dual-written twin (#467, #627). No transaction spans
+        # the two documents: if this raises after one side moved, the job is marked
+        # failed while the dataset is half-moved (logged at ERROR by the helper;
+        # scripts/inventory_dataset_links.py finds it). Accepted, see dataset_link.py.
+        dataset.num_rows = len(df)
+        dataset.num_columns = len(df.columns)
+        dataset.columns = df.columns.tolist()
+        await record_new_file(dataset, new_file_path)
+        await cache_service.delete_pattern(f"stats_{job.dataset_id}_*")
+        return new_file_path
 
     async def _apply_column_transformation(
         self,
