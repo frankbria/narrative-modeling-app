@@ -619,7 +619,7 @@ async def cleanup_expired_sessions(
     unauthenticated, letting any network caller spam it. It only removes
     already-expired sessions, so any valid account is sufficient — there is no
     admin-role system to gate further, and the operation cannot touch active
-    uploads. ponytail: per-worker in-memory sessions (see upload_handler); a
-    scheduled reaper is the upgrade path if temp-file accumulation matters.
+    uploads. The same sweep runs at the start of every upload, and since #584 it
+    also reaps sessions a restart left on disk, so there is no scheduled reaper.
     """
     return {"cleaned_sessions": len(_release_expired_slots())}

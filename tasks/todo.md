@@ -1,21 +1,21 @@
-# Issues #573 and #572: the cache route's untested error path, and per-file coverage
+# Issue #584: chunked-upload session expiry is advisory
 
-## #573
-- [ ] A test makes `cache_service.invalidate_user_cache` raise and asserts the route
-      answers 500 with the generic body, an `X-Request-ID`, and nothing of the exception
-      (#269's contract). `app/api/routes/cache.py` goes from 82% to 100%.
+## Problem
+1. Only `resume_upload` compares `expires_at` with now. `upload_chunk`, `claim_upload`
+   and `abort_upload` do not, so a session past its window can still be appended to
+   and completed.
+2. `cleanup_expired_sessions` walks the in-memory store only. A session's metadata is
+   also on disk so it survives a restart; after one, the pair is on disk and not in the
+   store, and the sweep never reaps it.
 
-## #572
-Re-run today (coverage 7.8.2, numpy 2.3.0, scipy 1.15.3, Python 3.13.16) on the cache tests:
-
-| `--cov=` | result |
-|---|---|
-| `app.api.routes.cache` (dotted module) | works: 12 tests, cache.py reported |
-| `app/api/routes` (directory), `app` (package) | work |
-| `app/api/routes/cache.py` (a file path) | tests pass, **no data collected** |
-
-The crash the issue reports no longer happens. The trap that is left is the opposite one:
-a file path is not a coverage source, and the issue's own table lists it as working.
-- [ ] `docs/TEST_INFRASTRUCTURE.md`: say which forms measure one file, with both
-      signatures quoted so they can be searched for.
-- [ ] CI uses `--cov=app` (checked).
+## Plan
+- [ ] RED: `tests/test_services/test_chunked_session_expiry.py`.
+- [ ] Expiry is enforced where a session is resolved: `get_session` answers 410 for the
+      caller's own expired session (a foreign or unknown id is still None, checked first,
+      so 410 confirms nothing about another tenant). `abort_upload` passes
+      `expired_ok=True`: discarding an expired session is the point of abort.
+- [ ] The sweep also reads `{temp_dir}/*.json` for sessions this process does not hold,
+      and deletes the expired ones' files. It does not load live ones into the store:
+      another worker may own them, and a cached copy goes stale.
+- [ ] AC4: no scheduler. The sweep already runs on every `/upload/secure` and chunked
+      `init`, so disk-only sessions are now reaped at the next upload.
