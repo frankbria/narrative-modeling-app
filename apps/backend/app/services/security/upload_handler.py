@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 _SESSION_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 
+def _expired(session: dict[str, Any], now: datetime | None = None) -> bool:
+    """Whether the session is past its `expires_at`. A missing or malformed expiry is
+    treated as live, as `count_active_sessions` treats it (fail safe)."""
+    try:
+        return datetime.fromisoformat(session["expires_at"]) < (now or datetime.now(UTC))
+    except (KeyError, ValueError, TypeError):
+        return False
+
+
 class ChunkedUploadHandler:
     """Handles resumable chunked uploads with integrity checks"""
     
@@ -218,14 +227,10 @@ class ChunkedUploadHandler:
     async def resume_upload(self, session_id: str, user_id: str) -> dict[str, Any]:
         """Get resume information for interrupted upload"""
 
-        session = self.get_session(session_id, user_id)
+        session = self.get_session(session_id, user_id)  # 410 once it has expired
         if not session:
             raise HTTPException(status_code=404, detail="Upload session not found")
-        
-        # Check expiration
-        if datetime.fromisoformat(session["expires_at"]) < datetime.now(UTC):
-            raise HTTPException(status_code=410, detail="Upload session expired")
-        
+
         # Find missing chunks
         all_chunks = list(range(session["total_chunks"]))
         missing_chunks = [c for c in all_chunks if c not in session["uploaded_chunks"]]
@@ -270,9 +275,9 @@ class ChunkedUploadHandler:
         """Discard ``user_id``'s session and its partial file.
 
         Without this a cancelled upload leaves its .tmp on disk until the 24h
-        expiry sweep.
+        expiry sweep. An expired session can be aborted: discarding it is the point.
         """
-        session = self.get_session(session_id, user_id)
+        session = self.get_session(session_id, user_id, expired_ok=True)
         if session is None:
             return False
 
@@ -304,44 +309,61 @@ class ChunkedUploadHandler:
 
     def cleanup_expired_sessions(self) -> list[str]:
         """Reap expired sessions (drop them from the store and delete their partial
-        temp files); return the owner id of each one reaped.
+        temp files and metadata); return the owner id of each one reaped.
 
         Since #526 the chunked concurrency limit is derived from live sessions
         (``count_active_sessions``), so an expired session stops counting the moment
         it lapses — reaping is no longer needed to "hand back a slot", only to free
         disk. The returned owner ids are still used by the ``/cleanup`` route to
         report what it swept.
+
+        Sessions on disk that this process does not hold are swept too (#584): after
+        a restart every session is in that state, and the store-only sweep left their
+        files in place for good.
         """
         now = datetime.now(UTC)
-        expired_sessions = []
-        
-        expired_owners = []
+        expired = self._expired_in_store(now) | self._expired_on_disk(now)
+        for session_id, session in expired.items():
+            Path(session["temp_path"]).unlink(missing_ok=True)
+            (self.temp_dir / f"{session_id}.json").unlink(missing_ok=True)
+            self.sessions.pop(session_id, None)
+        self._drop_orphan_locks()
+        return [session.get("user_id", "") for session in expired.values()]
 
-        for session_id, session in self.sessions.items():
-            if datetime.fromisoformat(session["expires_at"]) < now:
-                expired_sessions.append(session_id)
-                expired_owners.append(session.get("user_id", ""))
-                
-                # Delete temp file
-                temp_path = Path(session["temp_path"])
-                if temp_path.exists():
-                    temp_path.unlink()
-        
-        # Remove expired sessions
-        for session_id in expired_sessions:
-            del self.sessions[session_id]
-            metadata_path = self.temp_dir / f"{session_id}.json"
-            if metadata_path.exists():
-                metadata_path.unlink()
+    def _expired_in_store(self, now: datetime) -> dict[str, dict[str, Any]]:
+        return {sid: session for sid, session in self.sessions.items() if _expired(session, now)}
 
-        # Drop per-session locks whose session is gone (#580) — covers expiry here
-        # plus complete/abort, which pop the session but not the lock. Bounded: the
-        # dict can only hold a lock per live session between sweeps.
+    def _drop_orphan_locks(self) -> None:
+        """Drop per-session locks whose session is gone (#580) — covers expiry plus
+        complete/abort, which pop the session but not the lock. Bounded: the dict can
+        only hold a lock per live session between sweeps."""
         for orphan in [sid for sid in self._chunk_locks if sid not in self.sessions]:
             del self._chunk_locks[orphan]
 
-        return expired_owners
-    
+    def _expired_on_disk(self, now: datetime) -> dict[str, dict[str, Any]]:
+        """Expired sessions whose metadata is on disk and not in this process's store.
+
+        Live ones are read and left alone, never cached: another worker may own the
+        session, and a copy held here would go stale as that worker records chunks.
+        """
+        found = {}
+        for path in self.temp_dir.glob("*.json"):
+            session = None if path.stem in self.sessions else self._metadata_at(path)
+            if session is not None and _expired(session, now):
+                found[path.stem] = session
+        return found
+
+    @staticmethod
+    def _metadata_at(path: Path) -> dict[str, Any] | None:
+        """A session's metadata file, or None for anything else that ends in .json."""
+        if not _SESSION_ID_RE.fullmatch(path.stem):
+            return None
+        try:
+            session = json.loads(path.read_text())
+            return session if {"expires_at", "temp_path"} <= session.keys() else None
+        except (OSError, ValueError, AttributeError):
+            return None
+
     def _generate_session_id(self) -> str:
         """Generate an unguessable session ID.
 
@@ -351,13 +373,30 @@ class ChunkedUploadHandler:
         """
         return secrets.token_urlsafe(32)
     
-    def get_session(self, session_id: str, user_id: str) -> dict[str, Any] | None:
+    def get_session(
+        self, session_id: str, user_id: str, *, expired_ok: bool = False
+    ) -> dict[str, Any] | None:
         """Get ``user_id``'s session from memory or disk.
 
         A session owned by someone else is returned as None, so callers answer
         404 for both "no such session" and "not yours" — a distinguishable
         response would confirm another tenant's session id exists (issue #454).
+
+        Raises:
+            HTTPException: 410 when the caller's own session is past its expiry (#584).
+                Every operation resolves its session here, so none can append to or
+                complete one; before, only resume looked. ``expired_ok`` is for abort.
+                The owner check comes first, so a 410 confirms nothing to anyone else.
         """
+        session = self._stored(session_id)
+        if session is None or session.get("user_id") != user_id:
+            return None
+        if not expired_ok and _expired(session):
+            raise HTTPException(status_code=410, detail="Upload session expired")
+        return session
+
+    def _stored(self, session_id: str) -> dict[str, Any] | None:
+        """The session by id, from the store or from the metadata a restart left on disk."""
         # fullmatch, not match + `^...$`: `$` also matches immediately before a
         # single trailing newline, so "abc\n" satisfied an allowlist that claims
         # to admit nothing outside the alphabet.
@@ -372,11 +411,8 @@ class ChunkedUploadHandler:
             with open(metadata_path) as f:
                 session = json.load(f)
             self.sessions[session_id] = session
-
-        if session.get("user_id") != user_id:
-            return None
         return session
-    
+
     def _save_session_metadata(self, session_id: str, session: dict[str, Any]):
         """Save session metadata to disk for recovery"""
         metadata_path = self.temp_dir / f"{session_id}.json"
