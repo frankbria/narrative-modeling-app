@@ -144,7 +144,6 @@ extend-select = ["I", "UP", "T20"]
 # The dependency probe is a CLI (`python -m app.health_probe`, #552); it lives
 # under app/ only because the runtime image ships nothing else.
 "app/health_probe.py" = ["T20"]
-"tasks/**" = ["T20"]
 "tests/**" = ["T20"]
 
 [tool.mypy]
