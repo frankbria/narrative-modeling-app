@@ -3,11 +3,13 @@ API routes for model training and management
 """
 
 import asyncio
+import contextlib
 import io
 import logging
 import math
 import os
 import uuid
+from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -799,29 +801,14 @@ async def train_model_task(
         # rather than all saturating the shared VPS. The wall clock only bounds
         # the run itself: its timeout starts after the semaphore is acquired,
         # so queue time is not counted against the plan's limit.
-        _sem = training_semaphore()
-        if _sem.locked() and training_job:
-            # Make the wait visible (AC4) — a slot-queued job must not look
-            # identical to a hung one. The UI streams these log lines.
-            training_job.add_log(
-                "info", "Waiting for an available training slot (host at capacity)…"
-            )
-            await training_job.save()
-        async with _sem:
-            # A job cancelled while queued must not consume the slot it just
-            # acquired (#498, codex): the engine's own cancel_check only fires
-            # after preprocessing/tuning setup, so re-check here and skip the
-            # run entirely, handing the slot to the next job. Routes to the
-            # TrainingCancelledError handler below (marks CANCELLED). Guarded
-            # like the entry load — a failed status read must not block a
-            # valid run (and is a no-op when no job could be loaded at all).
+        async with _training_slot(training_job):
+            # A job cancelled, or ended by the stale-job reaper, while it queued
+            # must not consume the slot it just acquired (#498, #901): the engine's
+            # own cancel_check only fires after preprocessing/tuning setup, so
+            # re-check here and skip the run entirely, handing the slot to the next
+            # job (a no-op when no job could be loaded at all).
             if training_job is not None:
-                try:
-                    cancelled_while_queued = await is_cancellation_requested()
-                except Exception:  # noqa: BLE001
-                    cancelled_while_queued = False
-                if cancelled_while_queued:
-                    raise TrainingCancelledError("Training cancelled while queued")
+                await _require_in_flight(training_job)
             # Keep the heartbeat fresh while a slow candidate fits, so the
             # stale-job reaper (#484) never reaps this live run between the
             # per-candidate progress events.
@@ -1013,6 +1000,11 @@ async def train_model_task(
                     f"Failed to persist CANCELLED status for {model_id}: {save_exc}"
                 )
 
+    except TrainingNoLongerInFlight as ended:
+        # Whatever ended the job (the stale-job reaper) has written its terminal state
+        # and refunded the run. Writing anything here would overwrite that verdict.
+        logger.warning("Training job %s was %s while it queued; not running it", model_id, ended)
+
     except Exception as e:
         # Full traceback stays server-side, correlated by model_id; the user gets
         # a safe, actionable reason instead of raw str(e) (#518, #269).
@@ -1033,6 +1025,62 @@ async def train_model_task(
         # Swallow here: this runs as a fire-and-forget BackgroundTask, so the
         # failure is recorded on the TrainingJob (above) rather than re-raised
         # into a context where nothing can handle it.
+
+
+class TrainingNoLongerInFlight(Exception):
+    """The job reached a terminal state while it waited for a slot; it must not run."""
+
+
+async def _log_waiting_for_slot(training_job: TrainingJob) -> None:
+    """Make the wait visible: a slot-queued job must not look identical to a hung one.
+
+    A partial write (#901). This used to save the task's whole in-memory document, which
+    put `cancellation_requested` back to what it was when the task loaded it, undoing a
+    cancel made in between.
+    """
+    entry = training_job.add_log("info", "Waiting for an available training slot (host at capacity)…")
+    await training_job.update(
+        Push({TrainingJob.logs: entry}),
+        Set({TrainingJob.updated_at: training_job.updated_at}),
+    )
+
+
+@contextlib.asynccontextmanager
+async def _training_slot(training_job: TrainingJob | None) -> AsyncIterator[None]:
+    """Hold one of the process's training slots, having waited for it as a live job.
+
+    The heartbeat pump runs over the wait (#901). A queued job has no progress events,
+    and without it the stale-job reaper failed and refunded a job that was only waiting
+    its turn behind long runs. The caller starts its own pump for the run itself.
+    """
+    slots = training_semaphore()
+    if slots.locked() and training_job:
+        await _log_waiting_for_slot(training_job)
+    async with heartbeat_pump(training_job):
+        await slots.acquire()
+    try:
+        yield
+    finally:
+        slots.release()
+
+
+async def _require_in_flight(training_job: TrainingJob) -> None:
+    """On taking a slot: stop a job that was cancelled or ended while it queued.
+
+    Re-read, because both are written by someone else: the cancel endpoint sets the
+    flag, and the reaper fails a job whose heartbeat stopped (the pump over the wait
+    makes that rare, not impossible: a stalled worker misses beats too). A failed read
+    falls back to the task's own copy, so it never blocks a valid run.
+
+    Raises:
+        TrainingCancelledError: a cancellation was requested.
+        TrainingNoLongerInFlight: the job is already in a terminal state.
+    """
+    fresh = await _refreshed_job(training_job)
+    if fresh.cancellation_requested:
+        raise TrainingCancelledError("Training cancelled while queued")
+    if fresh.status not in (JobStatus.PENDING, JobStatus.RUNNING):
+        raise TrainingNoLongerInFlight(fresh.status.value)
 
 
 async def _refreshed_job(job: TrainingJob) -> TrainingJob:

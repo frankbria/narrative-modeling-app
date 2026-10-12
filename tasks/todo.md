@@ -1,32 +1,24 @@
-# #898 — a failure reported in a 200 deletes the file it uploaded (P2.61)
+# #901 — a training job waiting for a slot is alive, and a reaped one does not train (P2.62)
 
-Self-authored plan.
+Self-authored plan. Both defects reproduced first, in tests that fail on main.
 
 ## Decisions made here
-- **A decorator, not a call in each failure branch.** `@discards_uploads_on_reported_failure`
-  wraps the route and, when the answer's `success` is false, runs the middleware's own
-  ownership lookup over what the request uploaded. Every one of these routes already
-  answers with a `success` field. A decorator covers the failure branches a handler has
-  today and the next one added, and the handlers (three of them far over the complexity
-  ceiling) are not edited.
-- `discard_unowned_uploads()` is the call underneath, as the issue asks for.
-- **The lookup decides, not the report.** A fix that half-worked, or a failure after the
-  dataset moved, leaves a row naming the file; it is kept. Tested.
-- **The bulk job keeps its own record.** It runs after its request has answered, so it
-  starts a list of its own and discards from it when the job fails. That also stops the
-  job's file landing in the request's list.
-- Auto-clean and recipe apply call the pipeline route in-process, so they are covered
-  through it. Tested for auto-clean.
+- **Pump over the wait.** `_training_slot(training_job)` is an async context manager that
+  logs the wait, runs `heartbeat_pump` while it waits for the semaphore, and releases the
+  slot on exit. The run keeps its own pump inside, as before.
+- **Re-read on taking the slot.** `_require_in_flight` raises `TrainingCancelledError`
+  for a cancellation (as the inline check did) and `TrainingNoLongerInFlight` for a job
+  already in a terminal state. The pump makes a reap during the wait rare, not
+  impossible: a stalled worker misses beats too.
+- **The handler for a job ended elsewhere writes nothing.** The reaper has set FAILED
+  and refunded the run; any write from the task would overwrite that.
+- **The waiting line is a partial write** (`_log_waiting_for_slot`).
+- `train_model_task` itself stays over the complexity ceiling (the #842 exemption); the
+  three helpers are small and tested.
 
 ## Steps
-- [x] Unit tests on a small app: failure in a 200 deletes; success, and an answer with
-      no `success` field, keep; an owned object is kept; the signature FastAPI reads is
-      unchanged; outside a request nothing happens; a job's own list.
-- [x] Route tests on real documents with a recorded put: apply, pipeline, auto-clean,
-      data-issue fix and batch, feature apply, the bulk job; the success path of each.
-      With the decorators removed, seven fail.
-- [x] LocalStack: the real bucket is empty of `transformed/` files after each forced
-      failure (apply, pipeline, both fix routes, the bulk job), and a successful apply
-      keeps its file.
-- [x] CLAUDE.md.
+- [x] Failing tests: a queued job is not reaped; a job reaped while queued does not
+      train and keeps the reaper's verdict; the waiting line keeps a cancellation; the
+      on-slot check for each status and for a failed read.
+- [x] The three helpers and the handler.
 - [ ] Gate, cross-family review, PR, demo, CI, merge.
