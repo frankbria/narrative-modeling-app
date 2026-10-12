@@ -1958,3 +1958,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A process-wide cache needs a reset around every test, not only in the tests that
   know about it.** With credentials exported, tests that patch `boto3.client` were handed
   the client a previous test had cached.
+
+## #841 / #919 — the training page (2026-10-11)
+- **A demo on the real stack is the only thing that walked the form.** The feature's jest
+  suite was green and so was every e2e spec, while the target list had no entries for any
+  dataset: the jest stub answered one body for every URL, and the e2e specs that open
+  `/model` `return` early when the target cannot be picked. A test that returns early on
+  the failure it exists to catch is a skip that reports as a pass.
+- **A fetch stub should answer by URL.** `mockResolvedValue` for all calls cannot tell a
+  right path from a wrong one. Route the stub on the path, and default to 404.
+- **Check that the component an issue names is rendered.** `ModelTrainingButton` was
+  mocked in another page's suite, and no page imported it.
+- **`data_schema` is not where column names live.** `/datasets/upload` stores it empty;
+  `columns` is the field every writer and `record_new_file` keep current.

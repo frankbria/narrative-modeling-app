@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ModelPage from '@/app/model/page';
 import { WorkflowStage } from '@/lib/types/workflow';
+import realUserData from '@/__tests__/fixtures/userDataResponse.unprocessed.json';
 
 // Router
 const mockPush = jest.fn();
@@ -53,6 +54,7 @@ const mockGetTrainingStatus = jest.fn();
 const mockGetTrainingLogs = jest.fn();
 const mockCancelTraining = jest.fn();
 const mockGetModeRecommendation = jest.fn();
+const mockGetModelReport = jest.fn();
 jest.mock('@/lib/services/model', () => ({
   modelService: {
     trainModel: (...args: unknown[]) => mockTrainModel(...args),
@@ -60,6 +62,7 @@ jest.mock('@/lib/services/model', () => ({
     getTrainingLogs: (...args: unknown[]) => mockGetTrainingLogs(...args),
     cancelTraining: (...args: unknown[]) => mockCancelTraining(...args),
     getModeRecommendation: (...args: unknown[]) => mockGetModeRecommendation(...args),
+    getModelReport: (...args: unknown[]) => mockGetModelReport(...args),
   },
 }));
 
@@ -109,6 +112,8 @@ describe('ModelPage training wiring', () => {
       total_count: 0,
       has_more: false,
     });
+    // No exclusions unless a test says otherwise.
+    mockGetModelReport.mockResolvedValue({ dataset: { excluded_columns: [] } });
   });
 
   it('starts real training and shows the comparison on completion', async () => {
@@ -309,4 +314,225 @@ describe('ModelPage training wiring', () => {
     ).toBeInTheDocument();
     expect(mockCompleteStage).not.toHaveBeenCalled();
   }, 15000);
+
+  it('says so when training cannot be started, and stays on the form', async () => {
+    mockTrainModel.mockRejectedValue(new Error('You have used all 5 training runs this month.'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(<ModelPage />);
+    await startTraining();
+
+    expect(await screen.findByText('You have used all 5 training runs this month.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start Training/i })).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  it('offers no target until the columns load, and asks for one', async () => {
+    mockFetch.mockResolvedValue({ ok: false, json: async () => ({}) });
+    mockGetModeRecommendation.mockRejectedValue(new Error('no recommendation'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(<ModelPage />);
+
+    expect(await screen.findByText('Target column required')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Start Training/i })).toBeDisabled();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(screen.getAllByRole('option')).toHaveLength(1); // only the placeholder
+    await waitFor(() => expect(consoleError).toHaveBeenCalled()); // the failed recommendation
+    // With no recommendation the Quick default stands.
+    fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
+    expect(mockTrainModel).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('says a cancellation was requested once the cancel button has been used', async () => {
+    mockTrainModel.mockResolvedValue({ model_id: 'model_5', status: 'training', message: 'ok' });
+    mockGetTrainingStatus.mockResolvedValue({
+      model_id: 'model_5', status: 'running', progress: 0.25, current_algorithm: 'Random Forest',
+      completed_algorithms: 1, total_algorithms: 4, metrics: {}, model_comparison: [],
+      algorithm_recommendations: [],
+    });
+    mockCancelTraining.mockResolvedValue({ model_id: 'model_5', status: 'cancelling' });
+
+    render(<ModelPage />);
+    await startTraining();
+    fireEvent.click(await screen.findByRole('button', { name: /Cancel Training/i }, { timeout: 5000 }));
+    // The button asks for confirmation before it cancels.
+    const confirm = await screen.findAllByRole('button', { name: /Cancel Training|Yes|Confirm/i });
+    fireEvent.click(confirm[confirm.length - 1]);
+
+    expect(await screen.findByText(/Cancellation requested/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Show Logs/i }));
+    expect(screen.getByRole('button', { name: /Hide Logs/i })).toBeInTheDocument();
+  }, 15000);
+});
+
+describe('ModelPage: the columns training left out (#841)', () => {
+  const COMPLETED = {
+    status: 'completed', progress: 1.0, current_algorithm: null, completed_algorithms: 1,
+    total_algorithms: 1, metrics: { cv_score: 0.9 }, best_algorithm: 'XGBoost',
+    explanation: 'XGBoost won.', model_comparison: [], algorithm_recommendations: [],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockColumnsLoaded();
+    mockGetModeRecommendation.mockResolvedValue({
+      recommended_mode: 'quick', reason: 'a small file', n_rows: 100, n_features: 2,
+    });
+    mockGetTrainingLogs.mockResolvedValue({ model_id: 'm', logs: [], total_count: 0, has_more: false });
+    mockTrainModel
+      .mockResolvedValueOnce({ model_id: 'model_a', status: 'training', message: 'ok' })
+      .mockResolvedValueOnce({ model_id: 'model_b', status: 'training', message: 'ok' })
+      .mockResolvedValueOnce({ model_id: 'model_c', status: 'training', message: 'ok' });
+    mockGetTrainingStatus.mockImplementation(async (modelId: string) => ({ ...COMPLETED, model_id: modelId }));
+  });
+
+  async function trained() {
+    render(<ModelPage />);
+    await startTraining();
+    await screen.findByText(/Training complete/i, {}, { timeout: 5000 });
+  }
+
+  it('lists what was left out by kind, and only the first two kinds can be kept', async () => {
+    mockGetModelReport.mockResolvedValue({
+      dataset: {
+        excluded_columns: ['order_ref'],
+        excluded_date_columns: ['order_date'],
+        excluded_empty_columns: ['notes'],
+      },
+    });
+
+    await trained();
+
+    const panel = await screen.findByTestId('excluded-columns');
+    expect(mockGetModelReport).toHaveBeenCalledWith('model_a');
+    expect(panel).toHaveTextContent('Read as identifiers');
+    expect(panel).toHaveTextContent('Read as dates');
+    expect(screen.getByLabelText('Keep order_ref')).not.toBeChecked();
+    expect(screen.getByLabelText('Keep order_date')).not.toBeChecked();
+    expect(screen.getByTestId('excluded-empty')).toHaveTextContent('notes');
+    expect(screen.queryByLabelText('Keep notes')).not.toBeInTheDocument();
+    expect(screen.getByTestId('retrain-keeping')).toBeDisabled();
+    expect(screen.getByTestId('retrain-keeping')).toHaveTextContent('Retrain keeping 0 columns');
+  }, 15000);
+
+  it('retrains with the ticked columns in feature_config.keep_columns, and adds to them next time', async () => {
+    mockGetModelReport
+      .mockResolvedValueOnce({ dataset: { excluded_columns: ['order_ref'], excluded_date_columns: ['order_date'] } })
+      .mockResolvedValueOnce({ dataset: { excluded_columns: [], excluded_date_columns: ['order_date'] } })
+      .mockResolvedValue({ dataset: { excluded_columns: [] } });
+
+    await trained();
+    fireEvent.click(await screen.findByLabelText('Keep order_ref'));
+    expect(screen.getByTestId('retrain-keeping')).toHaveTextContent('Retrain keeping 1 column');
+    // Ticking and unticking a column takes it back off the list.
+    fireEvent.click(screen.getByLabelText('Keep order_date'));
+    fireEvent.click(screen.getByLabelText('Keep order_date'));
+    fireEvent.click(screen.getByTestId('retrain-keeping'));
+
+    await waitFor(() => expect(mockTrainModel).toHaveBeenCalledTimes(2));
+    expect(mockTrainModel).toHaveBeenLastCalledWith({
+      dataset_id: 'ds-1',
+      target_column: 'target',
+      training_config: { training_mode: 'quick' },
+      feature_config: { keep_columns: ['order_ref'] },
+    });
+    expect(await screen.findByTestId('kept-columns', {}, { timeout: 5000 })).toHaveTextContent('order_ref');
+
+    // The second run still left the date out. Keeping it must not drop the first.
+    fireEvent.click(await screen.findByLabelText('Keep order_date'));
+    fireEvent.click(screen.getByTestId('retrain-keeping'));
+
+    await waitFor(() => expect(mockTrainModel).toHaveBeenCalledTimes(3));
+    expect(mockTrainModel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ feature_config: { keep_columns: ['order_ref', 'order_date'] } })
+    );
+    expect(mockCompleteStage).toHaveBeenLastCalledWith(
+      WorkflowStage.MODEL_TRAINING,
+      expect.objectContaining({ config: { target_column: 'target' } })
+    );
+  }, 20000);
+
+  it('shows no panel when nothing was left out, or when the report cannot be read', async () => {
+    mockGetModelReport.mockResolvedValueOnce({ dataset: { excluded_columns: [] } });
+
+    await trained();
+    await waitFor(() => expect(mockGetModelReport).toHaveBeenCalled());
+
+    expect(screen.queryByTestId('excluded-columns')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('kept-columns')).not.toBeInTheDocument();
+    expect(screen.getByText('XGBoost won.')).toBeInTheDocument();
+  }, 15000);
+
+  it('still shows the result when the report fails to load', async () => {
+    mockGetModelReport.mockRejectedValue(new Error('report unavailable'));
+
+    await trained();
+    await waitFor(() => expect(mockGetModelReport).toHaveBeenCalled());
+
+    expect(screen.queryByTestId('excluded-columns')).not.toBeInTheDocument();
+    expect(screen.getByText('XGBoost won.')).toBeInTheDocument();
+  }, 15000);
+});
+
+describe('ModelPage: where the target choices come from (#919)', () => {
+  // The upload page hands this stage a UserData id, which only /user_data
+  // answers for; a /datasets upload is the other id-space and keeps its names
+  // in `columns`, with data_schema always empty.
+  type Answer = { status: number; body?: unknown };
+
+  function answering(routes: Record<string, Answer>) {
+    mockFetch.mockImplementation(async (url: string) => {
+      const route = Object.keys(routes).find((path) => url.includes(path));
+      const { status, body } = route ? routes[route] : { status: 404, body: undefined };
+      return { ok: status < 400, status, json: async () => body };
+    });
+  }
+
+  async function offered() {
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(1));
+    return screen.getAllByRole('option').slice(1).map((option) => option.textContent);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetModeRecommendation.mockResolvedValue(null);
+  });
+
+  it("offers an upload's columns, read from the upload's own record", async () => {
+    answering({
+      '/user_data/': { status: 200, body: { ...realUserData, columns: ['plan', 'spend'] } },
+      '/datasets/': { status: 404 },
+    });
+    render(<ModelPage />);
+    expect(await offered()).toEqual(['plan', 'spend']);
+  });
+
+  it('falls back to the schema fields when the record carries no column list', async () => {
+    answering({
+      '/user_data/': {
+        status: 200,
+        body: { ...realUserData, columns: null, data_schema: [{ field_name: 'plan' }] },
+      },
+    });
+    render(<ModelPage />);
+    expect(await offered()).toEqual(['plan']);
+  });
+
+  it("offers a /datasets upload's columns, whose data_schema is always empty", async () => {
+    answering({
+      '/user_data/': { status: 400 },
+      '/datasets/': { status: 200, body: { columns: ['age', 'churned'], data_schema: [] } },
+    });
+    render(<ModelPage />);
+    expect(await offered()).toEqual(['age', 'churned']);
+  });
+
+  it('offers nothing when neither record answers', async () => {
+    answering({});
+    render(<ModelPage />);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+  });
 });

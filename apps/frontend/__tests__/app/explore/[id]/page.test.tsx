@@ -122,12 +122,6 @@ jest.mock('@/components/InteractiveVisualizationDashboard', () => {
   }
 })
 
-jest.mock('@/components/ModelTrainingButton', () => {
-  return {
-    ModelTrainingButton: () => <div>Model Training</div>
-  }
-})
-
 // Built on a real /user_data response (#808): a hand-written object let the
 // page read a field the API never sends and still pass.
 const mockProcessedDataset = {
