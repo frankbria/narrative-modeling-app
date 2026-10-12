@@ -37,7 +37,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.billing import enforcement, metering
 from app.billing.enforcement import quota
 from app.billing.plans import TrainingCeilings, training_ceilings_for
-from app.config import settings
+from app.config import public_api_url, settings
 from app.models.batch_job import JobStatus
 from app.models.dataset import DatasetMetadata
 from app.models.ml_model import MLModel
@@ -2039,16 +2039,21 @@ async def promote_model_version(
     )
 
 
+def _public_api_base(http_request: Request) -> str:
+    """`…/api/v1` as a customer reaches it: configured on a deployed instance, and the
+    request's own base where nothing is (local development, no proxy) (#915)."""
+    return public_api_url() or f"{str(http_request.base_url).rstrip('/')}{settings.API_V1_STR}"
+
+
 def _serving_endpoint_for(model: MLModel, http_request: Request) -> str:
     """The model's production serving URL (issue #86 SDKs).
 
-    Prefers a persisted ``deployment_endpoint`` (#84), else synthesizes it from
-    the request host — same scheme as ``deploy_model`` so the SDK always carries a
-    usable URL even before the model is formally deployed.
+    Prefers a persisted ``deployment_endpoint`` (#84), else synthesizes it the way
+    ``deploy_model`` does, so the SDK always carries a usable URL even before the
+    model is formally deployed.
     """
     return model.deployment_endpoint or (
-        f"{str(http_request.base_url).rstrip('/')}"
-        f"{settings.API_V1_STR}/production/v1/models/{model.model_id}"
+        f"{_public_api_base(http_request)}/production/v1/models/{model.model_id}"
     )
 
 
@@ -2158,7 +2163,7 @@ async def deploy_model(
     The model is served by the existing API-key-authenticated production route
     (``POST /api/v1/production/v1/models/{model_id}/predict``), so deploying just
     marks the model and surfaces its live endpoint URL. When no ``endpoint`` is
-    supplied we synthesize the production serving URL from the request host so the
+    supplied we synthesize the production serving URL from the public API base so the
     caller always gets a usable URL. 404 for unknown/foreign models. Registered
     before the catch-all ``/{model_id}`` so the literal sub-path wins.
     """
@@ -2168,10 +2173,7 @@ async def deploy_model(
     if model is None:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    endpoint = payload.endpoint or (
-        f"{str(http_request.base_url).rstrip('/')}"
-        f"{settings.API_V1_STR}/production/v1/models/{model_id}"
-    )
+    endpoint = payload.endpoint or f"{_public_api_base(http_request)}/production/v1/models/{model_id}"
     model.is_deployed = True
     model.deployment_endpoint = endpoint
     model.deployed_at = datetime.now(UTC)
