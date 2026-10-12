@@ -2050,3 +2050,14 @@ checked, and the fix is always the same: the claim is a query, so run it.
   tidier than blank ones and would have changed which code paths the PR gate takes.
 - **A getenv default is not used when the variable is set to an empty string.** Fixtures
   that read `os.getenv(NAME, "test")` needed `os.getenv(NAME) or "test"`.
+
+## #898 — cleanup when the failure is in a 200 (2026-10-12)
+- **When every handler has to say the same thing, say it once around them.** The issue
+  expected an edit in each failure branch of five handlers. They all answer with a
+  `success` field, so one decorator reads it; nothing inside a handler changed.
+- **Let the data decide what is safe to delete, not the caller's claim.** "It failed" is
+  not "nothing was kept": two of these routes report failure after the dataset has
+  moved. The ownership lookup is what makes the decorator safe to put anywhere.
+- **A background task inherits the request's context variables.** The bulk job's upload
+  was recorded in the list of a request that had already answered. Work that outlives
+  its request needs its own record.

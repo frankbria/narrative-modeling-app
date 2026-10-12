@@ -233,3 +233,105 @@ async def test_a_delete_that_fails_does_not_change_the_response(setup_database, 
 
 async def test_an_upload_outside_a_request_is_not_recorded():
     assert put(b"rows", KEY) == (True, URL)
+
+
+# #898: a route that reports the failure in a 200 body. The middleware acts on the
+# status, so those routes kept everything they had uploaded.
+
+
+class _Answer:
+    def __init__(self, success: bool):
+        self.success = success
+
+
+def _reporting_app() -> FastAPI:
+    from app.middleware.upload_cleanup import discards_uploads_on_reported_failure
+
+    app = FastAPI()
+    app.add_middleware(UnownedUploadCleanupMiddleware)
+
+    @app.post("/reports-failure-in-a-200")
+    @discards_uploads_on_reported_failure
+    async def reports_failure():
+        put(b"rows", KEY)
+        return _Answer(success=False)
+
+    @app.post("/reports-success")
+    @discards_uploads_on_reported_failure
+    async def reports_success():
+        put(b"rows", KEY)
+        return _Answer(success=True)
+
+    @app.post("/answers-with-no-success-field")
+    @discards_uploads_on_reported_failure
+    async def no_field():
+        put(b"rows", KEY)
+        return {"status": "queued"}
+
+    return app
+
+
+async def _post_reporting(path: str) -> int:
+    transport = ASGITransport(app=_reporting_app(), raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return (await client.post(path)).status_code
+
+
+async def test_a_failure_reported_in_a_200_deletes_the_object_it_wrote(setup_database, deleted):
+    assert await _post_reporting("/reports-failure-in-a-200") == 200
+
+    deleted.assert_awaited_once_with(KEY)
+
+
+@pytest.mark.parametrize("path", ["/reports-success", "/answers-with-no-success-field"])
+async def test_a_200_that_does_not_report_failure_keeps_its_object(setup_database, deleted, path):
+    assert await _post_reporting(path) == 200
+
+    deleted.assert_not_awaited()
+
+
+async def test_a_reported_failure_keeps_an_object_a_document_names(setup_database, deleted):
+    """A fix that half-worked: the dataset already points at the new file."""
+    await UserData(
+        user_id="tenant-735", filename="d.csv", original_filename="d.csv",
+        s3_url=URL, num_rows=1, num_columns=1, data_schema=[],
+    ).insert()
+
+    assert await _post_reporting("/reports-failure-in-a-200") == 200
+
+    deleted.assert_not_awaited()
+
+
+async def test_the_decorated_route_keeps_its_signature_for_fastapi():
+    """FastAPI reads a handler's parameters from its signature; a wrapper that hid them
+    would turn every body and dependency into a query parameter."""
+    import inspect
+
+    from app.middleware.upload_cleanup import discards_uploads_on_reported_failure
+
+    async def handler(dataset_id: str, limit: int = 5):
+        return _Answer(success=True)
+
+    assert inspect.signature(discards_uploads_on_reported_failure(handler)) == inspect.signature(handler)
+
+
+async def test_outside_a_request_there_is_nothing_to_discard(deleted):
+    from app.middleware.upload_cleanup import discard_unowned_uploads
+
+    await discard_unowned_uploads()
+
+    deleted.assert_not_awaited()
+
+
+async def test_a_background_job_discards_what_it_recorded_itself(setup_database, deleted):
+    """A bulk job runs after its request has answered, so it keeps its own list."""
+    from app.middleware.upload_cleanup import discard_unowned_uploads
+    from app.utils.s3 import record_request_uploads
+
+    uploads = record_request_uploads()
+    put(b"rows", KEY)
+
+    await discard_unowned_uploads(uploads)
+
+    deleted.assert_awaited_once_with(KEY)
+
