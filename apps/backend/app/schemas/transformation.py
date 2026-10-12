@@ -245,6 +245,20 @@ class RecipeApplyRequest(BaseModel):
     dataset_id: str = Field(..., description="Dataset ID")
 
 
+class PipelineExportRequest(BaseModel):
+    """Request schema for exporting a pipeline as code: its steps, in order."""
+
+    steps: list[RecipeStepRequest] = Field(..., max_length=200, description="Pipeline steps")
+
+
+class PipelineExportResponse(BaseModel):
+    """Response schema for a pipeline exported as code."""
+
+    language: str
+    filename: str
+    code: str
+
+
 class RecipeExportRequest(BaseModel):
     """Request schema for exporting recipe."""
 

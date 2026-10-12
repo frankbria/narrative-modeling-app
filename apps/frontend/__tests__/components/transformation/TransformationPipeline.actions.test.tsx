@@ -272,3 +272,66 @@ describe('TransformationPipeline recipes (#859)', () => {
   });
 });
 
+/**
+ * #860: Export Code posted to a route that did not exist, so the button did nothing the
+ * user could see. It now downloads the script the API generates.
+ */
+describe('TransformationPipeline export as code (#860)', () => {
+  const SCRIPT = 'import pandas as pd\n\n\ndef transform(df):\n    return df\n';
+  let created: Blob[];
+  let clicked: { download: string }[];
+
+  beforeEach(() => {
+    created = [];
+    clicked = [];
+    window.URL.createObjectURL = jest.fn((blob: Blob) => (created.push(blob), 'blob:script'));
+    window.URL.revokeObjectURL = jest.fn();
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push({ download: this.download });
+    });
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  /** jsdom's Blob has no text(). */
+  const textOf = (blob: Blob) =>
+    new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blob);
+    });
+
+  it('sends the pipeline\'s steps and downloads the script that comes back', async () => {
+    respond('/transformations/export-code', { language: 'python', filename: 'transformation_pipeline.py', code: SCRIPT });
+    const user = await addSteps(/add trim whitespace/i, /add remove duplicates/i);
+
+    await user.click(screen.getByTitle('Export as Code'));
+
+    await waitFor(() => expect(clicked).toEqual([{ download: 'transformation_pipeline.py' }]));
+    expect(await textOf(created[0])).toBe(SCRIPT);
+    const sent = fetchMock().mock.calls.find(([url]) => String(url).endsWith('/transformations/export-code'));
+    expect(JSON.parse(sent![1].body)).toEqual({
+      steps: [
+        { type: 'trim_whitespace', parameters: {} },
+        { type: 'remove_duplicates', parameters: {} },
+      ],
+    });
+    expect(screen.queryByTestId('pipeline-error')).not.toBeInTheDocument();
+  });
+
+  it('shows why a pipeline cannot be exported, and downloads nothing', async () => {
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url).endsWith('/transformations/export-code')
+        ? { ok: false, status: 422, json: async () => ({ detail: "Step 1 (fill_missing): Either 'value' or 'method' must be specified" }) }
+        : mountTime(url, init),
+    );
+    const user = await addTrimWhitespace();
+
+    await user.click(screen.getByTitle('Export as Code'));
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent("Step 1 (fill_missing): Either 'value' or 'method' must be specified");
+    expect(clicked).toEqual([]);
+  });
+});
+

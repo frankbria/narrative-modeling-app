@@ -27,6 +27,8 @@ from app.schemas.transformation import (
     ColumnSelectionResponse,
     HistoryDataResponse,
     HistoryOperationResponse,
+    PipelineExportRequest,
+    PipelineExportResponse,
     RecipeApplyRequest,
     RecipeCompatibilityRequest,
     RecipeCompatibilityResponse,
@@ -271,6 +273,25 @@ async def apply_transformation_pipeline(
     except Exception:
         logger.exception("Apply pipeline failed")
         return _pipeline_failure(request.dataset_id, internal_error_message("Apply pipeline"))
+
+
+@router.post("/export-code", response_model=PipelineExportResponse)
+async def export_pipeline_code(
+    request: PipelineExportRequest,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """The pipeline's steps as a pandas script that does what the app does (#860).
+
+    The Prepare stage's Export Code button posted here before the route existed. A step
+    the engine cannot run, or whose parameters are not valid, is a 422 naming the step.
+    """
+    from app.services.transformation_engine.code_export import pipeline_script
+
+    try:
+        code = pipeline_script([(step.type, step.parameters) for step in request.steps])
+    except ValueError as cannot_run:
+        raise HTTPException(status_code=422, detail=str(cannot_run)) from None
+    return PipelineExportResponse(language="python", filename="transformation_pipeline.py", code=code)
 
 
 @router.post("/validate", response_model=ValidationResponse)
@@ -537,6 +558,13 @@ def _require_readable(recipe: Any, viewer_id: str) -> None:
         raise HTTPException(status_code=403, detail="Access denied")
 
 
+async def _readable_recipe(recipe_id: str, viewer_id: str) -> Any:
+    """The recipe, if ``viewer_id`` may read it; the 404 or 403 otherwise."""
+    recipe = await RecipeManager.get_recipe(recipe_id)
+    _require_readable(recipe, viewer_id)
+    return recipe
+
+
 @router.get("/recipes", response_model=RecipeListResponse)
 async def list_recipes(
     page: int = Query(1, ge=1),
@@ -718,27 +746,14 @@ async def export_recipe(
 ):
     """Export a recipe as executable code"""
     try:
-        # Get recipe
-        recipe = await RecipeManager.get_recipe(recipe_id)
-        
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-        
-        # Check access
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        # Export to code
+        recipe = await _readable_recipe(recipe_id, current_user_id)
         code = RecipeManager.export_recipe_to_code(recipe, language=request.language)
-        
-        return RecipeExportResponse(
-            recipe_name=recipe.name,
-            language=request.language,
-            code=code
-        )
-        
+        return RecipeExportResponse(recipe_name=recipe.name, language=request.language, code=code)
     except HTTPException:
         raise
+    except ValueError as cannot_run:
+        # A step the engine no longer runs, named by number and type (#860).
+        raise HTTPException(status_code=422, detail=str(cannot_run)) from None
     except Exception as e:
         logger.error(f"Export recipe failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

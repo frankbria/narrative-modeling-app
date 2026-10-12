@@ -66,6 +66,16 @@ class BaseTransformation(ABC):
         """Preview transformation on subset of data"""
         pass
     
+    @abstractmethod
+    def code(self) -> list[str]:
+        """The pandas statements that do what ``apply`` does, on a frame named ``df`` (#860).
+
+        Abstract, so a type cannot join the engine without being exportable. Every
+        parameter is written with ``repr``: a column name is always a string literal in
+        the script, never code. ``test_pipeline_code_export.py`` runs these lines and
+        compares the result with ``apply``, so change the two together.
+        """
+
     def get_affected_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of columns that will be affected"""
         return []
@@ -100,6 +110,9 @@ class RemoveDuplicatesTransformation(BaseTransformation):
     
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
         return df.drop_duplicates(subset=self.subset, keep=self.keep)
+
+    def code(self) -> list[str]:
+        return [f"df = df.drop_duplicates(subset={self.subset!r}, keep={self.keep!r})"]
     
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         preview_df = df.head(n_rows).copy()
@@ -144,6 +157,14 @@ class TrimWhitespaceTransformation(BaseTransformation):
                 df_copy[col] = df_copy[col].astype(str).str.strip()
 
         return df_copy
+
+    def code(self) -> list[str]:
+        named = f"[column for column in {self.columns!r} if column in df.columns]"
+        every_text_column = 'df.select_dtypes(include=["object"]).columns.tolist()'
+        return [
+            f"for column in {named if self.columns else every_text_column}:",
+            "    df[column] = df[column].astype(str).str.strip()",
+        ]
     
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         return self.apply(df.head(n_rows).copy())
@@ -198,6 +219,19 @@ class DropMissingTransformation(BaseTransformation):
 
         # Optimization: Use pandas built-in dropna for standard strategies (already optimized)
         return df.dropna(subset=self.columns, how=self.how)
+
+    def code(self) -> list[str]:
+        # The app also refuses a drop that would remove more than half the rows
+        # (validate_data). A script has nobody to refuse to, so it says so instead.
+        note = "# The app refuses this step when it would remove more than half the rows; this script does not."
+        if self.threshold is None:
+            return [note, f"df = df.dropna(subset={self.columns!r}, how={self.how!r})"]
+        return [
+            note,
+            f"checked = {self.columns!r}" if self.columns else "checked = df.columns.tolist()",
+            "missing = df[checked].isnull().sum(axis=1) / len(checked) * 100",
+            f"df = df[missing < {self.threshold!r}].copy()",
+        ]
 
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         preview_df = df.head(n_rows).copy()
@@ -309,6 +343,30 @@ class FillMissingTransformation(BaseTransformation):
                     df_copy[col] = df_copy[col].fillna(method='bfill')
 
         return df_copy
+
+    def code(self) -> list[str]:
+        named = f"columns = [column for column in {self.columns!r} if column in df.columns]"
+        return [named if self.columns else "columns = df.columns.tolist()", *self._fill_code()]
+
+    def _fill_code(self) -> list[str]:
+        """The fill itself, for the one of value / mean / median / mode / ffill / bfill in use."""
+        if self.value is not None:
+            return ["for column in columns:", f"    df[column] = df[column].fillna({self.value!r})"]
+        if self.method in ("mean", "median"):
+            return [
+                "numeric = [column for column in columns if pd.api.types.is_numeric_dtype(df[column])]",
+                "if numeric:",
+                f"    df[numeric] = df[numeric].fillna(df[numeric].{self.method}())",
+            ]
+        if self.method == "mode":
+            return [
+                "for column in columns:",
+                "    most_common = df[column].mode()",
+                "    if len(most_common) > 0:",
+                "        df[column] = df[column].fillna(most_common[0])",
+            ]
+        # ffill / bfill: the method calls, which fillna(method=...) is deprecated in favour of.
+        return ["for column in columns:", f"    df[column] = df[column].{self.method}()"]
 
     def preview(self, df: pd.DataFrame, n_rows: int = 100) -> pd.DataFrame:
         return self.apply(df.head(n_rows).copy())

@@ -2022,3 +2022,12 @@ checked, and the fix is always the same: the claim is a query, so run it.
   that way.
 - **A control that is not wired is a claim the UI makes.** The public checkbox had an id
   and a label and no state.
+
+## #860 — export as code (2026-10-12)
+- **Generated code is a second implementation, so test it as one.** Asserting on the
+  text of a script proves nothing about what it does. Execute it and compare with the
+  engine on the same frame; a one-word mutation in the generator then fails six tests.
+- **Put the generator where the thing it mirrors lives.** The old recipe export was
+  written far from the engine and had silently fallen behind it by one whole type.
+- **Editing by exact multi-line match fails on trailing whitespace.** The engine file has
+  blank lines that hold four spaces. Insert at single-line anchors instead.

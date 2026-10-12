@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 
 from app.schemas.transformation import (
+    PipelineExportRequest,
     RecipeCreateRequest,
     TransformationApplyRequest,
     TransformationPreviewRequest,
@@ -31,6 +32,7 @@ MODELS = {
     "POST /transformations/preview": TransformationPreviewRequest,
     "POST /transformations/apply": TransformationApplyRequest,
     "POST /transformations/recipes": RecipeCreateRequest,
+    "POST /transformations/export-code": PipelineExportRequest,
 }
 
 

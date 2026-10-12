@@ -41,6 +41,16 @@ test.describe('Prepare pipeline', () => {
     // The pipeline's own error, not Next's route announcer (also role=alert).
     await expect(page.getByTestId('pipeline-error')).toHaveCount(0);
 
+    // Export Code downloads a script for the same step (#860: it posted to a route that did not exist).
+    const downloading = page.waitForEvent('download');
+    await page.getByTitle('Export as Code').click();
+    const script = await downloading;
+    expect(script.suggestedFilename()).toBe('transformation_pipeline.py');
+    const source = await (await import('node:fs/promises')).readFile(await script.path(), 'utf8');
+    expect(source).toContain('def transform(df: pd.DataFrame)');
+    expect(source).toContain('# Step 1: Remove Duplicates');
+    await expect(page.getByTestId('pipeline-error')).toHaveCount(0);
+
     await page.getByRole('button', { name: /apply & continue/i }).click();
     await expect(page.getByText('Applied 1 transformation')).toBeVisible({ timeout: 20000 });
 

@@ -12,6 +12,7 @@ import available from '@/__tests__/fixtures/availableTransformations.json';
 import recipeLists from '@/__tests__/fixtures/recipeLists.json';
 import {
   applyRequest,
+  exportRequest,
   fetchRecipes,
   previewRequest,
   recipeListPath,
@@ -94,6 +95,19 @@ describe('Prepare-stage payloads match the API request models', () => {
     const schema = routes['POST /transformations/recipes'];
     const body = recipeRequest({ name: 'Clean', description: 'tidy', datasetId: 'ds1', steps });
     expect(violations(body, schema, schema)).toEqual([]);
+  });
+
+  it('export as code', () => {
+    const schema = routes['POST /transformations/export-code'];
+    expect(violations(exportRequest(steps), schema, schema)).toEqual([]);
+  });
+
+  it('export as code: the body the button used to send is not the model', () => {
+    const schema = routes['POST /transformations/export-code'];
+    expect(violations({ transformations: steps }, schema, schema)).toEqual([
+      '$.steps: missing',
+      "$.transformations: not in the API's model",
+    ]);
   });
 
   it('the checker itself rejects the payload shape that used to ship', () => {

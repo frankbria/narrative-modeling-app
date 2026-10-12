@@ -68,6 +68,59 @@
     "title": "TransformationApplyRequest",
     "type": "object"
   },
+  "POST /transformations/export-code": {
+    "$defs": {
+      "RecipeStepRequest": {
+        "description": "Request schema for recipe step.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "type": {
+            "description": "Transformation type",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "RecipeStepRequest",
+        "type": "object"
+      }
+    },
+    "description": "Request schema for exporting a pipeline as code: its steps, in order.",
+    "properties": {
+      "steps": {
+        "description": "Pipeline steps",
+        "items": {
+          "$ref": "#/$defs/RecipeStepRequest"
+        },
+        "maxItems": 200,
+        "title": "Steps",
+        "type": "array"
+      }
+    },
+    "required": [
+      "steps"
+    ],
+    "title": "PipelineExportRequest",
+    "type": "object"
+  },
   "POST /transformations/preview": {
     "$defs": {
       "TransformationStepRequest": {
