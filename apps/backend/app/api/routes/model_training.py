@@ -19,6 +19,7 @@ from urllib.parse import quote
 import numpy as np
 import pandas as pd
 from beanie import PydanticObjectId
+from beanie.exceptions import DocumentNotFound
 from beanie.odm.operators.update.array import Push
 from beanie.odm.operators.update.general import Set
 from bson.errors import InvalidId
@@ -656,7 +657,7 @@ async def train_model_task(
             training_job.add_log(
                 "info", f"Training task started for dataset {request.dataset_id}"
             )
-            await training_job.save()
+            await _record(training_job)
 
         # Create feature engineering config
         feature_config = None
@@ -979,7 +980,7 @@ async def train_model_task(
                     f"(cv_score={result.best_model.cv_score:.4f})"
                 ),
             )
-            await training_job.save()
+            await _record(training_job)
 
         logger.info(f"Model training completed: {ml_model.model_id}")
 
@@ -991,7 +992,7 @@ async def train_model_task(
                 training_job = await _refreshed_job(training_job)
                 training_job.mark_failed(reason)
                 training_job.add_log("error", reason)
-                await training_job.save()
+                await _record(training_job)
             except Exception as save_exc:
                 logger.error(
                     f"Failed to persist FAILED status for {model_id}: {save_exc}"
@@ -1006,7 +1007,7 @@ async def train_model_task(
                 training_job = await _refreshed_job(training_job)
                 training_job.mark_cancelled()
                 training_job.add_log("info", "Training cancelled by user")
-                await training_job.save()
+                await _record(training_job)
             except Exception as save_exc:
                 logger.error(
                     f"Failed to persist CANCELLED status for {model_id}: {save_exc}"
@@ -1030,7 +1031,7 @@ async def train_model_task(
                 training_job = await _refreshed_job(training_job)
                 training_job.mark_failed(reason)
                 training_job.add_log("error", reason)
-                await training_job.save()
+                await _record(training_job)
             except Exception as save_exc:
                 logger.error(
                     f"Failed to persist FAILED status for {model_id}: {save_exc}"
@@ -1136,6 +1137,22 @@ async def _refreshed_job(job: TrainingJob) -> TrainingJob:
         await _discard_model(job.model_id, job.user_id)
         raise TrainingNoLongerInFlight("deleted")
     return fresh
+
+
+async def _record(job: TrainingJob) -> None:
+    """Every write the task makes of its whole job document: a replace, never `save()`.
+
+    `save()` is an upsert, so it inserts a row that was erased in the moment since
+    `_refreshed_job` read it (#936). A replace of a row that is gone raises instead.
+
+    Raises:
+        TrainingNoLongerInFlight: the row is gone; any model already stored is removed.
+    """
+    try:
+        await job.replace()
+    except DocumentNotFound:
+        await _discard_model(job.model_id, job.user_id)
+        raise TrainingNoLongerInFlight("deleted") from None
 
 
 async def _discard_model(model_id: str, user_id: str) -> None:

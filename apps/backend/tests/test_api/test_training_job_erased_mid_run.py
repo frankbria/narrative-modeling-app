@@ -119,6 +119,27 @@ async def test_a_model_that_cannot_be_removed_does_not_bring_the_job_back(setup_
     assert await _stored("model_936_stuck") is None
 
 
+async def test_a_job_erased_between_the_last_read_and_the_last_write_is_not_written_back(setup_database):
+    """The re-read and the write are two round trips, and an erasure can land between
+    them. The write itself must refuse a row that is gone."""
+    from app.api.routes import model_training
+
+    run = _Run("model_936_race", fit_fails=True)
+    read = model_training._refreshed_job
+
+    async def read_then_erase(job):
+        fresh = await read(job)
+        await _erase(job.model_id)
+        return fresh
+
+    await _job(run.model_id)
+    run.resume.set()
+    with patch.object(model_training, "_refreshed_job", read_then_erase):
+        await run.to_the_end()
+
+    assert await _stored("model_936_race") is None
+
+
 async def test_a_job_the_reaper_ended_during_the_fit_keeps_the_reapers_verdict(setup_database):
     """The same check covers a run the reaper failed and refunded while it fitted (#901
     covered only the wait for a slot)."""
