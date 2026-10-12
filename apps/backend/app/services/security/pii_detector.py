@@ -162,8 +162,7 @@ class PIIDetector:
         else:
             return f"Possible {pii_type.value} detected. Review data and apply appropriate protection."
     
-    def mask_pii(self, df: pd.DataFrame, detections: list[PIIDetection],
-                 mask_char: str = '*') -> pd.DataFrame:
+    def mask_pii(self, df: pd.DataFrame, detections: list[PIIDetection]) -> pd.DataFrame:
         """
         Mask detected PII in a DataFrame that will be **stored**: medium-risk
         detections and above, each value keeping part of itself so the copy stays
@@ -173,7 +172,6 @@ class PIIDetector:
         Args:
             df: DataFrame with PII
             detections: List of PII detections
-            mask_char: Character to use for masking
 
         Returns:
             DataFrame with masked PII
