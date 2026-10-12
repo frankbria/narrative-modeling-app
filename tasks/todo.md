@@ -1,23 +1,21 @@
-# Issue #936: a training job erased while it runs is written back by the task
+# Issue #943: erasing a dataset leaves the models trained on it
 
 ## Problem
-`train_model_task` holds its `TrainingJob` in memory. Its terminal handlers call
-`_refreshed_job`, which returns that copy when the row is gone, then `save()` it, and a
-Beanie `save()` of a missing document inserts it. An erasure of the dataset or account
-during a run is undone: the job row comes back, and on success a model is stored too.
-
-## Decision (the issue offers two)
-The task stops recording, rather than erasure waiting for the task. Erasure stays
-immediate; a fit in a worker thread cannot be killed anyway.
+Training keys `MLModel.dataset_id` and `TrainingJob.dataset_id` on `str(UserData.id)`.
+`_erase_one_dataset` runs the model cascade, the version artifacts and the string-keyed
+sweep only when a `DatasetMetadata` parent exists, and only for the id it was called
+with. So erasing a UI upload (no twin), or a `/datasets/upload` pair by its metadata id,
+leaves the models, their S3 artifacts and their training jobs, and reports success.
+Erasing such a pair by its `UserData` id also leaves the `DatasetMetadata` twin.
 
 ## Plan
-- [ ] RED: `tests/test_api/test_training_job_erased_mid_run.py`: hold the stand-in fit
-      open, erase the row, let the fit succeed / fail; and erase while the model is stored.
-- [ ] After the engine returns, `_require_in_flight` (as on taking a slot): a job erased,
-      reaped or cancelled during the fit builds and saves nothing.
-- [ ] `_refreshed_job`: a row that is gone raises `TrainingNoLongerInFlight` after removing
-      any model the task already saved, so no terminal path can insert the row again.
-- [ ] CLAUDE.md, gate, review, demo, PR.
-
-## Out of scope
-- Killing the fit thread (not possible), refunding an erased run.
+- [ ] RED: `tests/test_services/test_erasure_reaches_trained_models.py`: a model and job
+      stored the way the task stores them (under the upload's id), erased by each id for
+      a twinless upload, a same-id twin (#850) and a different-id pair; a sibling
+      dataset's model survives; the manifest counts.
+- [ ] `_erase_one_dataset`: resolve both parents in both directions (`(user_id, s3_url)`),
+      then sweep keyed children for every id the dataset is known by. Split it (cc 23)
+      into helpers under the CRAP ceiling, keeping the order: models, version objects,
+      keyed documents, files, parents last.
+- [ ] Count orphaned models on staging (AC5), counts only.
+- [ ] CLAUDE.md, gate, review, demo against real S3, PR.
