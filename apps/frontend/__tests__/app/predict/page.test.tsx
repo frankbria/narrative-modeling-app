@@ -375,5 +375,37 @@ describe('PredictPage — batch polling survives a remount (#550 e2e finding)', 
     expect(await screen.findByTestId('batch-summary')).toBeInTheDocument();
     expect(svc.getBatchJob).toHaveBeenCalledWith('j1');
     expect(screen.getByTestId('start-batch-prediction')).not.toHaveTextContent('Processing');
+    // A summary with no flagged rows says nothing about input warnings (#838).
+    expect(screen.queryByTestId('batch-input-warnings')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [1, '1 row has an input the model had not seen'],
+    [4, '4 rows have an input the model had not seen'],
+  ])('points at the input_warnings column when %i row(s) are flagged (#838)', async (count, text) => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockResolvedValue({
+      job_id: 'j1', status: 'completed', percentage_complete: 100,
+      processed_records: 5, total_records: 5, success_count: 5, error_count: 0,
+    } as never);
+    svc.getBatchJob.mockResolvedValue({
+      job_id: 'j1', status: 'completed',
+      results: { total_predictions: 5, success_count: 5, error_count: 0, input_warning_count: count },
+    } as never);
+
+    render(<PredictPage />);
+    await screen.findByLabelText('age');
+    fireEvent.click(screen.getByTestId('batch-prediction-link'));
+    const file = new File(['age,city\n1,NYC\n'], 'batch.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('batch-file-input'), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId('start-batch-prediction'));
+    await waitFor(() => expect(svc.createBatchJob).toHaveBeenCalled());
+    await act(async () => {
+      jest.advanceTimersByTime(2100);
+    });
+
+    const line = await screen.findByTestId('batch-input-warnings');
+    expect(line).toHaveTextContent(text);
+    expect(line).toHaveTextContent('input_warnings column');
   });
 });

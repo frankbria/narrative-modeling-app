@@ -143,8 +143,8 @@ class _BatchSummaryAccumulator:
     Folds one prediction record at a time so the batch pipeline never holds every
     result in memory. Produces the same summary the pre-#278 in-memory pass did,
     minus median: median needs every value retained, which defeats the bounded-
-    memory goal, and no consumer reads it (the UI uses ``confidence_stats.mean``
-    and ``low_confidence_count`` only).
+    memory goal, and no consumer reads it (the UI uses ``confidence_stats.mean``,
+    ``low_confidence_count`` and ``input_warning_count`` only).
     """
 
     def __init__(self, is_classification: bool) -> None:
@@ -153,6 +153,7 @@ class _BatchSummaryAccumulator:
         self.success = 0
         self.error_count = 0
         self.low_confidence_count = 0
+        self.input_warning_count = 0
         self.distribution: dict[str, int] = {}
         # Running scalar stats — O(1) state each (no value retention).
         self._val_n = 0
@@ -175,59 +176,64 @@ class _BatchSummaryAccumulator:
             # filter (error is None AND prediction present); shouldn't occur.
             return
         self.success += 1
-        prediction = p["prediction"]
+        self._add_prediction(p["prediction"])
+        self._add_confidence(p.get("confidence"))
+        self.low_confidence_count += p.get("low_confidence") is True
+        # A prediction resting on an input the model had not seen (#838).
+        self.input_warning_count += bool(p.get("input_warnings"))
+
+    def _add_prediction(self, prediction: Any) -> None:
         if self.is_classification:
             key = str(prediction)
             self.distribution[key] = self.distribution.get(key, 0) + 1
         elif not self._val_invalid:
-            try:
-                value = float(prediction)
-            except (TypeError, ValueError):
-                self._val_invalid = True  # all-or-nothing, mirroring the old code
-            else:
-                self._val_n += 1
-                self._val_sum += value
-                self._val_min = value if self._val_min is None else min(self._val_min, value)
-                self._val_max = value if self._val_max is None else max(self._val_max, value)
+            self._add_value(prediction)
 
-        conf = p.get("confidence")
-        if conf is not None:
-            self._conf_n += 1
-            self._conf_sum += conf
-            self._conf_min = conf if self._conf_min is None else min(self._conf_min, conf)
-            self._conf_max = conf if self._conf_max is None else max(self._conf_max, conf)
-        if p.get("low_confidence") is True:
-            self.low_confidence_count += 1
+    def _add_value(self, prediction: Any) -> None:
+        try:
+            value = float(prediction)
+        except (TypeError, ValueError):
+            self._val_invalid = True  # all-or-nothing, mirroring the old code
+            return
+        self._val_n += 1
+        self._val_sum += value
+        self._val_min = value if self._val_min is None else min(self._val_min, value)
+        self._val_max = value if self._val_max is None else max(self._val_max, value)
+
+    def _add_confidence(self, conf: float | None) -> None:
+        if conf is None:
+            return
+        self._conf_n += 1
+        self._conf_sum += conf
+        self._conf_min = conf if self._conf_min is None else min(self._conf_min, conf)
+        self._conf_max = conf if self._conf_max is None else max(self._conf_max, conf)
+
+    @staticmethod
+    def _stats(n: int, total: float, low: float | None, high: float | None) -> dict[str, float]:
+        """min/max/mean of a running scalar, empty when nothing was folded in."""
+        if not n or low is None or high is None:
+            return {}
+        return {"min": low, "max": high, "mean": total / n}
+
+    def _value_stats(self) -> dict[str, float]:
+        if self.is_classification or self._val_invalid:
+            return {}
+        return self._stats(self._val_n, self._val_sum, self._val_min, self._val_max)
 
     def result(self) -> dict[str, Any]:
-        confidence_stats: dict[str, float] = {}
-        if self._conf_n and self._conf_min is not None and self._conf_max is not None:
-            confidence_stats = {
-                "min": self._conf_min,
-                "max": self._conf_max,
-                "mean": self._conf_sum / self._conf_n,
-            }
         summary: dict[str, Any] = {
             "total_predictions": self.total,
             "success_count": self.success,
             "error_count": self.error_count,
             "success_rate": (self.success / self.total * 100) if self.total else 0.0,
             "prediction_distribution": self.distribution,
-            "confidence_stats": confidence_stats,
+            "confidence_stats": self._stats(self._conf_n, self._conf_sum, self._conf_min, self._conf_max),
             "low_confidence_count": self.low_confidence_count,
+            "input_warning_count": self.input_warning_count,
         }
-        if (
-            not self.is_classification
-            and not self._val_invalid
-            and self._val_n
-            and self._val_min is not None
-            and self._val_max is not None
-        ):
-            summary["prediction_value_stats"] = {
-                "min": self._val_min,
-                "max": self._val_max,
-                "mean": self._val_sum / self._val_n,
-            }
+        value_stats = self._value_stats()
+        if value_stats:
+            summary["prediction_value_stats"] = value_stats
         return summary
 
 

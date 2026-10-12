@@ -1648,3 +1648,20 @@ def test_csv_header_keeps_its_own_input_warnings_column():
 
     assert header.count("input_warnings") == 1
     assert header[0] == "age"
+
+
+def test_summary_counts_rows_with_input_warnings():
+    """#838: the batch summary says how many predictions rest on an input the model
+    had not seen, so the UI can point at the column in the downloaded file."""
+    svc = _service()
+    predictions = [
+        {"prediction": "yes", "confidence": 0.9},
+        {"prediction": "no", "confidence": 0.8, "input_warnings": {"plan": "unseen"}},
+        {"prediction": "no", "confidence": 0.7, "input_warnings": {"plan": "missing", "spend": "missing"}},
+        {"error": "boom", "input_warnings": {"plan": "unseen"}},  # no prediction to qualify
+    ]
+
+    stats = svc._calculate_summary_statistics(predictions, _model())
+
+    assert stats["input_warning_count"] == 2
+    assert stats["success_count"] == 3 and stats["error_count"] == 1

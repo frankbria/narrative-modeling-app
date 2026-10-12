@@ -27,9 +27,11 @@ first, so "unseen" now means the same thing under both encodings.
   so the two chunk functions (cc 15 and 17) are not touched. The CSV gets an
   `input_warnings` column (JSON, blank for a clean row), always in the header so it stays
   deterministic. `_csv_header` (9) and `_results_to_dataframe` (10) are split.
-- **Not here: a batch summary count and its line in the batch UI.** `add` (12) and
-  `result` (10) and the batch arm of the page would all need splitting for one number.
-  Filed as a follow-up.
+- **The batch summary counts flagged rows (`input_warning_count`) and the batch UI points
+  at the CSV column.** First planned as a follow-up, to avoid splitting `add` (cc 12) and
+  `result` (cc 10). Reversed: the single-prediction form offers only dropdown values and
+  requires every field, so a batch file is the one place a UI user meets an unseen or
+  blank input, and without the line the flag would sit unread in a downloaded file.
 - **Frontend:** the single-prediction arm of `app/predict/page.tsx` sits inside a
   parenthesised ternary that the gate reads as one cc-30 function, so it moves to
   `components/predict/` as small components and gains `InputWarnings`.
@@ -41,4 +43,5 @@ first, so "unseen" now means the same thing under both encodings.
 - [x] Route tests, then `require_input_features` / `infer_records` and the two routes.
 - [x] Batch tests, then `_predict_chunk`, CSV header and rows.
 - [x] Frontend type, component tests, extraction, `InputWarnings`.
+- [x] Batch summary count and its line in the batch UI.
 - [ ] CLAUDE.md, gate, cross-family review, PR, demo through the real routes and UI, CI, merge.

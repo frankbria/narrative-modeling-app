@@ -1840,3 +1840,7 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A LocalStack-backed test fails, not skips, in a worktree with no `.env`.**
   `test_chunked_upload_flow.py::TestCompletionAgainstRealS3` answers 500 there with or
   without a change. Check it with the change stashed before reading it as a regression.
+- **Ask who can reach the new behaviour before deciding what to defer.** The batch summary
+  count was deferred to save two splits, until the demo plan showed the single form can
+  never send an unseen or blank value. The deferred piece was the only UI path to the
+  feature. Walk each surface as its real client before cutting scope.

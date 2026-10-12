@@ -450,6 +450,20 @@ export default function PredictPage() {
                     </p>
                   )}
 
+                {/* Predictions resting on an input the model had not seen (#838). */}
+                {typeof summary.input_warning_count === 'number' &&
+                  summary.input_warning_count > 0 && (
+                    <p
+                      data-testid="batch-input-warnings"
+                      className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200"
+                    >
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      {summary.input_warning_count} row
+                      {summary.input_warning_count === 1 ? ' has' : 's have'} an input the model had
+                      not seen in training — see the input_warnings column in the downloaded CSV.
+                    </p>
+                  )}
+
                 <button
                   type="button"
                   data-testid="download-predictions"
