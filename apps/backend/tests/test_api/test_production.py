@@ -791,7 +791,11 @@ class TestProductionPredictErrorHandling:
         trained.predict.return_value = np.array([0])
         trained.predict_proba.return_value = np.array([[0.8, 0.2]])
         find, load = self._patch_load(model)
-        with find, load as mock_load:
+        explain = patch(
+            "app.api.routes.production._prediction_enricher.explanations",
+            return_value=[None],
+        )
+        with find, load as mock_load, explain as mock_explain:
             mock_load.return_value = (trained, None)
             request = ProductionPredictRequest(
                 data=[{"feature1": 1.0, "feature2": 2.0}],
@@ -808,7 +812,11 @@ class TestProductionPredictErrorHandling:
             "feature_count": 2,
             "training_date": "2026-01-02T00:00:00+00:00",
         }
-        assert response.explanations is not None and len(response.explanations) == 1
+        assert response.explanations == [None]
+        # The explainer is handed the estimator and the frame it was served.
+        estimator, served, feature_names, predictions, _problem_type = mock_explain.call_args.args
+        assert estimator is trained and predictions == [0]
+        assert list(served.columns) == feature_names == ["feature1", "feature2"]
 
     @pytest.mark.asyncio
     async def test_a_classifier_whose_probabilities_fail_still_predicts(self):
