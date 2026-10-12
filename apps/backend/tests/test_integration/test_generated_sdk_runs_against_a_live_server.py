@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import pytest
@@ -37,6 +38,22 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _without_database(uri: str) -> str:
+    """The server's own database is named apart, so drop any database in the URI's path."""
+    parts = urlsplit(uri)
+    return urlunsplit((parts.scheme, parts.netloc, "", parts.query, ""))
+
+
+def test_a_database_in_the_uri_is_dropped_and_nothing_else():
+    assert _without_database("mongodb://localhost:27017") == "mongodb://localhost:27017"
+    assert _without_database("mongodb://localhost:27017/") == "mongodb://localhost:27017"
+    assert _without_database("mongodb://localhost:27017/some_db") == "mongodb://localhost:27017"
+    assert (
+        _without_database("mongodb://user:secret@localhost:27018/db?authSource=admin")
+        == "mongodb://user:secret@localhost:27018?authSource=admin"
+    )
+
+
 def _training_csv() -> bytes:
     rng = random.Random(512)
     rows = ["plan,spend,churned"]
@@ -50,9 +67,7 @@ def _training_csv() -> bytes:
 def live_server(test_s3_bucket):
     """The backend on a free port, with real auth, its own database and a real bucket."""
     port = _free_port()
-    mongo_uri = os.getenv("TEST_MONGODB_URI", "mongodb://localhost:27017").rsplit("/", 1)[0]
-    if not mongo_uri.startswith("mongodb"):
-        mongo_uri = "mongodb://localhost:27017"
+    mongo_uri = _without_database(os.getenv("TEST_MONGODB_URI", "mongodb://localhost:27017"))
     database = f"narrative_modeling_sdk_smoke_{port}"
     env = {
         **os.environ,
