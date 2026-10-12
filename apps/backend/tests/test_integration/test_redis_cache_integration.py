@@ -1,6 +1,7 @@
 """
 Integration tests for Redis cache functionality
 """
+import io
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -156,8 +157,7 @@ class TestRedisCacheIntegration:
         mock_cache.set = AsyncMock(return_value=True)
 
         with patch('app.services.visualization_cache.cache_service', mock_cache), \
-             patch('pandas.read_csv', return_value=test_df), \
-             patch('app.services.visualization_cache.get_file_from_s3', return_value="mock_file_path"):
+             patch('app.services.visualization_cache.get_file_from_s3', return_value=io.BytesIO(test_df.to_csv(index=False).encode())):
             
             # The default bin count is the ONLY one the cache may serve or
             # write — the key does not capture num_bins (#170) — so ask for the

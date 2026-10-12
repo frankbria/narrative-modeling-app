@@ -14,6 +14,7 @@ from app.models.visualization_cache import (
     VisualizationCache,
 )
 from app.services.redis_cache import cache_service
+from app.services.s3_service import read_dataframe_from_bytes
 from app.utils.s3 import get_file_from_s3
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,36 @@ async def cache_visualization(
     return cache
 
 
+async def _dataset_frame(s3_url: str) -> pd.DataFrame:
+    """The dataset at ``s3_url`` as a frame, read by what its bytes are (#733).
+
+    These readers used ``pd.read_csv`` on every object. A transformation rewrites the
+    dataset as Parquet, so every chart failed for a dataset transformed once, and a
+    workbook or JSON upload failed from the start. Blocking download and parse, so off
+    the event loop (#514).
+    """
+    return await asyncio.to_thread(
+        lambda: read_dataframe_from_bytes(get_file_from_s3(s3_url).getvalue())
+    )
+
+
+async def _cached_default_histogram(
+    dataset_id: str, column_name: str, use_cache: bool
+) -> dict[str, Any] | None:
+    """The cached histogram, when the request is for the default bin count and the
+    cached entry has it."""
+    if not use_cache:
+        return None
+    cached_data = await get_cached_visualization(dataset_id, "histogram", column_name)
+    # Guard against entries written by the old bin-agnostic path (or any
+    # non-default shape that predates this fix): only serve a cache hit whose
+    # bin count actually matches the default. Otherwise the caller recomputes,
+    # overwriting the stale entry.
+    if cached_data and len(cached_data.get("counts", [])) == DEFAULT_HISTOGRAM_BINS:
+        return cached_data
+    return None
+
+
 async def generate_and_cache_histogram(
     dataset_id: str, column_name: str, num_bins: int = DEFAULT_HISTOGRAM_BINS
 ) -> dict[str, Any]:
@@ -127,17 +158,9 @@ async def generate_and_cache_histogram(
     # otherwise a later request would reuse an earlier bin shape (e.g. 50 bins
     # returned after the user selects 20). See issue #170.
     use_cache = num_bins == DEFAULT_HISTOGRAM_BINS
-
-    if use_cache:
-        cached_data = await get_cached_visualization(
-            dataset_id, "histogram", column_name
-        )
-        # Guard against entries written by the old bin-agnostic path (or any
-        # non-default shape that predates this fix): only serve a cache hit whose
-        # bin count actually matches the default. Otherwise fall through and
-        # recompute, overwriting the stale entry below.
-        if cached_data and len(cached_data.get("counts", [])) == DEFAULT_HISTOGRAM_BINS:
-            return cached_data
+    cached_data = await _cached_default_histogram(dataset_id, column_name, use_cache)
+    if cached_data:
+        return cached_data
 
     # Get dataset from S3
     dataset = await UserData.get(dataset_id)
@@ -145,7 +168,7 @@ async def generate_and_cache_histogram(
         raise ValueError(f"Dataset {dataset_id} not found")
 
     # Offload the blocking download + parse off the event loop (#514).
-    df = await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(dataset.s3_url)))
+    df = await _dataset_frame(dataset.s3_url)
 
     # Calculate histogram
     counts, bin_edges = np.histogram(df[column_name].dropna(), bins=num_bins)
@@ -178,7 +201,7 @@ async def generate_and_cache_boxplot(
         raise ValueError(f"Dataset {dataset_id} not found")
 
     # Offload the blocking download + parse off the event loop (#514).
-    df = await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(dataset.s3_url)))
+    df = await _dataset_frame(dataset.s3_url)
 
     # Calculate boxplot statistics
     q1 = df[column_name].quantile(0.25)
@@ -221,7 +244,7 @@ async def generate_and_cache_correlation_matrix(dataset_id: str) -> dict[str, An
         raise ValueError(f"Dataset {dataset_id} not found")
 
     # Offload the blocking download + parse off the event loop (#514).
-    df = await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(dataset.s3_url)))
+    df = await _dataset_frame(dataset.s3_url)
 
     # Select numeric columns
     numeric_df = df.select_dtypes(include=[np.number])

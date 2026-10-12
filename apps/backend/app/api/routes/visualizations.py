@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.redis_cache import cache_service
+from app.services.s3_service import read_dataframe_from_bytes
 from app.services.visualization_cache import (
     generate_and_cache_boxplot,
     generate_and_cache_correlation_matrix,
@@ -34,7 +35,10 @@ async def _load_dataframe(s3_url: str) -> pd.DataFrame:
     The handlers are ``async`` but this is blocking I/O + a full pandas parse; running it
     inline stalled the worker for every other request for the whole download+parse.
     """
-    return await asyncio.to_thread(lambda: pd.read_csv(get_file_from_s3(s3_url)))
+    # By what the bytes are, not as CSV (#733): the dataset is Parquet once transformed.
+    return await asyncio.to_thread(
+        lambda: read_dataframe_from_bytes(get_file_from_s3(s3_url).getvalue())
+    )
 
 
 def _apply_filters(df: pd.DataFrame, filters: str | None) -> pd.DataFrame:

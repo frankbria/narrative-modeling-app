@@ -1,20 +1,20 @@
-# Issue #609: the dataset-metering registry polices three prefixes
+# Issue #733: visualizations and the feature store read every dataset as CSV
 
 ## Problem
-`test_dataset_routes_are_metered.py` fails on any unclassified POST under
-`/api/v1/upload`, `/api/v1/datasets` and `/api/v1/onboarding`. A dataset-creating route
-mounted anywhere else is invisible to it. That already happened once: the onboarding
-sample loader, found by a reviewer and fixed by adding its prefix.
+Five readers parse a stored dataset without looking at what it is:
+- `app/services/visualization_cache.py`, three places, and `app/api/routes/visualizations.py`
+  (`_load_dataframe`): `pd.read_csv(get_file_from_s3(url))`.
+- `FeatureStoreService._load_dataset_frame`: csv and Excel only.
+A transformation rewrites the dataset as Parquet, so every chart and every feature-store
+check fails for a dataset that has been transformed once. A workbook or JSON upload
+fails in the charts from the start.
 
 ## Plan
-- [ ] A second scope beside the prefixes, keyed on what a handler does: an AST pass over
-      `app/` finds every function that can reach the construction of `UserData` or
-      `DatasetMetadata` (by call name, to a fixpoint), and every mounted write route on
-      any prefix whose handler is one of them must be classified.
-- [ ] The failure names the route, its handler and the chain of calls to the
-      construction, with the three choices.
-- [ ] Vacuity guards: the pass finds the known constructors, and finds every route in
-      `_MUST_BE_METERED` (so it would have found each of them unlisted).
-- [ ] Classify what it newly flags (17 routes): 15 reach `ensure_metadata_twin`, the twin
-      of an upload already charged; 2 share a function name with one that does.
-- [ ] The docstring states the new limit: matching is by name.
+- [ ] RED: LocalStack tests with a real Parquet object behind a `UserData` / a
+      `DatasetMetadata`, through the histogram, the route's loader and the feature store.
+- [ ] `s3_service.read_dataframe_from_bytes(content, file_type=None)`: the shared reader
+      for bytes already in memory (the readers take a path).
+- [ ] The four chart readers read by content (no declared type needed; the route's
+      loader is given only a URL). The feature store reads by its declared type.
+- [ ] `generate_and_cache_histogram` is at cc 7: its cache lookup moves to a helper.
+- [ ] Update the tests that stubbed `get_file_from_s3` with a string and `pandas.read_csv`.
