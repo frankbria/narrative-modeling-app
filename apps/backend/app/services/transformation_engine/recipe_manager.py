@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from beanie import Document, PydanticObjectId
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.utils.datetime import utcnow
 
@@ -43,6 +43,15 @@ class TransformationRecipe(Document):
 
     # Metadata for creator and tracking
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def _without_another_accounts_id(cls, metadata: dict[str, Any]) -> dict[str, Any]:
+        """A duplicate made before #914 recorded its source's owner here, and this
+        dict is returned to the copy's owner by the export and the version history.
+        Dropped whenever a recipe is loaded, so a stored one is never served."""
+        metadata.pop("original_owner", None)
+        return metadata
 
     class Settings:
         name = "transformation_recipes"
@@ -549,10 +558,11 @@ class RecipeManager:
                 tags=original.tags,
                 schema_snapshot=original.schema_snapshot,
                 version=1,
+                # Not the source's owner: the copy belongs to another account, and
+                # its metadata is returned by the export and the version history (#914).
                 metadata={
                     'duplicated_from': str(original.id),
                     'original_name': original.name,
-                    'original_owner': original.user_id
                 }
             )
 

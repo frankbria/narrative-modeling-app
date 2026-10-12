@@ -17,6 +17,11 @@ Self-authored plan (the issue has four acceptance criteria). Found in review of 
   `verify_api_key` or `require_admin`, including through router-level dependencies.
   Public routes are allow-listed by `module.function` with the reason, and the list
   fails when an entry stops existing or stops being public.
+- **A duplicate does not carry its source's owner** (cross-family review).
+  `duplicate_recipe` wrote `original_owner` into the copy's metadata, which the export and
+  the version history return. It is no longer written, and a validator on
+  `TransformationRecipe.metadata` drops it when a stored copy is loaded, so no reader
+  surface has to remember to.
 - `get_recipe` was cc 7, so its access check moves to `_require_readable`.
 
 ## Steps

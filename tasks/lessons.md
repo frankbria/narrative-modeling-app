@@ -1934,3 +1934,10 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Publishing each route's own requirement makes the gaps visible.** This was found by
   reading the document #512 had just made truthful: the operations with no requirement
   were a short list, and three did not belong on it.
+- **Redacting a field in a response is not removing it from the system.** The review
+  duplicated a public recipe and exported the copy: the owner id the list now withholds
+  was in the copy's metadata. Follow the value, not the endpoint: grep for every place it
+  is written, and every surface that returns the documents it is written into.
+- **A demo that compares two trees should print which tree it loaded.** A second
+  `sys.path.insert(0, ...)` put the branch ahead of the "main" export, and the "before"
+  run showed the fixed behaviour. It now prints the code under test on every run.

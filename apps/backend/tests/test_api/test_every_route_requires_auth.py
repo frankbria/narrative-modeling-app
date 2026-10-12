@@ -79,6 +79,27 @@ def test_every_route_is_authenticated_or_public_on_purpose():
     )
 
 
+#: What FastAPI mounts itself: the interactive docs and the raw document. Public by design.
+_FRAMEWORK_ROUTES = {"/api/v1/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+
+
+def _outside_the_walk(routes) -> set[str]:
+    """Routes the walk cannot follow: a mount, a websocket, a bare Starlette route."""
+    found: set[str] = set()
+    for route in routes:
+        if type(route).__name__ == "_IncludedRouter":
+            found |= _outside_the_walk(route.original_router.routes)
+        elif not isinstance(route, APIRoute):
+            found.add(getattr(route, "path", repr(route)))
+    return found
+
+
+def test_nothing_is_served_outside_the_walk():
+    """A route added with `app.mount`, `add_route` or a websocket has no dependency
+    tree to read, so it would pass this file unseen. It has to be named here first."""
+    assert _outside_the_walk(app.routes) == _FRAMEWORK_ROUTES
+
+
 def test_the_public_list_is_not_stale():
     """An entry that has gained auth, or no longer exists, comes off the list."""
     stale = set(_PUBLIC_ON_PURPOSE) - _unauthenticated()

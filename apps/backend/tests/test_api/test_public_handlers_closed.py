@@ -123,3 +123,51 @@ class TestARecipesOwnerIdGoesToItsOwnerOnly:
         assert OTHER not in seen.text
         assert own.status_code == 200 and own.json()["user_id"] == ME
         assert refused.status_code == 403
+
+    async def test_an_unknown_recipe_is_not_found(self, async_authorized_client, setup_database):
+        from bson import ObjectId
+
+        response = await async_authorized_client.get(f"/api/v1/transformations/recipes/{ObjectId()}")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Recipe not found"
+
+
+class TestADuplicateDoesNotCarryItsSourcesOwner:
+    """Duplicating a public recipe stamped the original owner's id into the copy's
+    metadata, and the JSON export and the version history returned it: two requests
+    recovered exactly the id the list responses withhold (cross-family review)."""
+
+    async def test_a_new_duplicate_records_no_owner(self, async_authorized_client, setup_database):
+        theirs = await _recipe(OTHER, "Theirs", public=True)
+
+        made = await async_authorized_client.post(
+            f"/api/v1/transformations/recipes/{theirs.id}/duplicate", json={"new_name": "My copy"}
+        )
+        assert made.status_code == 200, made.text
+        copy_id = made.json()["id"]
+        export = await async_authorized_client.get(f"/api/v1/transformations/recipes/{copy_id}/export/json")
+        history = await async_authorized_client.get(f"/api/v1/transformations/recipes/{copy_id}/versions")
+
+        assert export.status_code == 200 and history.status_code == 200, (export.text, history.text)
+        assert OTHER not in export.text and OTHER not in history.text
+        assert OTHER not in made.text
+        stored = await TransformationRecipe.get(copy_id)
+        assert stored.metadata["duplicated_from"] == str(theirs.id)  # the link survives
+        assert "original_owner" not in stored.metadata
+
+    async def test_a_duplicate_stored_before_the_fix_is_read_without_it(
+        self, async_authorized_client, setup_database
+    ):
+        mine = await _recipe(ME, "An older copy", public=False)
+        await TransformationRecipe.get_motor_collection().update_one(
+            {"_id": mine.id},
+            {"$set": {"metadata": {"duplicated_from": "abc", "original_owner": OTHER}}},
+        )
+
+        export = await async_authorized_client.get(f"/api/v1/transformations/recipes/{mine.id}/export/json")
+        history = await async_authorized_client.get(f"/api/v1/transformations/recipes/{mine.id}/versions")
+
+        assert export.status_code == 200 and history.status_code == 200, (export.text, history.text)
+        assert OTHER not in export.text and OTHER not in history.text
+        assert export.json()["recipe"]["metadata"]["duplicated_from"] == "abc"
