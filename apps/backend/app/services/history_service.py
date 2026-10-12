@@ -7,7 +7,7 @@ Handles navigation through transformation history, restoring previous dataset ve
 import logging
 from typing import TYPE_CHECKING, Any
 
-from app.services.dataset_link import ensure_metadata_twin, record_new_file
+from app.services.dataset_link import ensure_metadata_twin, history_key, record_new_file
 from app.services.exceptions import (
     NotFoundError,
     ValidationError,
@@ -59,7 +59,11 @@ class HistoryService:
         route answered 404. Scoped to the owner, so another tenant's dataset answers the
         same NotFoundError as an unknown one rather than a distinguishable 403.
         """
-        config = await self.transformation_service.get_dataset_config(dataset_id, user_id)
+        # Under the dataset's own id: a `/datasets` upload has a second one (its upload
+        # record's), and the steps are recorded under the first (#851).
+        config = await self.transformation_service.get_dataset_config(
+            await history_key(dataset_id, user_id), user_id
+        )
         if not config:
             raise NotFoundError(
                 resource_type="Transformation config",

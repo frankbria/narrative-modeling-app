@@ -216,4 +216,5 @@ class TestThePipelineRecordsItsSteps:
 
         assert by_dataset_id.json()["success"] and by_upload_id.json()["success"], by_upload_id.text
         assert await _listed(async_authorized_client, "dataset_twin") == ["trim_whitespace", "fill_missing"]
+        assert await _listed(async_authorized_client, str(upload.id)) == ["trim_whitespace", "fill_missing"]
 

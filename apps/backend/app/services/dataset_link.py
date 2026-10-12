@@ -239,6 +239,21 @@ async def ensure_metadata_twin(dataset_id: str, user_id: str) -> DatasetMetadata
     return twin or await _create_twin(upload)
 
 
+async def history_key(dataset_id: str, user_id: str) -> str:
+    """The id a dataset's history is kept under, whichever id the request named it by (#851).
+
+    That is its `DatasetMetadata` id. Read-only, unlike `ensure_metadata_twin`: reading a
+    history must not create a twin. An id that names no upload comes back as it is.
+    """
+    upload = await _owned_upload(dataset_id, user_id)
+    if upload is None:
+        return dataset_id
+    twin = await DatasetMetadata.find_one(
+        DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
+    )
+    return twin.dataset_id if twin else dataset_id
+
+
 async def _owned_upload(dataset_id: str, user_id: str) -> UserData | None:
     if not ObjectId.is_valid(dataset_id):
         return None
