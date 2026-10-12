@@ -91,7 +91,7 @@ def test_download_file_from_s3_cleans_up_on_download_failure(monkeypatch):
             captured["path"] = path  # temp file exists on disk at this point
             raise RuntimeError("network boom")  # not ClientError → no breaker retry
 
-    monkeypatch.setattr(s3_service, "create_s3_client", lambda: FakeClient())
+    monkeypatch.setattr(s3_service, "get_s3_client", lambda: FakeClient())
     with pytest.raises(RuntimeError):
         s3_service.download_file_from_s3("s3://test-bucket/datasets/u/f.csv")
 

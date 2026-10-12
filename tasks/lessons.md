@@ -1951,3 +1951,10 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **`or` keeps an error path that a `None` guard would replace.** The issue worried that
   the cached accessor returns `None` where the factory raised. Falling back to the factory
   keeps whatever the caller saw before, with no new error type to choose.
+- **Moving a seam strands every stub aimed at the old one, and CI may not notice.** Two
+  older tests patched the per-call factory. They kept passing in CI only because CI
+  exports no AWS credentials, which is the one case that still takes that path. Run the
+  affected tests with the credentials set and unset before calling a seam change done.
+- **A process-wide cache needs a reset around every test, not only in the tests that
+  know about it.** With credentials exported, tests that patch `boto3.client` were handed
+  the client a previous test had cached.

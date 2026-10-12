@@ -106,7 +106,7 @@ class TestS3SecurityValidation:
         (the download itself is not under test here).
         """
         with patch.dict('os.environ', {'AWS_S3_BUCKET': 'test-bucket'}), \
-             patch('app.services.s3_service.create_s3_client') as mock_client_factory:
+             patch('app.services.s3_service.get_s3_client') as mock_client_factory:
             mock_client = mock_client_factory.return_value
             mock_client.head_object.return_value = {'ContentLength': 10}
             mock_client.download_file.return_value = None
