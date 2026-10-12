@@ -26,11 +26,29 @@ _OUTSIDE_EDIT = (
 )
 
 
-def _cannot_undo(position: int) -> str:
-    """Position 0 is the first step; above it, only an outside edit stops undo (#851)."""
-    if position <= 0:
+def _cannot_undo(config: Any) -> str:
+    """Why undo is refused: there is nothing before the start, the dataset as it was
+    before the first step was never saved (#962), or an outside edit stands in the way
+    (#851)."""
+    if config.current_position < 0:
         return "Cannot undo: already at the beginning of history"
+    if config.current_position == 0 and config.undo_floor == 0:
+        return "Cannot undo: already at the beginning of history (the data from before this step was not saved)"
     return f"Cannot undo: {_OUTSIDE_EDIT}"
+
+
+def _undone_to(position: int) -> str:
+    if position < 0:
+        return "Undone to the dataset as it was before its first step"
+    return f"Undone to position {position}"
+
+
+def _version_at(config: Any) -> str | None:
+    """The version the cursor points at: a step's, or before the first step the one the
+    dataset was at then (#962)."""
+    if config.current_position < 0:
+        return config.base_version_id
+    return config.transformation_steps[config.current_position].version_id
 
 
 class HistoryService:
@@ -123,16 +141,13 @@ class HistoryService:
         # Check if can undo
         if not config.can_undo():
             raise ValidationError(
-                message=_cannot_undo(config.current_position),
+                message=_cannot_undo(config),
                 details={"current_position": config.current_position}
             )
 
         # Decrement position
         config.current_position -= 1
-
-        # Get version at new position
-        target_step = config.transformation_steps[config.current_position]
-        version_id = target_step.version_id
+        version_id = _version_at(config)
 
         await self._move_to_step(dataset_id, user_id, version_id)
 
@@ -144,7 +159,7 @@ class HistoryService:
             "success": True,
             "version_id": version_id,
             "current_position": config.current_position,
-            "message": f"Undone to position {config.current_position}"
+            "message": _undone_to(config.current_position),
         }
 
     async def redo(self, dataset_id: str, user_id: str) -> dict[str, Any]:

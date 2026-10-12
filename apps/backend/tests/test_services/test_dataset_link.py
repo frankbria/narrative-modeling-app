@@ -462,3 +462,40 @@ def test_only_the_history_itself_marks_a_move_as_its_own():
         if re.search(r"record_new_file\([^)]*in_history=True", path.read_text())
     )
     assert callers == ["services/history_service.py", "services/transformation_service.py"]
+
+
+class TestAnEditAfterUndoingToTheStart:
+    """#962: once the first step has been undone the dataset is at its base, with the
+    step still listed for redo. An edit no step describes then leaves nothing to redo
+    and no base to return to: the edited file is where the history starts."""
+
+    async def test_it_drops_the_steps_and_forgets_the_base(self, setup_database):
+        from app.models.transformation import TransformationConfig
+
+        meta, _ = await _twins()
+        config = await _history("ds", steps=1, position=-1)
+        await TransformationConfig.find_one(TransformationConfig.config_id == config.config_id).update(
+            {"$set": {"base_version_id": "v_base"}}
+        )
+
+        await record_new_file(meta, NEW)
+
+        sealed = await _reloaded(config)
+        assert (sealed.transformation_steps, sealed.base_version_id, sealed.total_transformations) == ([], None, 0)
+        assert (sealed.can_undo(), sealed.can_redo()) == (False, False)
+
+    async def test_a_base_survives_an_edit_made_after_a_step(self, setup_database):
+        """It is out of reach then (the floor is above it) and harmless to keep."""
+        from app.models.transformation import TransformationConfig
+
+        meta, _ = await _twins()
+        config = await _history("ds", steps=1, position=0)
+        await TransformationConfig.find_one(TransformationConfig.config_id == config.config_id).update(
+            {"$set": {"base_version_id": "v_base"}}
+        )
+
+        await record_new_file(meta, NEW)
+
+        sealed = await _reloaded(config)
+        assert (sealed.base_version_id, sealed.undo_floor, sealed.can_undo()) == ("v_base", 1, False)
+
