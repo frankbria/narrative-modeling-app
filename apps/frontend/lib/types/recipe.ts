@@ -38,7 +38,8 @@ export interface Recipe {
   id: string
   name: string
   description: string
-  user_id: string
+  /** The owner's id, sent to the owner only: null on another account's public recipe (#914). */
+  user_id: string | null
   steps: RecipeStep[]
   created_at: string
   updated_at: string

@@ -553,6 +553,43 @@ async def create_recipe(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _recipe_response(recipe: Any, viewer_id: str) -> RecipeResponse:
+    """A recipe as ``viewer_id`` may see it (#914).
+
+    A public recipe is shared with other accounts, so its name and steps go to any
+    signed-in reader. Its owner's user id does not: only the owner gets it back."""
+    return RecipeResponse(
+        id=str(recipe.id),
+        name=recipe.name,
+        description=recipe.description,
+        user_id=recipe.user_id if recipe.user_id == viewer_id else None,
+        steps=[
+            {
+                "step_id": step.step_id,
+                "type": step.transformation_type,
+                "parameters": step.parameters,
+                "description": step.description,
+                "order": step.order,
+            }
+            for step in recipe.steps
+        ],
+        created_at=recipe.created_at,
+        updated_at=recipe.updated_at,
+        is_public=recipe.is_public,
+        tags=recipe.tags,
+        usage_count=recipe.usage_count,
+        rating=recipe.rating,
+    )
+
+
+def _require_readable(recipe: Any, viewer_id: str) -> None:
+    """404 for no recipe, 403 for another account's private one."""
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    if not recipe.is_public and recipe.user_id != viewer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 @router.get("/recipes", response_model=RecipeListResponse)
 async def list_recipes(
     page: int = Query(1, ge=1),
@@ -584,25 +621,7 @@ async def list_recipes(
         
         return RecipeListResponse(
             recipes=[
-                RecipeResponse(
-                    id=str(recipe.id),
-                    name=recipe.name,
-                    description=recipe.description,
-                    user_id=recipe.user_id,
-                    steps=[{
-                        "step_id": step.step_id,
-                        "type": step.transformation_type,
-                        "parameters": step.parameters,
-                        "description": step.description,
-                        "order": step.order
-                    } for step in recipe.steps],
-                    created_at=recipe.created_at,
-                    updated_at=recipe.updated_at,
-                    is_public=recipe.is_public,
-                    tags=recipe.tags,
-                    usage_count=recipe.usage_count,
-                    rating=recipe.rating
-                ) for recipe in paginated_recipes
+                _recipe_response(recipe, current_user_id) for recipe in paginated_recipes
             ],
             total=total,
             page=page,
@@ -616,39 +635,20 @@ async def list_recipes(
 
 @router.get("/recipes/popular", response_model=RecipeListResponse)
 async def list_popular_recipes(
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """List most popular public recipes"""
     try:
         recipes = await RecipeManager.get_popular_recipes(limit=limit)
-        
+
         return RecipeListResponse(
-            recipes=[
-                RecipeResponse(
-                    id=str(recipe.id),
-                    name=recipe.name,
-                    description=recipe.description,
-                    user_id=recipe.user_id,
-                    steps=[{
-                        "step_id": step.step_id,
-                        "type": step.transformation_type,
-                        "parameters": step.parameters,
-                        "description": step.description,
-                        "order": step.order
-                    } for step in recipe.steps],
-                    created_at=recipe.created_at,
-                    updated_at=recipe.updated_at,
-                    is_public=recipe.is_public,
-                    tags=recipe.tags,
-                    usage_count=recipe.usage_count,
-                    rating=recipe.rating
-                ) for recipe in recipes
-            ],
+            recipes=[_recipe_response(recipe, current_user_id) for recipe in recipes],
             total=len(recipes),
             page=1,
             per_page=limit
         )
-        
+
     except Exception as e:
         logger.error(f"List popular recipes failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -690,34 +690,9 @@ async def get_recipe(
     """Get a specific recipe"""
     try:
         recipe = await RecipeManager.get_recipe(recipe_id)
-        
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-        
-        # Check access
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        return RecipeResponse(
-            id=str(recipe.id),
-            name=recipe.name,
-            description=recipe.description,
-            user_id=recipe.user_id,
-            steps=[{
-                "step_id": step.step_id,
-                "type": step.transformation_type,
-                "parameters": step.parameters,
-                "description": step.description,
-                "order": step.order
-            } for step in recipe.steps],
-            created_at=recipe.created_at,
-            updated_at=recipe.updated_at,
-            is_public=recipe.is_public,
-            tags=recipe.tags,
-            usage_count=recipe.usage_count,
-            rating=recipe.rating
-        )
-        
+        _require_readable(recipe, current_user_id)
+        return _recipe_response(recipe, current_user_id)
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1192,7 +1167,9 @@ async def get_transformation_history(
 
 
 @router.get("/available", response_model=list[TransformationTypeInfo])
-async def get_available_transformations():
+async def get_available_transformations(
+    current_user_id: str = Depends(get_current_user_id),
+):
     """List the transformation types the engine can actually execute (#499).
 
     Derived from the engine's registry (``available_transformations``), not a

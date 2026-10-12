@@ -1917,3 +1917,20 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A quoted heredoc keeps `\\n` as two characters.** A test file written through
   `<<'EOF'` with `"\\n".join(...)` produced a one-line CSV and a training failure that
   looked like a product bug. Check generated test data before reading the failure.
+
+## 2026-10-12 — #914 (three public handlers, and a guard for the class)
+
+- **The third instance of a bug class is the cue for a registry, not a third fix.**
+  #450 and #563 each closed one unauthenticated handler and wrote the rule down.
+  Nothing failed when the rule was broken again. The walk over the route table's
+  dependency trees is forty lines and now does.
+- **Check the dependency tree, not the generated document.** The OpenAPI document shows
+  a security scheme for an optional bearer too. What decides whether a handler is
+  guarded is whether its dependant reaches one of the real gates.
+- **"Public" on a record needs a reader in mind.** A public recipe is shared with other
+  accounts. The handler had no session at all, and returned the owner's internal id to
+  every reader. Fix the field in every handler that can return someone else's record,
+  not only the one in the report.
+- **Publishing each route's own requirement makes the gaps visible.** This was found by
+  reading the document #512 had just made truthful: the operations with no requirement
+  were a short list, and three did not belong on it.

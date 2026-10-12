@@ -35,14 +35,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/test")
-async def test_endpoint():
-    """
-    A simple test endpoint to verify that the backend is working correctly.
-    """
-    return {"message": "Upload endpoint is working"}
-
-
 @router.post("/", dependencies=[Depends(quota("uploads"))])
 async def upload_file(
     request: Request,

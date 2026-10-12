@@ -158,7 +158,7 @@ _EXEMPT = {
         "/api/v1/upload/chunked/{session_id}/complete",
     )},
     **{p: "Upload plumbing; no model call." for p in (
-        "/api/v1/upload/test", "/api/v1/upload/cleanup", "/api/v1/upload/chunked/init",
+        "/api/v1/upload/cleanup", "/api/v1/upload/chunked/init",
         "/api/v1/upload/chunked/{session_id}", "/api/v1/upload/chunked/{session_id}/chunk/{chunk_number}",
         "/api/v1/upload/chunked/{session_id}/resume",
     )},
