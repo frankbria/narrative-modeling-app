@@ -5,7 +5,7 @@ Provides business logic for managing reusable feature definitions,
 including CRUD operations, feature application, versioning, and sharing.
 """
 
-import io
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -25,7 +25,7 @@ from app.services.model_training.feature_engineer import (
     FeatureEngineer,
     parse_feature_definition,
 )
-from app.services.s3_service import s3_service
+from app.services.s3_service import read_dataframe_from_bytes, s3_service
 from app.utils.s3 import downloadable_url, resolve_validated_object
 
 logger = logging.getLogger(__name__)
@@ -382,14 +382,9 @@ class FeatureStoreService(BaseService[StoredFeature]):
         # file_path may be a raw key or (after a transformation) a full URL (#466)
         _, file_key = resolve_validated_object(downloadable_url(dataset.file_path, dataset.s3_url))
         file_bytes = await s3_service.download_file_bytes(file_key)
-        if dataset.file_type == "csv":
-            return pd.read_csv(io.StringIO(file_bytes.decode('utf-8')))
-        if dataset.file_type in ["xls", "xlsx"]:
-            return pd.read_excel(io.BytesIO(file_bytes))
-        raise ValidationError(
-            message=f"Unsupported file type: {dataset.file_type}",
-            details={"file_type": dataset.file_type}
-        )
+        # Every type a dataset can be stored as, Parquet (a transformed dataset) and
+        # JSON included; it read csv and Excel only (#733). Off the loop: a full parse.
+        return await asyncio.to_thread(read_dataframe_from_bytes, file_bytes, dataset.file_type)
 
     async def apply_feature(
         self,

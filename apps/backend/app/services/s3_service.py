@@ -230,6 +230,19 @@ def _read_dataframe(local_path: str, file_type: str | None, nrows: int | None):
     return reader(local_path, nrows)
 
 
+def read_dataframe_from_bytes(content: bytes, file_type: str | None = None, nrows: int | None = None):
+    """`_read_dataframe` for an object already in memory: by its declared `file_type`,
+    or by what its bytes are when there is none (#733).
+
+    The readers take a path, so the bytes go through a temp file. Blocking: call it off
+    the event loop.
+    """
+    with tempfile.NamedTemporaryFile() as held:
+        held.write(content)
+        held.flush()
+        return _read_dataframe(held.name, file_type, nrows)
+
+
 def load_dataframe_from_s3(
     s3_url: str, file_type: str | None = None, nrows: int | None = None
 ):
