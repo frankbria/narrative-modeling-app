@@ -25,7 +25,8 @@ async def get_dataframe_from_s3(s3_url: str, nrows: int | None = None) -> pd.Dat
     """
     try:
         # Centralized download+parse+cleanup (blocking → off the event loop, #265/#280).
-        # file_type=None infers csv→parquet; the helper always unlinks the temp file.
+        # file_type=None: the reader goes by the file's bytes (#858); the helper always
+        # unlinks the temp file.
         return await asyncio.to_thread(load_dataframe_from_s3, s3_url, None, nrows)
     except Exception as e:
         logger.error(f"Error loading dataframe from S3: {str(e)}")

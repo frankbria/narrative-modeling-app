@@ -122,49 +122,106 @@ def _looks_like_parquet(local_path: str) -> bool:
         return False
 
 
-def _read_dataframe(local_path: str, file_type: str | None, nrows: int | None):
-    """Parse a local file into a DataFrame by file_type, inferring when None.
+def _kind_of(local_path: str) -> str:
+    """What the file's own bytes say it is: parquet, xlsx, xls, json or csv (#858)."""
+    if _looks_like_parquet(local_path):
+        return "parquet"
+    with open(local_path, "rb") as fh:
+        head = fh.read(512)
+    if head.startswith(b"PK\x03\x04"):  # a zip container, which is what .xlsx is
+        return "xlsx"
+    if head.startswith(b"\xd0\xcf\x11\xe0"):  # the OLE container of the old binary .xls
+        return "xls"
+    # JSON opens with a bracket or a brace, after an optional UTF-8 BOM and whitespace.
+    if head.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] in (b"[", b"{"):
+        return "json"
+    return "csv"
 
-    download_file_from_s3 temp files have no suffix, so extension sniffing is
-    useless — callers pass the dataset's file_type; None falls back to csv-then-
-    parquet inference (the historical get_dataframe_from_s3 behavior).
 
-    Before parsing a KNOWN file_type, the object's magic bytes are checked against
-    it (#524): a Parquet object declared as csv/excel/json (or the reverse) fails
-    with a clear FormatMismatchError rather than an opaque parse error.
-    """
+def _read_csv(local_path: str, nrows: int | None):
     import pandas as pd
 
+    return pd.read_csv(local_path, nrows=nrows)
+
+
+def _read_excel(local_path: str, nrows: int | None):
+    import pandas as pd
+
+    return pd.read_excel(local_path, nrows=nrows)
+
+
+def _read_json(local_path: str, nrows: int | None):
+    import pandas as pd
+
+    df = pd.read_json(local_path, encoding="utf-8-sig")  # -sig: a leading BOM is not data
+    return df.head(nrows) if nrows else df
+
+
+def _read_parquet(local_path: str, nrows: int | None):
+    import pandas as pd
+
+    df = pd.read_parquet(local_path)
+    return df.head(nrows) if nrows else df
+
+
+# "excel" is what /upload/secure stores for an .xls or .xlsx file.
+_READERS = {
+    "csv": _read_csv,
+    "xlsx": _read_excel,
+    "xls": _read_excel,
+    "excel": _read_excel,
+    "json": _read_json,
+    "parquet": _read_parquet,
+}
+
+
+def _require_matching_bytes(local_path: str, file_type: str, ft: str) -> None:
+    """A declared type must agree with the object's magic bytes (#524): a Parquet object
+    declared as csv/excel/json (or the reverse) fails with a clear FormatMismatchError
+    rather than an opaque parse error."""
+    if ft not in _READERS:
+        return  # an unknown type is refused by the caller, whatever the bytes are
+    is_parquet = _looks_like_parquet(local_path)
+    if is_parquet == (ft == "parquet"):
+        return
+    found = "Parquet" if is_parquet else "not Parquet"
+    raise FormatMismatchError(
+        f"declared file_type '{file_type}' but the object is {found} — the "
+        "stored file_type and s3_url disagree (#524); recheck the dataset record"
+    )
+
+
+def _read_by_content(local_path: str, nrows: int | None):
+    """Read a file nobody declared a type for, by what its bytes are (#858).
+
+    This path used to try CSV, then Parquet. `read_csv` does not fail on JSON: it
+    returns junk columns, and a transformation then wrote that junk back over the
+    dataset on both twins. An Excel workbook was not readable at all.
+    """
+    kind = _kind_of(local_path)
+    if kind == "json":
+        try:
+            return _read_json(local_path, nrows)
+        except ValueError:
+            kind = "csv"  # a CSV whose first header merely opens with a bracket
+    return _READERS[kind](local_path, nrows)
+
+
+def _read_dataframe(local_path: str, file_type: str | None, nrows: int | None):
+    """Parse a local file into a DataFrame by file_type, or by its bytes when None.
+
+    download_file_from_s3 temp files have no suffix, so extension sniffing is
+    useless: callers pass the dataset's file_type, and the transformation readers,
+    which pass None, are dispatched on the file's content (`_read_by_content`).
+    """
     ft = (file_type or "").lower()
-    if ft:
-        is_parquet = _looks_like_parquet(local_path)
-        if ft == "parquet" and not is_parquet:
-            raise FormatMismatchError(
-                "declared file_type 'parquet' but the object is not Parquet — the "
-                "stored file_type and s3_url disagree (#524); recheck the dataset record"
-            )
-        if ft in ("csv", "xls", "xlsx", "json") and is_parquet:
-            raise FormatMismatchError(
-                f"declared file_type '{file_type}' but the object is Parquet — the "
-                f"stored file_type and s3_url disagree (#524); recheck the dataset record"
-            )
-    if ft == "csv":
-        return pd.read_csv(local_path, nrows=nrows)
-    if ft in ("xlsx", "xls"):
-        return pd.read_excel(local_path, nrows=nrows)
-    if ft == "json":
-        return pd.read_json(local_path)
-    if ft == "parquet":
-        df = pd.read_parquet(local_path)
-        return df.head(nrows) if nrows else df
-    if ft:
+    if not file_type:
+        return _read_by_content(local_path, nrows)
+    _require_matching_bytes(local_path, file_type, ft)
+    reader = _READERS.get(ft)
+    if reader is None:
         raise ValueError(f"Unsupported file type: {file_type}")
-    # Infer: csv first, then parquet.
-    try:
-        return pd.read_csv(local_path, nrows=nrows)
-    except (pd.errors.ParserError, pd.errors.EmptyDataError, ValueError, UnicodeDecodeError):
-        df = pd.read_parquet(local_path)
-        return df.head(nrows) if nrows else df
+    return reader(local_path, nrows)
 
 
 def load_dataframe_from_s3(

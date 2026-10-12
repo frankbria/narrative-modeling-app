@@ -290,9 +290,9 @@ async def _create_twin(upload: UserData) -> DatasetMetadata:
 
 
 
-# What the transformation reader parses safely. It ignores file_type and tries csv,
-# then parquet, so TSV and JSON come back as junk columns and Excel not at all.
-_TRANSFORMABLE = {"csv", "parquet"}
+# What the transformation reader parses safely. It goes by the file's bytes (#858), which
+# tell CSV, Excel, JSON and Parquet apart; a TSV still reads as one junk column.
+_TRANSFORMABLE = {"csv", "parquet", "json", "xlsx", "xls"}
 
 
 def _twin_file_type(upload: UserData) -> str:
@@ -320,6 +320,6 @@ def _not_transformable(upload: UserData) -> NotFoundError:
     return NotFoundError(
         resource_type="Dataset",
         resource_id=str(upload.id),
-        message=f"Transformations support CSV and Parquet files; this upload is {kind}. "
+        message=f"Transformations support CSV, Excel, JSON and Parquet files; this upload is {kind}. "
         "Re-upload it as CSV to transform it.",
     )
