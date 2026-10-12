@@ -177,6 +177,23 @@ describe('DataPreviewTable', () => {
       expect(screen.getByText('Page 1 of about 24069')).toBeInTheDocument()
     })
 
+    it('keeps the pager when the estimate ran a page past the end', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(lineCounted) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ ...lineCounted, data: [], rows: 0, offset: 50 }),
+        })
+      render(<DataPreviewTable datasetId="test-id" />)
+
+      fireEvent.click(await screen.findByText('Next'))
+
+      expect(await screen.findByText('No more rows: the total was an estimate')).toBeInTheDocument()
+      expect(screen.queryByText('No data available')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText('Previous'))
+      expect(await screen.findByText('Showing 1-3 of about 1203441 rows')).toBeInTheDocument()
+    })
+
     it('shows why', async () => {
       render(<DataPreviewTable datasetId="test-id" />)
 

@@ -33,12 +33,28 @@ interface PreviewData {
 
 const ROWS_PER_PAGE = 50
 
+type Preview = PreviewData | null | undefined
+
 /** What to show in place of the table, if there is no table to show. */
-function unavailable(loading: boolean, error: string | null, preview: PreviewData | null | undefined) {
+function unavailable(loading: boolean, error: string | null, preview: Preview, page: number) {
   if (loading) return { text: 'Loading preview data...', tone: 'text-muted-foreground' }
   if (error) return { text: `Error: ${error}`, tone: 'text-destructive' }
-  if (!preview || preview.data.length === 0) return { text: 'No data available', tone: 'text-muted-foreground' }
+  if (nothingToShow(preview, page)) return { text: 'No data available', tone: 'text-muted-foreground' }
   return null
+}
+
+/** No rows at all. A later page that came back empty is not that: an estimated total
+ *  (#720) can run one page past the end, and the pager has to stay so the reader can
+ *  go back. */
+function nothingToShow(preview: Preview, page: number): boolean {
+  if (!preview) return true
+  return preview.data.length === 0 && page === 0
+}
+
+function shownRange(preview: PreviewData): string {
+  if (preview.rows === 0) return 'No more rows: the total was an estimate'
+  const range = `${preview.offset + 1}-${preview.offset + preview.rows}`
+  return `Showing ${range} of ${counted(preview, preview.total_rows)} rows`
 }
 
 /** A count for display, qualified when the server could only estimate it (#720). */
@@ -49,8 +65,7 @@ function counted(preview: PreviewData, count: number): string {
 
 function PreviewHeader(props: { preview: PreviewData; onExport?: VoidFunction }) {
   const { preview, onExport } = props
-  const range = `${preview.offset + 1}-${preview.offset + preview.rows}`
-  const shown = `Showing ${range} of ${counted(preview, preview.total_rows)} rows`
+  const shown = shownRange(preview)
   return (
     <CardHeader>
       <div className="flex items-center justify-between">
@@ -199,7 +214,7 @@ export function DataPreviewTable({ datasetId, onExport }: DataPreviewTableProps)
   const error = validId ? fetchError : 'Invalid dataset ID'
 
 
-  const status = unavailable(loading, error, previewData)
+  const status = unavailable(loading, error, previewData, currentPage)
   if (status) return <Unavailable status={status} />
   // unavailable() answers for a missing preview, so from here there is one.
   return (
