@@ -147,8 +147,7 @@ def _preview_summary(column_previews: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _require_valid_request(selected_columns: list[str], transformation_type: str) -> None:
-    """Refuse a bulk request before anything is looked up or created."""
+def _require_valid_columns(selected_columns: list[str]) -> None:
     if not selected_columns:
         raise ValidationError(message="selected_columns cannot be empty", field="selected_columns")
     if len(selected_columns) > MAX_COLUMNS_PER_JOB:
@@ -158,9 +157,26 @@ def _require_valid_request(selected_columns: list[str], transformation_type: str
         )
     if len(selected_columns) != len(set(selected_columns)):
         raise ValidationError(message="Duplicate column names in selected_columns", field="selected_columns")
-    if transformation_type not in {t.value for t in TransformationType}:
+
+
+def _require_valid_request(selected_columns: list[str], transformation_type: str) -> None:
+    """Refuse a bulk request before anything is looked up or created."""
+    _require_valid_columns(selected_columns)
+    try:
+        TransformationType(transformation_type)
+    except ValueError:
         raise ValidationError(
             message=f"Invalid transformation_type: {transformation_type}", field="transformation_type"
+        )
+
+
+def _require_columns(df: pd.DataFrame, selected_columns: list[str]) -> None:
+    invalid_columns = [c for c in selected_columns if c not in df.columns]
+    if invalid_columns:
+        raise OperationError(
+            message=f"Invalid columns: {invalid_columns}",
+            operation="preview_bulk_transformation",
+            details={"invalid_columns": invalid_columns},
         )
 
 
@@ -344,17 +360,11 @@ class BulkTransformationService:
         try:
             # a raw key must not reach the URL-only downloader (#466)
             df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
-            invalid_columns = [c for c in selected_columns if c not in df.columns]
-            if invalid_columns:
-                raise OperationError(
-                    message=f"Invalid columns: {invalid_columns}",
-                    operation="preview_bulk_transformation",
-                    details={"invalid_columns": invalid_columns}
-                )
+            _require_columns(df, selected_columns)
+            overrides = per_column_params or {}
             return _preview_summary([
                 self._preview_column(
-                    df, transformation_type,
-                    _column_params(column, global_parameters, per_column_params or {}), preview_rows,
+                    df, transformation_type, _column_params(column, global_parameters, overrides), preview_rows
                 )
                 for column in selected_columns
             ])
