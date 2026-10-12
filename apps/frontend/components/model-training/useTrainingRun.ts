@@ -59,7 +59,9 @@ export function useTrainingRun() {
     }
   };
 
-  const start = (next: TrainingChoice) => begin(next, keepColumns);
+  // A run started from the form keeps nothing: the form shows no kept columns,
+  // so carrying them over from an earlier run would send them unseen.
+  const start = (next: TrainingChoice) => begin(next, []);
 
   /** Run the same training again with these columns kept as features, on top of any kept before. */
   const retrainKeeping = (columns: string[]) => {

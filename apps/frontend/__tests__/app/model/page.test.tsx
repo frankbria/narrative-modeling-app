@@ -381,6 +381,9 @@ describe('ModelPage: the columns training left out (#841)', () => {
       recommended_mode: 'quick', reason: 'a small file', n_rows: 100, n_features: 2,
     });
     mockGetTrainingLogs.mockResolvedValue({ model_id: 'm', logs: [], total_count: 0, has_more: false });
+    // clearAllMocks keeps queued once-values, so an earlier test's leftovers would
+    // shift which run gets which id.
+    mockTrainModel.mockReset();
     mockTrainModel
       .mockResolvedValueOnce({ model_id: 'model_a', status: 'training', message: 'ok' })
       .mockResolvedValueOnce({ model_id: 'model_b', status: 'training', message: 'ok' })
@@ -452,6 +455,31 @@ describe('ModelPage: the columns training left out (#841)', () => {
       WorkflowStage.MODEL_TRAINING,
       expect.objectContaining({ config: { target_column: 'target' } })
     );
+  }, 20000);
+
+  it('starts clean from the form after a kept-column run fails: nothing is kept unseen', async () => {
+    mockGetModelReport.mockResolvedValue({ dataset: { excluded_columns: ['order_ref'] } });
+    mockGetTrainingStatus.mockImplementation(async (modelId: string) =>
+      modelId === 'model_b'
+        ? { ...COMPLETED, model_id: modelId, status: 'failed', error: 'It did not train' }
+        : { ...COMPLETED, model_id: modelId }
+    );
+
+    await trained();
+    fireEvent.click(await screen.findByLabelText('Keep order_ref'));
+    fireEvent.click(screen.getByTestId('retrain-keeping'));
+    await screen.findByText('It did not train', {}, { timeout: 5000 });
+
+    // Back on the form, which shows no kept columns, so it must not send any.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'x1' } });
+    fireEvent.click(screen.getByRole('button', { name: /Start Training/i }));
+
+    await waitFor(() => expect(mockTrainModel).toHaveBeenCalledTimes(3));
+    expect(mockTrainModel).toHaveBeenLastCalledWith({
+      dataset_id: 'ds-1',
+      target_column: 'x1',
+      training_config: { training_mode: 'quick' },
+    });
   }, 20000);
 
   it('shows no panel when nothing was left out, or when the report cannot be read', async () => {
