@@ -66,8 +66,9 @@ Upload a dataset, train a model on it, and serve predictions from it.
 
 Each operation below states what it requires.
 
-- The application's own routes take the signed-in session's token:
-  `Authorization: Bearer <token>`.
+- Most of the application's own routes take the signed-in session's token:
+  `Authorization: Bearer <token>`. An operation that lists no requirement
+  (this document, the health checks) takes none.
 - The model-serving routes, `POST /api/v1/production/v1/models/{{model_id}}/predict`
   and `GET /api/v1/production/v1/models/{{model_id}}/info`, take an API key:
   `X-API-Key: <key>`. Keys are created with `POST /api/v1/production/api-keys`.
@@ -94,8 +95,9 @@ The version is in the path (`/api/v1/...`). It can also be requested with
 
 ## Client code for a deployed model
 
-`GET /api/v1/ml/{{model_id}}/sdk` returns client code generated for that model,
-pointed at its serving URL.
+`GET /api/v1/ml/{{model_id}}/sdk` describes the client code generated for that
+model (its serving URL, a sample record, the languages), and
+`GET /api/v1/ml/{{model_id}}/sdk/{{language}}` returns the code.
 
 ## Support
 

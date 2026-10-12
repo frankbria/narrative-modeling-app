@@ -91,7 +91,10 @@ def live_server(test_s3_bucket):
         yield base
     finally:
         proc.terminate()
-        with contextlib.suppress(Exception):
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()  # a server that ignores SIGTERM must not outlive the test
             proc.wait(timeout=15)
         with contextlib.suppress(Exception):
             MongoClient(mongo_uri, serverSelectionTimeoutMS=2000).drop_database(database)
