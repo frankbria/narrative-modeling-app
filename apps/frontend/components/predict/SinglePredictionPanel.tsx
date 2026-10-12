@@ -2,6 +2,7 @@ import React from 'react';
 import { Send } from 'lucide-react';
 import type { ModelFeatureDescriptor, PredictResponse } from '@/lib/services/model';
 import { PredictionResult } from './PredictionResult';
+import type { FieldValidationError, FieldValues } from './predictionForm';
 
 /** The single-prediction form: one field per raw input feature, then the result. */
 
@@ -32,8 +33,8 @@ interface FeatureFieldProps {
   error?: string;
   /** An error is shown only once the field is touched, so a pristine form has none. */
   touched?: boolean;
-  onChange(value: string): void;
-  onBlur: VoidFunction;
+  onChange(name: string, value: string): void;
+  onTouched(name: string): void;
 }
 
 type FieldAttrs = ReturnType<typeof fieldAttrs> & {
@@ -80,13 +81,13 @@ function FieldControl(props: { feature: ModelFeatureDescriptor; attrs: FieldAttr
 }
 
 function FeatureField(props: FeatureFieldProps) {
-  const { feature, index, value, onChange, onBlur } = props;
+  const { feature, index, value, onChange, onTouched } = props;
   const error = (props.touched && props.error) || null;
   const attrs: FieldAttrs = {
     ...fieldAttrs(feature, index, error),
     value,
-    onBlur,
-    onChange: (e) => onChange(e.target.value),
+    onBlur: () => onTouched(feature.name),
+    onChange: (e) => onChange(feature.name, e.target.value),
   };
   return (
     <div>
@@ -119,14 +120,23 @@ function SubmitButton(props: { loading: boolean; formValid: boolean; onSubmit: V
   );
 }
 
+type TouchedFields = Record<string, boolean>;
+
+function errorsByName(validationErrors: FieldValidationError[]) {
+  const errors: Record<string, string> = {};
+  for (const { name, error } of validationErrors) {
+    if (error) errors[name] = error;
+  }
+  return errors;
+}
+
 export interface SinglePredictionPanelProps {
   features: ModelFeatureDescriptor[];
-  values: Record<string, string>;
-  touched: Record<string, boolean>;
-  /** The current validation error of each field that has one, by feature name. */
-  errors: Record<string, string>;
-  onChange(name: string, value: string): void;
-  onTouched(name: string): void;
+  values: FieldValues;
+  setValues: React.Dispatch<React.SetStateAction<FieldValues>>;
+  touched: TouchedFields;
+  setTouched: React.Dispatch<React.SetStateAction<TouchedFields>>;
+  validationErrors: FieldValidationError[];
   prediction: PredictResponse | null;
   loading: boolean;
   formValid: boolean;
@@ -134,7 +144,11 @@ export interface SinglePredictionPanelProps {
 }
 
 export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
-  const { features, values, touched, errors, onChange, onTouched } = props;
+  const { features, values, touched, setValues, setTouched } = props;
+  const errors = errorsByName(props.validationErrors);
+  const onChange = (name: string, value: string) =>
+    setValues((prev) => ({ ...prev, [name]: value }));
+  const onTouched = (name: string) => setTouched((prev) => ({ ...prev, [name]: true }));
   return (
     <div className="space-y-4">
       <h3 className="font-semibold text-lg">Enter Feature Values</h3>
@@ -147,8 +161,8 @@ export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
             value={values[feature.name] ?? ''}
             error={errors[feature.name]}
             touched={touched[feature.name]}
-            onChange={(value) => onChange(feature.name, value)}
-            onBlur={() => onTouched(feature.name)}
+            onChange={onChange}
+            onTouched={onTouched}
           />
         ))}
       </div>

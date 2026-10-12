@@ -1844,3 +1844,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
   count was deferred to save two splits, until the demo plan showed the single form can
   never send an unseen or blank value. The deferred piece was the only UI path to the
   feature. Walk each surface as its real client before cutting scope.
+- **Stage new files before trusting a green CRAP gate.** The gate and diff-cover read
+  `git diff`, which does not see untracked files. Four new frontend files were invisible
+  until `git add`, and the first "pass" would have been a pass on a third of the change.
+- **One JSX line in a big page is a change to the page component.** The gate reported the
+  predict page as one cc-41 function the moment a line of its JSX changed, after three
+  rounds of smaller complaints that each stopped the run early. Read the page's real
+  measure first (`??` counts twice) and plan the split up front, not line by line.
+- **Splitting an untested function makes its branches someone's job.** The old page's
+  batch failure, lost-connection and download paths had no tests and were hidden inside
+  one large function. As named functions they each needed one, which is the point of the
+  gate and should be in the estimate.
+- **`MagicMock(name="X")` names the mock; it does not set `.name`.** A metadata assertion
+  compared a string with a child mock. Set the attribute after construction.

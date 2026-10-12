@@ -1,248 +1,40 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { useAsyncData } from '@/lib/hooks/useAsyncData';
-import { useWorkflow } from '@/lib/contexts/WorkflowContext';
+import React, { useState } from 'react';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
-import { Target, Upload, FileText, Send, CheckCircle, AlertTriangle } from 'lucide-react';
-import { SinglePredictionPanel } from '@/components/predict/SinglePredictionPanel';
+import { Target } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { BatchPredictionPanel } from '@/components/predict/BatchPredictionPanel';
+import { ErrorBanner, ModeToggle, type PredictionMode } from '@/components/predict/PredictChrome';
+import { SinglePredictionPanel } from '@/components/predict/SinglePredictionPanel';
 import {
-  modelService,
-  type ModelFeatureDescriptor,
-  type PredictResponse,
-  type BatchJobResponse,
-  type BatchJobProgressResponse,
-} from '@/lib/services/model';
-
-interface PredictionInput {
-  [key: string]: string;
-}
-
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
-const BATCH_POLL_INTERVAL_MS = 2000;
+  usePredictionContext,
+  usePredictionForm,
+  useSinglePrediction,
+  useTrainedModelGuard,
+} from '@/components/predict/predictionForm';
+import { useBatchPrediction } from '@/components/predict/useBatchPrediction';
 
 export default function PredictPage() {
   const { data: session } = useSession();
-  const { state, completeStage, requestStageRedirect } = useWorkflow();
   const { ready } = useStageGuard(WorkflowStage.PREDICTION);
 
   const [loading, setLoading] = useState(false);
-  const [predictionMode, setPredictionMode] = useState<'single' | 'batch'>('single');
+  const [predictionMode, setPredictionMode] = useState<PredictionMode>('single');
   // Track which fields the user has interacted with so validation errors only
   // surface once "touched" — no red "Required" on a pristine form (issue #282).
   // (The submit button stays disabled until the form is valid, so blur is the
   // trigger that reveals what still needs filling.)
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Batch state
-  const [batchFile, setBatchFile] = useState<File | null>(null);
-  const [batchJob, setBatchJob] = useState<BatchJobResponse | null>(null);
-  const [batchProgress, setBatchProgress] = useState<BatchJobProgressResponse | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isMountedRef = useRef(true);
-
-  const { data: featureData, error: featuresError } = useAsyncData(
-    async () => {
-      const data = await modelService.getModelFeatures(state.modelId as string);
-      const defaultInput: PredictionInput = {};
-      data.features.forEach((feature) => {
-        defaultInput[feature.name] =
-          feature.type === 'categorical' && feature.options?.length
-            ? String(feature.options[0])
-            : '';
-      });
-      return { features: data.features, defaultInput };
-    },
-    [state.modelId],
-    // No errorMessage override: the original surfaced err.message, and only fell
-    // back to fixed copy for non-Error throws, which is the hook's default.
-    { enabled: ready && !!state.modelId },
-  );
-
-  // Prediction failures are the user's action; a schema-load failure is the
-  // page's. Displayed as one value, tracked apart.
-  const error = actionError ?? featuresError;
-
-  const features = featureData?.features ?? [];
-
-  // The form is seeded from the model's schema and then edited, so edits are an
-  // override tagged with the model they belong to — switching models resets it.
-  const [inputOverride, setInputOverride] = useState<{
-    modelId: string;
-    values: PredictionInput;
-  } | null>(null);
-  const predictionInput =
-    inputOverride && inputOverride.modelId === state.modelId
-      ? inputOverride.values
-      : featureData?.defaultInput ?? {};
-  const setPredictionInput = (
-    update: PredictionInput | ((prev: PredictionInput) => PredictionInput),
-  ) =>
-    setInputOverride({
-      modelId: state.modelId ?? '',
-      values: typeof update === 'function' ? update(predictionInput) : update,
-    });
-
-  useEffect(() => {
-    // Stage access (with a helpful redirect) is handled by useStageGuard, which
-    // also waits for hydration before deciding.
-    if (!ready) return;
-    if (!state.modelId) {
-      // Accessible but no trained model in state — send the user back to train.
-      requestStageRedirect(
-        WorkflowStage.MODEL_TRAINING,
-        'Train a model before making predictions.'
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, state.modelId]);
-
-  // Clean up the progress poller on unmount. The flag is re-armed on every
-  // mount: StrictMode (and any remount) runs cleanup then the effect again, and
-  // a flag that only ever goes false left the poller returning early forever —
-  // "Processing…" never cleared even after the job reported completed.
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
-
-  // ---- Validation (real-time) ----
-  const fieldError = (feature: ModelFeatureDescriptor): string | null => {
-    const raw = predictionInput[feature.name];
-    if (raw === undefined || raw === null || String(raw).trim() === '') {
-      return 'Required';
-    }
-    if (feature.type === 'number' && Number.isNaN(Number(raw))) {
-      return 'Must be a number';
-    }
-    return null;
-  };
-
-  const validationErrors = features
-    .map((f) => ({ name: f.name, error: fieldError(f) }))
-    .filter((e) => e.error);
-  const formValid = features.length > 0 && validationErrors.length === 0;
-
-  const buildRecord = (): Record<string, string | number> => {
-    const record: Record<string, string | number> = {};
-    features.forEach((feature) => {
-      const raw = predictionInput[feature.name];
-      record[feature.name] = feature.type === 'number' ? Number(raw) : raw;
-    });
-    return record;
-  };
-
-  const handleSinglePrediction = async () => {
-    if (!formValid) return;
-    setLoading(true);
-    setActionError(null);
-    setPrediction(null);
-    try {
-      const result = await modelService.predict(state.modelId as string, {
-        data: [buildRecord()],
-        include_probabilities: true,
-        include_explanations: true,
-      });
-      setPrediction(result);
-
-      if (!state.completedStages.has(WorkflowStage.PREDICTION)) {
-        completeStage(WorkflowStage.PREDICTION, {
-          firstPrediction: result.predictions?.[0],
-          timestamp: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Prediction failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  const handleBatchPrediction = async () => {
-    if (!batchFile) return;
-    setLoading(true);
-    setActionError(null);
-    setBatchJob(null);
-    setBatchProgress(null);
-    stopPolling();
-
-    try {
-      const job = await modelService.createBatchJob(state.modelId as string, batchFile, {
-        include_probabilities: true,
-      });
-      setBatchJob(job);
-
-      // Poll progress every 2s until the job reaches a terminal state.
-      pollRef.current = setInterval(async () => {
-        try {
-          const progress = await modelService.getBatchJobProgress(job.job_id);
-          if (!isMountedRef.current) return;
-          setBatchProgress(progress);
-          if (TERMINAL_STATUSES.has(progress.status)) {
-            stopPolling();
-            const finished = await modelService.getBatchJob(job.job_id);
-            if (!isMountedRef.current) return;
-            setBatchJob(finished);
-            setLoading(false);
-            if (
-              progress.status === 'completed' &&
-              !state.completedStages.has(WorkflowStage.PREDICTION)
-            ) {
-              completeStage(WorkflowStage.PREDICTION, {
-                batchPrediction: true,
-                jobId: job.job_id,
-                timestamp: new Date().toISOString(),
-              });
-            }
-          }
-        } catch {
-          stopPolling();
-          if (!isMountedRef.current) return;
-          setLoading(false);
-          setActionError('Lost connection to the batch job. Please refresh.');
-        }
-      }, BATCH_POLL_INTERVAL_MS);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to start batch prediction');
-      setLoading(false);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!batchJob) return;
-    try {
-      const blob = await modelService.downloadBatchResults(batchJob.job_id);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `batch_results_${batchJob.job_id}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to download results');
-    }
-  };
-
-  const batchComplete = batchJob?.status === 'completed';
-  const batchFailed = batchJob?.status === 'failed';
-  const summary = batchJob?.results ?? {};
+  const ctx = usePredictionContext(setLoading, setActionError);
+  const form = usePredictionForm(ctx.modelId, ready);
+  const single = useSinglePrediction(ctx, form);
+  const batch = useBatchPrediction(ctx);
+  useTrainedModelGuard(ready);
 
   if (!session) {
     return (
@@ -260,237 +52,25 @@ export default function PredictPage() {
           Make Predictions
         </h1>
 
-        {error && (
-          <div
-            data-testid="prediction-error"
-            className="mb-4 p-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-sm text-red-700 dark:text-red-300 flex items-center gap-2"
-          >
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Mode Selection */}
-        <div className="mb-6">
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              type="button"
-              data-testid="single-prediction-link"
-              onClick={() => setPredictionMode('single')}
-              className={`p-4 border-2 rounded-lg transition-colors ${
-                predictionMode === 'single'
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
-                  : 'border-border hover:border-gray-400'
-              }`}
-            >
-              <Target className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Single Prediction</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Enter values manually for one prediction
-              </p>
-            </button>
-            <button
-              type="button"
-              data-testid="batch-prediction-link"
-              onClick={() => setPredictionMode('batch')}
-              className={`p-4 border-2 rounded-lg transition-colors ${
-                predictionMode === 'batch'
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
-                  : 'border-border hover:border-gray-400'
-              }`}
-            >
-              <FileText className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-semibold">Batch Prediction</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Upload a CSV file for multiple predictions
-              </p>
-            </button>
-          </div>
-        </div>
+        <ErrorBanner actionError={actionError} featuresError={form.featuresError} />
+        <ModeToggle mode={predictionMode} setMode={setPredictionMode} />
 
         {predictionMode === 'single' && (
           <SinglePredictionPanel
-            features={features}
-            values={predictionInput}
+            features={form.features}
+            values={form.values}
+            setValues={form.setValues}
             touched={touched}
-            errors={Object.fromEntries(validationErrors.map((e) => [e.name, e.error as string]))}
-            onChange={(name, value) => setPredictionInput((prev) => ({ ...prev, [name]: value }))}
-            onTouched={(name) => setTouched((prev) => ({ ...prev, [name]: true }))}
-            prediction={prediction}
+            setTouched={setTouched}
+            validationErrors={form.validationErrors}
+            prediction={single.prediction}
             loading={loading}
-            formValid={formValid}
-            onSubmit={handleSinglePrediction}
+            formValid={form.formValid}
+            onSubmit={single.predict}
           />
         )}
         {predictionMode === 'batch' && (
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Upload Batch File</h3>
-
-            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <input
-                type="file"
-                accept=".csv"
-                data-testid="batch-file-input"
-                onChange={(e) => setBatchFile(e.target.files?.[0] || null)}
-                className="hidden"
-                id="batch-file-input"
-              />
-              <label
-                htmlFor="batch-file-input"
-                className="cursor-pointer text-blue-600 hover:text-blue-700 font-medium"
-              >
-                Click to upload CSV file
-              </label>
-              {batchFile && (
-                <p className="mt-2 text-sm text-muted-foreground">Selected: {batchFile.name}</p>
-              )}
-            </div>
-
-            <div className="p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg">
-              <h4 className="font-semibold mb-2">Expected Format</h4>
-              <p className="text-sm text-foreground">
-                Your CSV should have columns matching the feature names:
-              </p>
-              <p className="text-xs font-mono mt-2 text-muted-foreground">
-                {features.map((f) => f.name).join(', ')}
-              </p>
-            </div>
-
-            {/* Progress */}
-            {batchProgress && !batchComplete && !batchFailed && (
-              <div data-testid="batch-progress" className="p-4 bg-muted rounded-lg border border-border">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">
-                    Processing… {batchProgress.processed_records}/{batchProgress.total_records}
-                  </span>
-                  <span className="font-medium">
-                    {batchProgress.percentage_complete.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className="bg-blue-600 h-2.5 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, batchProgress.percentage_complete)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {batchFailed && (
-              <div className="p-4 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 text-sm text-red-700 dark:text-red-300">
-                Batch prediction failed: {batchJob?.error_message ?? 'unknown error'}
-              </div>
-            )}
-
-            {/* Summary + download */}
-            {batchComplete && (
-              <div
-                data-testid="batch-summary"
-                className="p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900 space-y-3"
-              >
-                <h4 className="font-semibold flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  Batch prediction complete
-                </h4>
-                <div className="grid grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <div className="text-muted-foreground">Total</div>
-                    <div className="font-semibold">{summary.total_predictions ?? 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Succeeded</div>
-                    <div className="font-semibold">{summary.success_count ?? 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Errors</div>
-                    <div className="font-semibold">{summary.error_count ?? 0}</div>
-                  </div>
-                </div>
-
-                {summary.prediction_distribution &&
-                  Object.keys(summary.prediction_distribution).length > 0 && (
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Prediction distribution:</p>
-                      <div className="space-y-1">
-                        {Object.entries(
-                          summary.prediction_distribution as Record<string, number>
-                        ).map(([cls, count]) => (
-                          <div key={cls} className="flex justify-between text-sm">
-                            <span>{cls}:</span>
-                            <span className="font-medium">{count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {summary.confidence_stats &&
-                  Object.keys(summary.confidence_stats).length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Mean confidence:{' '}
-                      {(
-                        (summary.confidence_stats as Record<string, number>).mean * 100
-                      ).toFixed(1)}
-                      %
-                    </p>
-                  )}
-
-                {/* Low-confidence count across the batch (#83). */}
-                {typeof summary.low_confidence_count === 'number' &&
-                  summary.low_confidence_count > 0 && (
-                    <p
-                      data-testid="batch-low-confidence"
-                      className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200"
-                    >
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      {summary.low_confidence_count} low-confidence prediction
-                      {summary.low_confidence_count === 1 ? '' : 's'} — review the
-                      flagged rows in the downloaded CSV.
-                    </p>
-                  )}
-
-                {/* Predictions resting on an input the model had not seen (#838). */}
-                {typeof summary.input_warning_count === 'number' &&
-                  summary.input_warning_count > 0 && (
-                    <p
-                      data-testid="batch-input-warnings"
-                      className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200"
-                    >
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      {summary.input_warning_count} row
-                      {summary.input_warning_count === 1 ? ' has' : 's have'} an input the model had
-                      not seen in training — see the input_warnings column in the downloaded CSV.
-                    </p>
-                  )}
-
-                <button
-                  type="button"
-                  data-testid="download-predictions"
-                  onClick={handleDownload}
-                  className="w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700"
-                >
-                  <FileText className="w-5 h-5" />
-                  Download Results CSV
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              data-testid="start-batch-prediction"
-              onClick={handleBatchPrediction}
-              disabled={!batchFile || loading}
-              className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
-                batchFile && !loading
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
-              }`}
-            >
-              <Send className="w-5 h-5" />
-              {loading ? 'Processing…' : 'Start Batch Prediction'}
-            </button>
-          </div>
+          <BatchPredictionPanel features={form.features} batch={batch} loading={loading} />
         )}
 
         {/* Shared Back / Continue navigation. "Continue to Deployment" enables

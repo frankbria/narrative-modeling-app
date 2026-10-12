@@ -32,9 +32,13 @@ first, so "unseen" now means the same thing under both encodings.
   `result` (cc 10). Reversed: the single-prediction form offers only dropdown values and
   requires every field, so a batch file is the one place a UI user meets an unseen or
   blank input, and without the line the flag would sit unread in a downloaded file.
-- **Frontend:** the single-prediction arm of `app/predict/page.tsx` sits inside a
-  parenthesised ternary that the gate reads as one cc-30 function, so it moves to
-  `components/predict/` as small components and gains `InputWarnings`.
+- **Frontend: the whole prediction page is split.** The plan was to move only the
+  single-prediction arm. The gate attributes any JSX line in the page to `PredictPage`
+  (cc 41), so the page is now a shell over `components/predict/`: `predictionForm.ts`
+  (form, context and single-prediction hooks), `useBatchPrediction.ts`,
+  `SinglePredictionPanel`, `BatchPredictionPanel`, `PredictionResult` (with the new
+  `InputWarnings`) and `PredictChrome`. Seven tests cover batch paths the old page never
+  tested (failed job, lost connection, start failure, download).
 
 ## Steps
 - [x] Engineer tests: a null is imputed like a blank (both encodings, export parity);
@@ -44,4 +48,5 @@ first, so "unseen" now means the same thing under both encodings.
 - [x] Batch tests, then `_predict_chunk`, CSV header and rows.
 - [x] Frontend type, component tests, extraction, `InputWarnings`.
 - [x] Batch summary count and its line in the batch UI.
+- [x] Predict page split under the CRAP ceiling.
 - [ ] CLAUDE.md, gate, cross-family review, PR, demo through the real routes and UI, CI, merge.
