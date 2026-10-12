@@ -429,6 +429,10 @@ jobs:
           # pattern demanded a variable literally named VAR and failed the deploy
           # (#457). The self-check covers that and the quoting/whitespace rules.
           ./scripts/deploy/preflight_staging_env.sh --self-check
+      # Decides whether a silent reviewer becomes an issue (#571): which runs count,
+      # and how a streak of startup failures is read.
+      - name: review bots health self-check
+        run: ./scripts/ci/review_bots_health.sh --self-check
       # Same argument for the hooks: no-push-to-main.sh decides whether a `git push`
       # is allowed, and its first version let `git push -u origin main` through
       # because it read the refspec by position. Both case tables run here.
