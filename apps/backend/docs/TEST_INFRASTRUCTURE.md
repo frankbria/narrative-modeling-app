@@ -388,6 +388,29 @@ with pytest.raises(RetryError) as exc_info:
 assert isinstance(exc_info.value.__cause__, CircuitBreakerOpen)
 ```
 
+### Coverage for one file reports nothing (#572)
+
+`--cov` takes a package, a dotted module or a directory. A **file path is not a source**:
+the tests pass and coverage reports nothing, with only a warning to say so.
+
+```bash
+# These measure app/api/routes/cache.py:
+PYTHONPATH=. uv run pytest tests/test_api/test_cache.py --cov=app.api.routes.cache --cov-report=term-missing
+PYTHONPATH=. uv run pytest tests/test_api/test_cache.py --cov=app/api/routes --cov-report=term-missing
+PYTHONPATH=. uv run pytest tests/test_api/test_cache.py --cov=app --cov-report=term-missing
+
+# This does not:
+PYTHONPATH=. uv run pytest tests/test_api/test_cache.py --cov=app/api/routes/cache.py
+#   CoverageWarning: Module app/api/routes/cache.py was never imported. (module-not-imported)
+#   CoverageWarning: No data was collected. (no-data-collected)
+```
+
+An earlier combination of coverage, numpy and scipy crashed the dotted form during
+scipy's import instead (`TypeError: int() argument must be a string, a bytes-like object
+or a real number, not '_NoValueType'`, raised from `scipy/stats/_tukeylambda_stats.py`).
+It works with the versions in `uv.lock` today. If that error comes back, use the
+directory or package form. CI measures with `--cov=app`.
+
 ## Future Improvements
 
 1. Add pytest-timeout plugin for better test timeout handling
