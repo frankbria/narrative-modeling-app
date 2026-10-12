@@ -19,6 +19,7 @@ import pandas as pd
 from beanie import PydanticObjectId
 
 from app.middleware.error_handlers import internal_error_message
+from app.middleware.upload_cleanup import discard_unowned_uploads
 from app.models.bulk_transformation import (
     BulkJobStatus,
     BulkTransformationJob,
@@ -40,7 +41,7 @@ from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType,
 )
-from app.utils.s3 import downloadable_url
+from app.utils.s3 import downloadable_url, record_request_uploads
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +477,9 @@ class BulkTransformationService:
         and batches database updates for efficiency.
         """
         start_time = time.time()
+        # The job runs after its request has answered, so the request's cleanup cannot
+        # see what it writes; it keeps its own record (#898).
+        uploads = record_request_uploads()
 
         try:
             job.mark_started()
@@ -499,6 +503,9 @@ class BulkTransformationService:
             # error_message is read back verbatim by the job-status route (#637).
             job.mark_failed(internal_error_message("Bulk transformation job"))
             await job.save()
+            # The result file may have been written before the failure; delete it
+            # unless a document already names it.
+            await discard_unowned_uploads(uploads)
 
     async def _run_columns(self, job: BulkTransformationJob, df: pd.DataFrame) -> _ColumnRun | None:
         """Transform the job's columns in order, each on the frame the one before left.

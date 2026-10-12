@@ -228,6 +228,11 @@ def record_request_uploads() -> list[str]:
     return uploads
 
 
+def request_uploads() -> list[str] | None:
+    """The list `record_request_uploads` started in this context; None when nothing records."""
+    return _request_uploads.get()
+
+
 def _recorded(upload):
     """Note each object the wrapped upload writes, so a request that then fails can
     delete what nothing ended up owning."""

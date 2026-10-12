@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.middleware.error_handlers import internal_error_message
+from app.middleware.upload_cleanup import discards_uploads_on_reported_failure
 from app.models.user_data import UserData
 from app.schemas.transformation import (
     AutoCleanRequest,
@@ -159,6 +160,7 @@ async def preview_transformation(
 
 
 @router.post("/apply", response_model=TransformationApplyResponse)
+@discards_uploads_on_reported_failure
 async def apply_transformation(
     request: TransformationApplyRequest,
     current_user_id: str = Depends(get_current_user_id)
@@ -255,6 +257,7 @@ async def _run_pipeline(request: TransformationPipelineRequest, user_id: str) ->
 
 
 @router.post("/pipeline/apply", response_model=TransformationApplyResponse)
+@discards_uploads_on_reported_failure
 async def apply_transformation_pipeline(
     request: TransformationPipelineRequest,
     current_user_id: str = Depends(get_current_user_id)

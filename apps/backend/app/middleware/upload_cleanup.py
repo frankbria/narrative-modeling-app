@@ -10,8 +10,11 @@ get added, and the one that forgets orphans silently. `upload_file_to_s3` record
 it writes; this deletes what no document references once the request has failed.
 """
 
+import functools
 import logging
 import re
+from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.parse import quote
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -22,7 +25,7 @@ from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.services.s3_service import s3_service
-from app.utils.s3 import record_request_uploads
+from app.utils.s3 import record_request_uploads, request_uploads
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +43,10 @@ class UnownedUploadCleanupMiddleware(BaseHTTPMiddleware):
     """On a 4xx/5xx or an unhandled exception, delete the objects this request wrote
     that no document references.
 
-    A 2xx keeps everything, including a 2xx that reports failure in its body. A request
-    cancelled by a client disconnect is not cleaned up either;
-    `scripts/inventory_orphaned_s3_objects.py` reports what is left.
+    A 2xx keeps everything here. A route that reports failure in a 200 body says so
+    itself, through `discards_uploads_on_reported_failure` (#898). A request cancelled
+    by a client disconnect is not cleaned up; `scripts/inventory_orphaned_s3_objects.py`
+    reports what is left.
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -56,6 +60,41 @@ class UnownedUploadCleanupMiddleware(BaseHTTPMiddleware):
         if response.status_code >= 400:
             await _delete_unowned(uploads)
         return response
+
+
+async def discard_unowned_uploads(uploads: list[str] | None = None) -> None:
+    """Delete what this request uploaded and nothing ended up owning (#898).
+
+    The call for a handler that reports failure in a 2xx, where the middleware keeps
+    everything: the counterpart of `enforcement.release(request)` for the quota unit.
+    The same ownership lookup decides, so an object a document names is never deleted,
+    whatever the handler reported. A background job passes the list it started with
+    `record_request_uploads()`; its request has long since answered.
+    """
+    recorded = request_uploads() if uploads is None else uploads
+    if recorded:
+        await _delete_unowned(recorded)
+
+
+def discards_uploads_on_reported_failure(
+    handler: Callable[..., Awaitable[Any]],
+) -> Callable[..., Awaitable[Any]]:
+    """For a route that answers 200 with `success: false` after it may have uploaded.
+
+    The transformation, data-issue and feature apply routes write the new file first and
+    report a later failure in the body. Decorating the route, rather than calling
+    `discard_unowned_uploads` in each failure branch, covers the branches a handler has
+    today and the one added next. Place it under the `@router` decorator.
+    """
+
+    @functools.wraps(handler)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        answer = await handler(*args, **kwargs)
+        if getattr(answer, "success", None) is False:
+            await discard_unowned_uploads()
+        return answer
+
+    return wrapper
 
 
 async def _delete_unowned(keys: list[str]) -> None:

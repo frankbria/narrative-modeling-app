@@ -21,6 +21,7 @@ from fastapi import (
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import release, reserve
 from app.billing.storage import enforce_storage_ceiling
+from app.middleware.upload_cleanup import discards_uploads_on_reported_failure
 from app.models.feature import (
     ExpressionNode,
     NodeType,
@@ -598,6 +599,7 @@ async def delete_feature(
     summary="Apply feature to dataset",
     description="Compute the feature and add it as a new column to the dataset."
 )
+@discards_uploads_on_reported_failure
 async def apply_feature(
     http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),

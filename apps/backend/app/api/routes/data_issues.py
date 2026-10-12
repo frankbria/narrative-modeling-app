@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import enforcement
 from app.middleware.error_handlers import internal_error_message
+from app.middleware.upload_cleanup import discards_uploads_on_reported_failure
 from app.models.data_issue import (
     DataIssue,
     DataIssueRecord,
@@ -387,6 +388,7 @@ async def preview_fix(
 
 
 @router.post("/apply-fix", response_model=FixApplicationResponse)
+@discards_uploads_on_reported_failure
 async def apply_fix(
     request: FixApplicationRequest,
     current_user_id: str = Depends(get_current_user_id)
@@ -531,6 +533,7 @@ async def apply_fix(
 
 
 @router.post("/batch-fix", response_model=BatchFixResponse)
+@discards_uploads_on_reported_failure
 async def batch_apply_fixes(
     request: BatchFixRequest,
     current_user_id: str = Depends(get_current_user_id)
