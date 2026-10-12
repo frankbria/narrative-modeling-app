@@ -174,8 +174,8 @@ class FeatureConfigRequest(BaseModel):
     missing_strategy: Literal["mean", "median", "most_frequent", "constant"] | None = (
         None
     )
-    # Columns never excluded as per-row identifiers (#806), for when the
-    # heuristic drops a real feature.
+    # Columns never excluded as per-row identifiers (#806) or as dates (#840),
+    # for when the heuristic drops a real feature.
     keep_columns: list[str] | None = Field(None, max_length=1000)
 
 

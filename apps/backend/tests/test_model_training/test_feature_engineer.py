@@ -1065,6 +1065,28 @@ class TestDateColumnsAreExcluded:
         assert _block(out, "shipped_at").to_numpy().sum() == 1.0
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_times", [False, True], ids=["dates", "dates-and-times"])
+    async def test_a_kept_datetime_column_is_keyed_the_same_at_fit_and_after(self, with_times):
+        """The engine transforms its test split from the original frame, where the
+        column is still datetime64. Text made per column would differ between a
+        frame whose values are all at midnight and one whose values are not."""
+        X, y = _orders()
+        if with_times:
+            X.loc[X.index[::2], "shipped_at"] += pd.Timedelta(hours=13, minutes=45)
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, keep_columns=["shipped_at"]))
+        fitted = await fe.fit_transform(X, y, "binary_classification")
+        midnight = X[X["shipped_at"] == X["shipped_at"].dt.normalize()].head(20)
+
+        for rows in (X.head(20), midnight):
+            out = await fe.transform(rows)
+            standalone = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(feature_engineer_state(fe))))
+
+            pd.testing.assert_frame_equal(out, fitted.X_transformed.loc[rows.index], check_dtype=False)
+            pd.testing.assert_frame_equal(standalone.transform(rows), out, check_dtype=False)
+            assert (_block(out, "shipped_at").sum(axis=1) == 1.0).all()
+            assert fe.input_warnings(rows) == [{}] * len(rows)
+
+    @pytest.mark.asyncio
     async def test_a_kept_datetime_column_keeps_its_blanks_as_blanks(self):
         X, y = _orders()
         X.loc[:9, "shipped_at"] = pd.NaT

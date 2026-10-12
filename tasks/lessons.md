@@ -1873,3 +1873,15 @@ checked, and the fix is always the same: the claim is a query, so run it.
   meaning.** The fit metadata's `excluded_features` feeds
   `training_config["excluded_identifier_columns"]`, so it stays identifiers-only even
   though the engineer attribute of the same name now holds dates too. Say so at the key.
+- **"Serving only ever sees text" was false: the engine serves itself.** A fix that cast
+  a kept datetime column at fit alone forgot that `AutoMLEngine.run` transforms its test
+  split from the original frame. Every test row keyed as unseen, in silence, and the
+  reported score would have been wrong. Any representation change made at fit belongs in
+  the step `transform` shares (`_prepare`), and its test transforms a slice of the
+  training frame itself, not a frame rebuilt from dicts.
+- **`Series.astype(str)` on datetimes formats by column, not by value.** It drops the
+  time when every value is at midnight, so a slice and the whole can disagree. Format
+  each value by its own rule.
+- **A reviewer's edge case can be the visible corner of an old bug.** "An all-blank kept
+  date crashes imputation" turned out to be "any entirely empty column fails training",
+  on main. Probe the plain version of an odd finding before patching the odd one (#911).

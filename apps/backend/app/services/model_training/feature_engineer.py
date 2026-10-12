@@ -278,7 +278,7 @@ class FeatureEngineer:
             FeatureEngineeringResult with transformed features
         """
         X_transformed = self._exclude_unlearnable(self._coerce_booleans(X.copy()))
-        X_transformed = self._kept_datetimes_as_text(X_transformed)
+        X_transformed = self._datetimes_as_text(X_transformed)
         self._identify_feature_types(X_transformed)
         X_transformed = await self._fit_categorical_steps(X_transformed)
         X_transformed = await self._fit_numeric_steps(X_transformed)
@@ -322,13 +322,14 @@ class FeatureEngineer:
         return X.drop(columns=self.excluded_features)
 
     @staticmethod
-    def _kept_datetimes_as_text(X: pd.DataFrame) -> pd.DataFrame:
-        """A datetime column still here was kept by the caller (``keep_columns``).
-        It is in neither feature list as it is, and the estimator cannot take it, so
-        it becomes the text a CSV would have held, which is also what serving sends.
-        A blank stays a blank."""
+    def _datetimes_as_text(X: pd.DataFrame) -> pd.DataFrame:
+        """A datetime column still in the frame was kept by the caller
+        (``keep_columns``). It is in neither feature list as it is and no estimator
+        takes it, so it becomes the text a CSV would have held. Each value is written
+        on its own (a date, with its time when it has one), so the fit, the engine's
+        test split and a served frame all key it alike. A blank stays a blank."""
         for col in X.columns[[pd.api.types.is_datetime64_any_dtype(t) for t in X.dtypes]]:
-            X[col] = X[col].astype(str).where(X[col].notna())
+            X[col] = X[col].dt.strftime("%Y-%m-%d %H:%M:%S").str.removesuffix(" 00:00:00")
         return X
 
     def _excluded_identifiers(self) -> list[str]:
@@ -394,7 +395,7 @@ class FeatureEngineer:
         NaN only, so a null used to skip the fill a blank got at training (#838)."""
         X = self._coerce_booleans(X.copy())
         # getattr: engineers pickled before #806 have no exclusion list.
-        X = X.drop(columns=getattr(self, "excluded_features", []), errors="ignore")
+        X = self._datetimes_as_text(X.drop(columns=getattr(self, "excluded_features", []), errors="ignore"))
         for col in self.categorical_features:
             if col in X.columns:
                 X[col] = X[col].where(X[col].notna(), np.nan)
@@ -557,7 +558,7 @@ class FeatureEngineer:
     @staticmethod
     def _date_columns(df: pd.DataFrame, keep: list[str]) -> list[str]:
         """Date columns, which are not one-hot encoded (#840). ``keep`` is the
-        caller's override: a kept date is encoded as text (``_kept_datetimes_as_text``
+        caller's override: a kept date is encoded as text (``_datetimes_as_text``
         makes text of a datetime column first)."""
         return [col for col in df.columns if col not in keep and _is_date_column(df[col])]
 
