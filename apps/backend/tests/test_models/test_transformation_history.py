@@ -289,3 +289,14 @@ class TestTheFirstStepCanBeUndone:
         config.current_position = -1
         assert (config.can_undo(), config.can_redo()) == (False, True)
 
+    def test_clearing_the_history_forgets_the_base(self):
+        """The dataset stays where its steps left it, which is not the file the cleared
+        history started from. A base kept here would be restored by the next first
+        step's undo."""
+        config = self._after_one_step(base_version_id="v1")
+        config.total_data_loss = 0.0
+
+        config.clear_transformations()
+
+        assert config.base_version_id is None
+
