@@ -153,7 +153,12 @@ def _read_excel(local_path: str, nrows: int | None):
 def _read_json(local_path: str, nrows: int | None):
     import pandas as pd
 
-    df = pd.read_json(local_path, encoding="utf-8-sig")  # -sig: a leading BOM is not data
+    try:
+        df = pd.read_json(local_path, encoding="utf-8-sig")  # -sig: a leading BOM is not data
+    except ValueError:
+        # One object per line (JSON Lines) is not one document, and must not fall
+        # through to the CSV reader, which would return it as junk columns.
+        df = pd.read_json(local_path, encoding="utf-8-sig", lines=True)
     return df.head(nrows) if nrows else df
 
 

@@ -121,6 +121,25 @@ class TestTheUntypedReaderGoesByTheBytes:
 
         assert list(_read_dataframe(path, None, None).columns) == ["id", "name", "score"]
 
+    def test_one_json_object_per_line_keeps_its_columns(self):
+        """JSON Lines is not one JSON document. Falling back to CSV for it is the junk
+        read this class exists to rule out: `read_csv` accepts it."""
+        path = _write(".jsonl", lambda p: _PEOPLE.to_json(p, orient="records", lines=True))
+
+        out = _read_dataframe(path, None, None)
+
+        assert list(out.columns) == ["id", "name", "score"] and len(out) == 3
+
+    def test_an_array_with_one_record_per_line_keeps_its_columns(self):
+        """The shape `read_csv` took for a three-column table with rows, which a
+        transformation then wrote back over the dataset."""
+        body = "[" + ",\n".join(_PEOPLE.to_json(orient="records", lines=True).splitlines()) + "]"
+        path = _write(".json", lambda p: open(p, "w").write(body))
+
+        out = _read_dataframe(path, None, None)
+
+        assert list(out.columns) == ["id", "name", "score"] and len(out) == 3
+
     def test_an_excel_workbook_keeps_its_columns(self):
         path = _write(".xlsx", lambda p: _PEOPLE.to_excel(p, index=False))
 
