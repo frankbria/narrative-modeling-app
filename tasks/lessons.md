@@ -2081,3 +2081,4 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Asserting the obvious on a second route found the worse bug.** The same test,
   pointed at the PII confirmation route, came back `None`: that route stores no type at
   all, and training cannot read such a row (#937).
+- **Renaming a stored value: grep every reader of the OLD spelling too (#902).** I checked the readers that refused `"excel"` and missed the one that accepted only it: `DataProcessor` behind `/data/process`. Storing `xlsx` would have broken the explore step for every workbook, and the full suite passed because no test processed a workbook by its stored type. Codex found it. Before changing a stored enum-like value, grep both spellings and list who accepts which.

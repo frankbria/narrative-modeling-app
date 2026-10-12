@@ -118,3 +118,13 @@ class TestReadersOfARowStoredAsExcel:
             frame = await FeatureStoreService._load_dataset_frame(meta)
 
         assert list(frame.columns) == ["id", "color"]
+
+    async def test_data_processing(self, setup_database):
+        """The explore page's reader, which knows a workbook as "excel"."""
+        from app.services.data_processing.data_processor import DataProcessor
+
+        row = await self._stored_as_excel()
+
+        processed = await DataProcessor().process_bytes(_workbook(), row.original_filename, file_type=row.file_type)
+
+        assert list(processed.dataframe.columns) == ["id", "color"]
