@@ -45,6 +45,22 @@ def is_production_like() -> bool:
     return any(s in PRODUCTION_LIKE_ENVIRONMENTS for s in environment_signals())
 
 
+def development_uses_a_real_bucket() -> bool:
+    """True when a development run would write to a real S3 bucket (#878).
+
+    That is ENVIRONMENT=development with a bucket and credentials configured and no
+    ``AWS_ENDPOINT_URL``. The documented local setup points S3 at LocalStack through that
+    variable; without it a local run stores its uploads and model artifacts in whatever
+    bucket the credentials reach, beside any deployed environment that uses it.
+    """
+    return (
+        os.getenv("ENVIRONMENT", "").strip().lower() == "development"
+        and not os.getenv("AWS_ENDPOINT_URL")
+        and bool(os.getenv("AWS_ACCESS_KEY_ID"))
+        and bool(resolve_configured_bucket())
+    )
+
+
 def get_environment(default: str = "development") -> str:
     """Return the canonical deployment environment, normalized to lowercase.
 

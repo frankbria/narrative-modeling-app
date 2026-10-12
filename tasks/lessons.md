@@ -2041,3 +2041,12 @@ checked, and the fix is always the same: the claim is a query, so run it.
   from the list; an existing test for that flow caught it.
 - **When jsdom cannot perform a gesture, replace the surface, not the handler.** A stub
   canvas that calls the component's real `onConnect` keeps the state and logic real.
+
+## #878 — the suite's own S3 settings (2026-10-12)
+- **`setdefault` does not protect a variable from `.env`; only a value does.** dotenv
+  skips a variable that is already in the environment, even an empty one. To keep a
+  file's value out, set the variable, to nothing if nothing is what the code should see.
+- **Pick the pinned value by what CI already runs with.** Placeholder credentials looked
+  tidier than blank ones and would have changed which code paths the PR gate takes.
+- **A getenv default is not used when the variable is set to an empty string.** Fixtures
+  that read `os.getenv(NAME, "test")` needed `os.getenv(NAME) or "test"`.

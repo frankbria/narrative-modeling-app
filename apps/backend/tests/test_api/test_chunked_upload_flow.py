@@ -711,6 +711,9 @@ class TestCompletionAgainstRealS3:
         from app.utils import s3 as s3_module
 
         monkeypatch.setenv("AWS_BUCKET_NAME", test_s3_bucket)
+        # The suite carries no credentials of its own (#878); LocalStack takes any.
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
         monkeypatch.setenv(
             "AWS_ENDPOINT_URL", os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
         )

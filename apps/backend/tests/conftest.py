@@ -25,6 +25,17 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # variable here — the lowest-precedence name, so a test's own AWS_S3_BUCKET still wins,
 # and tests that assert the *unconfigured* behaviour `monkeypatch.delenv` it explicitly.
 os.environ.setdefault("AWS_BUCKET_NAME", "test-bucket")
+# A test run never reaches AWS and never carries real credentials (#878). Assigned, not
+# setdefault, and before any app import: `app.config` loads the developer's .env without
+# override, so whatever is absent here is filled in from it, and that file (like the
+# developer's shell) holds the credentials of the bucket staging uses. Every client the
+# app builds reads this endpoint (`create_s3_client`); with no credentials `S3Service` is
+# in mock mode and `get_s3_client()` is None, exactly as in CI, which has no .env.
+# LocalStack tests set what they need through their own fixtures (`real_s3_env`).
+os.environ["AWS_ENDPOINT_URL"] = os.environ.get("S3_ENDPOINT_URL") or "http://localhost:4566"
+os.environ["AWS_ACCESS_KEY_ID"] = ""
+os.environ["AWS_SECRET_ACCESS_KEY"] = ""
+os.environ["AWS_SESSION_TOKEN"] = ""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -388,9 +399,10 @@ def s3_client(request):
 
     # Use LocalStack by default for testing
     # Note: LocalStack accepts any credentials - these are local-only placeholders
+    # `or`, not a getenv default: the suite blanks the credential variables (#878).
     endpoint_url = os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
-    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
-    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID") or "test"
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY") or "test"
     region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
     try:
