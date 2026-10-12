@@ -474,6 +474,9 @@ export default function TransformationPipeline({
     const flow = recipeFlow(recipeSteps(recipe));
     setNodes(flow.nodes);
     setEdges(flow.edges);
+    // The recipe's nodes are node-1..node-n, so the next step added must be node-(n+1):
+    // left where it was, the counter handed out an id the recipe had just used.
+    nodeIdCounterRef.current = flow.nodes.length;
     closeRecipes();
   };
 

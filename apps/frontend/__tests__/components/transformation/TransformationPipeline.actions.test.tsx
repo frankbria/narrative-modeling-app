@@ -224,6 +224,27 @@ describe('TransformationPipeline recipes (#859)', () => {
     });
   });
 
+  it('gives a step added after a loaded recipe an id of its own', async () => {
+    serveRecipes({ '/transformations/recipes': mine });
+    const sameKey = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const user = await openRecipes();
+    await user.click(await screen.findByText('Tidy names'));
+
+    await user.click(await screen.findByRole('button', { name: /add remove duplicates/i }));
+    respond('/transformations/preview', { success: true, preview_data: [], stats_before: {}, stats_after: {} });
+    await user.click(screen.getByRole('button', { name: /^preview$/i }));
+
+    await waitFor(() => {
+      const preview = fetchMock().mock.calls.find(([url]) => String(url).endsWith('/transformations/preview'));
+      expect(JSON.parse(preview![1].body).transformation_steps.map((s: { transformation_type: string }) => s.transformation_type)).toEqual([
+        'trim_whitespace', 'fill_missing', 'remove_duplicates',
+      ]);
+    });
+    // Two nodes called node-1 is what React reports as two children with the same key.
+    expect(sameKey.mock.calls.filter(([message]) => String(message).includes('same key'))).toEqual([]);
+    sameKey.mockRestore();
+  });
+
   it('says so when the recipes cannot be loaded', async () => {
     serveRecipes({});
 
