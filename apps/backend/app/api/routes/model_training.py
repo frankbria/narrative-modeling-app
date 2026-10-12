@@ -994,9 +994,7 @@ async def train_model_task(
                 training_job.add_log("error", reason)
                 await _record(training_job)
             except Exception as save_exc:
-                logger.error(
-                    f"Failed to persist FAILED status for {model_id}: {save_exc}"
-                )
+                _log_unrecorded(model_id, "FAILED", save_exc)
 
     except TrainingCancelledError:
         logger.info(f"Model training cancelled by user: {model_id}")
@@ -1009,15 +1007,13 @@ async def train_model_task(
                 training_job.add_log("info", "Training cancelled by user")
                 await _record(training_job)
             except Exception as save_exc:
-                logger.error(
-                    f"Failed to persist CANCELLED status for {model_id}: {save_exc}"
-                )
+                _log_unrecorded(model_id, "CANCELLED", save_exc)
 
     except TrainingNoLongerInFlight as ended:
         # Whatever ended the job has had the last word: the reaper wrote its terminal
         # state and refunded the run, or an erasure removed the row. Writing anything
         # here would overwrite that verdict, or put the row back.
-        logger.warning("Training job %s was %s under its task; nothing is recorded", model_id, ended)
+        _log_unrecorded(model_id, "", ended)
 
     except Exception as e:
         # Full traceback stays server-side, correlated by model_id; the user gets
@@ -1033,9 +1029,7 @@ async def train_model_task(
                 training_job.add_log("error", reason)
                 await _record(training_job)
             except Exception as save_exc:
-                logger.error(
-                    f"Failed to persist FAILED status for {model_id}: {save_exc}"
-                )
+                _log_unrecorded(model_id, "FAILED", save_exc)
         # Swallow here: this runs as a fire-and-forget BackgroundTask, so the
         # failure is recorded on the TrainingJob (above) rather than re-raised
         # into a context where nothing can handle it.
@@ -1137,6 +1131,15 @@ async def _refreshed_job(job: TrainingJob) -> TrainingJob:
         await _discard_model(job.model_id, job.user_id)
         raise TrainingNoLongerInFlight("deleted")
     return fresh
+
+
+def _log_unrecorded(model_id: str, status: str, exc: Exception) -> None:
+    """Say why a job's terminal state was not written. A job ended or erased under its
+    task is expected and not an error; a write that failed is one."""
+    if isinstance(exc, TrainingNoLongerInFlight):
+        logger.warning("Training job %s was %s under its task; nothing is recorded", model_id, exc)
+    else:
+        logger.error(f"Failed to persist {status} status for {model_id}: {exc}")
 
 
 async def _record(job: TrainingJob) -> None:

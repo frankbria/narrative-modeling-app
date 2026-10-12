@@ -77,12 +77,14 @@ async def test_a_job_erased_during_the_fit_saves_no_model_and_is_not_written_bac
     assert await _stored("model_936_fit") is None
 
 
-async def test_a_job_erased_during_a_fit_that_then_fails_is_not_written_back(setup_database):
+async def test_a_job_erased_during_a_fit_that_then_fails_is_not_written_back(setup_database, caplog):
     run = _Run("model_936_fails", fit_fails=True)
 
     await _erased_during_the_fit(run)
 
     assert await _stored("model_936_fails") is None
+    assert "Failed to persist" not in caplog.text, "an erased job is not a failed write"
+    assert "nothing is recorded" in caplog.text
 
 
 async def _erased_while_the_model_is_stored(run: _Run) -> None:
