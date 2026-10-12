@@ -97,6 +97,25 @@ async def test_a_job_the_reaper_ended_while_it_queued_does_not_train(setup_datab
     assert (after.status, after.error) == (JobStatus.FAILED, ended.error), "the reaper's verdict stands"
 
 
+async def test_a_job_erased_while_it_queued_does_not_train_and_is_not_written_back(setup_database):
+    """An erasure of the dataset or the account deletes the job's row. The task holds a
+    copy in memory; training on, or saving that copy, would undo the erasure."""
+    await _job("model_901_erased")
+    download, seen = AsyncMock(return_value=CSV), []
+
+    async with _EverySlotTaken() as queue:
+        task = asyncio.create_task(_run(_dataset(), "model_901_erased", download, seen))
+        await asyncio.sleep(0.2)
+        await TrainingJob.find_one(TrainingJob.model_id == "model_901_erased").delete()
+
+        queue.free()
+        await task
+
+    assert seen == []
+    download.assert_not_awaited()
+    assert await _stored("model_901_erased") is None, "the task must not write its copy back"
+
+
 async def test_the_waiting_line_does_not_overwrite_a_cancellation(setup_database):
     """The line was written with a save of the task's whole in-memory document, which
     put `cancellation_requested` back to what it was when the task loaded it."""
@@ -145,6 +164,18 @@ class TestOnTakingTheSlot:
         )
 
         with pytest.raises(TrainingNoLongerInFlight):
+            await _require_in_flight(loaded)
+
+    async def test_a_job_whose_row_is_gone_is_not_run(self, setup_database):
+        from app.api.routes.model_training import (
+            TrainingNoLongerInFlight,
+            _require_in_flight,
+        )
+
+        loaded = await _job("model_901_gone")
+        await loaded.delete()
+
+        with pytest.raises(TrainingNoLongerInFlight, match="deleted"):
             await _require_in_flight(loaded)
 
     async def test_a_status_read_that_fails_does_not_block_a_valid_run(self, setup_database):

@@ -1065,18 +1065,30 @@ async def _training_slot(training_job: TrainingJob | None) -> AsyncIterator[None
 
 
 async def _require_in_flight(training_job: TrainingJob) -> None:
-    """On taking a slot: stop a job that was cancelled or ended while it queued.
+    """On taking a slot: stop a job that was cancelled, ended or erased while it queued.
 
-    Re-read, because both are written by someone else: the cancel endpoint sets the
-    flag, and the reaper fails a job whose heartbeat stopped (the pump over the wait
-    makes that rare, not impossible: a stalled worker misses beats too). A failed read
-    falls back to the task's own copy, so it never blocks a valid run.
+    Re-read, because all three are written by someone else: the cancel endpoint sets
+    the flag, the reaper fails a job whose heartbeat stopped (the pump over the wait
+    makes that rare, not impossible: a stalled worker misses beats too), and an erasure
+    deletes the row. A read that fails is not evidence of any of them, so it never
+    blocks a valid run.
 
     Raises:
         TrainingCancelledError: a cancellation was requested.
-        TrainingNoLongerInFlight: the job is already in a terminal state.
+        TrainingNoLongerInFlight: the job is in a terminal state, or its row is gone.
     """
-    fresh = await _refreshed_job(training_job)
+    try:
+        fresh = await TrainingJob.find_one(
+            TrainingJob.model_id == training_job.model_id,
+            TrainingJob.user_id == training_job.user_id,
+        )
+    except Exception as exc:
+        logger.warning(f"Could not re-read TrainingJob {training_job.model_id} on taking a slot: {exc}")
+        return
+    if fresh is None:
+        # Erased with its dataset or its account. Training on would build a model for
+        # data the tenant has asked to have removed.
+        raise TrainingNoLongerInFlight("deleted")
     if fresh.cancellation_requested:
         raise TrainingCancelledError("Training cancelled while queued")
     if fresh.status not in (JobStatus.PENDING, JobStatus.RUNNING):
