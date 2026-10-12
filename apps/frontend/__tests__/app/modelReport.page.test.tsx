@@ -149,12 +149,25 @@ describe('ModelReportPage', () => {
     expect(screen.getByText('customer_id')).toBeInTheDocument();
   });
 
+  it('names the columns left out because they held no values (#911)', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      dataset: { ...base.dataset, excluded_empty_columns: ['notes', 'discount'] },
+    });
+    render(<ModelReportPage />);
+
+    await waitFor(() => expect(screen.getByText('notes, discount')).toBeInTheDocument());
+    expect(screen.getByText('Excluded as empty')).toBeInTheDocument();
+    expect(screen.queryByText('Excluded as dates')).not.toBeInTheDocument();
+  });
+
   it('shows no exclusion row when nothing was excluded', async () => {
     render(<ModelReportPage />);
 
     await waitFor(() => expect(screen.getByText('Training rows')).toBeInTheDocument());
     expect(screen.queryByText('Excluded as identifiers')).not.toBeInTheDocument();
     expect(screen.queryByText('Excluded as dates')).not.toBeInTheDocument();
+    expect(screen.queryByText('Excluded as empty')).not.toBeInTheDocument();
   });
 
   it('surfaces caveats', async () => {

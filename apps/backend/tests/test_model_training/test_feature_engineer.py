@@ -338,13 +338,13 @@ class TestFeatureEngineer:
         result = await engineer.fit_transform(single_col)
         assert result.X_transformed.shape[1] == 1
         
-        # All missing values
+        # All missing values: nothing to learn from, said plainly (#911)
         all_missing = pd.DataFrame({
             'col1': [np.nan] * 5,
             'col2': [np.nan] * 5
         })
-        result = await engineer.fit_transform(all_missing)
-        assert result.X_transformed.isnull().sum().sum() == 0
+        with pytest.raises(ValueError, match="empty"):
+            await engineer.fit_transform(all_missing)
 
 def _churn_frame(n: int, seed: int) -> pd.DataFrame:
     rng = np.random.RandomState(seed)
@@ -1100,7 +1100,7 @@ class TestDateColumnsAreExcluded:
     async def test_a_frame_of_only_ids_and_dates_fails_with_a_clear_message(self):
         X, y = _orders()
 
-        with pytest.raises(ValueError, match="per-row identifier or a date"):
+        with pytest.raises(ValueError, match="per-row identifier, a date or empty"):
             await FeatureEngineer().fit_transform(X[["customer_id", "order_date"]], y, "binary_classification")
 
     @pytest.mark.asyncio
@@ -1155,3 +1155,138 @@ async def test_the_engine_excludes_dates_and_says_so_in_the_training_log():
     assert result.metadata["feature_engineering"]["excluded_features"] == []
     assert "Excluded date columns from the features: signup_date" in events
     assert not any(name.startswith("signup_date") for name in engine.feature_engineer.feature_names)
+
+
+def _with_empty_columns(n: int = 200) -> tuple[pd.DataFrame, pd.Series]:
+    """What pandas makes of a CSV with unused columns: an empty column is float64,
+    all NaN, whatever it was meant to hold."""
+    import io
+
+    rng = np.random.RandomState(9)
+    lines = ["plan,region,notes,discount,spend"]
+    for _ in range(n):
+        lines.append(
+            f"{rng.choice(['basic', 'pro'])},{rng.choice(['north', 'south'])},,,{rng.uniform(1, 100):.1f}"
+        )
+    X = pd.read_csv(io.StringIO("\n".join(lines)))
+    return X, pd.Series(rng.choice([0, 1], n))
+
+
+class TestEmptyColumnsAreExcluded:
+    """#911: an imputer drops a column it has no value to learn a fill from, and the
+    engineer answered the shape mismatch by dropping EVERY categorical column, so a
+    file with one unused column failed with a KeyError."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("encoding_method", ["onehot", "label"])
+    async def test_an_empty_column_is_left_out_and_the_others_are_intact(self, encoding_method):
+        X, y = _with_empty_columns()
+        assert X[["notes", "discount"]].isna().all().all() and str(X["notes"].dtype) == "float64"
+        fe = FeatureEngineer(FeatureEngineeringConfig(encoding_method=encoding_method, select_features=False))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_empty == ["notes", "discount"]
+        assert fe.excluded_features == ["notes", "discount"]
+        assert result.metadata["excluded_empty_columns"] == ["notes", "discount"]
+        assert result.metadata["excluded_features"] == [] and result.metadata["excluded_date_columns"] == []
+        assert fe.numeric_features == ["spend"] and fe.categorical_features == ["plan", "region"]
+        assert not result.X_transformed.isna().any().any()
+        assert all(pd.api.types.is_numeric_dtype(t) for t in result.X_transformed.dtypes)
+
+    @pytest.mark.asyncio
+    async def test_an_empty_text_column_and_missing_handling_turned_off(self):
+        X, y = _with_empty_columns()
+        X["notes"] = pd.Series([None] * len(X), dtype=object)
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, handle_missing=False))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_empty == ["notes", "discount"]
+        assert result.feature_names == ["spend", "plan_basic", "plan_pro", "region_north", "region_south"]
+
+    @pytest.mark.asyncio
+    async def test_keep_columns_cannot_keep_a_column_with_nothing_in_it(self):
+        """The all-blank date a caller kept was how #840's review found this."""
+        X, y = _with_empty_columns()
+        X["shipped_at"] = pd.Series([pd.NaT] * len(X), dtype="datetime64[ns]")
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(select_features=False, keep_columns=["shipped_at", "notes"])
+        )
+
+        await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.excluded_empty == ["notes", "discount", "shipped_at"]
+        assert fe.excluded_dates == []  # an empty date is reported as empty
+        assert fe.categorical_features == ["plan", "region"]
+
+    @pytest.mark.asyncio
+    async def test_serving_and_the_export_ignore_an_empty_column(self):
+        X, y = _with_empty_columns()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(X, y, "binary_classification")
+        record = {"plan": "pro", "region": "south", "spend": 40.0}
+
+        without = await _served(fe, [record])
+        with_empty = await _served(fe, [{**record, "notes": "now filled in", "discount": 0.2}])
+
+        pd.testing.assert_frame_equal(without, with_empty)
+        assert fe.input_warnings(pd.DataFrame([{**record, "notes": None}])) == [{}]
+        assert feature_engineer_state(fe)["excluded_features"] == ["notes", "discount"]
+
+    @pytest.mark.asyncio
+    async def test_a_frame_with_nothing_but_empty_and_excluded_columns_says_so(self):
+        X, y = _with_empty_columns()
+        X.insert(0, "customer_id", [f"C{i:05d}" for i in range(len(X))])
+
+        with pytest.raises(ValueError, match="per-row identifier, a date or empty"):
+            await FeatureEngineer().fit_transform(X[["customer_id", "notes", "discount"]], y, "binary_classification")
+
+    @pytest.mark.asyncio
+    async def test_the_training_log_names_the_empty_columns(self):
+        X, y = _with_empty_columns()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+
+        await fe.fit_transform(X, y, "binary_classification")
+
+        assert fe.exclusion_notes() == ["Excluded empty columns from the features: notes, discount"]
+
+    @pytest.mark.asyncio
+    async def test_an_engineer_pickled_before_911_still_serves_and_reports(self):
+        X, y = _orders()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(X, y, "binary_classification")
+        old = pickle.loads(pickle.dumps(fe))
+        del old.__dict__["excluded_empty"]  # the attribute did not exist before #911
+
+        out = await old.transform(X.head(3))
+
+        assert list(out.columns) == fe.feature_names
+        assert old.exclusion_notes() == [
+            "Excluded per-row identifier columns from the features: customer_id",
+            "Excluded date columns from the features: order_date, shipped_at",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_the_engine_trains_on_a_file_with_an_empty_column():
+    """#911 on the real pipeline: the split, the fit, the test-split transform and
+    an estimator, with the exclusion under the metadata key that is persisted."""
+    from app.services.model_training.automl_engine import AutoMLEngine
+
+    df = _churn_frame(200, seed=3)
+    df.insert(1, "notes", np.nan)
+    events = []
+
+    async def on_event(event):
+        events.append(event.message)
+
+    engine = AutoMLEngine(max_models=1, cv_folds=2, random_state=0)
+    result = await engine.run(
+        df, "churned", FeatureEngineeringConfig(select_features=False), event_callback=on_event
+    )
+
+    assert result.metadata["feature_engineering"]["excluded_empty_columns"] == ["notes"]
+    assert "Excluded empty columns from the features: notes" in events
+    assert "plan_basic" in engine.feature_engineer.feature_names
+    assert result.best_model.test_score > 0.8

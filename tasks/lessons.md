@@ -1885,3 +1885,18 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A reviewer's edge case can be the visible corner of an old bug.** "An all-blank kept
   date crashes imputation" turned out to be "any entirely empty column fails training",
   on main. Probe the plain version of an odd finding before patching the odd one (#911).
+
+## 2026-10-12 — #911 (a file with an entirely empty column trains)
+
+- **A recovery branch that drops data to make shapes agree is a bug waiting for its
+  input.** `_handle_missing_values` dropped every categorical column when the imputer
+  returned fewer than it was given. Its comment said "handle case where some columns were
+  dropped". Had the next step not raised, models would have trained without their
+  categoricals. When a library drops something, find out what and why, exclude that thing
+  on purpose and report it.
+- **Feed a test what the reader produces, not what the column was meant to hold.** An
+  empty CSV column is `float64` NaN, not empty strings, which is why it took the
+  low-cardinality route into the categoricals. The fixture reads a real CSV string.
+- **An old test that asserts "no error" on degenerate input may be asserting the bug.**
+  `test_handle_edge_cases` expected an all-NaN frame to fit. It now expects the plain
+  message that there is nothing to learn from.

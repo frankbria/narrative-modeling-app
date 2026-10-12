@@ -202,3 +202,27 @@ async def test_excluded_date_columns_persist_on_the_model():
     training_config = save_model.call_args.args[4]["training_config"]
     assert training_config["excluded_date_columns"] == ["order_date"]
     assert training_config["excluded_identifier_columns"] == []
+
+
+@pytest.mark.asyncio
+async def test_every_kind_of_excluded_column_persists_on_the_model():
+    """#911: empty columns join identifiers (#806) and dates (#840), each under its
+    own key, and a run that reports none still writes the three keys."""
+    _, save_model = await _run_train_task(
+        {},
+        metadata={
+            "feature_engineering": {
+                "excluded_features": ["customer_id"],
+                "excluded_date_columns": ["order_date"],
+                "excluded_empty_columns": ["notes"],
+            }
+        },
+    )
+    training_config = save_model.call_args.args[4]["training_config"]
+    assert training_config["excluded_identifier_columns"] == ["customer_id"]
+    assert training_config["excluded_date_columns"] == ["order_date"]
+    assert training_config["excluded_empty_columns"] == ["notes"]
+
+    _, save_model = await _run_train_task({}, metadata={})
+    training_config = save_model.call_args.args[4]["training_config"]
+    assert [training_config[f"excluded_{kind}_columns"] for kind in ("identifier", "date", "empty")] == [[], [], []]
