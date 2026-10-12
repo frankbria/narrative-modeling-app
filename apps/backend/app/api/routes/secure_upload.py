@@ -551,22 +551,36 @@ async def abort_chunked_upload(
 
 
 def _summary_frame(df: pd.DataFrame, pii_detections) -> pd.DataFrame:
-    """The frame to hand the AI summary task: EVERY flagged column masked, so the
+    """The frame to hand the AI summary task: EVERY flagged column redacted, so the
     summary never ships PII to OpenAI — regardless of whether the caller chose to
     mask their *stored* copy (``mask_pii=False`` is a storage choice, not consent
     to send PII to a third party) (#490).
 
-    ``min_confidence=0.0`` masks every column that produced a detection, not just
-    those above the storage/report threshold (#679): a weak value-pattern match
-    (e.g. a minority of 9-digit values scoring confidence in
-    (PATTERN_MATCH_FLOOR, 0.5]) sets ``has_pii`` and routes here, but the default
-    ``mask_pii`` threshold (>0.5) would have left that column's raw values to
-    flow on to OpenAI."""
-    return (
-        pii_detector.mask_pii(df, pii_detections, min_confidence=0.0)
-        if pii_detections
-        else df
-    )
+    Every column that produced a detection, whatever its confidence (#679): a weak
+    value-pattern match still sets ``has_pii`` and routes here.
+
+    Redacted, not masked (#718). ``PIIDetector.mask_pii`` is for the stored copy and
+    keeps part of each value so a person can still read it: the first and last
+    character and the length of a name, the last four digits of an SSN or a card, an
+    email's domain. A third party gets none of that.
+    """
+    if not pii_detections:
+        return df
+    safe = df.copy()
+    for column in {detection.column_name for detection in pii_detections}:
+        safe[column] = _redacted(safe[column])
+    return safe
+
+
+def _redacted(column: pd.Series) -> pd.Series:
+    """Each distinct value as a numbered token, missing values left missing.
+
+    The summary still sees the column's shape (how many values, how many distinct),
+    so what it says about the column stays true, and nothing of a value itself.
+    """
+    codes, _ = pd.factorize(column)
+    tokens = pd.Series([f"[redacted {code + 1}]" for code in codes], index=column.index, dtype=object)
+    return tokens.where(column.notna(), column)
 
 
 async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):

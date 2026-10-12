@@ -5,6 +5,7 @@ Identifies and helps manage sensitive data in uploaded datasets
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -162,47 +163,37 @@ class PIIDetector:
             return f"Possible {pii_type.value} detected. Review data and apply appropriate protection."
     
     def mask_pii(self, df: pd.DataFrame, detections: list[PIIDetection],
-                 mask_char: str = '*',
-                 min_confidence: float = MEDIUM_RISK_CONFIDENCE) -> pd.DataFrame:
+                 mask_char: str = '*') -> pd.DataFrame:
         """
-        Mask detected PII in DataFrame
+        Mask detected PII in a DataFrame that will be **stored**: medium-risk
+        detections and above, each value keeping part of itself so the copy stays
+        readable (an email's domain, the last four digits of an SSN). Nothing bound
+        for a third party goes through here; see ``secure_upload._summary_frame``.
 
         Args:
             df: DataFrame with PII
             detections: List of PII detections
             mask_char: Character to use for masking
-            min_confidence: Mask a detection only when its confidence is strictly
-                above this. Defaults to MEDIUM_RISK_CONFIDENCE (masking medium and
-                above) — the storage-masking caller's contract. Pass ``0.0`` to
-                mask **every** flagged column regardless of confidence, which is
-                what a summary bound for a third party (OpenAI) needs: a weak
-                value-pattern match (confidence in (PATTERN_MATCH_FLOOR, 0.5]) is
-                still a column the detector flagged, and its raw values must not
-                leave (#679).
 
         Returns:
             DataFrame with masked PII
         """
         df_masked = df.copy()
-
         for detection in detections:
-            if detection.confidence > min_confidence:
+            if detection.confidence > MEDIUM_RISK_CONFIDENCE:
                 column = detection.column_name
-                
-                if detection.pii_type == PIIType.EMAIL:
-                    df_masked[column] = df_masked[column].apply(self._mask_email)
-                elif detection.pii_type == PIIType.PHONE:
-                    df_masked[column] = df_masked[column].apply(self._mask_phone)
-                elif detection.pii_type == PIIType.SSN:
-                    df_masked[column] = df_masked[column].apply(lambda x: self._mask_sensitive(x, keep_last=4))
-                elif detection.pii_type == PIIType.CREDIT_CARD:
-                    df_masked[column] = df_masked[column].apply(lambda x: self._mask_sensitive(x, keep_last=4))
-                else:
-                    # Generic masking for other types
-                    df_masked[column] = df_masked[column].apply(lambda x: self._mask_generic(x))
-        
+                df_masked[column] = df_masked[column].apply(self._mask_for(detection.pii_type))
         return df_masked
-    
+
+    def _mask_for(self, pii_type: PIIType) -> Callable[[Any], Any]:
+        """The storage mask for a PII type; the generic one for any type without its own."""
+        return {
+            PIIType.EMAIL: self._mask_email,
+            PIIType.PHONE: self._mask_phone,
+            PIIType.SSN: self._mask_sensitive,
+            PIIType.CREDIT_CARD: self._mask_sensitive,
+        }.get(pii_type, self._mask_generic)
+
     def _mask_email(self, email: str) -> str:
         """Mask email address keeping first char and domain"""
         if pd.isna(email):

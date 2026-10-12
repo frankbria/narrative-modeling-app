@@ -175,3 +175,53 @@ def test_summary_frame_passes_through_when_no_pii():
 
     df = pd.DataFrame({"amount": [1, 2, 3]})
     assert _summary_frame(df, []) is df
+
+
+def _flagged_frame():
+    from app.api.routes.secure_upload import pii_detector
+
+    df = pd.DataFrame({
+        "name": ["John Doe", "Jane Smith", "John Doe", None],
+        "ssn": ["123-45-6789", "987-65-4321", "111-22-3333", "444-55-6666"],
+        "email": ["john@acme.com", "jane@acme.com", "al@other.org", "bo@other.org"],
+        "amount": [1, 2, 3, 4],
+    })
+    detections = pii_detector.detect_pii_in_dataframe(df)
+    assert {d.column_name for d in detections} >= {"name", "ssn", "email"}, "the detector must flag all three"
+    return df, detections
+
+
+@pytest.mark.unit
+def test_summary_frame_gives_away_nothing_of_a_value():
+    """#718: the storage masks keep a silhouette on purpose (the first and last
+    character and the length of a name, the last four digits of an SSN, an email's
+    domain). The summary goes to a third party and needs none of it."""
+    from app.api.routes.secure_upload import _summary_frame
+
+    df, detections = _flagged_frame()
+
+    safe = _summary_frame(df, detections)
+
+    sent = " ".join(safe[["name", "ssn", "email"]].astype(str).to_numpy().ravel())
+    for leaked in ("J******e", "John", "Doe", "6789", "4321", "acme.com", "other.org", "j***"):
+        assert leaked not in sent, leaked
+    for column in ("name", "ssn", "email"):
+        assert safe[column].dropna().str.fullmatch(r"\[redacted \d+\]").all(), column
+
+
+@pytest.mark.unit
+def test_summary_frame_keeps_the_shape_of_a_flagged_column():
+    """Distinct values stay distinct and missing ones stay missing, so what the summary
+    says about the column (how many values, how many unique) is still true."""
+    from app.api.routes.secure_upload import _summary_frame
+
+    df, detections = _flagged_frame()
+
+    safe = _summary_frame(df, detections)
+
+    assert safe["name"].nunique() == 2 and safe["name"].isna().sum() == 1
+    assert safe["name"].iloc[0] == safe["name"].iloc[2] != safe["name"].iloc[1]
+    assert safe["ssn"].nunique() == 4
+    assert safe["amount"].tolist() == [1, 2, 3, 4]
+    assert df["name"].iloc[0] == "John Doe", "the caller's frame is not changed"
+
