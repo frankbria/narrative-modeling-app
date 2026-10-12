@@ -137,17 +137,27 @@ describe('reference data', () => {
 });
 
 describe('exportPipelineCode', () => {
-  it('downloads the script the API returns', async () => {
-    const createObjectURL = jest.fn(() => 'blob:script');
+  it('downloads the script the API returns, under the name it gives', async () => {
+    const scripts: Blob[] = [];
+    const createObjectURL = jest.fn((script: Blob) => (scripts.push(script), 'blob:script'));
     Object.assign(window.URL, { createObjectURL, revokeObjectURL: jest.fn() });
-    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    fetchMock().mockResolvedValueOnce({ ok: true, status: 200, blob: async () => new Blob(['print(1)']) });
+    const downloaded: string[] = [];
+    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloaded.push(this.download);
+    });
+    fetchMock().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ language: 'python', filename: 'transformation_pipeline.py', code: 'print(1)' }),
+    });
 
     await exportPipelineCode(steps);
 
-    expect(fetchMock().mock.calls[0][0]).toBe(`${API_URL}/transformations/export-code`);
-    expect(createObjectURL).toHaveBeenCalled();
-    expect(click).toHaveBeenCalled();
+    const [url, init] = fetchMock().mock.calls[0];
+    expect(url).toBe(`${API_URL}/transformations/export-code`);
+    expect(JSON.parse(init.body)).toEqual({ steps });
+    expect(scripts.map((script) => script.size)).toEqual(['print(1)'.length]);
+    expect(downloaded).toEqual(['transformation_pipeline.py']);
     click.mockRestore();
   });
 

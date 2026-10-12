@@ -794,64 +794,17 @@ class RecipeManager:
 
     @staticmethod
     def export_recipe_to_code(recipe: TransformationRecipe, language: str = "python") -> str:
-        """Export recipe to executable code"""
-        if language == "python":
-            code = "# Auto-generated transformation code\n"
-            code += "import pandas as pd\n"
-            code += "import numpy as np\n\n"
-            code += f"# Recipe: {recipe.name}\n"
-            if recipe.description:
-                code += f"# Description: {recipe.description}\n"
-            code += f"# Created: {recipe.created_at}\n\n"
-            
-            code += "def apply_transformations(df):\n"
-            code += "    df_transformed = df.copy()\n\n"
-            
-            for step in recipe.steps:
-                code += f"    # Step {step.order + 1}: {step.transformation_type}\n"
-                
-                # Generate code based on transformation type
-                if step.transformation_type == "remove_duplicates":
-                    subset = step.parameters.get('subset')
-                    keep = step.parameters.get('keep', 'first')
-                    if subset:
-                        code += f"    df_transformed = df_transformed.drop_duplicates(subset={subset}, keep='{keep}')\n"
-                    else:
-                        code += f"    df_transformed = df_transformed.drop_duplicates(keep='{keep}')\n"
-                
-                elif step.transformation_type == "fill_missing":
-                    columns = step.parameters.get('columns', [])
-                    value = step.parameters.get('value')
-                    method = step.parameters.get('method')
-                    
-                    if columns:
-                        for col in columns:
-                            if value is not None:
-                                code += f"    df_transformed['{col}'] = df_transformed['{col}'].fillna({repr(value)})\n"
-                            elif method:
-                                if method in ['mean', 'median']:
-                                    code += f"    df_transformed['{col}'] = df_transformed['{col}'].fillna(df_transformed['{col}'].{method}())\n"
-                                elif method == 'mode':
-                                    code += f"    df_transformed['{col}'] = df_transformed['{col}'].fillna(df_transformed['{col}'].mode()[0] if len(df_transformed['{col}'].mode()) > 0 else np.nan)\n"
-                                else:
-                                    code += f"    df_transformed['{col}'] = df_transformed['{col}'].fillna(method='{method}')\n"
-                
-                elif step.transformation_type == "trim_whitespace":
-                    columns = step.parameters.get('columns', [])
-                    if columns:
-                        for col in columns:
-                            code += f"    df_transformed['{col}'] = df_transformed['{col}'].astype(str).str.strip()\n"
-                    else:
-                        code += "    # Trim whitespace from all string columns\n"
-                        code += "    string_columns = df_transformed.select_dtypes(include=['object']).columns\n"
-                        code += "    for col in string_columns:\n"
-                        code += "        df_transformed[col] = df_transformed[col].astype(str).str.strip()\n"
-                
-                code += "\n"
-            
-            code += "    return df_transformed\n"
-            
-            return code
-        
-        else:
+        """The recipe as a pandas script: the one the pipeline's Export Code gives (#860).
+
+        It used to be written here by hand for three of the engine's types, and had
+        drifted: it emitted nothing for drop_missing or for a fill with no column named.
+
+        Raises:
+            ValueError: a step the engine does not run, or with invalid parameters.
+            NotImplementedError: a language other than Python.
+        """
+        if language != "python":
             raise NotImplementedError(f"Code generation for {language} not implemented")
+        from app.services.transformation_engine.code_export import pipeline_script
+
+        return pipeline_script([(step.transformation_type, step.parameters) for step in recipe.steps])

@@ -221,19 +221,23 @@ export async function fetchDatasetRows(datasetId: string): Promise<PreviewTable>
   return table(body.data, body.columns);
 }
 
-/** Download the pipeline as a Python script. A failure throws, so the page shows it
- * instead of the button silently doing nothing. */
-export async function exportPipelineCode(steps: PipelineStep[]): Promise<void> {
-  const response = await fetch(`${API_URL}/transformations/export-code`, {
-    method: 'POST',
-    headers: await headers(),
-    body: JSON.stringify({ transformations: steps }),
-  });
-  if (!response.ok) throw await apiError(response, 'Exporting the pipeline as code failed');
-  const url = window.URL.createObjectURL(await response.blob());
+export function exportRequest(steps: PipelineStep[]) {
+  return { steps: steps.map((s) => ({ type: s.type, parameters: s.parameters })) };
+}
+
+function download(filename: string, text: string): void {
+  const url = window.URL.createObjectURL(new Blob([text], { type: 'text/x-python' }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'transformation_pipeline.py';
+  link.download = filename;
   link.click();
   window.URL.revokeObjectURL(url);
+}
+
+/** Download the pipeline as a Python script. A failure throws, so the page shows it
+ * instead of the button silently doing nothing. The button used to post to this path
+ * before any route served it (#860). */
+export async function exportPipelineCode(steps: PipelineStep[]): Promise<void> {
+  const script = await post('/transformations/export-code', exportRequest(steps), 'Exporting the pipeline as code failed');
+  download(String(script.filename), String(script.code));
 }
