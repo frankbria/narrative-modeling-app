@@ -44,33 +44,51 @@ MAIN_PY = REPO_ROOT / "apps" / "backend" / "app" / "main.py"
 #: (`sub_filter`, `charset`) are irrelevant here — the HMAC covers the request.
 REQUEST_ALTERING_DIRECTIVES = ("proxy_set_body", "rewrite")
 
-#: Stripe events are a few KB. Anything near the server-wide 100M on an
-#: unauthenticated endpoint is a free memory-pressure lever.
-MAX_WEBHOOK_BODY_MB = 8
+#: The cap on the webhook's request body, pinned to what ships (#596). Stripe events are
+#: a few KB, so 2 MB is already three orders of magnitude of room, and anything near the
+#: server-wide 100M on an unauthenticated endpoint is a free memory-pressure lever. This
+#: used to be a band (anything up to 8M passed) with no reason given for the 8. A
+#: different cap is a deliberate edit of the config and of this line together.
+WEBHOOK_BODY_CAP = "2m"
+
+
+def _block_end(text: str, start: int) -> int:
+    """The offset just past the brace that closes the block opened before ``start``."""
+    depth, i = 1, start
+    while depth and i < len(text):
+        depth += {"{": 1, "}": -1}.get(text[i], 0)
+        i += 1
+    return i
 
 
 def _server_block() -> str:
-    """The HTTPS server block — the one that terminates real traffic."""
+    """The body of the HTTPS server block — the one that terminates real traffic.
+
+    Exactly that block, not "from `listen 443` to the end of the file" (#596). nginx
+    only ever compares the locations of one server, so a server appended later (a
+    metrics listener, a second domain) must not have its locations weighed against
+    this one's: that reads as a false green when the other block happens to route the
+    path correctly, and as a false red when it holds a longer unrelated location.
+    """
     text = NGINX_CONF.read_text()
-    # The plain-HTTP block only redirects; take everything from the TLS listener on.
-    m = re.search(r"^\s*listen\s+(\[::\]:)?443\b", text, re.M)
-    assert m, "expected a `listen 443` TLS server block"
-    return text[m.start() :]
+    servers = [
+        text[m.end() : _block_end(text, m.end()) - 1]
+        for m in re.finditer(r"^server\s*\{", text, re.M)
+    ]
+    tls = [body for body in servers if re.search(r"^\s*listen\s+(\[::\]:)?443\b", body, re.M)]
+    assert len(tls) == 1, (
+        f"expected exactly one server block listening on 443, found {len(tls)} "
+        f"(of {len(servers)} server blocks). With more than one, decide which serves the "
+        "webhook's host and scope this guard to it by server_name."
+    )
+    return tls[0]
 
 
 def _location_blocks(text: str) -> dict[str, tuple[str, int]]:
     """Map each ``location <match>`` to its (brace-balanced body, start offset)."""
     blocks: dict[str, tuple[str, int]] = {}
     for m in re.finditer(r"^[^\S\n]*location\s+([^\s{]+(?:\s+[^\s{]+)?)\s*\{", text, re.M):
-        match = m.group(1).strip()
-        depth, i = 1, m.end()
-        while depth and i < len(text):
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-            i += 1
-        blocks[match] = (text[m.end() : i - 1], m.start())
+        blocks[m.group(1).strip()] = (text[m.end() : _block_end(text, m.end()) - 1], m.start())
     return blocks
 
 
@@ -220,11 +238,9 @@ def test_webhook_body_is_capped_at_the_edge():
         f"location {match} must set its own `client_max_body_size` — it otherwise "
         f"inherits the server-wide 100M on an unauthenticated endpoint"
     )
-    size, unit = int(m.group(1)), m.group(2).lower()
-    megabytes = size / 1024 if unit == "k" else size
-    assert 0 < megabytes <= MAX_WEBHOOK_BODY_MB, (
-        f"location {match}: client_max_body_size {m.group(0)!r} is outside the "
-        f"sane range for Stripe events (0 < n <= {MAX_WEBHOOK_BODY_MB}M)"
+    assert f"{m.group(1)}{m.group(2).lower()}" == WEBHOOK_BODY_CAP, (
+        f"location {match}: {m.group(0)!r} is not the pinned cap {WEBHOOK_BODY_CAP!r}. "
+        "Change both together if the cap is meant to move."
     )
 
 
@@ -250,3 +266,72 @@ def test_stripe_signature_header_is_not_stripped():
     assert not re.search(r"proxy_pass_request_headers\s+off\s*;", body), (
         f"location {match} must not disable request header forwarding"
     )
+
+
+# --- #596: the guard looks at one server block, whatever else the file holds ---------
+
+_APPENDED_SERVER = """
+server {{
+    listen 9100;
+    location /webhooks/stripe/webhook {{
+        proxy_pass http://{upstream};
+        proxy_http_version 1.1;
+        client_max_body_size 2m;
+    }}
+    location / {{
+        proxy_pass http://narrative_frontend;
+    }}
+}}
+"""
+
+
+def _use_config(monkeypatch, tmp_path, text: str) -> None:
+    """Point this module's guard at ``text`` instead of the repository's config."""
+    import sys
+
+    path = tmp_path / "nginx.conf"
+    path.write_text(text)
+    monkeypatch.setattr(sys.modules[__name__], "NGINX_CONF", path)
+
+
+def _the_guard_passes() -> bool:
+    try:
+        test_webhook_path_is_routed_to_the_backend_upstream()
+        test_no_regex_location_outranks_the_webhook_block()
+        test_webhook_location_precedes_the_catch_all()
+    except AssertionError:
+        return False
+    return True
+
+
+def test_another_servers_longer_location_is_not_a_false_red(monkeypatch, tmp_path):
+    """A second server with a longer location that proxies to the frontend: nginx never
+    weighs it against the TLS server's, so the guard must still pass."""
+    _use_config(monkeypatch, tmp_path, NGINX_CONF.read_text() + _APPENDED_SERVER.format(upstream="narrative_frontend"))
+
+    assert _the_guard_passes()
+
+
+def test_another_servers_correct_location_is_not_a_false_green(monkeypatch, tmp_path):
+    """The TLS server's webhook block is broken, and a second server holds a longer
+    location that does proxy to the backend. The guard must still fail."""
+    real = NGINX_CONF.read_text()
+    start = real.index("location /webhooks/")
+    broken = real[:start] + real[start:].replace("narrative_backend", "narrative_frontend", 1)
+    assert broken != real, "the mutation must change the webhook block's upstream"
+    _use_config(monkeypatch, tmp_path, broken + _APPENDED_SERVER.format(upstream="narrative_backend"))
+
+    assert not _the_guard_passes()
+
+
+def test_a_second_tls_server_fails_loudly_with_the_count(monkeypatch, tmp_path):
+    second_tls = _APPENDED_SERVER.format(upstream="narrative_backend").replace("listen 9100;", "listen 443 ssl;")
+    _use_config(monkeypatch, tmp_path, NGINX_CONF.read_text() + second_tls)
+
+    try:
+        _server_block()
+    except AssertionError as refused:
+        assert "found 2" in str(refused)
+    else:
+        raise AssertionError("two servers on 443 must not be guarded as if they were one")
+

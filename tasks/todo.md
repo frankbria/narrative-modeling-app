@@ -1,20 +1,17 @@
-# Issue #718: the AI summary's masked frame leaks a silhouette of each value
+# Issue #596: the nginx webhook guard's server-block slice is unguarded
 
 ## Problem
-`_summary_frame` masks the frame bound for OpenAI with the storage masks. Those keep
-part of the value on purpose, for a user who wants the stored copy readable:
-`_mask_generic` keeps the first and last character and the length (`"J******e"`),
-`_mask_sensitive` the last four digits of an SSN or card, `_mask_email` the first
-character and the domain, `_mask_phone` the area code and last two digits. The issue
-names the first; the summary path has all four.
+`test_nginx_webhook_route.py::_server_block()` takes everything from the first
+`listen 443` to the end of the file. Correct while the TLS server is the last block;
+a server appended later would have its locations compared with the TLS server's, which
+nginx never does: a false green or a false red.
 
 ## Plan
-- [ ] RED: tests in `tests/test_api/test_ai_summary_safe.py` and one assertion in the
-      `/upload/secure` payload test.
-- [ ] `_summary_frame` replaces every flagged column's values with numbered tokens
-      (`[redacted 1]`, `[redacted 2]`, …). Distinct values stay distinct and missing ones
-      stay missing, so the summary's counts for the column remain true; nothing of a
-      value's length or characters is left.
-- [ ] `mask_pii` loses `min_confidence`, which only the summary passed. Its body is cc 7,
-      so the edit is also a split (a mask-per-type lookup).
-- [ ] CLAUDE.md (the #490/#679 paragraph), gate, review, demo, PR.
+- [ ] `_server_block()` returns the body of the one server block that listens on 443,
+      brace-balanced, and fails with the count when there is not exactly one.
+- [ ] Mutation tests on a copy of the real config: a second server appended with a
+      longer location does not change the verdict in either direction; a second TLS
+      server fails loudly.
+- [ ] `MAX_WEBHOOK_BODY_MB`: pinned to the shipped `2m`. Stripe events are a few KB and
+      2 MB is already three orders of magnitude of room; a different cap should be a
+      deliberate edit of both files, not a value anywhere up to 8.
