@@ -2031,3 +2031,13 @@ checked, and the fix is always the same: the claim is a query, so run it.
   written far from the engine and had silently fallen behind it by one whole type.
 - **Editing by exact multi-line match fails on trailing whitespace.** The engine file has
   blank lines that hold four spaces. Insert at single-line anchors instead.
+
+## #862 — the order steps run in (2026-10-12)
+- **Two views of one thing need one function that says what the thing is.** The canvas
+  had arrows, the list had an order, and each request mapped `nodes` on its own. Naming
+  the order once (`planOrder`) is what let every caller be moved onto it.
+- **A new rule needs every way of reaching the state checked.** Refusing a step "not
+  connected" was right for the canvas and wrong for a recipe loaded and then extended
+  from the list; an existing test for that flow caught it.
+- **When jsdom cannot perform a gesture, replace the surface, not the handler.** A stub
+  canvas that calls the component's real `onConnect` keeps the state and logic real.

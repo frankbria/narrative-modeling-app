@@ -18,11 +18,15 @@ export function recipeFlow(steps: PipelineStep[]): { nodes: TransformationFlowNo
       parameters: step.parameters as TransformationNodeData['parameters'],
     },
   }));
-  const edges: Edge[] = nodes.slice(0, -1).map((node, index) => ({
-    id: `edge-${index}`,
+  return { nodes, edges: chainEdges(nodes) };
+}
+
+/** One arrow from each step to the next: the canvas drawing of a listed order. */
+export function chainEdges(nodes: { id: string }[]): Edge[] {
+  return nodes.slice(0, -1).map((node, index) => ({
+    id: `edge-${node.id}-${nodes[index + 1].id}`,
     source: node.id,
     target: nodes[index + 1].id,
     markerEnd: { type: MarkerType.ArrowClosed },
   }));
-  return { nodes, edges };
 }
