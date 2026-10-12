@@ -172,6 +172,22 @@ describe('PredictPage — single prediction result', () => {
   });
 });
 
+describe('PredictPage — field controls', () => {
+  it('renders a typed text field for a category the model has no option list for', async () => {
+    svc.getModelFeatures.mockResolvedValueOnce({
+      ...FEATURES,
+      features: [...FEATURES.features, { name: 'note', type: 'categorical', options: null }],
+    } as never);
+    render(<PredictPage />);
+
+    const note = await screen.findByLabelText('note');
+    expect(note.tagName).toBe('INPUT');
+    expect(note).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('city').tagName).toBe('SELECT');
+    expect(screen.getByLabelText('age')).toHaveAttribute('type', 'number');
+  });
+});
+
 describe('PredictPage — enrichment panels (#83)', () => {
   it('shows the low-confidence warning with the threshold when flagged', async () => {
     svc.predict.mockResolvedValue({

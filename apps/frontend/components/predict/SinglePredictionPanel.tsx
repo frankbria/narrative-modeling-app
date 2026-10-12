@@ -28,8 +28,10 @@ interface FeatureFieldProps {
   feature: ModelFeatureDescriptor;
   index: number;
   value: string;
-  /** Shown only once the field is touched, so a pristine form has no errors. */
-  error: string | null;
+  /** The field's validation error, if it has one. */
+  error?: string;
+  /** An error is shown only once the field is touched, so a pristine form has none. */
+  touched?: boolean;
   onChange(value: string): void;
   onBlur: VoidFunction;
 }
@@ -78,7 +80,8 @@ function FieldControl(props: { feature: ModelFeatureDescriptor; attrs: FieldAttr
 }
 
 function FeatureField(props: FeatureFieldProps) {
-  const { feature, index, value, error, onChange, onBlur } = props;
+  const { feature, index, value, onChange, onBlur } = props;
+  const error = (props.touched && props.error) || null;
   const attrs: FieldAttrs = {
     ...fieldAttrs(feature, index, error),
     value,
@@ -142,7 +145,8 @@ export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
             feature={feature}
             index={index}
             value={values[feature.name] ?? ''}
-            error={touched[feature.name] ? (errors[feature.name] ?? null) : null}
+            error={errors[feature.name]}
+            touched={touched[feature.name]}
             onChange={(value) => onChange(feature.name, value)}
             onBlur={() => onTouched(feature.name)}
           />
