@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 
 from beanie import Document, PydanticObjectId
 
@@ -132,6 +133,20 @@ def _s3_key(
     return key.split("#", 1)[0] or None
 
 
+def _id_of(parent: DatasetMetadata | UserData) -> str:
+    """The id a parent's children are keyed by."""
+    return parent.dataset_id if isinstance(parent, DatasetMetadata) else str(parent.id)
+
+
+def _locations_of(parent: DatasetMetadata | UserData) -> list[str]:
+    """Every object a parent points at: its current file, the original upload, and each
+    superseded current-file it moved through as transformations rewrote it (#525). Each
+    of those is referenced by nothing once ``s3_url`` moved off it, so a GDPR erasure
+    would otherwise leave the customer's intermediate data in the bucket."""
+    earlier = [getattr(parent, "source_s3_url", None), *(parent.superseded_s3_urls or [])]
+    return [location for location in (parent.file_path or parent.s3_url, *earlier) if location]
+
+
 class DatasetErasureService:
     """Ordered, idempotent cascade erasure with a deletion manifest + audit log."""
 
@@ -214,91 +229,92 @@ class DatasetErasureService:
         # one manifest across many datasets — an earlier dataset's failure must
         # not retain later, cleanly-erased datasets' parents).
         failures_start = len(manifest.failures)
+        parents = await self._owned_parents(dataset_id, user_id, _parent)
 
-        # Resolve parent(s) in either id-space (ownership-checked).
-        parent_meta = _parent if isinstance(_parent, DatasetMetadata) else None
-        parent_ud = _parent if isinstance(_parent, UserData) else None
-        if parent_meta is None and parent_ud is None:
-            parent_meta = await DatasetMetadata.find_one(
-                DatasetMetadata.dataset_id == dataset_id,
-                DatasetMetadata.user_id == user_id,
-            )
-            parent_ud = await self._get_userdata(dataset_id, user_id)
-
-        # Dual-write: a DatasetMetadata-backed dataset (created via
-        # DatasetService.create_dataset) ALSO has a legacy UserData row sharing
-        # its s3_url and carrying PII (contains_pii/pii_report/data_preview) +
-        # Link[UserData] children. There is no id link, so resolve it by
-        # (user_id, s3_url) — else erasing a string dataset_id orphans that PII
-        # (the central bug in issue #259).
-        if parent_meta is not None and parent_ud is None and parent_meta.s3_url:
-            # Guard on a truthy s3_url: `s3_url == None`/"" would match unrelated
-            # UserData rows with a null/empty url for this user.
-            parent_ud = await UserData.find_one(
-                UserData.user_id == user_id, UserData.s3_url == parent_meta.s3_url
-            )
-
-        # No owned parent -> nothing this caller may erase. Idempotent no-op.
-        if parent_meta is None and parent_ud is None:
-            return False
-
-        # --- string / DatasetMetadata id-space (only if that parent is owned) ---
-        if parent_meta is not None:
-            # 1. MLModel children first (delete_model sweeps their S3 artifacts + doc).
-            await self._erase_models(dataset_id, user_id, manifest)
-            # 2. DatasetVersion S3 objects (the tracked transformation intermediates,
-            #    #525) BEFORE their docs are deleted below — the docs are the only
-            #    reference to those objects.
-            await self._erase_version_artifacts({"dataset_id": dataset_id}, manifest)
-            # 3. Remaining string-keyed children (incl. the DatasetVersion docs).
-            for model_cls in _STRING_KEYED_MODELS:
-                await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
-            # 3. S3 source + redis, then parent LAST.
-            await self._delete_s3(
-                _s3_key(
-                    parent_meta.file_path or parent_meta.s3_url,
-                    self.s3_service.bucket_name,
-                    manifest,
-                ),
-                manifest,
-            )
-            # The original upload + every superseded current-file this dataset moved
-            # through as transformations rewrote it (#525): each is referenced by
-            # nothing once s3_url moved off it, so a GDPR erasure would otherwise
-            # leave the customer's intermediate data in the bucket.
-            for old in [parent_meta.source_s3_url, *(parent_meta.superseded_s3_urls or [])]:
-                if old:
-                    await self._delete_s3(
-                        _s3_key(old, self.s3_service.bucket_name, manifest), manifest
-                    )
-            await self._evict_redis(dataset_id, manifest)
-
-        # --- legacy UserData id-space (dual-write twin or a legacy-only upload) ---
-        if parent_ud is not None:
-            for model_cls, field in _LINK_KEYED_MODELS:
-                await self._delete_many(model_cls, {f"{field}.$id": parent_ud.id}, manifest)
-            await self._delete_s3(
-                _s3_key(
-                    parent_ud.file_path or parent_ud.s3_url,
-                    self.s3_service.bucket_name,
-                    manifest,
-                ),
-                manifest,
-            )
-            for old in parent_ud.superseded_s3_urls or []:  # superseded current-files (#525)
-                await self._delete_s3(
-                    _s3_key(old, self.s3_service.bucket_name, manifest), manifest
-                )
-            await self._evict_redis(str(parent_ud.id), manifest)
-
+        # Children are keyed by whichever id their writer knew the dataset by: training
+        # stores the upload's ObjectId, the transformation path the twin's string id
+        # (#943). Sweeping only the id the caller passed left every trained model, its
+        # S3 artifacts and its training job behind while reporting success.
+        for known_id in dict.fromkeys(_id_of(p) for p in parents):
+            await self._erase_keyed_children(known_id, user_id, manifest)
+        for parent in parents:
+            await self._erase_files_of(parent, manifest)
         # Parents LAST — retained as re-discoverable tombstones if THIS dataset's
         # cascade left residuals, so the owner can re-run to finish.
-        if parent_meta is not None:
-            await self._delete_parent_if_clean(parent_meta, "dataset_metadata", manifest, failures_start)
-        if parent_ud is not None:
-            await self._delete_parent_if_clean(parent_ud, "user_data", manifest, failures_start)
+        for parent in parents:
+            await self._delete_parent_if_clean(
+                parent, type(parent).Settings.name, manifest, failures_start
+            )
+        return bool(parents)
 
-        return True
+    async def _owned_parents(
+        self, dataset_id: str, user_id: str, given: DatasetMetadata | UserData | None
+    ) -> list[DatasetMetadata | UserData]:
+        """Both documents of the dataset the caller owns, metadata first; empty when
+        the caller owns neither (an idempotent no-op for the cascade).
+
+        A dataset is dual-written with no id link between its documents, so the one
+        the id did not find is resolved through ``(user_id, s3_url)``, in either
+        direction: erasing by the string id must reach the legacy ``UserData`` row and
+        its PII (the central bug in #259), and erasing by the upload's id must not
+        leave the ``DatasetMetadata`` twin behind (#943).
+        """
+        meta, upload = await self._lookup(dataset_id, user_id, given)
+        if meta is None:
+            meta = await self._twin(DatasetMetadata, upload, user_id)
+        elif upload is None:
+            upload = await self._twin(UserData, meta, user_id)
+        return [p for p in (meta, upload) if p is not None]
+
+    async def _lookup(
+        self, dataset_id: str, user_id: str, given: DatasetMetadata | UserData | None
+    ) -> tuple[DatasetMetadata | None, UserData | None]:
+        """The document(s) ``dataset_id`` names in either id-space, ownership-checked."""
+        if isinstance(given, DatasetMetadata):
+            return given, None
+        if isinstance(given, UserData):
+            return None, given
+        meta = await DatasetMetadata.find_one(
+            DatasetMetadata.dataset_id == dataset_id,
+            DatasetMetadata.user_id == user_id,
+        )
+        return meta, await self._get_userdata(dataset_id, user_id)
+
+    @staticmethod
+    async def _twin(model_cls: type[Document], known: Document | None, user_id: str) -> Any:
+        # Guard on a truthy s3_url: `s3_url == None`/"" would match unrelated rows
+        # with a null/empty url for this user.
+        s3_url = getattr(known, "s3_url", None)
+        if not s3_url:
+            return None
+        return await model_cls.find_one({"user_id": user_id, "s3_url": s3_url})
+
+    async def _erase_keyed_children(
+        self, dataset_id: str, user_id: str, manifest: DeletionManifest
+    ) -> None:
+        """Everything stored under one of the dataset's ids."""
+        # 1. MLModel children first (delete_model sweeps their S3 artifacts + doc).
+        await self._erase_models(dataset_id, user_id, manifest)
+        # 2. DatasetVersion S3 objects (the tracked transformation intermediates,
+        #    #525) BEFORE their docs are deleted below — the docs are the only
+        #    reference to those objects.
+        await self._erase_version_artifacts({"dataset_id": dataset_id}, manifest)
+        # 3. Remaining string-keyed children (incl. the DatasetVersion docs).
+        for model_cls in _STRING_KEYED_MODELS:
+            await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
+
+    async def _erase_files_of(
+        self, parent: DatasetMetadata | UserData, manifest: DeletionManifest
+    ) -> None:
+        """One parent's DBRef-linked children, S3 objects and cache entries."""
+        if isinstance(parent, UserData):
+            for model_cls, field in _LINK_KEYED_MODELS:
+                await self._delete_many(model_cls, {f"{field}.$id": parent.id}, manifest)
+        for location in _locations_of(parent):
+            await self._delete_s3(
+                _s3_key(location, self.s3_service.bucket_name, manifest), manifest
+            )
+        await self._evict_redis(_id_of(parent), manifest)
 
     async def _erase_models(self, dataset_id: str, user_id: str, manifest: DeletionManifest) -> None:
         """Delete every MLModel for the dataset, sweeping its S3 artifacts via delete_model."""

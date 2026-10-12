@@ -1,30 +1,21 @@
-# Issue #915: generated SDKs and stored deployment endpoints use http:// behind the TLS proxy
+# Issue #943: erasing a dataset leaves the models trained on it
 
 ## Problem
-`deploy_model` and `_serving_endpoint_for` build the customer-facing serving URL from
-`request.base_url`. gunicorn trusts `X-Forwarded-Proto` from loopback only and nginx
-connects from the Docker bridge, so on a deployed instance the URL is `http://…`.
-
-Confirmed on staging (AC1): a request to the backend's own port carrying
-`X-Forwarded-Proto: https` gets a slash redirect to `http://…`. Stored endpoints there
-(AC4): 0 models, 0 endpoints, 0 starting `http://`.
-
-## Decision
-The public base URL comes from configuration, not from forwarded headers. Trusting the
-headers means uvicorn also rewrites `request.client` from `X-Forwarded-For`, which the
-rate limiter deliberately never reads (#455). A configured URL trusts nothing a client sends.
+Training keys `MLModel.dataset_id` and `TrainingJob.dataset_id` on `str(UserData.id)`.
+`_erase_one_dataset` runs the model cascade, the version artifacts and the string-keyed
+sweep only when a `DatasetMetadata` parent exists, and only for the id it was called
+with. So erasing a UI upload (no twin), or a `/datasets/upload` pair by its metadata id,
+leaves the models, their S3 artifacts and their training jobs, and reports success.
+Erasing such a pair by its `UserData` id also leaves the `DatasetMetadata` twin.
 
 ## Plan
-- [ ] RED: `tests/test_api/test_public_serving_url.py`: with `PUBLIC_API_URL` set, deploy
-      stores and the SDK compiles in `https://…`, whatever Host or forwarded headers the
-      request carries; unset, the request's own base is used (local development).
-- [ ] `app/config.py::public_api_url()`; `model_training._public_api_base(request)` used by
-      both builders.
-- [ ] `docker-compose.staging.yml`: backend gets `PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}`,
-      the value the frontend is already built with, so no new variable to provision. A test
-      pins the wiring.
-- [ ] `.env.example` note, CLAUDE.md, gate, review, demo, PR.
-
-## Out of scope
-- `--forwarded-allow-ips` (see Decision).
-- A script to rewrite stored `http://` endpoints: none exist on staging.
+- [ ] RED: `tests/test_services/test_erasure_reaches_trained_models.py`: a model and job
+      stored the way the task stores them (under the upload's id), erased by each id for
+      a twinless upload, a same-id twin (#850) and a different-id pair; a sibling
+      dataset's model survives; the manifest counts.
+- [ ] `_erase_one_dataset`: resolve both parents in both directions (`(user_id, s3_url)`),
+      then sweep keyed children for every id the dataset is known by. Split it (cc 23)
+      into helpers under the CRAP ceiling, keeping the order: models, version objects,
+      keyed documents, files, parents last.
+- [ ] Count orphaned models on staging (AC5), counts only.
+- [ ] CLAUDE.md, gate, review, demo against real S3, PR.
