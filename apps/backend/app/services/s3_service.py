@@ -7,6 +7,7 @@ import uuid
 
 from botocore.exceptions import ClientError
 
+from app.config import development_uses_a_real_bucket
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
 from app.utils.s3 import (
     allowed_bucket,
@@ -249,6 +250,39 @@ def load_dataframe_from_s3(
             pass
 
 
+# Logged once per process (#878): the service is built at import and again by several
+# services per request, so the first one to find the misconfiguration says it and the
+# rest stay quiet. The bucket's name stays out of the line: the repository is public and
+# logs get pasted into issues.
+_warned_of_a_real_bucket = False
+_REAL_BUCKET_IN_DEVELOPMENT = (
+    "ENVIRONMENT is development and AWS_ENDPOINT_URL is not set: uploads and model "
+    "artifacts are written to a real S3 bucket, beside any other environment that uses "
+    "it. Set AWS_ENDPOINT_URL=http://localhost:4566 to use LocalStack "
+    "(docker compose -f docker-compose.test.yml up -d localstack)."
+)
+
+
+def _warn_once_of_a_real_bucket_in_development() -> None:
+    global _warned_of_a_real_bucket
+    if _warned_of_a_real_bucket or not development_uses_a_real_bucket():
+        return
+    _warned_of_a_real_bucket = True
+    logger.warning(_REAL_BUCKET_IN_DEVELOPMENT)
+
+
+def _lacks_real_credentials() -> bool:
+    """Test credentials (a ``test-`` prefix) or none: the service runs in mock mode."""
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    return (
+        aws_access_key.startswith("test-")
+        or aws_secret_key.startswith("test-")
+        or not aws_access_key
+        or not aws_secret_key
+    )
+
+
 class S3Service:
     """Service for S3 operations"""
 
@@ -256,29 +290,18 @@ class S3Service:
         # bucket_name is a live property (#622); an explicit assignment pins this
         # instance (tests do that), production never assigns and follows the env.
         self._bucket_override: str | None = None
-
-        # Check if we're using test/mock credentials
-        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
-        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-        self.is_mock_mode = (
-            aws_access_key.startswith("test-") or
-            aws_secret_key.startswith("test-") or
-            not aws_access_key or
-            not aws_secret_key
-        )
-
+        self.is_mock_mode = _lacks_real_credentials()
+        self.s3_client = None
         if self.is_mock_mode:
             logger.warning("S3Service initialized in mock mode (test credentials or missing credentials)")
-            # Create a dummy client that won't be used
-            self.s3_client = None
-        else:
-            try:
-                self.s3_client = create_s3_client()
-            except Exception as e:
-                logger.exception("Failed to initialize S3 client: %s", e)
-                self.is_mock_mode = True
-                self.s3_client = None
-    
+            return
+        _warn_once_of_a_real_bucket_in_development()
+        try:
+            self.s3_client = create_s3_client()
+        except Exception as e:
+            logger.exception("Failed to initialize S3 client: %s", e)
+            self.is_mock_mode = True
+
     @with_circuit_breaker(
         "s3",
         max_attempts=3,

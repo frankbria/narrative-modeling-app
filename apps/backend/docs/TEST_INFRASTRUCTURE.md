@@ -48,6 +48,23 @@ Notes:
 - The dev Redis (6379) is deliberately not used by tests; the test instance
   runs on **6380** to avoid clobbering dev data.
 
+### The suite's S3 settings are its own (#878)
+
+`tests/conftest.py` assigns `AWS_ENDPOINT_URL` (to `S3_ENDPOINT_URL`, else
+`http://localhost:4566`) and blanks `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and
+`AWS_SESSION_TOKEN` before any application module is imported. `app.config` loads the
+developer's `.env` without override, so without this every client a test had not mocked
+carried that file's credentials and pointed at AWS, at the bucket a deployed environment
+uses.
+
+- With no credentials, `S3Service` is in mock mode and `get_s3_client()` is `None`, the
+  same as in the PR gate, which has no `.env`. A local run and CI take the same paths.
+- A LocalStack test sets what it needs through its fixtures (`real_s3_env`, `s3_client`).
+  Read a credential with `os.getenv(NAME) or "test"`, never `os.getenv(NAME, "test")`:
+  the variable is set, to nothing.
+- `tests/test_services/test_suite_never_reaches_aws.py` builds every kind of client the
+  application has and asserts none points at AWS.
+
 ### CI encoding
 
 - `.github/workflows/ci.yml` — the primary PR gate (issue #150). It also runs

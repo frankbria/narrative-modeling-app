@@ -47,14 +47,12 @@ MONGODB_URI=mongodb://localhost:27017/narrative_modeling
 # or MongoDB Atlas:
 # MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/narrative_modeling
 
-# AWS S3
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_DEFAULT_REGION=us-east-1
-S3_BUCKET=your-bucket-name
-# Optional: route S3 calls to an S3-compatible service (MinIO, LocalStack).
-# Leave unset to use real AWS. Example: http://localhost:9000
-# AWS_ENDPOINT_URL=
+# S3: LocalStack for local development (see "Local storage" below)
+AWS_ENDPOINT_URL=http://localhost:4566
+AWS_ACCESS_KEY_ID=localstack
+AWS_SECRET_ACCESS_KEY=localstack
+AWS_REGION=us-east-1
+AWS_BUCKET_NAME=narrative-local
 
 # OpenAI
 OPENAI_API_KEY=sk-your-openai-key
@@ -69,6 +67,30 @@ REDIS_URL=redis://localhost:6379
 SKIP_AUTH=true  # Skip authentication in development
 ENVIRONMENT=development
 ```
+
+### Local storage
+
+Local development stores files in [LocalStack](https://localstack.cloud), not in a real
+S3 bucket. Start it and create the bucket once:
+
+```bash
+docker compose -f docker-compose.test.yml up -d localstack
+docker compose -f docker-compose.test.yml exec localstack awslocal s3 mb s3://narrative-local
+```
+
+`AWS_ENDPOINT_URL=http://localhost:4566` in `.env` is what points the backend at it.
+LocalStack accepts any credentials; they must not start with `test-`, which the backend
+reads as "no storage".
+
+Using a real bucket is an opt-in: remove `AWS_ENDPOINT_URL` and set that bucket's own
+credentials, region and name. A local run then writes its uploads and model artifacts
+beside whatever else uses the bucket, and a delete or an erasure acts on it, so do not
+use a deployed environment's bucket. The backend logs a warning at startup when
+`ENVIRONMENT=development` has no `AWS_ENDPOINT_URL`.
+
+The test suite never reaches a real bucket whatever `.env` says: `tests/conftest.py`
+pins the endpoint to LocalStack and blanks the credential variables before the
+application is imported.
 
 ### Running the Server
 
