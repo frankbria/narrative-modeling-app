@@ -264,8 +264,9 @@ async def stamp_last_used(ml_model: MLModel) -> None:
     and the monitor page shows the field as the time of the last prediction.
 
     The serving routes read the model's row fresh on every request, so its own
-    ``last_used_at`` says whether a write is due: no extra read, and at most one write
-    per model per interval. A targeted ``$set``, never a save of the route's copy
+    ``last_used_at`` says whether a write is due: no extra read, and about one write
+    per model per interval (requests that arrive together can each see the old stamp
+    and each write; the writes are the same ``$set``). A targeted ``$set``, never a save of the route's copy
     (#520). Never raises: a prediction that was served is not failed by its bookkeeping.
     """
     try:
