@@ -82,7 +82,7 @@ check() {
   fi
   echo "$workflow: the latest $streak run(s) never ran"
   body=$(printf '%s\n\n%s\n\n%s\n\n%s\n' \
-    "The latest $streak run(s) of \`$workflow\` never ran: each ended in \`startup_failure\` or was cancelled, so no review was posted on the pull requests. Latest: $(printf '%s' "$runs" | jq -r '.[0].url') ($(printf '%s' "$runs" | jq -r '.[0].conclusion'))" \
+    "The latest $streak run(s) of \`$workflow\` never ran: each ended in \`startup_failure\` or was cancelled, so no review was posted on the pull requests. Latest: $(printf '%s' "$runs" | jq -r '[.[] | select(.conclusion == "startup_failure" or .conclusion == "cancelled")][0] | "\(.url) (\(.conclusion))"')" \
     "**A review from this window is absent, not clean.** Do not read a pull request without a reviewer comment as reviewed." \
     "The reason is shown only in the Actions UI, on the run's page. The two causes seen so far (#571, #575): the caller's \`permissions:\` block grants less than the pinned called workflow declares (\`startup_failure\`), or the caller declares a \`concurrency:\` group the called workflow also uses, so the callee cancels its own caller (\`cancelled\` after about two seconds)." \
     "Opened by \`scripts/ci/review_bots_health.sh\`; it closes this issue when the workflow starts again.")
