@@ -14,7 +14,7 @@ async function seedWorkflow(
   page: Page,
   request: APIRequestContext,
   datasetId: string,
-  modelId: string,
+  modelId: string | null,
   currentStage: string,
   completedStages: string[]
 ): Promise<void> {
@@ -99,5 +99,22 @@ export async function seedEvaluationWorkflow(
     'data_preparation',
     'feature_engineering',
     'model_training',
+  ]);
+}
+
+/**
+ * Seed the workflow at MODEL_TRAINING with no model yet, so the stage-gated
+ * `/model` form is reachable for a dataset that was only uploaded (#919).
+ */
+export async function seedTrainingWorkflow(
+  page: Page,
+  request: APIRequestContext,
+  datasetId: string
+): Promise<void> {
+  await seedWorkflow(page, request, datasetId, null, 'model_training', [
+    'data_loading',
+    'data_profiling',
+    'data_preparation',
+    'feature_engineering',
   ]);
 }
