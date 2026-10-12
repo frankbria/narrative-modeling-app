@@ -1677,3 +1677,30 @@ def test_summary_drops_value_stats_when_a_prediction_is_not_a_number():
 
     assert "prediction_value_stats" not in stats
     assert stats["success_count"] == 3
+
+
+def test_an_input_column_named_like_an_output_does_not_fill_that_output():
+    """The header gives a reserved name to the output. A clean row must leave it
+    blank, not carry over what the uploaded file held under the same name."""
+    svc = _service()
+    predictions = [
+        {
+            "input_data": {"age": 30, "input_warnings": "from the file", "error": "from the file"},
+            "prediction": 1,
+        },
+        {
+            "input_data": {"age": 41, "input_warnings": "from the file", "error": "from the file"},
+            "prediction": 0,
+            "input_warnings": {"age": "missing"},
+        },
+    ]
+
+    df = svc._results_to_dataframe(predictions).reindex(
+        columns=svc._csv_header(
+            ["age", "input_warnings", "error"], True, False, _model(), BatchPredictionConfig(model_id="m")
+        )
+    )
+
+    assert list(df.columns) == ["age", "prediction", "input_warnings", "error"]
+    assert pd.isna(df.loc[0, "input_warnings"]) and df["error"].isna().all()
+    assert json.loads(df.loc[1, "input_warnings"]) == {"age": "missing"}

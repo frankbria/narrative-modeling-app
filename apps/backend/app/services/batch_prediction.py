@@ -1302,9 +1302,16 @@ class BatchPredictionService:
         the original input columns plus prediction/confidence/error columns."""
         return pd.DataFrame([self._csv_row(p) for p in predictions])
 
+    @staticmethod
+    def _input_cells(p: dict[str, Any]) -> dict[str, Any]:
+        """The row's input columns. One named like an output is left out: the header
+        gives that name to the output, which must stay blank when the row has none."""
+        cells = p.get("input_data") or {}
+        return {name: value for name, value in cells.items() if name not in _RESERVED_OUTPUT_COLUMNS}
+
     @classmethod
     def _csv_row(cls, p: dict[str, Any]) -> dict[str, Any]:
-        row: dict[str, Any] = dict(p.get("input_data", {}) or {})
+        row = cls._input_cells(p)
         if "prediction" in p:
             row["prediction"] = p["prediction"]
         for key, column, write in cls._CSV_OUTPUTS:
