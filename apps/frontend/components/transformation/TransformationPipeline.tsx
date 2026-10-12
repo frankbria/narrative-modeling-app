@@ -38,7 +38,8 @@ import {
   type SavedRecipe,
   type TransformationTypeMeta,
 } from '@/lib/services/pipelineApi';
-import { recipeFlow } from './recipeFlow';
+import { chainEdges, recipeFlow } from './recipeFlow';
+import { planOrder } from './runOrder';
 
 interface TransformationPipelineProps {
   datasetId: string;
@@ -258,6 +259,14 @@ export default function TransformationPipeline({
     }
   }, [hasUnsavedChanges, onUnsavedChanges]);
 
+  // The order the steps run in (#862): the arrows drawn on the canvas when there are
+  // any, the listed order when there are none. Both views and every request read it.
+  const plan = useMemo(() => {
+    const order = planOrder(nodes, edges);
+    // planOrder hands back the nodes it was given, in run order.
+    return { nodes: order.nodes as TransformationFlowNode[], problem: order.problem };
+  }, [nodes, edges]);
+
   const onConnect = useCallback(
     (params: Connection) => {
       const edge = {
@@ -294,9 +303,13 @@ export default function TransformationPipeline({
         };
         return nds.concat(newNode);
       });
+      // Where arrows are drawn, a new step joins the end of the chain: left on its own
+      // it would be "not connected", refused by a user who may never open the canvas.
+      const tail = plan.problem ? undefined : plan.nodes.at(-1);
+      setEdges((eds) => (tail && eds.length > 0 ? eds.concat(chainEdges([tail, { id }])) : eds));
       setHasUnsavedChanges(true);
     },
-    [setNodes]
+    [setNodes, setEdges, plan]
   );
 
   const onDrop = useCallback(
@@ -319,52 +332,46 @@ export default function TransformationPipeline({
   // truth) mapped to the linear step shape the accessible list expects.
   const chainSteps: ChainStep[] = useMemo(
     () =>
-      nodes.map((node) => ({
+      plan.nodes.map((node) => ({
         id: node.id,
         type: node.data.type,
         label: node.data.label,
         parameters: node.data.parameters as ChainStep['parameters'],
       })),
-    [nodes]
+    [plan]
+  );
+
+  // A Chain-view edit is made on the run order and becomes the listed order; arrows,
+  // if any were drawn, are redrawn to match, so the two views cannot disagree.
+  const applyChainEdit = useCallback(
+    (next: TransformationFlowNode[]) => {
+      setNodes(next);
+      setEdges((eds) => (eds.length > 0 ? chainEdges(next) : eds));
+      setHasUnsavedChanges(true);
+    },
+    [setNodes, setEdges]
   );
 
   const handleChainReorder = useCallback(
     (startIndex: number, endIndex: number) => {
-      setNodes((nds) => {
-        const next = [...nds];
-        const [moved] = next.splice(startIndex, 1);
-        next.splice(endIndex, 0, moved);
-        return next;
-      });
-      setHasUnsavedChanges(true);
+      const next = [...plan.nodes];
+      const [moved] = next.splice(startIndex, 1);
+      next.splice(endIndex, 0, moved);
+      applyChainEdit(next);
     },
-    [setNodes]
+    [plan, applyChainEdit]
   );
 
   const handleChainDelete = useCallback(
-    (index: number) => {
-      // Read + mutate inside one functional update so the removed node is taken
-      // from the current slice (no stale-closure snapshot) and the callback
-      // stays stable (no `nodes` dep).
-      setNodes((nds) => {
-        const removed = nds[index];
-        if (removed) {
-          setEdges((eds) =>
-            eds.filter((e) => e.source !== removed.id && e.target !== removed.id)
-          );
-        }
-        return nds.filter((_, i) => i !== index);
-      });
-      setHasUnsavedChanges(true);
-    },
-    [setNodes, setEdges]
+    (index: number) => applyChainEdit(plan.nodes.filter((_, i) => i !== index)),
+    [plan, applyChainEdit]
   );
 
   const handleChainEdit = useCallback((index: number) => {
     setEditingIndex(index);
   }, []);
 
-  const editingNode = nodes.find((_, i) => i === editingIndex);
+  const editingNode = plan.nodes.find((_, i) => i === editingIndex);
   // TransformationConfigDialog resets its form whenever `existingConfig`'s
   // identity changes. Key this memo on the node id ALONE (not the params
   // object, whose identity churns on every setNodes) so the dialog's form
@@ -385,10 +392,10 @@ export default function TransformationPipeline({
 
   const handleSaveEdit = useCallback(
     (config: TransformationConfig) => {
-      if (editingIndex === null) return;
+      if (!editingNode) return;
       setNodes((nds) =>
-        nds.map((node, i) =>
-          i === editingIndex
+        nds.map((node) =>
+          node.id === editingNode.id
             ? { ...node, data: { ...node.data, parameters: config.parameters } }
             : node
         )
@@ -396,7 +403,7 @@ export default function TransformationPipeline({
       setEditingIndex(null);
       setHasUnsavedChanges(true);
     },
-    [editingIndex, setNodes]
+    [editingNode, setNodes]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -415,8 +422,12 @@ export default function TransformationPipeline({
     setHasUnsavedChanges(true);
   }, [setNodes]);
 
-  const pipelineSteps = (): PipelineStep[] =>
-    nodes.map((node) => ({ type: node.data.type, parameters: node.data.parameters ?? {} }));
+  /** The steps in run order. Throws, inside an action so the page shows it, when the
+   * arrows on the canvas do not make one chain. */
+  const pipelineSteps = (): PipelineStep[] => {
+    if (plan.problem) throw new Error(plan.problem);
+    return plan.nodes.map((node) => ({ type: node.data.type, parameters: node.data.parameters ?? {} }));
+  };
 
   /** Run one API action with the loading flag, surfacing its failure to the user. */
   const runAction = async (action: () => Promise<string | null>) => {
@@ -441,7 +452,7 @@ export default function TransformationPipeline({
 
   /** Drop the nodes an apply already applied, so retrying sends only the rest. */
   const dropApplied = (err: unknown) => {
-    const applied = appliedNodeIds(err, nodes);
+    const applied = appliedNodeIds(err, plan.nodes);
     setNodes((nds) => nds.filter((n) => !applied.has(n.id)));
     setEdges((eds) => eds.filter((e) => !applied.has(e.source) && !applied.has(e.target)));
   };
