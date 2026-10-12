@@ -1988,3 +1988,14 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **A test stub for storage has to cover every client, not every helper.** The id-lookup
   suite stubbed the S3 helpers, and the versioning service has its own client. With
   this machine's credentials exported, a recorded step made a real `PutObject`.
+
+## #856 — bulk routes on a UI upload (2026-10-12)
+- **A test that needs a failing column has to check the column fails.** `fill_missing`
+  with `mean` on a text column succeeds (it skips it). Two tests asserted a partial
+  failure that never happened until the column was given a method the engine refuses.
+- **A job's first write can undo a cancel.** `mark_started(); save()` writes the whole
+  document, so a cancel that lands between creation and start is overwritten. To test a
+  cancel, make it arrive after the start (here: while the file loads).
+- **A resolver that can create should run before the thing it guards is created.**
+  Resolving the dataset before the job exists is what turns an unreadable upload into a
+  refusal instead of a failed job.

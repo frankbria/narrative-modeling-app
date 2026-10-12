@@ -1,41 +1,28 @@
-# #851 — every move of a dataset is either a history step or closes the history (P2.54)
+# #856 — the bulk routes take a UI upload's id (P2.55)
 
 Self-authored plan.
 
-## What was wrong
-- `POST /transformations/pipeline/apply` moved the dataset with no history step and no
-  version. So did the two routes that run through it in-process: auto-clean and recipe
-  apply. Undo afterwards restored an earlier step's version and the edit was gone.
-- Four more writers move the dataset through `record_new_file` with no step: bulk
-  transformations, the two data-issue fix routes, and a feature column added in place.
-- Found on the way: a history step refused `fill_missing` with no column named, though
-  the engine runs it. `POST /transformations/apply` with that request failed *after*
-  writing its file and version.
-
 ## Decisions made here
-- **Engine transformations record steps.** `TransformationService.apply_pipeline` runs
-  every step on the frame first (all or nothing, as before), then records each as its
-  own step and version, exactly as a single apply does. `apply_transformation` is now a
-  one-step pipeline. The pipeline route, auto-clean and recipe apply all go through it.
-- **Storage first, the database after.** Every step's version and the dataset's one new
-  file are written before any history step is recorded or the dataset is moved, so a
-  failed upload part-way leaves the dataset and its history as they were. Only the last
-  step's frame becomes a `transformed/` file; undo restores the others from versions.
-- **Two passes, not a kept list.** The dry run discards its frames and the steps run
-  again while being recorded: twice the CPU for a multi-step pipeline, never more than
-  two frames in memory. A single apply skips the dry run.
-- **Everything else closes the history.** `record_new_file` takes `in_history` (default
-  False). A move that is not the history's own sets `undo_floor` to just past the current
-  step and drops the redo tail, so undo and jump refuse to go back past the edit. The
-  default is the safe side: a new writer that says nothing cannot be undone past.
-  The other four writers are unchanged; they get this through the default.
-- The pipeline route takes either id space now (it resolves through
-  `ensure_metadata_twin`), so an id that names nothing is a 404, not a 400.
+- One resolver for the service, `_owned_dataset(user_id, dataset_id)`, over
+  `dataset_link.ensure_metadata_twin`. Select, preview and apply use it; the job
+  processor calls `ensure_metadata_twin` itself, since a missing dataset there fails the
+  job instead of raising.
+- `apply_bulk_transformation` resolves the dataset before creating the job (it did the
+  lookup before too). That is where a TSV or JSON upload is refused by type (#857): the
+  transformation reader would parse it as junk and the job would overwrite the live file.
+- The three functions the issue names are split under the CRAP ceiling:
+  `preview_bulk_transformation` -> `_preview_column`, `_preview_summary`, `_failed_preview`;
+  `apply_bulk_transformation` -> `_require_valid_request`, `_require_job_slot`;
+  `_process_bulk_job` -> `_run_columns`, `_still_wanted`, `_record_progress`,
+  `_finish_job`, `_move_dataset`, with `_ColumnRun` holding the running frame and outcomes.
+  Behaviour is unchanged, including that an "Invalid columns" refusal in preview is
+  reported as the generic sanitised failure.
+- Not changed: `_apply_column_transformation`, the job-status routes.
 
 ## Steps
-- [x] Undo floor: model, `record_new_file`, undo / jump / listing; tests on real documents.
-- [x] `apply_pipeline` + `_record_step`; route rewritten over it; the six mocked route
-      tests replaced with real-document ones that read the history back.
-- [x] `fill_missing` with no column is a recordable step.
-- [x] LocalStack: apply → pipeline → undo twice; undo refused after an outside move.
+- [x] Failing tests on real documents: preview over the route, select, a job that runs
+      and moves the upload, another account's upload, a TSV upload.
+- [x] Tests for the job endings nothing reached: partial failure, stop_on_error, cancelled
+      or deleted mid-run, dataset gone.
+- [x] The resolver and the three splits.
 - [ ] Gate, cross-family review, PR, demo, CI, merge.
