@@ -322,17 +322,11 @@ class AutoMLEngine:
             X_fit, y_fit, problem_type.value
         )
         X_train_transformed = feature_result.X_transformed
-        if self.feature_engineer.excluded_features:
+        # Identifiers (#806) and dates (#840) the engineer left out of the features.
+        for note in self.feature_engineer.exclusion_notes():
             await self._emit_event(
                 event_callback,
-                TrainingEvent(
-                    level="info",
-                    message=(
-                        "Excluded per-row identifier columns from the features: "
-                        + ", ".join(self.feature_engineer.excluded_features)
-                    ),
-                    stage="preprocessing",
-                ),
+                TrainingEvent(level="info", message=note, stage="preprocessing"),
             )
 
         # Transform the clean test set and (when carved) the calibration slice.

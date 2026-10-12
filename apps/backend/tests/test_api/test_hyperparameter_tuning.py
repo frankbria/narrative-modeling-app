@@ -187,3 +187,18 @@ async def test_excluded_identifier_columns_persist_on_the_model():
 
     metadata = save_model.call_args.args[4]
     assert metadata["training_config"]["excluded_identifier_columns"] == ["customer_id"]
+
+
+@pytest.mark.asyncio
+async def test_excluded_date_columns_persist_on_the_model():
+    """#840: date exclusions reach MLModel.training_config under their own key."""
+    _, save_model = await _run_train_task(
+        {},
+        metadata={
+            "feature_engineering": {"excluded_features": [], "excluded_date_columns": ["order_date"]}
+        },
+    )
+
+    training_config = save_model.call_args.args[4]["training_config"]
+    assert training_config["excluded_date_columns"] == ["order_date"]
+    assert training_config["excluded_identifier_columns"] == []

@@ -110,6 +110,7 @@ class DatasetSection(Section):
     n_features: int | None = None
     feature_names: list[str] = Field(default_factory=list)
     excluded_columns: list[str] = Field(default_factory=list)
+    excluded_date_columns: list[str] = Field(default_factory=list)
 
 
 class ReproducibilitySection(Section):
@@ -378,6 +379,7 @@ def _dataset(model: MLModel) -> DatasetSection:
         n_features=model.n_features,
         feature_names=list(model.feature_names or []),
         excluded_columns=list(config.get("excluded_identifier_columns") or []),
+        excluded_date_columns=list(config.get("excluded_date_columns") or []),
     )
 
 
@@ -529,8 +531,12 @@ def _md_data(report: ModelReport) -> list[str]:
         f"- Features: {_or_dash(data.n_features)}",
         "- Feature columns: " + (", ".join(map(_code, data.feature_names)) or "_Not recorded._"),
     ]
-    if data.excluded_columns:
-        out.append("- Excluded as identifiers: " + ", ".join(map(_code, data.excluded_columns)))
+    for label, columns in (
+        ("Excluded as identifiers", data.excluded_columns),
+        ("Excluded as dates", data.excluded_date_columns),
+    ):
+        if columns:
+            out.append(f"- {label}: " + ", ".join(map(_code, columns)))
     return out + [""]
 
 

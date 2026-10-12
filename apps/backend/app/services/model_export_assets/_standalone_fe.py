@@ -63,10 +63,18 @@ class StandaloneFeatureEngineer:
         # Same as the platform: a JSON null (None) in a categorical column becomes the
         # NaN a blank cell is, which is the only thing the imputers fill (#838).
         X = self._coerce_booleans(X.copy())
-        X = X.drop(columns=self.excluded_features, errors="ignore")
+        X = self._datetimes_as_text(X.drop(columns=self.excluded_features, errors="ignore"))
         for col in self.categorical_features:
             if col in X.columns:
                 X[col] = X[col].where(X[col].notna(), np.nan)
+        return X
+
+    @staticmethod
+    def _datetimes_as_text(X: pd.DataFrame) -> pd.DataFrame:
+        # Same as the platform: a datetime column the model kept is keyed as text,
+        # each value written on its own, a date with its time when it has one (#840).
+        for col in X.columns[[pd.api.types.is_datetime64_any_dtype(t) for t in X.dtypes]]:
+            X[col] = X[col].dt.strftime("%Y-%m-%d %H:%M:%S").str.removesuffix(" 00:00:00")
         return X
 
     def _apply_imputers(self, X: pd.DataFrame) -> pd.DataFrame:
