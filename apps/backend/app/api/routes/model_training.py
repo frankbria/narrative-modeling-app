@@ -2130,7 +2130,9 @@ def _fitted_category_keys(feature_engineer, column: str) -> list[str] | None:
     transformers = getattr(feature_engineer, "transformers", None) or {}
     if "encoder" in transformers:
         idx = feature_engineer.categorical_features.index(column)
-        categories = pd.Series(transformers["encoder"].categories_[idx], dtype=object)
+        # A blank is a category of its own when no imputer was fitted, and no
+        # dropdown value can send one, so it is not offered.
+        categories = pd.Series(transformers["encoder"].categories_[idx], dtype=object).dropna()
         return FeatureEngineer._label_keys(categories).tolist()
     encoder = transformers.get("label_encoders", {}).get(column)
     return list(map(str, encoder.classes_)) if encoder is not None else None

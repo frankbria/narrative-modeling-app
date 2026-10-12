@@ -680,6 +680,25 @@ class TestOneHotMatchesOnTheLabelKey:
                 assert _block(out, column).to_numpy().sum() == 1.0, (column, option)
 
     @pytest.mark.asyncio
+    async def test_a_blank_category_is_not_offered_to_the_form(self):
+        """Without an imputer a blank is a fitted category. A dropdown cannot send a
+        blank, and the text "nan" is not one, so offering it offers an unseen value."""
+        from app.api.routes.model_training import _categorical_options
+
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(encoding_method="onehot", select_features=False, handle_missing=False)
+        )
+        await fe.fit_transform(_typed_categories_frame().drop(columns=["active"]))
+        assert "level_nan" in fe.transformers["encoded_columns"]  # the blank was fitted
+
+        options = _categorical_options(fe, "level")
+
+        assert options == ["1", "2", "3"]
+        for option in options:
+            out = await _served(fe, [{**_RECORD, "level": option}])
+            assert _block(out, "level").to_numpy().sum() == 1.0, option
+
+    @pytest.mark.asyncio
     async def test_a_null_in_one_record_leaves_the_others_alone(self):
         """One null makes the request's whole column `object`, which used to turn
         every other record's `true` into a value the encoder had never seen."""
