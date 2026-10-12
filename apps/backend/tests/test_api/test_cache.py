@@ -144,6 +144,24 @@ class TestCachePurgeSelf:
 
         assert response.status_code == 503
 
+    @pytest.mark.asyncio
+    async def test_a_purge_that_fails_answers_a_sanitised_500(
+        self, async_authorized_client: AsyncClient, fake_redis: FakeRedis, monkeypatch
+    ):
+        """#573, held to #269's contract: nothing of the exception reaches the caller."""
+
+        async def refuse(_user_id):
+            raise RuntimeError("redis://:hunter2@cache.internal:6379 refused the connection")
+
+        monkeypatch.setattr(cache_service, "invalidate_user_cache", refuse)
+
+        response = await async_authorized_client.delete("/api/v1/cache/me")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+        assert response.headers.get("X-Request-ID")
+        assert "hunter2" not in response.text and "cache.internal" not in response.text
+
 
 class TestRemovedCacheRoutes:
     """The pre-#452 surface is gone, not merely guarded."""
