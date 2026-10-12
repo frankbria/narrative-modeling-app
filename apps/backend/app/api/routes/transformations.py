@@ -260,13 +260,9 @@ async def apply_transformation_pipeline(
     """Apply multiple transformations in sequence, all or nothing."""
     try:
         return await _run_pipeline(request, current_user_id)
-    except HTTPException:
-        raise  # a 4xx must reach the client, not become success=False (#465)
     except NotFoundError as e:
+        # A 404 must reach the client, not become success=False (#465).
         raise HTTPException(status_code=404, detail=e.message)
-    except OperationError as e:
-        logger.exception("Apply pipeline failed")
-        return _pipeline_failure(request.dataset_id, e.message)
     except Exception:
         logger.exception("Apply pipeline failed")
         return _pipeline_failure(request.dataset_id, internal_error_message("Apply pipeline"))

@@ -678,9 +678,6 @@ class TransformationService(BaseService[TransformationConfig]):
         """
         from datetime import datetime
 
-        from app.services.redis_cache import cache_service
-        from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
-
         done: dict[str, Any] = {
             "success": True,
             "dataset_id": dataset_id,
@@ -691,6 +688,17 @@ class TransformationService(BaseService[TransformationConfig]):
             "schema": {},
         }
         timestamp = datetime.now(UTC).timestamp()
+        recorded, last = await self._write_versions(dataset, dataset_id, user_id, ran, started, done, timestamp)
+        if last is not None:
+            await self._move_to(dataset, dataset_id, user_id, recorded, last, done, timestamp)
+        # else nothing was asked for (auto-clean with every option off): nothing to write.
+        return {**done, "execution_time_ms": _elapsed_ms(started)}
+
+    async def _write_versions(
+        self, dataset: Any, dataset_id: str, user_id: str, ran: Iterator["_RanStep"], started: float,
+        done: dict[str, Any], timestamp: float,
+    ) -> tuple[list[dict[str, Any]], pd.DataFrame | None]:
+        """Write each step's version; the history steps to record, and the last frame."""
         recorded: list[dict[str, Any]] = []
         last: pd.DataFrame | None = None
         for step in ran:
@@ -700,9 +708,16 @@ class TransformationService(BaseService[TransformationConfig]):
                 )
             recorded.append(await self._versioned(dataset, dataset_id, user_id, step, started, done))
             last = step.after
-        if last is None:
-            # Nothing was asked for (auto-clean with every option off): nothing to write.
-            return {**done, "execution_time_ms": _elapsed_ms(started)}
+        return recorded, last
+
+    async def _move_to(
+        self, dataset: Any, dataset_id: str, user_id: str, recorded: list[dict[str, Any]],
+        last: pd.DataFrame, done: dict[str, Any], timestamp: float,
+    ) -> None:
+        """Upload the final frame, record the steps, and move the dataset to it."""
+        from app.services.redis_cache import cache_service
+        from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
+
         new_file_path = await upload_dataframe_to_s3(
             last, f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
         )
@@ -716,7 +731,6 @@ class TransformationService(BaseService[TransformationConfig]):
         # in_history: this move has its steps, so it must not close the history (#851).
         await record_new_file(dataset, new_file_path, in_history=True)
         await cache_service.delete_pattern(f"stats_{dataset_id}_*")
-        return {**done, "execution_time_ms": _elapsed_ms(started)}
 
     async def _versioned(
         self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", started: float,
