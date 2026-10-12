@@ -1,24 +1,26 @@
-# Issue #532: remove tracked scratch and demo artifacts
+# Issues #571, #576, #577: the GLM review workflow
 
-## What the issue names, checked with `git ls-files` (AC1)
-- `apps/backend/_demo_77.py`, `history-completed.png`, `model-ready.png`,
-  `IMPLEMENTATION_PLANS_NEEDED.md`, `GITHUB_PROJECTS_GUIDE.md`: not tracked. No action
-  beyond `.gitignore`.
-- `coordination.md`, `memory-bank.md`: tracked. Empty claude-flow templates. Deleted.
+One file, three issues, one PR.
 
-## Also tracked and scratch (same categories)
-- [x] `memory/agents/README.md`, `memory/sessions/README.md`: empty templates from the same commit.
-- [x] `prompts/gh-75.txt`: a one-off prompt for a closed issue.
-- [x] `sample_data.csv`: ten rows from 2025-04, referenced by nothing.
-- [x] `tasks/issue-76-demo.md`, `apps/backend/tasks/`: per-issue demo notes and script.
-- [x] `.beads/` runtime state: daemon lock and log (local paths), the SQLite database
-      and journals, merge scratch. `issues.jsonl` and `metadata.json` stay.
+## #571 AC3: a reviewer that never started must not look like a clean review
+A `startup_failure` creates no job, so nothing inside the reviewer's workflow can
+report it. A second workflow has to look from outside.
+- [ ] `scripts/ci/review_bots_health.sh`: for each reviewer workflow, the newest runs;
+      if the latest one that ran ended in `startup_failure`, open (or comment on) an alert
+      issue; otherwise close an open alert. `--dry-run`, and `--self-check` with a case table.
+- [ ] `.github/workflows/review-bots-health.yml`: every 6 hours and on dispatch.
+- [ ] CI runs the self-check; a test pins the workflow's permissions and the dedupe phrase.
 
-## tasks/ (AC5)
-Stays, holding only `todo.md` and `lessons.md`, which the issue workflow writes for
-every issue. Everything else under it is ignored.
+## #576: the size gate
+- [ ] Drop it. Every human-authored PR that is not docs-only is reviewed (`paths-ignore`
+      already skips the docs-only ones). A small diff is a short, cheap review, and the
+      one PR the gate skipped was a credential redaction.
 
-## Not in this change
-- Root product documents (`BETA_ROADMAP.md`, `PRODUCT_REQUIREMENTS.md`, `USER_STORIES.md`)
-  and the two 2025-12 feature guides: documentation drift is #535.
-- `apps/backend/scripts/demo_*.py`, `apps/backend/docs/demos/`: kept where they are.
+## #577: comment archaeology
+- [ ] Keep the two invariants as rules (no caller-level `concurrency:`; `permissions:`
+      at least what the pinned callee declares). Drop run ids, cross-repo issue numbers
+      and comparisons with other repos.
+
+## Then
+- [ ] CLAUDE.md, actionlint, shellcheck, review, demo (dry run against the real API), PR.
+- [ ] After merge: dispatch the new workflow once and read its run.

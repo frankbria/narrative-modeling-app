@@ -6,22 +6,17 @@ on:
       - "**/*.md"
       - ".gitignore"
 
-# No `concurrency:` here, deliberately — the called workflow already declares
-# it, and declaring it here too is what kept this check from running even after
-# the permissions fix below.
+# Two rules keep this check running. Break either and every run ends in
+# `startup_failure`, or in two seconds with no job, and posts nothing; on a pull request
+# that reads as a reviewer with no findings. scripts/ci/review_bots_health.sh watches for it.
 #
-# review.yml's own workflow-level block is
-# `glm-review-${{ github.event.pull_request.number || github.ref }}`, which
-# expands to exactly the same string this file used, with the same
-# `cancel-in-progress: true`. A called reusable workflow joins that group while
-# its caller is already holding it, so the callee cancelled its own parent the
-# moment it queued: run 34084053155 ended in 2 seconds having started no jobs at
-# all. Of the four repos calling this reviewer, this was the only one with a
-# caller-level block, and the only one failing that way.
-#
-# Superseded runs are still cancelled on rapid pushes — that is the callee's
-# block doing the work this one was added for (post-#187), so the behaviour is
-# unchanged. Reinstate a block here only under a group name that cannot collide.
+# 1. No `concurrency:` block here. The called workflow declares its own group, keyed on
+#    the pull request number. A caller-level block with the same key puts the caller and
+#    the callee in one group, and the callee cancels its own parent as it queues.
+#    Superseded runs are still cancelled on rapid pushes: that is the callee's block.
+# 2. The `permissions:` block below grants at least what the pinned called workflow
+#    declares. GitHub refuses to start a run whose caller grants less, before any job
+#    exists. Re-pin and re-check the two together.
 
 jobs:
   review:
@@ -33,35 +28,17 @@ jobs:
     # token and the separate Dependabot secret store, so ZHIPU_API_KEY would be
     # empty and the summary comment unpostable. `user.type` covers every bot
     # rather than naming one.
-    # Then: only review substantial changes (5+ files, or 20+ additions/deletions).
-    if: |
-      github.event.pull_request.user.type == 'User' &&
-      (github.event.pull_request.changed_files >= 5 ||
-       github.event.pull_request.additions >= 20 ||
-       github.event.pull_request.deletions >= 20)
+    #
+    # There is no size gate (#576). The one there was skipped a one-file credential
+    # redaction: size says nothing about risk, and a small diff is a short review.
+    # Docs-only pull requests are skipped by `paths-ignore` above.
+    if: github.event.pull_request.user.type == 'User'
     # Pinned to a commit SHA (not @main) so an upstream push can't silently run
-    # here with write perms + the ZHIPU_API_KEY secret — matches the repo's
-    # action-pinning policy (see claude-code-review.yml).
-    #
-    # Re-pinned off b877d15a, which never started here. That callee's job
-    # declared `id-token: write`; this caller did not grant it, and GitHub
-    # refuses to start a run whose caller grants less than the called job
-    # requests. The refusal happens before any job exists, so every run was a
-    # `startup_failure` with no log to explain it — the check had never once run
-    # in this repo. Upstream dropped that grant (glm-review#2) after verifying
-    # the reviewer never mints an OIDC token, and dropped `issues: write`
-    # (glm-review#3) after verifying PR comments are authorised by
-    # `pull-requests` even though they go through /issues/{n}/comments. The two
-    # permissions below are now the complete set the callee declares.
-    #
-    # Keep the pin and the permissions block in step: re-pinning backwards to a
-    # callee that declares more than this grants reproduces the startup failure.
-    #
-    # The new pin also bounds a review by turns (`--max-turns 60`) with a
-    # 35-minute timeout on the review *step* and 40 on the job, uploads the
-    # agent transcript as a 14-day artifact, and rewrites its own tracking
-    # comment into an explicit "GLM review did not complete" notice rather than
-    # leaving a spinner that reads like a clean review.
+    # here with write perms + the ZHIPU_API_KEY secret (the repo's action-pinning
+    # policy, see claude-code-review.yml). The pinned callee bounds a review by turns
+    # and by a step timeout shorter than the job's, uploads the agent transcript as an
+    # artifact, and rewrites its tracking comment into "GLM review did not complete"
+    # rather than leaving a spinner that reads like a clean review.
     uses: frankbria/glm-review/.github/workflows/review.yml@77dfa9c6633712256edab41fd0db42663a9416b7 # main @ 2026-09-06
     permissions:
       contents: read

@@ -1,0 +1,35 @@
+name: Review bots health
+
+# A reviewer workflow that GitHub refuses to start (`startup_failure`) creates no job, so
+# it cannot report its own absence, and on a pull request that looks exactly like a
+# reviewer with nothing to say. This looks from outside and opens an issue (#571).
+
+on:
+  schedule:
+    - cron: '43 */6 * * *' # four times a day; a startup failure is a config error, not a blip
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: review-bots-health
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the review workflows start
+    runs-on: ubuntu-latest
+    if: github.repository == 'frankbria/narrative-modeling-app'
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Open or close the alert
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/ci/review_bots_health.sh
