@@ -747,7 +747,11 @@ class TransformationService(BaseService[TransformationConfig]):
         if not self._starts_from_the_upload(config, dataset) or not first_version_id:
             return None
         first = await versioning_service.get_version(first_version_id, mark_accessed=False)
-        return getattr(first, "parent_version_id", None)
+        parent_id = getattr(first, "parent_version_id", None)
+        parent = await versioning_service.get_version(parent_id, mark_accessed=False) if parent_id else None
+        # The upload's own version, and nothing else: an apply that failed part-way can
+        # leave a step's version behind as the latest, and a retry would derive from it.
+        return parent_id if getattr(parent, "is_base_version", False) else None
 
     @staticmethod
     def _starts_from_the_upload(config: Any, dataset: Any) -> bool:

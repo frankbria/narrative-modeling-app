@@ -29,11 +29,17 @@ async def _base() -> str | None:
     return (await TransformationConfig.find_one(TransformationConfig.config_id == "config_962")).base_version_id
 
 
-def _versions(parent: str | None = "v_upload"):
-    return patch(
-        "app.services.versioning_service.versioning_service.get_version",
-        AsyncMock(return_value=SimpleNamespace(parent_version_id=parent)),
-    )
+def _versions(parent: str | None = "v_upload", parent_is_the_upload: bool = True):
+    """The step's version, whose parent is `parent`; and that parent."""
+    stored = {
+        "v_step": SimpleNamespace(parent_version_id=parent),
+        parent: SimpleNamespace(parent_version_id=None, is_base_version=parent_is_the_upload),
+    }
+
+    async def get_version(version_id, **_kwargs):
+        return stored.get(version_id)
+
+    return patch("app.services.versioning_service.versioning_service.get_version", get_version)
 
 
 class TestTheStartIsRecordedOnlyWhenItIsCertain:
@@ -51,6 +57,16 @@ class TestTheStartIsRecordedOnlyWhenItIsCertain:
 
         with _versions():
             await TransformationService()._remember_the_start("config_962", MOVED, "v_step")
+
+        assert await _base() is None
+
+    async def test_a_parent_that_is_not_the_upload_is_not_taken_for_it(self, setup_database):
+        """An apply that failed part-way leaves its step's version behind as the latest,
+        and a retry with a different transformation derives from that (GLM review)."""
+        await _fresh_history()
+
+        with _versions(parent="v_left_behind", parent_is_the_upload=False):
+            await TransformationService()._remember_the_start("config_962", UPLOAD, "v_step")
 
         assert await _base() is None
 
