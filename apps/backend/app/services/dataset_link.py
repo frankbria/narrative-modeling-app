@@ -19,10 +19,13 @@ from datetime import UTC, datetime
 
 from bson import ObjectId
 
+from app.models.column_stats import ColumnStats
 from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
+from app.models.visualization_cache import VisualizationCache
 from app.services.exceptions import NotFoundError
+from app.services.redis_cache import cache_service
 from app.utils.s3 import get_file_from_s3, holds_parquet
 
 logger = logging.getLogger(__name__)
@@ -94,8 +97,33 @@ async def record_new_file(doc: Dataset, new_url: str, *, in_history: bool = Fals
     doc.file_type = file_type
     docs = _erasure_order(doc, twin)
     await _move_all(docs, doc, current, old_url, new_url)
+    await _forget_what_was_computed(docs)
     if not in_history:
         await _close_history(docs)
+
+
+async def _forget_what_was_computed(docs: list[Dataset]) -> None:
+    """Drop everything cached from the file the dataset has just left (#960).
+
+    The chart caches (Redis, and the `VisualizationCache` rows, which never expire) and
+    the column statistics are keyed by the upload's id and say nothing about which file
+    they were computed from, so after a move they kept answering with the old data.
+    Every writer that moves a dataset comes through `record_new_file`, which makes this
+    the one place to clear them.
+
+    Best effort: the move has already happened. An entry that could not be cleared is
+    logged, never raised into a transformation that succeeded.
+    """
+    for upload in docs:
+        if not isinstance(upload, UserData):
+            continue
+        try:
+            await VisualizationCache.find({"dataset_id.$id": upload.id}).delete()
+            await ColumnStats.find({"dataset_id.$id": upload.id}).delete()
+            await cache_service.delete_pattern(f"viz:{upload.id}:*")
+            await cache_service.delete_pattern(f"stats_{upload.id}_*")
+        except Exception:
+            logger.exception("Could not clear what was computed from dataset %s before it moved", upload.id)
 
 
 def _history_id(d: Dataset) -> str:
