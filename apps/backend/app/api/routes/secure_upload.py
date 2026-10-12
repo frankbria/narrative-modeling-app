@@ -215,6 +215,36 @@ async def secure_upload(
         rate_limiter.end_upload(current_user_id)
 
 
+def _read_confirmed(filename: str, content: bytes) -> pd.DataFrame:
+    if filename.endswith('.csv'):
+        return pd.read_csv(io.BytesIO(content))
+    if filename.endswith(('.xlsx', '.xls')):
+        return pd.read_excel(io.BytesIO(content))
+    # A clean 400, as /secure answers for the same file (#459).
+    raise HTTPException(status_code=400, detail=f"Unsupported file format: {filename}")
+
+
+def _store_confirmed(
+    user_id: str, filename: str, content_type: str | None, content: bytes, masked: pd.DataFrame | None
+) -> tuple[str, str, int]:
+    """Write the confirmed upload: `(s3_url, file_type, stored size)`.
+
+    The type is the type of the bytes written (#937). A masked copy is CSV whatever
+    was uploaded, so its key ends in `.csv` too; it used to keep the upload's
+    extension, which left a masked workbook as CSV under an `.xlsx` name.
+    """
+    if masked is not None:
+        body, file_type, content_type = masked.to_csv(index=False).encode(), "csv", "text/csv"
+        key = dataset_s3_key(user_id, "masked.csv", masked=True)
+    else:
+        body, file_type = content, filename.rsplit(".", 1)[-1].lower()
+        key = dataset_s3_key(user_id, filename)
+    success, s3_url = upload_file_to_s3(body, key, content_type=content_type)
+    if not success or not s3_url:
+        raise HTTPException(status_code=500, detail="Failed to upload file to S3")
+    return s3_url, file_type, len(body)
+
+
 @router.post("/confirm-pii-upload", dependencies=[Depends(quota("uploads"))])
 async def confirm_pii_upload(
     background_tasks: BackgroundTasks,
@@ -225,8 +255,6 @@ async def confirm_pii_upload(
     """
     Confirm upload of file with PII after user review
     """
-    
-    # Similar to secure_upload but skips PII blocking
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
 
@@ -234,50 +262,17 @@ async def confirm_pii_upload(
     # The original's size; a masked copy differs by a few bytes per masked cell.
     await enforce_storage_ceiling(current_user_id, len(content))
 
-    if file.filename.endswith('.csv'):
-        df = pd.read_csv(io.BytesIO(content))
-    elif file.filename.endswith(('.xlsx', '.xls')):
-        df = pd.read_excel(io.BytesIO(content))
-    else:
-        # Without this the if/elif falls through and `df` is unbound, so an
-        # unsupported extension raised UnboundLocalError — a 500 where /secure
-        # answers a clean 400 for the same file. Found while adding this route's
-        # quota guard (#459).
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format: {file.filename}",
-        )
-
-    # Detect PII
+    df = _read_confirmed(file.filename, content)
     pii_detections = pii_detector.detect_pii_in_dataframe(df)
     pii_report = pii_detector.generate_pii_report(pii_detections)
-    
-    # Mask PII if requested
-    if mask_pii and pii_detections:
-        df_processed = pii_detector.mask_pii(df, pii_detections)
-        # Upload masked version — under the owner prefix like every other object
-        # (before #581 this was a second bare shape, ``masked_{uuid}.csv``).
-        processed_content = df_processed.to_csv(index=False).encode()
-        masked_key = dataset_s3_key(current_user_id, file.filename, masked=True)
-        success, s3_url = upload_file_to_s3(processed_content, masked_key, content_type="text/csv")
-        stored_size = len(processed_content)
-    else:
-        # Upload original
-        s3_key = dataset_s3_key(current_user_id, file.filename)
-        success, s3_url = upload_file_to_s3(content, s3_key, content_type=file.content_type)
-        stored_size = len(content)
-        df_processed = df
-    
-    # Infer schema
+
+    masking = mask_pii and bool(pii_detections)
+    df_processed = pii_detector.mask_pii(df, pii_detections) if masking else df
+    s3_url, file_type, stored_size = _store_confirmed(
+        current_user_id, file.filename, file.content_type, content, df_processed if masking else None
+    )
     schema = infer_schema(df_processed)
-    
-    # Check upload success
-    if not success or not s3_url:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to upload file to S3"
-        )
-    
+
     # Create UserData record
     user_data = UserData(
         user_id=current_user_id,
@@ -291,6 +286,7 @@ async def confirm_pii_upload(
         pii_report=pii_report,
         pii_risk_level=pii_report["risk_level"],
         pii_masked=mask_pii,
+        file_type=file_type,
         file_size=stored_size,
     )
     

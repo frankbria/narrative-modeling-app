@@ -33,7 +33,11 @@ _KNOWN_TYPES = {"parquet", "csv", "json", "xlsx", "xls"}
 
 def _file_type_of(url: str) -> str | None:
     """The stored `file_type` value for a location, from its extension; None if unknown."""
-    ext = url.split("?", 1)[0].rsplit(".", 1)[-1].lower()
+    path = url.split("?", 1)[0]
+    # A masked copy is CSV whatever its name says: until #937 it kept the upload's extension.
+    if path.rsplit("/", 1)[-1].startswith("masked_"):
+        return "csv"
+    ext = path.rsplit(".", 1)[-1].lower()
     return ext if ext in _KNOWN_TYPES else None
 
 
