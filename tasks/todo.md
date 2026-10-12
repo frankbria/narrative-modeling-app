@@ -14,6 +14,11 @@ on values the form itself offered.
 - **`_categorical_options` returns the keys** (`"1"`, not `"1.0"`, for a float category), so
   every option the form offers is one serving matches. It was cc 9, so the lookup moves to
   `_fitted_category_keys`.
+- **`_match_keys`, from the cross-family review:** the label key alone made a blank and the
+  text `"nan"` one key (two categories when no imputer was fitted, so serving lit a different
+  column than fit), and dropped the fitted encoder's occasional reading of `"1.0"` as `1`.
+  A missing value now carries a flag beside its key, and a column fitted on numbers reads
+  numeric text as the number.
 - Fit is not changed. A boolean column with blanks is still fitted with bool categories;
   serving now matches `"True"` and `true` to them either way.
 

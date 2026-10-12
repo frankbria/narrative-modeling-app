@@ -706,3 +706,32 @@ class TestOneHotMatchesOnTheLabelKey:
         out = await fe.transform(frame)
 
         pd.testing.assert_frame_equal(out, fitted.X_transformed, check_dtype=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("text", ["1", "1.0", "01", " 1", "1e0"])
+    async def test_numeric_text_selects_a_numeric_category(self, text):
+        """A column fitted on numbers is matched numerically. The fitted encoder did
+        this only when every categorical in the request happened to be numeric text."""
+        fe, _ = await _fit_onehot(_typed_categories_frame())
+
+        out = await _served(fe, [{**_RECORD, "tier": text, "level": text}])
+
+        assert out.loc[0, ["tier_1", "level_1.0"]].tolist() == [1.0, 1.0]
+
+    @pytest.mark.asyncio
+    async def test_a_blank_and_the_text_that_spells_it_stay_apart(self):
+        """Without an imputer a blank is a category of its own, and its label key,
+        "nan", is also a string a column can hold."""
+        frame = _typed_categories_frame()
+        frame["plan"] = frame["plan"].astype(object)
+        frame.loc[:9, "plan"] = "nan"
+        frame.loc[10:19, "plan"] = np.nan
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(encoding_method="onehot", select_features=False, handle_missing=False)
+        )
+        fitted = await fe.fit_transform(frame.drop(columns=["active", "level"]))
+
+        out = await _served(fe, frame.drop(columns=["active", "level"]).to_dict("records"))
+
+        assert fe.transformers["encoded_columns"].count("plan_nan") == 2  # the collision is real
+        np.testing.assert_array_equal(out.to_numpy(), fitted.X_transformed.to_numpy())
