@@ -352,9 +352,9 @@ app.include_router(
     tags=["transformations"],
 )
 app.include_router(
-    # Was registered only on app/api/routes/__init__.py's api_router, which nothing attaches
-    # to the app, so the whole feature 404'd (#471). tests/test_api/test_every_router_is_mounted.py
-    # now fails on any route module in that state.
+    # Was registered only on an aggregator that nothing attached to the app (removed in
+    # #530), so the whole feature 404'd (#471). tests/test_api/test_every_router_is_mounted.py
+    # fails on any route module that is not mounted here.
     data_issues.router,
     prefix=f"{settings.API_V1_STR}/data-issues",
     tags=["data-issues"],
