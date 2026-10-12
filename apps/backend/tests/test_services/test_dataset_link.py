@@ -336,3 +336,94 @@ class TestEnsureMetadataTwin:
         with pytest.raises(NotFoundError, match=f"support CSV and Parquet.*{file_type}"):
             await ensure_metadata_twin(str(ud.id), USER)
         assert await DatasetMetadata.find(DatasetMetadata.dataset_id == str(ud.id)).count() == 0
+
+
+# #851: a writer that moves the dataset without recording a history step (a bulk change,
+# a data-issue fix, a feature column added in place) left undo free to restore a version
+# from before that edit, discarding it. The move itself now closes the history behind it.
+
+
+async def _history(dataset_id: str, user_id: str = USER, steps: int = 3, position: int = 1):
+    from app.models.transformation import TransformationConfig
+
+    config = TransformationConfig(user_id=user_id, dataset_id=dataset_id, config_id=f"config_{dataset_id}_{user_id}")
+    for n in range(steps):
+        config.add_transformation_step("trim_whitespace", columns=["name"], version_id=f"v{n}")
+    config.current_position = position
+    return await config.insert()
+
+
+async def _reloaded(config):
+    from app.models.transformation import TransformationConfig
+
+    return await TransformationConfig.get(config.id)
+
+
+class TestAnEditOutsideTheHistory:
+    async def test_a_move_no_step_describes_closes_the_history_behind_it(self, setup_database):
+        meta, _ = await _twins()
+        config = await _history("ds", steps=3, position=1)
+
+        await record_new_file(meta, NEW)
+
+        sealed = await _reloaded(config)
+        assert sealed.undo_floor == 2, "nothing at or before the current step may be restored"
+        assert len(sealed.transformation_steps) == 2, "the redo tail predates the edit too"
+        assert sealed.total_transformations == 2
+        assert (sealed.can_undo(), sealed.can_redo()) == (False, False)
+
+    async def test_the_history_is_found_under_the_uploads_own_id(self, setup_database):
+        meta, upload = await _twins()
+        config = await _history(str(upload.id), steps=2, position=1)
+
+        await record_new_file(meta, NEW)
+
+        assert (await _reloaded(config)).undo_floor == 2
+
+    async def test_a_move_the_history_made_leaves_it_alone(self, setup_database):
+        meta, _ = await _twins()
+        config = await _history("ds", steps=3, position=1)
+
+        await record_new_file(meta, NEW, in_history=True)
+
+        untouched = await _reloaded(config)
+        assert untouched.undo_floor == 0 and len(untouched.transformation_steps) == 3
+        assert (untouched.can_undo(), untouched.can_redo()) == (True, True)
+
+    async def test_another_accounts_history_for_the_same_id_is_not_touched(self, setup_database):
+        meta, _ = await _twins()
+        theirs = await _history("ds", user_id="someone_else")
+
+        await record_new_file(meta, NEW)
+
+        assert (await _reloaded(theirs)).undo_floor == 0
+
+    async def test_a_step_recorded_after_the_edit_can_be_undone_only_down_to_it(self, setup_database):
+        meta, _ = await _twins()
+        config = await _history("ds", steps=2, position=1)
+        await record_new_file(meta, NEW)
+
+        sealed = await _reloaded(config)
+        sealed.add_transformation_step("fill_missing", columns=["score"], version_id="v9")
+        sealed.add_transformation_step("drop_missing", columns=["score"], version_id="v10")
+
+        assert sealed.can_undo() is True, "back to the first step recorded after the edit"
+        assert sealed.can_reach(2) is True and sealed.can_reach(1) is False
+        sealed.current_position = 2
+        assert sealed.can_undo() is False
+
+
+def test_only_the_history_itself_marks_a_move_as_its_own():
+    """`in_history=True` exempts a move from closing the history, so it belongs to the
+    apply that records the step and to undo/redo, and to nothing else (#851). A new
+    writer that passes it without recording a step reopens the silent discard."""
+    import re
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[2] / "app"
+    callers = sorted(
+        str(path.relative_to(app_dir))
+        for path in app_dir.rglob("*.py")
+        if re.search(r"record_new_file\([^)]*in_history=True", path.read_text())
+    )
+    assert callers == ["services/history_service.py", "services/transformation_service.py"]

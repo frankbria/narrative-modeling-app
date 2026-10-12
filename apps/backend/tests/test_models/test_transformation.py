@@ -96,11 +96,17 @@ class TestTransformationStep:
         assert step.transformation_type == "remove_duplicates"
         assert step.column is None
 
+    def test_a_fill_with_no_column_named_is_a_valid_step(self):
+        """The engine fills every column when none is named, so the step it ran must be
+        recordable (#851): refusing it failed the apply after its file was written."""
+        step = TransformationStep(transformation_type="fill_missing", parameters={"method": "mean"})
+        assert step.column is None and step.columns is None
+
     def test_step_all_transformation_types(self):
         """Test all valid transformation_type values (from the canonical enum)."""
         # Mirror of TransformationStep.validate_column_specification
         column_required_types = {
-            'encode', 'scale', 'impute', 'fill_missing',
+            'encode', 'scale', 'impute',
             'label_encode', 'normalize', 'standardize'
         }
 

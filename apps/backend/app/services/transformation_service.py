@@ -7,6 +7,9 @@ the existing TransformationEngine.
 """
 
 import logging
+from collections import deque
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC
 from typing import Any
 
@@ -34,6 +37,27 @@ logger = logging.getLogger(__name__)
 def _name_step(result: TransformationResult, number: int, step_type: TransformationType) -> TransformationResult:
     result.error = f"Step {number} ({step_type.value}) failed: {result.error}"
     return result
+
+
+@dataclass
+class _RanStep:
+    """One transformation as it ran: what it was asked to do, and the frame either side."""
+
+    transformation_type: str
+    parameters: dict[str, Any]
+    before: pd.DataFrame
+    after: pd.DataFrame
+    result: Any
+
+
+class _StepFailed(Exception):
+    """A transformation reported failure; the message is the one the caller is shown."""
+
+
+def _elapsed_ms(started: float) -> int:
+    import time
+
+    return int((time.time() - started) * 1000)
 
 
 class TransformationService(BaseService[TransformationConfig]):
@@ -563,110 +587,139 @@ class TransformationService(BaseService[TransformationConfig]):
             NotFoundError: If dataset not found or user doesn't own it
             OperationError: If transformation application fails
         """
+        return await self.apply_pipeline(user_id, dataset_id, [(transformation_type, parameters)])
+
+    async def apply_pipeline(
+        self, user_id: str, dataset_id: str, steps: list[tuple[str, dict[str, Any]]]
+    ) -> dict[str, Any]:
+        """Apply `steps` in order, each as its own history step and version (#851).
+
+        All or nothing: every step is run on the frame first, and nothing is written
+        unless all of them succeed. Then each is recorded exactly as a single apply is,
+        so undo walks back through a pipeline (or a recipe) one transformation at a
+        time. Before #851 the pipeline route moved the dataset with no step at all, and
+        an undo afterwards restored a version from before it.
+
+        Raises:
+            NotFoundError: If dataset not found or user doesn't own it
+            OperationError: If a transformation raises while it runs
+        """
         import time
-        from datetime import datetime
 
-        from app.services.redis_cache import cache_service
-        from app.services.transformation_engine.data_utils import (
-            get_dataframe_from_s3,
-            upload_dataframe_to_s3,
-        )
+        from app.services.transformation_engine.data_utils import get_dataframe_from_s3
 
-        start_time = time.time()
-
-        # Get dataset with ownership verification
+        started = time.time()
         # Either id space: a UI upload's UserData id resolves to its twin (#850).
         dataset = await ensure_metadata_twin(dataset_id, user_id)
-
         if not dataset:
             raise NotFoundError(
                 resource_type="Dataset",
                 resource_id=dataset_id,
                 message=f"Dataset {dataset_id} not found or not owned by user {user_id}"
             )
-
         try:
-            # Load data from S3
-            file_path = downloadable_url(dataset.file_path, dataset.s3_url)  # a raw key must not reach the URL-only downloader (#466)
-            df = await get_dataframe_from_s3(file_path)
-
-            # Apply transformation using engine (keep the DataFrame, no dict round-trip #542)
-            transformed_df, result = self.engine.apply_transformation_frame(
-                df=df,
-                transformation_type=TransformationType(transformation_type),
-                parameters=parameters
+            # a raw key must not reach the URL-only downloader (#466)
+            df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
+            if len(steps) > 1:
+                # Dry run, so nothing is written unless every step succeeds. The steps are
+                # run again below rather than kept: a pipeline then never holds more than
+                # two frames, where keeping them would hold one per step.
+                deque(self._run(df, steps), maxlen=0)
+            # Recorded under the dataset's own id, whichever id the request named it by:
+            # keyed on the request's, the same dataset grew one history per id space,
+            # and an undo in one discarded the steps listed in the other (#851).
+            return await self._record_steps(
+                dataset, dataset.dataset_id, user_id, self._run(df, steps), started
             )
-
-            if not result.success or transformed_df is None:
-                return {
-                    "success": False,
-                    "dataset_id": dataset_id,
-                    "transformation_id": "",
-                    "execution_time_ms": int((time.time() - start_time) * 1000),
-                    "error": result.error
-                }
-
-            # Save transformed data to S3
-            timestamp = datetime.now(UTC).timestamp()
-            new_file_path = await upload_dataframe_to_s3(
-                transformed_df,
-                f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
-            )
-
-            config_id = await self._history_config_id(dataset_id, user_id, timestamp, new_file_path)
-
-            # Calculate execution time early for versioning
-            execution_time_ms = int((time.time() - start_time) * 1000)
-
-            version_id = await self._version_for(
-                dataset, dataset_id, user_id, df, transformed_df, transformation_type,
-                parameters, result.affected_rows, execution_time_ms, config_id,
-            )
-
-            # Add transformation step WITH version_id
-            await self.add_transformation_step(
-                config_id=config_id,
-                transformation_type=transformation_type,
-                column=parameters.get("column"),
-                columns=parameters.get("columns"),
-                parameters=parameters,
-                version_id=version_id
-            )
-
-            # Mark as applied
-            await self.mark_transformations_applied(
-                config_id=config_id,
-                file_path=new_file_path
-            )
-
-            # Move the dataset AND its dual-written UserData twin to the transformed
-            # artifact (#276, #467): leaving s3_url stale served pre-transform data, and
-            # moving only this side severed the (user_id, s3_url) join the twin lives on.
-            await record_new_file(dataset, new_file_path)
-
-            # Clear cached data
-            await cache_service.delete_pattern(f"stats_{dataset_id}_*")
-
+        except _StepFailed as failed:
             return {
-                "success": True,
+                "success": False,
                 "dataset_id": dataset_id,
-                "transformation_id": config_id,
-                "affected_rows": result.affected_rows,
-                "affected_columns": result.affected_columns,
-                "execution_time_ms": execution_time_ms,
-                "warnings": result.warnings
+                "transformation_id": "",
+                "execution_time_ms": _elapsed_ms(started),
+                "error": str(failed),
             }
         except ValueError as e:
             raise OperationError(
                 message="Failed to apply transformation",
                 operation="apply_transformation",
                 original_error=e,
-                details={
-                    "dataset_id": dataset_id,
-                    "transformation_type": transformation_type,
-                    "user_id": user_id
-                }
+                details={"dataset_id": dataset_id, "user_id": user_id},
             )
+
+    def _run(self, df: pd.DataFrame, steps: list[tuple[str, dict[str, Any]]]) -> Iterator["_RanStep"]:
+        """Run each step on the frame the one before it produced.
+
+        Raises _StepFailed at the first step that reports failure. A single step keeps
+        the engine's own message; in a longer pipeline the message names the step."""
+        for transformation_type, parameters in steps:
+            # Keep the DataFrame across steps, no per-step list-of-dicts round-trip (#542).
+            after, result = self.engine.apply_transformation_frame(
+                df=df, transformation_type=TransformationType(transformation_type), parameters=parameters
+            )
+            if not result.success or after is None:
+                raise _StepFailed(
+                    result.error if len(steps) == 1
+                    else f"Transformation '{transformation_type}' failed: {result.error}"
+                )
+            yield _RanStep(transformation_type, parameters, df, after, result)
+            df = after
+
+    async def _record_steps(
+        self, dataset: Any, dataset_id: str, user_id: str, ran: Iterator["_RanStep"], started: float
+    ) -> dict[str, Any]:
+        from app.services.redis_cache import cache_service
+
+        done: dict[str, Any] = {
+            "success": True,
+            "dataset_id": dataset_id,
+            "affected_rows": 0,
+            "affected_columns": [],
+            "warnings": [],
+        }
+        for step in ran:
+            done["transformation_id"] = await self._record_step(dataset, dataset_id, user_id, step, started)
+            done["affected_rows"] += step.result.affected_rows
+            done["affected_columns"] = sorted({*done["affected_columns"], *step.result.affected_columns})
+            done["warnings"] += step.result.warnings
+            done["schema"] = {str(col): str(dtype) for col, dtype in step.after.dtypes.items()}
+        await cache_service.delete_pattern(f"stats_{dataset_id}_*")
+        return {**done, "execution_time_ms": _elapsed_ms(started)}
+
+    async def _record_step(
+        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", started: float
+    ) -> str:
+        """Write one transformed frame as the dataset's current file, a version and a
+        history step; the history config's id."""
+        from datetime import datetime
+
+        from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
+
+        timestamp = datetime.now(UTC).timestamp()
+        new_file_path = await upload_dataframe_to_s3(
+            step.after, f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
+        )
+        config_id = await self._history_config_id(dataset_id, user_id, timestamp, new_file_path)
+        version_id = await self._version_for(
+            dataset, dataset_id, user_id, step.before, step.after, step.transformation_type,
+            step.parameters, step.result.affected_rows, _elapsed_ms(started), config_id,
+        )
+        await self.add_transformation_step(
+            config_id=config_id,
+            transformation_type=step.transformation_type,
+            column=step.parameters.get("column"),
+            # With no column named the engine picks them, so list the ones it changed.
+            columns=step.parameters.get("columns") or step.result.affected_columns or None,
+            parameters=step.parameters,
+            version_id=version_id
+        )
+        await self.mark_transformations_applied(config_id=config_id, file_path=new_file_path)
+        # Move the dataset AND its dual-written UserData twin to the transformed
+        # artifact (#276, #467): leaving s3_url stale served pre-transform data, and
+        # moving only this side severed the (user_id, s3_url) join the twin lives on.
+        # in_history: this move has its step, so it must not close the history (#851).
+        await record_new_file(dataset, new_file_path, in_history=True)
+        return config_id
 
     async def get_transformation_history(
         self,
