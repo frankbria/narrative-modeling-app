@@ -90,6 +90,7 @@ from app.services.model_storage import (
 )
 from app.services.model_training import (
     AutoMLEngine,
+    FeatureEngineer,
     FeatureEngineeringConfig,
     TrainingCancelledError,
     TrainingEvent,
@@ -2116,22 +2117,23 @@ def required_input_features(feature_engineer, ml_model) -> list[str]:
 
 
 def _categorical_options(feature_engineer, column: str) -> list[str] | None:
-    """Recover the allowed values for a categorical column from the fitted
-    encoder, so the form can render a dropdown. Returns None if unrecoverable."""
+    """The values the form offers for a categorical column: each fitted category as
+    the string key serving matches a value on, so every option is one the model
+    knows (#906). Returns None if unrecoverable."""
     try:
-        transformers = getattr(feature_engineer, "transformers", {}) or {}
-        if getattr(feature_engineer.config, "encoding_method", None) == "onehot":
-            encoder = transformers.get("encoder")
-            if encoder is not None:
-                idx = feature_engineer.categorical_features.index(column)
-                return [str(c) for c in encoder.categories_[idx]]
-        label_encoders = transformers.get("label_encoders", {}) or {}
-        encoder = label_encoders.get(column)
-        if encoder is not None:
-            return [str(c) for c in encoder.classes_]
+        return _fitted_category_keys(feature_engineer, column)
     except Exception:
         return None
-    return None
+
+
+def _fitted_category_keys(feature_engineer, column: str) -> list[str] | None:
+    transformers = getattr(feature_engineer, "transformers", None) or {}
+    if "encoder" in transformers:
+        idx = feature_engineer.categorical_features.index(column)
+        categories = pd.Series(transformers["encoder"].categories_[idx], dtype=object)
+        return FeatureEngineer._label_keys(categories).tolist()
+    encoder = transformers.get("label_encoders", {}).get(column)
+    return list(map(str, encoder.classes_)) if encoder is not None else None
 
 
 def _extract_class_labels(model, problem_type: str) -> list[str] | None:

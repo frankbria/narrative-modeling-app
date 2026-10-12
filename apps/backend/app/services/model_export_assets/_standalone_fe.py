@@ -74,17 +74,25 @@ class StandaloneFeatureEngineer:
         # "label_encoders"; an unseen label category is served like a missing one (#697).
         t = self.transformers
         if "encoder" in t:
-            encoded_df = pd.DataFrame(
-                t["encoder"].transform(X[self.categorical_features]),
-                columns=t["encoded_columns"],
-                index=X.index,
-            )
-            return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
+            return pd.concat([X.drop(columns=self.categorical_features), self._one_hot(X)], axis=1)
         for col, le in t.get("label_encoders", {}).items():
             codes = {label: code for code, label in enumerate(le.classes_)}
             unseen = self._unseen_label_code(col, codes)
             X[col] = self._label_keys(X[col]).map(codes).fillna(unseen).astype(int)
         return X
+
+    def _one_hot(self, X: pd.DataFrame) -> pd.DataFrame:
+        # Same as the platform: matched on the label key, not by raw value and type,
+        # so "1" selects a category fitted as the int 1 (#906).
+        blocks = []
+        for col, categories in zip(self.categorical_features, self.transformers["encoder"].categories_):
+            position = {key: i for i, key in enumerate(self._label_keys(pd.Series(categories, dtype=object)))}
+            hit = self._label_keys(X[col]).map(position).to_numpy(dtype=float)
+            block = np.zeros((len(X), len(categories)))
+            matched = ~np.isnan(hit)
+            block[matched, hit[matched].astype(int)] = 1.0
+            blocks.append(block)
+        return pd.DataFrame(np.hstack(blocks), columns=self.transformers["encoded_columns"], index=X.index)
 
     def _unseen_label_code(self, col: str, codes: dict) -> int:
         # Same as the platform: the training's most-frequent value (what a blank

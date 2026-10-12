@@ -355,6 +355,60 @@ class TestModelTrainingEndpoints:
             assert "Dataset not found" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_predict_matches_the_forms_string_to_a_numeric_category(
+        self, async_authorized_client
+    ):
+        """#906: the form sends a categorical as the string its dropdown offered. For a
+        category fitted as a number that string was served as an all-zeros block."""
+        import pandas as pd
+
+        from app.services.model_training.feature_engineer import (
+            FeatureEngineer,
+            FeatureEngineeringConfig,
+        )
+
+        rng = np.random.RandomState(0)
+        frame = pd.DataFrame({"tier": rng.choice([1, 2, 3], 200), "spend": rng.uniform(1, 100, 200)})
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        await fe.fit_transform(frame)
+        assert fe.categorical_features == ["tier"]
+        mock_model = MagicMock(spec=["predict"])
+        mock_model.predict.return_value = np.array([1.0, 2.0])
+
+        with (
+            patch(
+                "app.services.model_storage.ModelStorageService.load_model",
+                new_callable=AsyncMock,
+                return_value=(mock_model, fe),
+            ),
+            patch(
+                "app.models.ml_model.MLModel.find_one",
+                new_callable=AsyncMock,
+                return_value=MagicMock(
+                    feature_names=fe.feature_names,
+                    problem_type="regression",
+                    algorithm="Linear",
+                    target_column="y",
+                    is_calibrated=False,
+                    calibration_method=None,
+                    residual_std=None,
+                    feature_importance=None,
+                ),
+            ),
+        ):
+            options = await async_authorized_client.get("/api/v1/ml/model_123/features")
+            offered = {f["name"]: f["options"] for f in options.json()["features"] if f["options"]}
+            response = await async_authorized_client.post(
+                "/api/v1/ml/model_123/predict",
+                json={"data": [{"tier": offered["tier"][0], "spend": 5.0}, {"tier": 2, "spend": 5.0}]},
+            )
+
+        assert offered == {"tier": ["1", "2", "3"]}
+        assert response.status_code == 200, response.text
+        served = mock_model.predict.call_args[0][0]
+        assert served[["tier_1", "tier_2", "tier_3"]].values.tolist() == [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+
+    @pytest.mark.asyncio
     async def test_predict_model_not_found(self, async_authorized_client):
         """Test prediction with non-existent model"""
         with patch(
