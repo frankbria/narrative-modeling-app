@@ -250,14 +250,25 @@ def load_dataframe_from_s3(
             pass
 
 
-# Logged once per process, when the service is built at import (#878). The bucket's name
-# stays out of the line: the repository is public and logs get pasted into issues.
+# Logged once per process (#878): the service is built at import and again by several
+# services per request, so the first one to find the misconfiguration says it and the
+# rest stay quiet. The bucket's name stays out of the line: the repository is public and
+# logs get pasted into issues.
+_warned_of_a_real_bucket = False
 _REAL_BUCKET_IN_DEVELOPMENT = (
     "ENVIRONMENT is development and AWS_ENDPOINT_URL is not set: uploads and model "
     "artifacts are written to a real S3 bucket, beside any other environment that uses "
     "it. Set AWS_ENDPOINT_URL=http://localhost:4566 to use LocalStack "
     "(docker compose -f docker-compose.test.yml up -d localstack)."
 )
+
+
+def _warn_once_of_a_real_bucket_in_development() -> None:
+    global _warned_of_a_real_bucket
+    if _warned_of_a_real_bucket or not development_uses_a_real_bucket():
+        return
+    _warned_of_a_real_bucket = True
+    logger.warning(_REAL_BUCKET_IN_DEVELOPMENT)
 
 
 def _lacks_real_credentials() -> bool:
@@ -284,8 +295,7 @@ class S3Service:
         if self.is_mock_mode:
             logger.warning("S3Service initialized in mock mode (test credentials or missing credentials)")
             return
-        if development_uses_a_real_bucket():
-            logger.warning(_REAL_BUCKET_IN_DEVELOPMENT)
+        _warn_once_of_a_real_bucket_in_development()
         try:
             self.s3_client = create_s3_client()
         except Exception as e:

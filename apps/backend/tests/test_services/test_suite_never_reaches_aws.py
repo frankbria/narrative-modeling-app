@@ -63,6 +63,14 @@ def test_every_client_the_app_builds_points_away_from_aws(monkeypatch):
 REAL = {"ENVIRONMENT": "development", "AWS_ACCESS_KEY_ID": "AKIAEXAMPLE", "AWS_SECRET_ACCESS_KEY": "s", "AWS_S3_BUCKET": "a-bucket"}
 
 
+@pytest.fixture(autouse=True)
+def _not_yet_warned(monkeypatch):
+    """The warning is once per process; each test here starts as a fresh process would."""
+    from app.services import s3_service
+
+    monkeypatch.setattr(s3_service, "_warned_of_a_real_bucket", False)
+
+
 def _environment(monkeypatch, **changes):
     for name in ("NODE_ENV", "AWS_ENDPOINT_URL", "AWS_BUCKET_NAME", "S3_BUCKET_NAME", "S3_BUCKET"):
         monkeypatch.delenv(name, raising=False)
@@ -84,6 +92,7 @@ class TestDevelopmentOnARealBucket:
     @pytest.mark.parametrize("changes", [
         {"AWS_ENDPOINT_URL": "http://localhost:4566"},  # LocalStack: the documented setup
         {"ENVIRONMENT": "test"},
+        {"ENVIRONMENT": None, "NODE_ENV": "production"},
         {"ENVIRONMENT": "staging"},  # a deployed environment owns its bucket
         {"AWS_ACCESS_KEY_ID": ""},  # no credentials: nothing can be written
         {"AWS_S3_BUCKET": None},  # no bucket configured
@@ -95,11 +104,23 @@ class TestDevelopmentOnARealBucket:
 
         assert development_uses_a_real_bucket() is False
 
-    def test_the_backend_says_so_once_when_it_starts(self, monkeypatch, caplog):
+    @pytest.mark.parametrize("named_by", [{"ENVIRONMENT": None, "NODE_ENV": "development"}, {"ENVIRONMENT": None}])
+    def test_development_named_any_other_way_counts_too(self, monkeypatch, named_by):
+        """`get_environment()`: NODE_ENV when ENVIRONMENT is unset, development when neither is."""
+        from app.config import development_uses_a_real_bucket
+
+        _environment(monkeypatch, **named_by)
+
+        assert development_uses_a_real_bucket() is True
+
+    def test_the_backend_says_so_once_however_often_the_service_is_built(self, monkeypatch, caplog):
+        """Several services build an S3Service of their own, some per request."""
         from app.services.s3_service import S3Service
 
         _environment(monkeypatch)
         with caplog.at_level(logging.WARNING, logger="app.services.s3_service"):
+            S3Service()
+            S3Service()
             S3Service()
 
         warnings = [r.getMessage() for r in caplog.records if "AWS_ENDPOINT_URL" in r.getMessage()]
