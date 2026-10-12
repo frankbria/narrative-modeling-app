@@ -111,6 +111,7 @@ class DatasetSection(Section):
     feature_names: list[str] = Field(default_factory=list)
     excluded_columns: list[str] = Field(default_factory=list)
     excluded_date_columns: list[str] = Field(default_factory=list)
+    excluded_empty_columns: list[str] = Field(default_factory=list)
 
 
 class ReproducibilitySection(Section):
@@ -370,6 +371,10 @@ def _reproducibility(model: MLModel) -> ReproducibilitySection:
     )
 
 
+def _listed(config: dict[str, Any], key: str) -> list[str]:
+    return list(config.get(key) or [])
+
+
 def _dataset(model: MLModel) -> DatasetSection:
     config = getattr(model, "training_config", None) or {}
     return DatasetSection(
@@ -378,8 +383,9 @@ def _dataset(model: MLModel) -> DatasetSection:
         n_samples_train=model.n_samples_train,
         n_features=model.n_features,
         feature_names=list(model.feature_names or []),
-        excluded_columns=list(config.get("excluded_identifier_columns") or []),
-        excluded_date_columns=list(config.get("excluded_date_columns") or []),
+        excluded_columns=_listed(config, "excluded_identifier_columns"),
+        excluded_date_columns=_listed(config, "excluded_date_columns"),
+        excluded_empty_columns=_listed(config, "excluded_empty_columns"),
     )
 
 
@@ -534,6 +540,7 @@ def _md_data(report: ModelReport) -> list[str]:
     for label, columns in (
         ("Excluded as identifiers", data.excluded_columns),
         ("Excluded as dates", data.excluded_date_columns),
+        ("Excluded as empty", data.excluded_empty_columns),
     ):
         if columns:
             out.append(f"- {label}: " + ", ".join(map(_code, columns)))

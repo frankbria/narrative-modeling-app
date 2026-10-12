@@ -97,9 +97,9 @@ def _is_undetermined_task(exc: BaseException, low: str) -> bool:
 _RULES: tuple[tuple[Callable[[BaseException, str], bool], str], ...] = (
     (
         _is_identifier_only,
-        "Every column other than the target looks like a per-row identifier "
-        "(such as a customer ID) or a date, so there is nothing to learn from. "
-        "Add the columns that describe each row and try again.",
+        "Every column other than the target is a per-row identifier (such as a "
+        "customer ID), a date, or has no values, so there is nothing to learn "
+        "from. Add the columns that describe each row and try again.",
     ),
     (
         _is_timeout,

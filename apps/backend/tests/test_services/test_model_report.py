@@ -706,6 +706,19 @@ class TestFreeTextCannotInjectStructure:
         assert "Excluded as dates: `order_date`, `shipped_at`" in md
 
     @pytest.mark.asyncio
+    async def test_excluded_empty_columns_are_reported(self, setup_database):
+        """#911: a column with no values is named, not silently gone."""
+        model = _model("m-empty", training_config={"excluded_empty_columns": ["notes", "discount"]})
+
+        report = await build_model_report(model, USER)
+
+        assert report.dataset.excluded_empty_columns == ["notes", "discount"]
+        assert report.dataset.excluded_columns == [] and report.dataset.excluded_date_columns == []
+        md = render_markdown(report)
+        assert "Excluded as empty: `notes`, `discount`" in md
+        assert "Excluded as identifiers" not in md
+
+    @pytest.mark.asyncio
     async def test_exactly_one_row_is_the_winner_when_a_job_exists(
         self, setup_database
     ):

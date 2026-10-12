@@ -596,6 +596,19 @@ async def _load_training_frame(user_data: UserData, log_event) -> tuple[pd.DataF
     return await asyncio.to_thread(_parse_and_hash, file_bytes, user_data.file_type)
 
 
+def _recorded_exclusions(metadata: dict[str, Any]) -> dict[str, list[str]]:
+    """What ``training_config`` keeps of the columns left out of the features, which
+    the model report reads: per-row identifiers (#806), dates (#840) and columns
+    with no values (#911). The engineer's own ``excluded_features`` key is the
+    identifiers."""
+    engineering = metadata.get("feature_engineering", {})
+    return {
+        "excluded_identifier_columns": engineering.get("excluded_features", []),
+        "excluded_date_columns": engineering.get("excluded_date_columns", []),
+        "excluded_empty_columns": engineering.get("excluded_empty_columns", []),
+    }
+
+
 async def train_model_task(
     user_data: UserData,
     request: TrainModelRequest,
@@ -845,14 +858,8 @@ async def train_model_task(
         training_config["early_stopped"] = result.early_stopped
         training_config["stop_reason"] = result.stop_reason
         training_config["algorithms_evaluated"] = result.algorithms_evaluated
-        # Identifier columns the engineer left out of the features (#806).
-        training_config["excluded_identifier_columns"] = result.metadata.get(
-            "feature_engineering", {}
-        ).get("excluded_features", [])
-        # Date columns it left out too (#840), reported apart from the identifiers.
-        training_config["excluded_date_columns"] = result.metadata.get(
-            "feature_engineering", {}
-        ).get("excluded_date_columns", [])
+        # The columns the engineer left out of the features, by kind.
+        training_config.update(_recorded_exclusions(result.metadata))
         # What the model report could only call "not recorded" (#801): the seed the
         # engine actually used, and the settings the winning candidate ran with.
         training_config["random_seed"] = engine.random_state

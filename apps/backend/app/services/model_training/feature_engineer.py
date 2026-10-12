@@ -259,6 +259,7 @@ class FeatureEngineer:
         self.categorical_features: list[str] = []
         self.excluded_features: list[str] = []
         self.excluded_dates: list[str] = []
+        self.excluded_empty: list[str] = []
 
     async def fit_transform(
         self,
@@ -300,26 +301,41 @@ class FeatureEngineer:
                 # ``excluded_identifier_columns``. Dates are reported apart (#840).
                 "excluded_features": self._excluded_identifiers(),
                 "excluded_date_columns": self.excluded_dates,
+                "excluded_empty_columns": self.excluded_empty,
                 "final_feature_count": len(self.feature_names)
             }
         )
     
     def _exclude_unlearnable(self, X: pd.DataFrame) -> pd.DataFrame:
         """Record and drop the columns left out of the features: per-row identifiers
-        (#806) and dates (#840). ``excluded_features`` holds both, in column order,
-        and is what ``transform`` and the export drop."""
-        keep = self.config.keep_columns
-        self.excluded_dates = self._date_columns(X, keep)
-        left_out = {*self.excluded_dates, *self._identifier_columns(X, keep)}
-        self.excluded_features = [col for col in X.columns if col in left_out]
+        (#806), dates (#840) and columns with no value at all (#911).
+        ``excluded_features`` holds all three, in column order, and is what
+        ``transform`` and the export drop."""
+        self._find_unlearnable(X)
         if not self.excluded_features:
             return X
         if len(self.excluded_features) == X.shape[1]:
             raise ValueError(
-                "Every feature column is a per-row identifier or a date, so there is nothing to learn from"
+                "Every feature column is a per-row identifier, a date or empty, "
+                "so there is nothing to learn from"
             )
-        logger.info("Excluding identifier and date columns from features: %s", self.excluded_features)
+        logger.info("Excluding identifier, date and empty columns from features: %s", self.excluded_features)
         return X.drop(columns=self.excluded_features)
+
+    def _find_unlearnable(self, X: pd.DataFrame) -> None:
+        keep = self.config.keep_columns
+        # Not subject to ``keep``: there is no value to encode, and an imputer drops
+        # a column it has nothing to learn a fill from. An empty date is "empty".
+        self.excluded_empty = self._empty_columns(X)
+        self.excluded_dates = self._date_columns(X.drop(columns=self.excluded_empty), keep)
+        left_out = {*self.excluded_empty, *self.excluded_dates, *self._identifier_columns(X, keep)}
+        self.excluded_features = [col for col in X.columns if col in left_out]
+
+    @staticmethod
+    def _empty_columns(X: pd.DataFrame) -> list[str]:
+        """Columns with no value in any row the engineer is fitted on. pandas reads
+        an unused CSV column as float64, all NaN."""
+        return [col for col in X.columns if not X[col].notna().any()]
 
     @staticmethod
     def _datetimes_as_text(X: pd.DataFrame) -> pd.DataFrame:
@@ -333,15 +349,16 @@ class FeatureEngineer:
         return X
 
     def _excluded_identifiers(self) -> list[str]:
-        # getattr: engineers pickled before #806 / #840 lack one list or the other.
-        dates = getattr(self, "excluded_dates", [])
-        return [col for col in getattr(self, "excluded_features", []) if col not in dates]
+        # getattr: engineers pickled before #806 / #840 / #911 lack one list or another.
+        other = {*getattr(self, "excluded_dates", []), *getattr(self, "excluded_empty", [])}
+        return [col for col in getattr(self, "excluded_features", []) if col not in other]
 
     def exclusion_notes(self) -> list[str]:
         """One sentence for the training log per kind of column left out of the features."""
         kinds = (
             ("per-row identifier", self._excluded_identifiers()),
             ("date", getattr(self, "excluded_dates", [])),
+            ("empty", getattr(self, "excluded_empty", [])),
         )
         return [
             f"Excluded {kind} columns from the features: {', '.join(columns)}"
@@ -574,40 +591,22 @@ class FeatureEngineer:
                 self.categorical_features.append(col)
     
     async def _handle_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Handle missing values in features"""
-        # Numeric features
+        """Fit the imputers and fill the blanks.
+
+        No column here is empty: ``_exclude_unlearnable`` left those out (#911). An
+        imputer drops a column it has no value to learn a fill from, and this step
+        used to answer the resulting shape mismatch by dropping every categorical
+        column, which failed the run or, worse, trained without them."""
         if self.numeric_features:
             numeric_imputer = SimpleImputer(strategy=self.config.missing_strategy)
             df[self.numeric_features] = numeric_imputer.fit_transform(df[self.numeric_features])
             self.transformers["imputer_numeric"] = numeric_imputer
-        
-        # Categorical features
         if self.categorical_features:
             categorical_imputer = SimpleImputer(strategy="most_frequent")
-            try:
-                # Handle case where result might be numpy array
-                imputed_data = categorical_imputer.fit_transform(df[self.categorical_features])
-                if isinstance(imputed_data, np.ndarray) and imputed_data.size > 0:
-                    # Only create DataFrame if there's data
-                    if imputed_data.shape[1] == len(self.categorical_features):
-                        df[self.categorical_features] = pd.DataFrame(
-                            imputed_data, 
-                            columns=self.categorical_features,
-                            index=df.index
-                        )
-                    else:
-                        # Handle case where some columns were dropped
-                        df = df.drop(columns=self.categorical_features)
-                else:
-                    df[self.categorical_features] = imputed_data
-            except ValueError:
-                # Handle case where all values are missing
-                logger.warning(f"Could not impute categorical features: {self.categorical_features}")
-                # Keep columns but leave as is
+            df[self.categorical_features] = categorical_imputer.fit_transform(df[self.categorical_features])
             self.transformers["imputer_categorical"] = categorical_imputer
-        
         return df
-    
+
     async def _encode_categorical_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Encode categorical features"""
         if self.config.encoding_method == "onehot":
