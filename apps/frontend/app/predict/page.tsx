@@ -313,7 +313,7 @@ export default function PredictPage() {
             features={features}
             values={predictionInput}
             touched={touched}
-            fieldError={fieldError}
+            errors={Object.fromEntries(validationErrors.map((e) => [e.name, e.error as string]))}
             onChange={(name, value) => setPredictionInput((prev) => ({ ...prev, [name]: value }))}
             onTouched={(name) => setTouched((prev) => ({ ...prev, [name]: true }))}
             prediction={prediction}

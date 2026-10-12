@@ -1665,3 +1665,15 @@ def test_summary_counts_rows_with_input_warnings():
 
     assert stats["input_warning_count"] == 2
     assert stats["success_count"] == 3 and stats["error_count"] == 1
+
+
+def test_summary_drops_value_stats_when_a_prediction_is_not_a_number():
+    """All-or-nothing: one non-numeric regression output voids min/max/mean."""
+    svc = _service()
+
+    stats = svc._calculate_summary_statistics(
+        [{"prediction": 10.0}, {"prediction": "n/a"}, {"prediction": 30.0}], _model("regression")
+    )
+
+    assert "prediction_value_stats" not in stats
+    assert stats["success_count"] == 3

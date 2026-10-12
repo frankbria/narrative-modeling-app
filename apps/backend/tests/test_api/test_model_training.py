@@ -493,6 +493,25 @@ class TestModelTrainingEndpoints:
             assert "Model not found" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_predict_404s_when_the_artifact_loads_but_the_document_is_gone(
+        self, async_authorized_client
+    ):
+        with (
+            patch(
+                "app.services.model_storage.ModelStorageService.load_model",
+                new_callable=AsyncMock,
+                return_value=(MagicMock(), None),
+            ),
+            patch("app.models.ml_model.MLModel.find_one", new_callable=AsyncMock, return_value=None),
+        ):
+            response = await async_authorized_client.post(
+                "/api/v1/ml/model_123/predict", json={"data": [{"feature1": 1.0}]}
+            )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Model not found"
+
+    @pytest.mark.asyncio
     async def test_predict_missing_feature_returns_422(self, async_authorized_client):
         """A record missing a required raw input feature is rejected (issue #82)."""
         mock_model = MagicMock()

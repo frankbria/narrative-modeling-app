@@ -120,7 +120,8 @@ export interface SinglePredictionPanelProps {
   features: ModelFeatureDescriptor[];
   values: Record<string, string>;
   touched: Record<string, boolean>;
-  fieldError(feature: ModelFeatureDescriptor): string | null;
+  /** The current validation error of each field that has one, by feature name. */
+  errors: Record<string, string>;
   onChange(name: string, value: string): void;
   onTouched(name: string): void;
   prediction: PredictResponse | null;
@@ -130,7 +131,7 @@ export interface SinglePredictionPanelProps {
 }
 
 export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
-  const { features, values, touched, fieldError, onChange, onTouched } = props;
+  const { features, values, touched, errors, onChange, onTouched } = props;
   return (
     <div className="space-y-4">
       <h3 className="font-semibold text-lg">Enter Feature Values</h3>
@@ -141,7 +142,7 @@ export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
             feature={feature}
             index={index}
             value={values[feature.name] ?? ''}
-            error={touched[feature.name] ? fieldError(feature) : null}
+            error={touched[feature.name] ? (errors[feature.name] ?? null) : null}
             onChange={(value) => onChange(feature.name, value)}
             onBlur={() => onTouched(feature.name)}
           />
