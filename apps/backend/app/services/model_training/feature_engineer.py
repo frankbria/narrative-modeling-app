@@ -291,10 +291,7 @@ class FeatureEngineer:
 
     async def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Transform new data using fitted transformers, in fit's step order."""
-        X_transformed = self._coerce_booleans(X.copy())
-        # getattr: engineers pickled before #806 have no exclusion list.
-        X_transformed = X_transformed.drop(columns=getattr(self, "excluded_features", []), errors="ignore")
-        X_transformed = self._apply_imputers(X_transformed)
+        X_transformed = self._apply_imputers(self._prepare(X))
         X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:
             X_transformed[self.numeric_features] = self.transformers["scaler"].transform(
@@ -306,6 +303,50 @@ class FeatureEngineer:
             available_features = [f for f in self.transformers["selected_features"] if f in X_transformed.columns]
             X_transformed = X_transformed[available_features]
         return X_transformed
+
+    def _prepare(self, X: pd.DataFrame) -> pd.DataFrame:
+        """A copy of the frame as ``transform`` and ``input_warnings`` both read it:
+        booleans as text, identifier columns dropped, and a JSON null (``None``) in a
+        categorical column turned into the NaN a blank cell is. The imputers fill
+        NaN only, so a null used to skip the fill a blank got at training (#838)."""
+        X = self._coerce_booleans(X.copy())
+        # getattr: engineers pickled before #806 have no exclusion list.
+        X = X.drop(columns=getattr(self, "excluded_features", []), errors="ignore")
+        for col in self.categorical_features:
+            if col in X.columns:
+                X[col] = X[col].where(X[col].notna(), np.nan)
+        return X
+
+    def input_warnings(self, X: pd.DataFrame) -> list[dict[str, str]]:
+        """Per row, the inputs whose value the model did not learn from (#838).
+
+        ``"missing"`` is a null, served as the training fill (the mean, or the most
+        frequent value). ``"unseen"`` is a category absent from training, which
+        one-hot serves as an all-zeros block and label encoding as the most frequent
+        value. A clean row is an empty dict. Only the columns supplied are read, and
+        nothing is stored on the engineer, which is shared across requests."""
+        X = self._prepare(X)
+        report: list[dict[str, str]] = [{} for _ in range(len(X))]
+        for col in [c for c in self.numeric_features + self.categorical_features if c in X.columns]:
+            missing = X[col].isna().to_numpy()
+            self._mark(report, col, missing, "missing")
+            self._mark(report, col, self._unseen(X[col], col) & ~missing, "unseen")
+        return report
+
+    @staticmethod
+    def _mark(report: list[dict[str, str]], col: str, rows: np.ndarray, reason: str) -> None:
+        for i in np.flatnonzero(rows):
+            report[i][col] = reason
+
+    def _unseen(self, values: pd.Series, col: str) -> np.ndarray:
+        """Which values have no fitted category; none in a column that is not encoded."""
+        if "encoder" in self.transformers and col in self.categorical_features:
+            categories = self.transformers["encoder"].categories_[self.categorical_features.index(col)]
+            return self._hits(values, categories) < 0
+        encoder = self.transformers.get("label_encoders", {}).get(col)
+        if encoder is None:
+            return np.zeros(len(values), dtype=bool)
+        return ~self._label_keys(values).isin(encoder.classes_).to_numpy()
 
     def _apply_imputers(self, X: pd.DataFrame) -> pd.DataFrame:
         if "imputer_numeric" in self.transformers:
@@ -339,15 +380,19 @@ class FeatureEngineer:
         is the same; a value with no category is still all zeros."""
         blocks = []
         for col, categories in zip(self.categorical_features, self.transformers["encoder"].categories_):
-            # By value: the imputer hands fit an object block, so the dtype says nothing.
-            numeric = pd.api.types.infer_dtype(categories, skipna=True) in self._NUMERIC_CATEGORIES
-            fitted = self._match_keys(pd.Series(categories, dtype=object), numeric)
-            position = {key: i for i, key in enumerate(fitted)}
-            hit = np.array([position.get(key, -1) for key in self._match_keys(X[col], numeric)], dtype=int)
+            hit = self._hits(X[col], categories)
             block = np.zeros((len(X), len(categories)))
             block[hit >= 0, hit[hit >= 0]] = 1.0
             blocks.append(block)
         return pd.DataFrame(np.hstack(blocks), columns=self.transformers["encoded_columns"], index=X.index)
+
+    def _hits(self, values: pd.Series, categories: Any) -> np.ndarray:
+        """The position of each value's fitted category, -1 where it has none."""
+        # By value: the imputer hands fit an object block, so the dtype says nothing.
+        numeric = pd.api.types.infer_dtype(categories, skipna=True) in self._NUMERIC_CATEGORIES
+        fitted = self._match_keys(pd.Series(categories, dtype=object), numeric)
+        position = {key: i for i, key in enumerate(fitted)}
+        return np.array([position.get(key, -1) for key in self._match_keys(values, numeric)], dtype=int)
 
     @staticmethod
     def _match_keys(values: pd.Series, numeric: bool) -> list[tuple[bool, str]]:

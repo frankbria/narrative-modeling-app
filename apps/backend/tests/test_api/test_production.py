@@ -382,6 +382,58 @@ class TestProductionServing:
         assert all(0.0 <= c <= 1.0 for c in body["confidence"])
 
     @pytest.mark.asyncio
+    async def test_serving_flags_unseen_and_missing_inputs(
+        self, async_authorized_client, setup_database
+    ):
+        """#838: the production response names, per record, the inputs the model did
+        not learn this value from. Real key, real model row, a really fitted
+        engineer and estimator; only the artifact download is stubbed."""
+        import pandas as pd
+
+        from app.services.model_training.feature_engineer import (
+            FeatureEngineer,
+            FeatureEngineeringConfig,
+        )
+
+        rng = np.random.RandomState(0)
+        frame = pd.DataFrame(
+            {
+                "plan": rng.choice(["basic", "pro"], 200, p=[0.7, 0.3]),
+                "spend": rng.uniform(1, 100, 200),
+            }
+        )
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+        fitted = await fe.fit_transform(frame)
+        clf = RandomForestClassifier(n_estimators=5, random_state=0).fit(
+            fitted.X_transformed, (frame["plan"] == "pro").astype(int)
+        )
+        await _make_model(feature_names=fe.feature_names).insert()
+        raw = "sk_live_e2e_serving_key_0000000838"
+        await _make_api_key(raw, model_ids=[]).insert()
+
+        with patch(
+            "app.services.model_storage.ModelStorageService.load_model",
+            new_callable=AsyncMock,
+            return_value=(clf, fe),
+        ):
+            resp = await async_authorized_client.post(
+                "/api/v1/production/v1/models/model_123/predict",
+                json={
+                    "data": [
+                        {"plan": "pro", "spend": 5.0},
+                        {"plan": "enterprise", "spend": 5.0},
+                        {"plan": None, "spend": 5.0},
+                    ]
+                },
+                headers={"X-API-Key": raw},
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["input_warnings"] == [{}, {"plan": "unseen"}, {"plan": "missing"}]
+        assert len(body["predictions"]) == 3
+
+    @pytest.mark.asyncio
     async def test_missing_required_feature_returns_422_over_http(
         self, async_authorized_client, setup_database
     ):
@@ -721,10 +773,69 @@ class TestProductionPredictErrorHandling:
             response = await production_predict("model_123", request, self._api_key())
 
         assert response.predictions == [0, 1]
+        assert response.input_warnings is None  # no fitted engineer
         trained.predict.assert_called_once()
         trained.predict_proba.assert_called_once()
         # Enrichment pipeline ran end-to-end: confidence derived from proba.
         assert response.confidence == [0.8, 0.7]
+
+    @pytest.mark.asyncio
+    async def test_metadata_and_explanations_are_returned_when_asked_for(self):
+        """Both are opt-in; the refactor in #838 moved them, so pin them."""
+        from datetime import UTC, datetime
+
+        model = self._model()
+        model.created_at = datetime(2026, 1, 2, tzinfo=UTC)
+        model.name = "Test Model"  # MagicMock(name=...) names the mock, not the attribute
+        trained = MagicMock()
+        trained.predict.return_value = np.array([0])
+        trained.predict_proba.return_value = np.array([[0.8, 0.2]])
+        find, load = self._patch_load(model)
+        explain = patch(
+            "app.api.routes.production._prediction_enricher.explanations",
+            return_value=[None],
+        )
+        with find, load as mock_load, explain as mock_explain:
+            mock_load.return_value = (trained, None)
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}],
+                include_metadata=True,
+                include_explanations=True,
+            )
+
+            response = await production_predict("model_123", request, self._api_key())
+
+        assert response.metadata == {
+            "model_name": "Test Model",
+            "algorithm": "Random Forest",
+            "problem_type": "binary_classification",
+            "feature_count": 2,
+            "training_date": "2026-01-02T00:00:00+00:00",
+        }
+        assert response.explanations == [None]
+        # The explainer is handed the estimator and the frame it was served.
+        estimator, served, feature_names, predictions, _problem_type = mock_explain.call_args.args
+        assert estimator is trained and predictions == [0]
+        assert list(served.columns) == feature_names == ["feature1", "feature2"]
+
+    @pytest.mark.asyncio
+    async def test_a_classifier_whose_probabilities_fail_still_predicts(self):
+        """Probabilities are optional: confidence is simply absent."""
+        model = self._model()
+        trained = MagicMock()
+        trained.predict.return_value = np.array([0, 1])
+        trained.predict_proba.side_effect = RuntimeError("no probabilities")
+        find, load = self._patch_load(model)
+        with find, load as mock_load:
+            mock_load.return_value = (trained, None)
+            request = ProductionPredictRequest(
+                data=[{"feature1": 1.0, "feature2": 2.0}, {"feature1": 3.0, "feature2": 4.0}]
+            )
+
+            response = await production_predict("model_123", request, self._api_key())
+
+        assert response.predictions == [0, 1]
+        assert response.confidence is None and response.probabilities is None
 
     def test_request_caps_records_at_max(self):
         """The request schema rejects payloads over MAX_PREDICT_RECORDS (#264)."""

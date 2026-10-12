@@ -172,6 +172,22 @@ describe('PredictPage — single prediction result', () => {
   });
 });
 
+describe('PredictPage — field controls', () => {
+  it('renders a typed text field for a category the model has no option list for', async () => {
+    svc.getModelFeatures.mockResolvedValueOnce({
+      ...FEATURES,
+      features: [...FEATURES.features, { name: 'note', type: 'categorical', options: null }],
+    } as never);
+    render(<PredictPage />);
+
+    const note = await screen.findByLabelText('note');
+    expect(note.tagName).toBe('INPUT');
+    expect(note).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('city').tagName).toBe('SELECT');
+    expect(screen.getByLabelText('age')).toHaveAttribute('type', 'number');
+  });
+});
+
 describe('PredictPage — enrichment panels (#83)', () => {
   it('shows the low-confidence warning with the threshold when flagged', async () => {
     svc.predict.mockResolvedValue({
@@ -186,6 +202,48 @@ describe('PredictPage — enrichment panels (#83)', () => {
     const warning = await screen.findByTestId('low-confidence-warning');
     expect(warning).toHaveTextContent(/low confidence/i);
     expect(warning).toHaveTextContent('70%');
+  });
+
+  it('names each input the model had not seen, and why (#838)', async () => {
+    svc.predict.mockResolvedValue({
+      ...basePredictResponse,
+      input_warnings: [{ city: 'unseen', age: 'missing' }],
+    } as never);
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    const warnings = await screen.findByTestId('input-warnings');
+    expect(warnings).toHaveTextContent(/had not seen/i);
+    expect(screen.getByTestId('input-warning-city')).toHaveTextContent(
+      'city: this value was not in the training data'
+    );
+    expect(screen.getByTestId('input-warning-age')).toHaveTextContent(
+      'age: no value was given, so a typical training value was used'
+    );
+  });
+
+  it.each([
+    ['an empty object', [{}]],
+    ['null (no fitted pipeline)', null],
+    ['an absent field', undefined],
+  ])('shows no input warning for %s', async (_label, inputWarnings) => {
+    svc.predict.mockResolvedValue({ ...basePredictResponse, input_warnings: inputWarnings } as never);
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    await screen.findByTestId('prediction-result');
+    expect(screen.queryByTestId('input-warnings')).not.toBeInTheDocument();
+  });
+
+  it('shows a reason it does not know as the backend sent it', async () => {
+    svc.predict.mockResolvedValue({
+      ...basePredictResponse,
+      input_warnings: [{ city: 'out_of_range' }],
+    } as never);
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('input-warning-city')).toHaveTextContent('city: out_of_range');
   });
 
   it('does NOT show the low-confidence warning for a confident prediction', async () => {
@@ -333,5 +391,187 @@ describe('PredictPage — batch polling survives a remount (#550 e2e finding)', 
     expect(await screen.findByTestId('batch-summary')).toBeInTheDocument();
     expect(svc.getBatchJob).toHaveBeenCalledWith('j1');
     expect(screen.getByTestId('start-batch-prediction')).not.toHaveTextContent('Processing');
+    // A summary with no flagged rows says nothing about input warnings (#838).
+    expect(screen.queryByTestId('batch-input-warnings')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [1, '1 row has an input the model had not seen'],
+    [4, '4 rows have an input the model had not seen'],
+  ])('points at the input_warnings column when %i row(s) are flagged (#838)', async (count, text) => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockResolvedValue({
+      job_id: 'j1', status: 'completed', percentage_complete: 100,
+      processed_records: 5, total_records: 5, success_count: 5, error_count: 0,
+    } as never);
+    svc.getBatchJob.mockResolvedValue({
+      job_id: 'j1', status: 'completed',
+      results: { total_predictions: 5, success_count: 5, error_count: 0, input_warning_count: count },
+    } as never);
+
+    render(<PredictPage />);
+    await screen.findByLabelText('age');
+    fireEvent.click(screen.getByTestId('batch-prediction-link'));
+    const file = new File(['age,city\n1,NYC\n'], 'batch.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('batch-file-input'), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId('start-batch-prediction'));
+    await waitFor(() => expect(svc.createBatchJob).toHaveBeenCalled());
+    await act(async () => {
+      jest.advanceTimersByTime(2100);
+    });
+
+    const line = await screen.findByTestId('batch-input-warnings');
+    expect(line).toHaveTextContent(text);
+    expect(line).toHaveTextContent('input_warnings column');
+  });
+});
+
+describe('PredictPage — batch job outcomes', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const RUNNING = {
+    job_id: 'j1', status: 'running', percentage_complete: 40,
+    processed_records: 2, total_records: 5, success_count: 2, error_count: 0,
+  };
+  const DONE = { ...RUNNING, status: 'completed', percentage_complete: 100, processed_records: 5 };
+
+  // Pick a file in batch mode and start the job; the first poll fires after 2s.
+  async function startBatch() {
+    render(<PredictPage />);
+    await screen.findByLabelText('age');
+    fireEvent.click(screen.getByTestId('batch-prediction-link'));
+    const file = new File(['age,city\n1,NYC\n'], 'batch.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('batch-file-input'), { target: { files: [file] } });
+    expect(screen.getByText('Selected: batch.csv')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('start-batch-prediction'));
+  }
+
+  async function nextPoll() {
+    await act(async () => {
+      jest.advanceTimersByTime(2100);
+    });
+  }
+
+  it('shows progress while the job runs, then the summary with its distribution', async () => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockResolvedValueOnce(RUNNING as never).mockResolvedValue(DONE as never);
+    svc.getBatchJob.mockResolvedValue({
+      job_id: 'j1', status: 'completed',
+      results: {
+        total_predictions: 5, success_count: 5, error_count: 0,
+        prediction_distribution: { yes: 3, no: 2 },
+        confidence_stats: { min: 0.5, max: 0.9, mean: 0.751 },
+        low_confidence_count: 2,
+      },
+    } as never);
+    await startBatch();
+    await waitFor(() => expect(svc.createBatchJob).toHaveBeenCalledWith(
+      'model-1', expect.any(File), { include_probabilities: true }
+    ));
+
+    await nextPoll();
+    const progress = await screen.findByTestId('batch-progress');
+    expect(progress).toHaveTextContent('Processing… 2/5');
+    expect(progress).toHaveTextContent('40%');
+    expect(screen.getByTestId('start-batch-prediction')).toBeDisabled();
+
+    await nextPoll();
+    const summary = await screen.findByTestId('batch-summary');
+    expect(summary).toHaveTextContent('yes:3');
+    expect(summary).toHaveTextContent('Mean confidence: 75.1%');
+    expect(screen.getByTestId('batch-low-confidence')).toHaveTextContent(
+      '2 low-confidence predictions — review the flagged rows in the downloaded CSV.'
+    );
+    expect(screen.queryByTestId('batch-progress')).not.toBeInTheDocument();
+    expect(completeStage).toHaveBeenCalledWith(
+      WorkflowStage.PREDICTION,
+      expect.objectContaining({ batchPrediction: true, jobId: 'j1' })
+    );
+  });
+
+  it('reports a failed job with its reason and completes no stage', async () => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockResolvedValue({ ...RUNNING, status: 'failed' } as never);
+    svc.getBatchJob.mockResolvedValue({
+      job_id: 'j1', status: 'failed', error_message: 'The file has no rows.', results: {},
+    } as never);
+    await startBatch();
+    await nextPoll();
+
+    expect(await screen.findByText('Batch prediction failed: The file has no rows.')).toBeInTheDocument();
+    expect(completeStage).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('batch-summary')).not.toBeInTheDocument();
+  });
+
+  it('says so when the job cannot be started', async () => {
+    svc.createBatchJob.mockRejectedValue(new Error('You already have 3 batch jobs running.'));
+    await startBatch();
+
+    expect(await screen.findByTestId('prediction-error')).toHaveTextContent(
+      'You already have 3 batch jobs running.'
+    );
+    expect(screen.getByTestId('start-batch-prediction')).not.toBeDisabled();
+  });
+
+  it('falls back to fixed copy when the failure is not an Error', async () => {
+    svc.createBatchJob.mockRejectedValue('nope');
+    await startBatch();
+
+    expect(await screen.findByTestId('prediction-error')).toHaveTextContent(
+      'Failed to start batch prediction'
+    );
+  });
+
+  it('stops polling and says the connection was lost when a poll fails', async () => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockRejectedValue(new Error('network'));
+    await startBatch();
+    await nextPoll();
+
+    expect(await screen.findByTestId('prediction-error')).toHaveTextContent(
+      'Lost connection to the batch job. Please refresh.'
+    );
+    await nextPoll();
+    expect(svc.getBatchJobProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('downloads the results as a CSV named after the job, and reports a failed download', async () => {
+    svc.createBatchJob.mockResolvedValue({ job_id: 'j1', status: 'pending' } as never);
+    svc.getBatchJobProgress.mockResolvedValue(DONE as never);
+    svc.getBatchJob.mockResolvedValue({ job_id: 'j1', status: 'completed', results: {} } as never);
+    const createObjectURL = jest.fn(() => 'blob:results');
+    const revokeObjectURL = jest.fn();
+    Object.assign(window.URL, { createObjectURL, revokeObjectURL });
+    const clicked: string[] = [];
+    const click = jest
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push(this.download);
+      });
+    await startBatch();
+    await nextPoll();
+    await screen.findByTestId('batch-summary');
+
+    svc.downloadBatchResults.mockResolvedValueOnce(new Blob(['a,b']) as never);
+    fireEvent.click(screen.getByTestId('download-predictions'));
+    await waitFor(() => expect(clicked).toEqual(['batch_results_j1.csv']));
+    expect(svc.downloadBatchResults).toHaveBeenCalledWith('j1');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:results');
+
+    svc.downloadBatchResults.mockRejectedValueOnce(new Error('The results have expired.'));
+    fireEvent.click(screen.getByTestId('download-predictions'));
+    expect(await screen.findByTestId('prediction-error')).toHaveTextContent('The results have expired.');
+    click.mockRestore();
+  });
+
+  it('switches back to the single form from batch mode', async () => {
+    render(<PredictPage />);
+    await screen.findByLabelText('age');
+    fireEvent.click(screen.getByTestId('batch-prediction-link'));
+    expect(screen.queryByLabelText('age')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('single-prediction-link'));
+    expect(screen.getByLabelText('age')).toBeInTheDocument();
   });
 });

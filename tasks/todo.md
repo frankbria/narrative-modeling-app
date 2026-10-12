@@ -1,31 +1,52 @@
-# #906 — one-hot serving matches a value on its label key (P0.45)
+# #838 — predictions flag unseen or missing inputs, and a JSON null is imputed (P1.68)
 
-Self-authored plan. Found while probing #838, whose "unseen" flag would otherwise fire
-on values the form itself offered.
+Self-authored plan. #906 (one-hot key matching) was found while probing this and merged
+first, so "unseen" now means the same thing under both encodings.
 
 ## Decisions made here
-- **`_one_hot` builds the block from `_label_keys`** in `FeatureEngineer` and, identically,
-  in `StandaloneFeatureEngineer`. The fitted `OneHotEncoder` is still what fit uses and what
-  supplies `categories_` and `encoded_columns`; only its `transform` is no longer called at
-  serving. Mapping each sent value back to the fitted type and then calling the encoder was
-  the other option: it leaves a mixed-type column for the encoder to sort.
-- **Linear in rows:** a key-to-position dict per column, not a rows x categories comparison
-  of object arrays (50k rows, 201 one-hot features: 0.12 s).
-- **`_categorical_options` returns the keys** (`"1"`, not `"1.0"`, for a float category), so
-  every option the form offers is one serving matches. It was cc 9, so the lookup moves to
-  `_fitted_category_keys`.
-- **`_match_keys`, from the cross-family review:** the label key alone made a blank and the
-  text `"nan"` one key (two categories when no imputer was fitted, so serving lit a different
-  column than fit), and dropped the fitted encoder's occasional reading of `"1.0"` as `1`.
-  A missing value now carries a flag beside its key, and a column fitted on numbers reads
-  numeric text as the number.
-- Fit is not changed. A boolean column with blanks is still fitted with bool categories;
-  serving now matches `"True"` and `true` to them either way.
+- **A new field, not a forced `low_confidence`.** `input_warnings` is one object per
+  record, `{column: "unseen" | "missing"}`, empty for a clean record. Regression has no
+  `low_confidence` list at all, and a flag that only says "low" loses which column and why.
+  The issue allows either.
+- **`FeatureEngineer.input_warnings(X)` is a separate read of the raw frame**, not a
+  second return value of `transform`. `transform` keeps its signature (the engine and the
+  export call it), and the cached engineer is shared across requests, so stashing a report
+  on it would cross requests.
+- **"missing" covers numeric inputs too.** A null numeric is filled with the training
+  mean exactly as a null categorical is filled with the mode. Flagging one and not the
+  other would repeat the complaint in the issue: the flag would depend on the column's
+  type and not on the input.
+- **`_prepare` is what both `transform` and `input_warnings` read**: booleans coerced,
+  identifier columns dropped, and `None` turned into NaN in the categorical columns, which
+  is the null fix. Mirrored in `StandaloneFeatureEngineer`; the export does not report
+  warnings (not asked for).
+- **Routes are split, because both are over the CRAP ceiling** (`predict` cc 14,
+  `production_predict` cc 18). The shared pieces move to `require_input_features` and
+  `infer_records`; each route keeps its own error wording.
+- **Batch attaches the warnings in `_predict_chunk`** (cc 2), after either inference path,
+  so the two chunk functions (cc 15 and 17) are not touched. The CSV gets an
+  `input_warnings` column (JSON, blank for a clean row), always in the header so it stays
+  deterministic. `_csv_header` (9) and `_results_to_dataframe` (10) are split.
+- **The batch summary counts flagged rows (`input_warning_count`) and the batch UI points
+  at the CSV column.** First planned as a follow-up, to avoid splitting `add` (cc 12) and
+  `result` (cc 10). Reversed: the single-prediction form offers only dropdown values and
+  requires every field, so a batch file is the one place a UI user meets an unseen or
+  blank input, and without the line the flag would sit unread in a downloaded file.
+- **Frontend: the whole prediction page is split.** The plan was to move only the
+  single-prediction arm. The gate attributes any JSX line in the page to `PredictPage`
+  (cc 41), so the page is now a shell over `components/predict/`: `predictionForm.ts`
+  (form, context and single-prediction hooks), `useBatchPrediction.ts`,
+  `SinglePredictionPanel`, `BatchPredictionPanel`, `PredictionResult` (with the new
+  `InputWarnings`) and `PredictChrome`. Seven tests cover batch paths the old page never
+  tested (failed job, lost connection, start failure, download).
 
 ## Steps
-- [x] Failing tests: a value selects its category whatever type it is sent as (platform and
-      export), every offered option is matched, a null in one record leaves the others alone,
-      training rows encode exactly as fit did, the predict route serves the form's string.
-- [x] `_one_hot` in both engineers; `_categorical_options` through the keys.
-- [x] CLAUDE.md convention.
-- [ ] Gate, cross-family review, PR, demo through the real routes, CI, merge.
+- [x] Engineer tests: a null is imputed like a blank (both encodings, export parity);
+      warnings name unseen and missing columns; a form string for a numeric category is clean.
+- [x] `_prepare`, `input_warnings` in `FeatureEngineer`; `_prepare` in the export.
+- [x] Route tests, then `require_input_features` / `infer_records` and the two routes.
+- [x] Batch tests, then `_predict_chunk`, CSV header and rows.
+- [x] Frontend type, component tests, extraction, `InputWarnings`.
+- [x] Batch summary count and its line in the batch UI.
+- [x] Predict page split under the CRAP ceiling.
+- [ ] CLAUDE.md, gate, cross-family review, PR, demo through the real routes and UI, CI, merge.

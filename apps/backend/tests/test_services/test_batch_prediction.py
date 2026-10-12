@@ -33,6 +33,9 @@ class _FakeFeatureEngineer:
     async def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         return df[self.numeric_features]
 
+    def input_warnings(self, df: pd.DataFrame) -> list[dict[str, str]]:
+        return [{} for _ in range(len(df))]
+
 
 class _FakeClassifier:
     def predict(self, X):
@@ -90,6 +93,9 @@ async def test_predict_chunk_records_per_row_errors():
 
         numeric_features = ["age"]
         categorical_features = []
+
+        def input_warnings(self, df):
+            return [{} for _ in range(len(df))]
 
     chunk = pd.DataFrame([{"age": 30}])
     results = await svc._predict_chunk(
@@ -449,6 +455,9 @@ def test_csv_header_is_deterministic_superset():
         assert col in header
     # "error" is always reserved last so a later all-error chunk cannot misalign.
     assert header[-1] == "error"
+    # The input-warnings column is always there, so the header does not depend on
+    # whether any row in the first chunk happened to be flagged (#838).
+    assert header[-2] == "input_warnings"
 
 
 @pytest.mark.asyncio
@@ -1531,3 +1540,184 @@ async def test_a_job_waiting_for_an_execution_slot_is_not_reaped(setup_database,
         assert ran == [job.job_id]
     finally:
         await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+async def _fitted_plan_model():
+    """A really fitted engineer and estimator over one text category and one number."""
+    from sklearn.linear_model import LogisticRegression
+
+    from app.services.model_training.feature_engineer import (
+        FeatureEngineer,
+        FeatureEngineeringConfig,
+    )
+
+    rng = np.random.RandomState(0)
+    frame = pd.DataFrame(
+        {
+            "plan": rng.choice(["basic", "pro"], 200, p=[0.7, 0.3]),
+            "spend": rng.uniform(1, 100, 200),
+        }
+    )
+    fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False))
+    fitted = await fe.fit_transform(frame)
+    clf = LogisticRegression().fit(fitted.X_transformed, (frame["plan"] == "pro").astype(int))
+    model = _model()
+    model.feature_names = fe.feature_names
+    model.user_id = "u1"
+    return fe, clf, model
+
+
+_FLAGGED_CHUNK = [
+    {"plan": "pro", "spend": 5.0},
+    {"plan": "enterprise", "spend": 5.0},  # never seen at fit
+    {"plan": None, "spend": None},
+]
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_flags_unseen_and_missing_inputs():
+    """#838: a batch row whose input the model did not learn from says which column."""
+    fe, clf, model = await _fitted_plan_model()
+    config = BatchPredictionConfig(model_id="model_123")
+
+    results = await _service()._predict_chunk(pd.DataFrame(_FLAGGED_CHUNK), clf, fe, model, config)
+
+    assert [r.get("input_warnings") for r in results] == [
+        None,
+        {"plan": "unseen"},
+        {"plan": "missing", "spend": "missing"},
+    ]
+    assert all(r.get("error") is None for r in results)
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_flags_rows_on_the_row_by_row_path_too():
+    fe, clf, model = await _fitted_plan_model()
+
+    class _BatchOnlyFails:
+        def predict(self, X):
+            if len(X) != 1:
+                raise ValueError("batch predict not supported")
+            return clf.predict(X)
+
+    results = await _service()._predict_chunk(
+        pd.DataFrame(_FLAGGED_CHUNK),
+        _BatchOnlyFails(),
+        fe,
+        model,
+        BatchPredictionConfig(model_id="model_123"),
+    )
+
+    assert [r.get("input_warnings") for r in results] == [
+        None,
+        {"plan": "unseen"},
+        {"plan": "missing", "spend": "missing"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_predict_chunk_without_an_engineer_has_no_warnings():
+    chunk = pd.DataFrame([{"age": 30}])
+
+    results = await _service()._predict_chunk(
+        chunk, _FakeClassifier(), None, _model(), BatchPredictionConfig(model_id="m")
+    )
+
+    assert "input_warnings" not in results[0]
+
+
+def test_results_to_dataframe_writes_input_warnings_as_json():
+    svc = _service()
+    predictions = [
+        {"input_data": {"plan": "pro"}, "prediction": 1},
+        {"input_data": {"plan": "x"}, "prediction": 0, "input_warnings": {"plan": "unseen"}},
+    ]
+
+    df = svc._results_to_dataframe(predictions)
+
+    assert pd.isna(df.loc[0, "input_warnings"])
+    assert json.loads(df.loc[1, "input_warnings"]) == {"plan": "unseen"}
+
+
+def test_csv_header_keeps_its_own_input_warnings_column():
+    """An input column of the same name is dropped, like every reserved output name."""
+    svc = _service()
+    header = svc._csv_header(
+        ["input_warnings", "age"], True, True, _model(), BatchPredictionConfig(model_id="m")
+    )
+
+    assert header.count("input_warnings") == 1
+    assert header[0] == "age"
+
+
+def test_summary_counts_rows_with_input_warnings():
+    """#838: the batch summary says how many predictions rest on an input the model
+    had not seen, so the UI can point at the column in the downloaded file."""
+    svc = _service()
+    predictions = [
+        {"prediction": "yes", "confidence": 0.9},
+        {"prediction": "no", "confidence": 0.8, "input_warnings": {"plan": "unseen"}},
+        {"prediction": "no", "confidence": 0.7, "input_warnings": {"plan": "missing", "spend": "missing"}},
+        {"error": "boom", "input_warnings": {"plan": "unseen"}},  # no prediction to qualify
+    ]
+
+    stats = svc._calculate_summary_statistics(predictions, _model())
+
+    assert stats["input_warning_count"] == 2
+    assert stats["success_count"] == 3 and stats["error_count"] == 1
+
+
+def test_summary_drops_value_stats_when_a_prediction_is_not_a_number():
+    """All-or-nothing: one non-numeric regression output voids min/max/mean."""
+    svc = _service()
+
+    stats = svc._calculate_summary_statistics(
+        [{"prediction": 10.0}, {"prediction": "n/a"}, {"prediction": 30.0}], _model("regression")
+    )
+
+    assert "prediction_value_stats" not in stats
+    assert stats["success_count"] == 3
+
+
+def test_an_input_column_named_like_an_output_does_not_fill_that_output():
+    """The header gives a reserved name to the output. A clean row must leave it
+    blank, not carry over what the uploaded file held under the same name."""
+    svc = _service()
+    predictions = [
+        {
+            "input_data": {"age": 30, "input_warnings": "from the file", "error": "from the file"},
+            "prediction": 1,
+        },
+        {
+            "input_data": {"age": 41, "input_warnings": "from the file", "error": "from the file"},
+            "prediction": 0,
+            "input_warnings": {"age": "missing"},
+        },
+    ]
+
+    df = svc._results_to_dataframe(predictions).reindex(
+        columns=svc._csv_header(
+            ["age", "input_warnings", "error"], True, False, _model(), BatchPredictionConfig(model_id="m")
+        )
+    )
+
+    assert list(df.columns) == ["age", "prediction", "input_warnings", "error"]
+    assert pd.isna(df.loc[0, "input_warnings"]) and df["error"].isna().all()
+    assert json.loads(df.loc[1, "input_warnings"]) == {"age": "missing"}
+
+
+@pytest.mark.asyncio
+async def test_a_report_that_does_not_cover_every_row_fails_the_chunk():
+    """Warnings are matched to rows by position, so a short report must not be
+    zipped onto the first rows."""
+
+    class _ShortReport(_FakeFeatureEngineer):
+        def input_warnings(self, df):
+            return [{"age": "missing"}]
+
+    chunk = pd.DataFrame([{"age": 30}, {"age": 41}])
+
+    with pytest.raises(ValueError):
+        await _service()._predict_chunk(
+            chunk, _FakeClassifier(), _ShortReport(), _model(), BatchPredictionConfig(model_id="m")
+        )

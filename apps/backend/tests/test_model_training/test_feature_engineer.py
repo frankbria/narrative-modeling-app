@@ -754,3 +754,125 @@ class TestOneHotMatchesOnTheLabelKey:
 
         assert fe.transformers["encoded_columns"].count("plan_nan") == 2  # the collision is real
         np.testing.assert_array_equal(out.to_numpy(), fitted.X_transformed.to_numpy())
+
+
+def _served_frame(n: int = 300) -> pd.DataFrame:
+    """Text categoricals, a numeric one (`tier`), a boolean and a numeric input."""
+    rng = np.random.RandomState(1)
+    return pd.DataFrame(
+        {
+            "plan": rng.choice(["basic", "pro", "premium"], n, p=[0.6, 0.3, 0.1]),
+            "region": rng.choice(["north", "south", "east"], n, p=[0.5, 0.3, 0.2]),
+            "tier": rng.choice([1, 2, 3], n, p=[0.5, 0.3, 0.2]),
+            "active": rng.choice([True, False], n, p=[0.7, 0.3]),
+            "spend": rng.uniform(1, 100, n),
+        }
+    )
+
+
+async def _fit_served(encoding_method: str, **config) -> FeatureEngineer:
+    fe = FeatureEngineer(
+        FeatureEngineeringConfig(encoding_method=encoding_method, select_features=False, **config)
+    )
+    await fe.fit_transform(_served_frame())
+    return fe
+
+
+_CLEAN = {"plan": "pro", "region": "south", "tier": 2, "active": False, "spend": 40.0}
+
+
+@pytest.mark.parametrize("encoding_method", ["onehot", "label"])
+class TestANullAtServingIsABlank:
+    """#838: a JSON null reaches the frame as None, which SimpleImputer does not treat
+    as missing, so serving never gave a null the fill a blank got at training."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("column", ["plan", "tier", "active"])
+    async def test_a_null_is_served_as_the_training_fill(self, encoding_method, column):
+        fe = await _fit_served(encoding_method)
+        mode = _served_frame()[column].mode()[0]
+
+        null = await _served(fe, [{**_CLEAN, column: None}])
+
+        filled = await _served(fe, [{**_CLEAN, column: mode.item() if hasattr(mode, "item") else mode}])
+        pd.testing.assert_frame_equal(null, filled, check_dtype=False)
+
+    @pytest.mark.asyncio
+    async def test_a_null_and_a_nan_are_served_alike_beside_a_clean_record(self, encoding_method):
+        fe = await _fit_served(encoding_method)
+
+        out = await _served(
+            fe, [_CLEAN, {**_CLEAN, "plan": None, "region": None}, {**_CLEAN, "plan": np.nan, "region": np.nan}]
+        )
+
+        pd.testing.assert_series_equal(out.loc[1], out.loc[2], check_names=False)
+        pd.testing.assert_frame_equal(out.loc[[0]], await _served(fe, [_CLEAN]), check_dtype=False)
+
+    @pytest.mark.asyncio
+    async def test_warnings_name_each_unseen_and_missing_input(self, encoding_method):
+        fe = await _fit_served(encoding_method)
+        records = [
+            _CLEAN,
+            {**_CLEAN, "plan": "enterprise"},  # never seen at fit
+            {**_CLEAN, "region": None, "active": None},
+            {**_CLEAN, "spend": None, "tier": 9},
+            {"plan": "pro", "region": "south", "tier": "2", "active": "False", "spend": "40"},  # the form's strings
+        ]
+
+        warnings = fe.input_warnings(pd.DataFrame(records))
+
+        assert warnings == [
+            {},
+            {"plan": "unseen"},
+            {"region": "missing", "active": "missing"},
+            {"spend": "missing", "tier": "unseen"},
+            {},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_warnings_read_a_frame_without_changing_it_or_needing_every_column(self, encoding_method):
+        fe = await _fit_served(encoding_method)
+        frame = pd.DataFrame([{"plan": None, "spend": 5.0, "extra": "x"}])
+        before = frame.copy()
+
+        assert fe.input_warnings(frame) == [{"plan": "missing"}]
+        pd.testing.assert_frame_equal(frame, before)
+
+    @pytest.mark.asyncio
+    async def test_an_identifier_column_is_never_flagged(self, encoding_method):
+        frame = _served_frame()
+        frame.insert(0, "customer_id", [f"C{i:05d}" for i in range(len(frame))])
+        fe = FeatureEngineer(FeatureEngineeringConfig(encoding_method=encoding_method, select_features=False))
+        await fe.fit_transform(frame)
+        assert fe.excluded_features == ["customer_id"]
+
+        assert fe.input_warnings(pd.DataFrame([{**_CLEAN, "customer_id": None}])) == [{}]
+
+
+@pytest.mark.asyncio
+async def test_without_encoders_only_missing_inputs_are_flagged():
+    fe = await _fit_served("onehot", encode_categorical=False)
+
+    warnings = fe.input_warnings(pd.DataFrame([{**_CLEAN, "plan": "enterprise", "spend": None}]))
+
+    assert warnings == [{"spend": "missing"}]
+
+
+@pytest.mark.asyncio
+async def test_an_engineer_pickled_before_838_reports_warnings():
+    """Stored engineers carry no new state: the report is read off what fit kept."""
+    fe = await _fit_served("onehot")
+    old = pickle.loads(pickle.dumps(fe))
+    del old.__dict__["excluded_features"]  # as pickled before #806
+
+    assert old.input_warnings(pd.DataFrame([{**_CLEAN, "plan": "enterprise"}])) == [{"plan": "unseen"}]
+
+
+@pytest.mark.asyncio
+async def test_a_null_number_is_served_as_a_blank_one():
+    fe = await _fit_served("onehot")
+
+    out = await _served(fe, [{**_CLEAN, "spend": None}])
+
+    pd.testing.assert_frame_equal(out, await _served(fe, [{**_CLEAN, "spend": np.nan}]), check_dtype=False)
+    assert out.loc[0, "spend"] == pytest.approx(0.0, abs=1e-9)  # the training mean, scaled

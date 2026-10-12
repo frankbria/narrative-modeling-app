@@ -195,6 +195,9 @@ export interface PredictionExplanation {
   method: string
 }
 
+/** Why an input is flagged: a category absent from training, or a null. */
+export type InputWarning = 'unseen' | 'missing'
+
 export interface PredictResponse {
   predictions: any[]
   probabilities?: number[][]
@@ -220,6 +223,11 @@ export interface PredictResponse {
   prediction_intervals?: (number[] | null)[]
   /** Per-record explanations, present when include_explanations was set (#83). */
   explanations?: (PredictionExplanation | null)[]
+  /**
+   * Per record, the inputs the model did not learn this value from (#838). An
+   * empty object is a clean record; null means the model has no fitted pipeline.
+   */
+  input_warnings?: Record<string, InputWarning>[] | null
 }
 
 /** A raw input feature the prediction form must collect (#82). */

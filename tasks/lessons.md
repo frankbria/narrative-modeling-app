@@ -1820,3 +1820,40 @@ checked, and the fix is always the same: the claim is a query, so run it.
   for "this column was fitted on numbers" was always false; `pd.api.types.infer_dtype`
   on the values is what answers it. The failing test said so within a minute; reading
   the dtype off a probe first would have said so sooner.
+
+## 2026-10-11 — #838 (predictions flag unseen or missing inputs; a JSON null is imputed)
+
+- **Two routes that do the same work should share the work before either gains a field.**
+  The session and API-key predict routes each inlined transform, inference and the 422,
+  at cc 14 and 18. Adding one response field to both meant splitting both anyway, and
+  `infer_records` is where the next shared behaviour goes. Each route keeps only its own
+  error wording.
+- **Attach a per-row fact at the narrowest point every path passes through.** Batch has a
+  vectorised and a row-by-row inference path (cc 15 and 17). `_predict_chunk` (cc 2) wraps
+  both, and both return one record per row in order, so the warnings went there.
+- **A fake that stands in for a class needs the class's new method.** The batch tests'
+  fake engineers had only `transform`. Give the fake the method; do not make the code
+  tolerate its absence, because the real class always has it.
+- **A JSX ternary with a parenthesised arm is one function to the CRAP gate.** The predict
+  page's single arm was a cc-30 "function" for that reason alone. Two `cond && (...)`
+  blocks and a component per arm read the same and measure as what they are.
+- **A LocalStack-backed test fails, not skips, in a worktree with no `.env`.**
+  `test_chunked_upload_flow.py::TestCompletionAgainstRealS3` answers 500 there with or
+  without a change. Check it with the change stashed before reading it as a regression.
+- **Ask who can reach the new behaviour before deciding what to defer.** The batch summary
+  count was deferred to save two splits, until the demo plan showed the single form can
+  never send an unseen or blank value. The deferred piece was the only UI path to the
+  feature. Walk each surface as its real client before cutting scope.
+- **Stage new files before trusting a green CRAP gate.** The gate and diff-cover read
+  `git diff`, which does not see untracked files. Four new frontend files were invisible
+  until `git add`, and the first "pass" would have been a pass on a third of the change.
+- **One JSX line in a big page is a change to the page component.** The gate reported the
+  predict page as one cc-41 function the moment a line of its JSX changed, after three
+  rounds of smaller complaints that each stopped the run early. Read the page's real
+  measure first (`??` counts twice) and plan the split up front, not line by line.
+- **Splitting an untested function makes its branches someone's job.** The old page's
+  batch failure, lost-connection and download paths had no tests and were hidden inside
+  one large function. As named functions they each needed one, which is the point of the
+  gate and should be in the estimate.
+- **`MagicMock(name="X")` names the mock; it does not set `.name`.** A metadata assertion
+  compared a string with a child mock. Set the attribute after construction.

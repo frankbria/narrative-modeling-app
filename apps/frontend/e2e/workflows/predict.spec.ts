@@ -30,6 +30,9 @@ function buildBatchCsv(rows = 3): { name: string; mimeType: string; buffer: Buff
   const targetIdx = header.indexOf(TARGET_COLUMN);
   const keep = (cols: string[]) => cols.filter((_, i) => i !== targetIdx).join(',');
   const out = [keep(header), ...lines.slice(1, 1 + rows).map((l) => keep(l.split(',')))];
+  // One row arrives with its first value blank: the model fills it with a typical
+  // training value, and the summary has to say a row was flagged (#838).
+  out[out.length - 1] = out[out.length - 1].replace(/^[^,]*/, '');
   return {
     name: 'batch-input.csv',
     mimeType: 'text/csv',
@@ -100,6 +103,12 @@ test.describe('Prediction Workflow (#82)', () => {
     await expect(authenticatedPage.getByTestId('batch-summary')).toBeVisible({
       timeout: 60000,
     });
+
+    // The row with the blank value is counted, and the user is pointed at the
+    // column in the downloaded file that names it (#838).
+    await expect(authenticatedPage.getByTestId('batch-input-warnings')).toContainText(
+      '1 row has an input the model had not seen'
+    );
 
     // The completed summary offers a downloadable results CSV.
     const downloadPromise = authenticatedPage.waitForEvent('download');

@@ -12,7 +12,7 @@ import os
 import socket
 import tempfile
 import weakref
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime
 from io import BytesIO, StringIO
 from typing import Any
@@ -127,9 +127,14 @@ _RESERVED_OUTPUT_COLUMNS = frozenset(
         "prediction_interval",
         "probabilities",
         "explanation",
+        "input_warnings",
         "error",
     }
 )
+
+
+def _unchanged(value: Any) -> Any:
+    return value
 
 
 class _BatchSummaryAccumulator:
@@ -138,8 +143,8 @@ class _BatchSummaryAccumulator:
     Folds one prediction record at a time so the batch pipeline never holds every
     result in memory. Produces the same summary the pre-#278 in-memory pass did,
     minus median: median needs every value retained, which defeats the bounded-
-    memory goal, and no consumer reads it (the UI uses ``confidence_stats.mean``
-    and ``low_confidence_count`` only).
+    memory goal, and no consumer reads it (the UI uses ``confidence_stats.mean``,
+    ``low_confidence_count`` and ``input_warning_count`` only).
     """
 
     def __init__(self, is_classification: bool) -> None:
@@ -148,6 +153,7 @@ class _BatchSummaryAccumulator:
         self.success = 0
         self.error_count = 0
         self.low_confidence_count = 0
+        self.input_warning_count = 0
         self.distribution: dict[str, int] = {}
         # Running scalar stats — O(1) state each (no value retention).
         self._val_n = 0
@@ -170,59 +176,64 @@ class _BatchSummaryAccumulator:
             # filter (error is None AND prediction present); shouldn't occur.
             return
         self.success += 1
-        prediction = p["prediction"]
+        self._add_prediction(p["prediction"])
+        self._add_confidence(p.get("confidence"))
+        self.low_confidence_count += p.get("low_confidence") is True
+        # A prediction resting on an input the model had not seen (#838).
+        self.input_warning_count += bool(p.get("input_warnings"))
+
+    def _add_prediction(self, prediction: Any) -> None:
         if self.is_classification:
             key = str(prediction)
             self.distribution[key] = self.distribution.get(key, 0) + 1
         elif not self._val_invalid:
-            try:
-                value = float(prediction)
-            except (TypeError, ValueError):
-                self._val_invalid = True  # all-or-nothing, mirroring the old code
-            else:
-                self._val_n += 1
-                self._val_sum += value
-                self._val_min = value if self._val_min is None else min(self._val_min, value)
-                self._val_max = value if self._val_max is None else max(self._val_max, value)
+            self._add_value(prediction)
 
-        conf = p.get("confidence")
-        if conf is not None:
-            self._conf_n += 1
-            self._conf_sum += conf
-            self._conf_min = conf if self._conf_min is None else min(self._conf_min, conf)
-            self._conf_max = conf if self._conf_max is None else max(self._conf_max, conf)
-        if p.get("low_confidence") is True:
-            self.low_confidence_count += 1
+    def _add_value(self, prediction: Any) -> None:
+        try:
+            value = float(prediction)
+        except (TypeError, ValueError):
+            self._val_invalid = True  # all-or-nothing, mirroring the old code
+            return
+        self._val_n += 1
+        self._val_sum += value
+        self._val_min = value if self._val_min is None else min(self._val_min, value)
+        self._val_max = value if self._val_max is None else max(self._val_max, value)
+
+    def _add_confidence(self, conf: float | None) -> None:
+        if conf is None:
+            return
+        self._conf_n += 1
+        self._conf_sum += conf
+        self._conf_min = conf if self._conf_min is None else min(self._conf_min, conf)
+        self._conf_max = conf if self._conf_max is None else max(self._conf_max, conf)
+
+    @staticmethod
+    def _stats(n: int, total: float, low: float | None, high: float | None) -> dict[str, float]:
+        """min/max/mean of a running scalar, empty when nothing was folded in."""
+        if not n or low is None or high is None:
+            return {}
+        return {"min": low, "max": high, "mean": total / n}
+
+    def _value_stats(self) -> dict[str, float]:
+        if self.is_classification or self._val_invalid:
+            return {}
+        return self._stats(self._val_n, self._val_sum, self._val_min, self._val_max)
 
     def result(self) -> dict[str, Any]:
-        confidence_stats: dict[str, float] = {}
-        if self._conf_n and self._conf_min is not None and self._conf_max is not None:
-            confidence_stats = {
-                "min": self._conf_min,
-                "max": self._conf_max,
-                "mean": self._conf_sum / self._conf_n,
-            }
         summary: dict[str, Any] = {
             "total_predictions": self.total,
             "success_count": self.success,
             "error_count": self.error_count,
             "success_rate": (self.success / self.total * 100) if self.total else 0.0,
             "prediction_distribution": self.distribution,
-            "confidence_stats": confidence_stats,
+            "confidence_stats": self._stats(self._conf_n, self._conf_sum, self._conf_min, self._conf_max),
             "low_confidence_count": self.low_confidence_count,
+            "input_warning_count": self.input_warning_count,
         }
-        if (
-            not self.is_classification
-            and not self._val_invalid
-            and self._val_n
-            and self._val_min is not None
-            and self._val_max is not None
-        ):
-            summary["prediction_value_stats"] = {
-                "min": self._val_min,
-                "max": self._val_max,
-                "mean": self._val_sum / self._val_n,
-            }
+        value_stats = self._value_stats()
+        if value_stats:
+            summary["prediction_value_stats"] = value_stats
         return summary
 
 
@@ -896,7 +907,7 @@ class BatchPredictionService:
         error isolation. Explanations stay batched via ``_attach_explanations``.
         """
         try:
-            return await self._predict_chunk_vectorized(
+            results = await self._predict_chunk_vectorized(
                 chunk_df, trained_model, feature_engineer, model, config
             )
         except Exception as exc:  # noqa: BLE001 - fall back to per-row isolation
@@ -907,9 +918,27 @@ class BatchPredictionService:
                 exc,
                 exc_info=True,
             )
-            return await self._predict_chunk_sequential(
+            results = await self._predict_chunk_sequential(
                 chunk_df, trained_model, feature_engineer, model, config
             )
+        return self._with_input_warnings(results, chunk_df, feature_engineer)
+
+    @staticmethod
+    def _with_input_warnings(
+        results: list[dict[str, Any]], chunk_df: pd.DataFrame, feature_engineer: Any
+    ) -> list[dict[str, Any]]:
+        """Mark each row whose input the model did not learn from (#838).
+
+        Both inference paths return one record per chunk row, in order, error rows
+        included, so the engineer's per-row report lines up by position. A clean
+        row gets no key. ``strict``: a path that ever returns fewer records fails
+        the chunk here, where a silent truncation would put a flag on the wrong row."""
+        if feature_engineer is None:
+            return results
+        for result, warnings in zip(results, feature_engineer.input_warnings(chunk_df), strict=True):
+            if warnings:
+                result["input_warnings"] = warnings
+        return results
 
     async def _predict_chunk_vectorized(
         self,
@@ -1236,39 +1265,60 @@ class BatchPredictionService:
         """
         cols = [c for c in input_columns if c not in _RESERVED_OUTPUT_COLUMNS]
         cols.append("prediction")
-        if want_proba:
-            cols += ["confidence", "low_confidence"]
-        if not is_classification and getattr(model, "residual_std", None) is not None:
+        cols += self._enrichment_columns(is_classification, want_proba, model, config)
+        if config.include_explanations:
+            cols.append("explanation")
+        # Always present, blank for a clean row, so the header does not depend on
+        # what the first chunk held (#838).
+        return [*cols, "input_warnings", "error"]
+
+    @staticmethod
+    def _enrichment_columns(
+        is_classification: bool, want_proba: bool, model: MLModel, config: BatchPredictionConfig
+    ) -> list[str]:
+        cols = ["confidence", "low_confidence"] if want_proba else []
+        if BatchPredictionService._has_interval(is_classification, model):
             cols.append("prediction_interval")
         if want_proba and config.include_probabilities:
             cols.append("probabilities")
-        if config.include_explanations:
-            cols.append("explanation")
-        cols.append("error")
         return cols
+
+    @staticmethod
+    def _has_interval(is_classification: bool, model: MLModel) -> bool:
+        return not is_classification and getattr(model, "residual_std", None) is not None
+
+    # (result key, CSV column, how the value is written), in column order.
+    _CSV_OUTPUTS: tuple[tuple[str, str, Callable[[Any], Any]], ...] = (
+        ("confidence", "confidence", _unchanged),
+        ("low_confidence", "low_confidence", _unchanged),
+        ("prediction_interval", "prediction_interval", json.dumps),
+        ("probabilities", "probabilities", json.dumps),
+        ("explanation_text", "explanation", _unchanged),
+        ("input_warnings", "input_warnings", json.dumps),
+        ("error", "error", _unchanged),
+    )
 
     def _results_to_dataframe(self, predictions: list[dict[str, Any]]) -> pd.DataFrame:
         """Flatten prediction records into a clean tabular frame for CSV export:
         the original input columns plus prediction/confidence/error columns."""
-        rows: list[dict[str, Any]] = []
-        for p in predictions:
-            row: dict[str, Any] = dict(p.get("input_data", {}) or {})
-            if "prediction" in p:
-                row["prediction"] = p["prediction"]
-            if p.get("confidence") is not None:
-                row["confidence"] = p["confidence"]
-            if p.get("low_confidence") is not None:
-                row["low_confidence"] = p["low_confidence"]
-            if p.get("prediction_interval") is not None:
-                row["prediction_interval"] = json.dumps(p["prediction_interval"])
-            if p.get("probabilities") is not None:
-                row["probabilities"] = json.dumps(p["probabilities"])
-            if p.get("explanation_text") is not None:
-                row["explanation"] = p["explanation_text"]
-            if p.get("error") is not None:
-                row["error"] = p["error"]
-            rows.append(row)
-        return pd.DataFrame(rows)
+        return pd.DataFrame([self._csv_row(p) for p in predictions])
+
+    @staticmethod
+    def _input_cells(p: dict[str, Any]) -> dict[str, Any]:
+        """The row's input columns. One named like an output is left out: the header
+        gives that name to the output, which must stay blank when the row has none."""
+        cells = p.get("input_data") or {}
+        return {name: value for name, value in cells.items() if name not in _RESERVED_OUTPUT_COLUMNS}
+
+    @classmethod
+    def _csv_row(cls, p: dict[str, Any]) -> dict[str, Any]:
+        row = cls._input_cells(p)
+        if "prediction" in p:
+            row["prediction"] = p["prediction"]
+        for key, column, write in cls._CSV_OUTPUTS:
+            if p.get(key) is not None:
+                row[column] = write(p[key])
+        return row
 
     async def _upload_results_file(
         self,

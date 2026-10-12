@@ -8,7 +8,7 @@ import logging
 import math
 import os
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import quote
@@ -342,6 +342,10 @@ class PredictResponse(BaseModel):
     confidence_threshold: float = DEFAULT_LOW_CONFIDENCE_THRESHOLD
     prediction_intervals: list[list[float] | None] | None = None  # regression
     explanations: list[PredictionExplanation | None] | None = None
+    # Per record, the inputs the model did not learn this value from (#838):
+    # {column: "unseen" | "missing"}, empty for a clean record. None when no
+    # feature engineer was fitted, so nothing is known about the training values.
+    input_warnings: list[dict[str, str]] | None = None
 
 
 class FeatureDescriptor(BaseModel):
@@ -2116,6 +2120,89 @@ def required_input_features(feature_engineer, ml_model) -> list[str]:
     return list(ml_model.feature_names)
 
 
+def _missing_features(records: list[dict[str, Any]], required: list[str]) -> list[str]:
+    return sorted({f for record in records for f in required if f not in record})
+
+
+def require_input_features(feature_engineer, ml_model, records: list[dict[str, Any]]) -> None:
+    """422 unless there is a record and every record carries the raw input features."""
+    if not records:
+        raise HTTPException(status_code=422, detail="No input records provided")
+    missing = _missing_features(records, required_input_features(feature_engineer, ml_model))
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required feature(s): {', '.join(missing)}",
+        )
+
+
+@dataclass
+class ServedRecords:
+    """What one inference pass over a request's records produced."""
+
+    features: pd.DataFrame  # the frame the estimator was given
+    predictions: Any
+    probabilities: list[list[float]] | None
+    input_warnings: list[dict[str, str]] | None
+
+
+async def _features_for(feature_engineer, frame: pd.DataFrame, columns: list[str] | None) -> pd.DataFrame:
+    if feature_engineer:
+        return await feature_engineer.transform(frame)
+    return frame[columns] if columns else frame
+
+
+def _probabilities(model, features: pd.DataFrame):
+    try:
+        return model.predict_proba(features)
+    except Exception:  # noqa: BLE001 - probabilities are optional
+        return None
+
+
+async def infer_records(
+    model,
+    feature_engineer,
+    records: list[dict[str, Any]],
+    *,
+    model_id: str,
+    user_id: str,
+    want_proba: bool,
+    columns: list[str] | None = None,
+) -> ServedRecords:
+    """Run the fitted pipeline and the estimator over a request's records.
+
+    Shared by the session and the API-key predict routes. A bad feature value
+    surfaces as ValueError/KeyError, which each route words as its own 422.
+    ``columns`` selects the estimator's input when no engineer was fitted.
+    """
+    frame = pd.DataFrame(records)
+    warnings = feature_engineer.input_warnings(frame) if feature_engineer else None
+    features = await _features_for(feature_engineer, frame, columns)
+
+    def _infer():
+        # Probabilities drive confidence and the low-confidence flags even when
+        # the caller did not ask to see the full vectors (#83).
+        predictions = model.predict(features)
+        return predictions, _probabilities(model, features) if want_proba else None
+
+    # Inference runs off the loop and serialized per model on the shared cached
+    # estimator (issue #265).
+    predictions, proba = await run_locked_inference(model_id, user_id, _infer)
+    return ServedRecords(features, predictions, proba.tolist() if proba is not None else None, warnings)
+
+
+async def _load_owned_model(model_id: str, user_id: str):
+    """The estimator, its fitted engineer and its document, or 404."""
+    try:
+        model, feature_engineer = await ModelStorageService().load_model(model_id, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    ml_model = await MLModel.find_one(MLModel.model_id == model_id, MLModel.user_id == user_id)
+    if not ml_model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    return model, feature_engineer, ml_model
+
+
 def _categorical_options(feature_engineer, column: str) -> list[str] | None:
     """The values the form offers for a categorical column: each fitted category as
     the string key serving matches a value on, so every option is one the model
@@ -2232,86 +2319,35 @@ async def predict(
     Reuses the exact feature pipeline fitted at training time (issue #82) and
     rejects records missing required input features with a clear 422.
     """
-    # Load model
-    storage_service = ModelStorageService()
+    model, feature_engineer, ml_model = await _load_owned_model(model_id, current_user_id)
+    require_input_features(feature_engineer, ml_model, request.data)
+
+    # A bad feature value (e.g. a wrong dtype) surfaces as a sklearn ValueError:
+    # return it as a clear 422 rather than a 500 traceback leak.
     try:
-        model, feature_engineer = await storage_service.load_model(
-            model_id, current_user_id
+        served = await infer_records(
+            model,
+            feature_engineer,
+            request.data,
+            model_id=model_id,
+            user_id=current_user_id,
+            want_proba=hasattr(model, "predict_proba"),
         )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-    # Get model metadata
-    ml_model = await MLModel.find_one(
-        MLModel.model_id == model_id, MLModel.user_id == current_user_id
-    )
-    if not ml_model:
-        raise HTTPException(status_code=404, detail="Model not found")
-
-    if not request.data:
-        raise HTTPException(status_code=422, detail="No input records provided")
-
-    # Validate that every record carries the required raw input features.
-    required = required_input_features(feature_engineer, ml_model)
-    missing = sorted(
-        {f for record in request.data for f in required if f not in record}
-    )
-    if missing:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Missing required feature(s): {', '.join(missing)}",
-        )
-
-    # Convert input data to DataFrame
-    input_df = pd.DataFrame(request.data)
-
-    # Apply the fitted pipeline and run inference. A bad feature value (e.g. an
-    # unknown category the encoder was never fitted on) surfaces as a sklearn
-    # ValueError — return it as a clear 422 rather than a 500 traceback leak.
-    want_proba = hasattr(model, "predict_proba")
-
-    def _infer(X):
-        # Compute probabilities whenever the (now calibrated) classifier supports
-        # them — they drive confidence + low-confidence flags even if the caller
-        # didn't ask to see the full vectors (#83). The `probabilities` field is
-        # only returned when requested (#82).
-        preds = model.predict(X)
-        proba = None
-        if want_proba:
-            try:
-                proba = model.predict_proba(X)
-            except Exception:  # noqa: BLE001 - probabilities are optional
-                proba = None
-        return preds, proba
-
-    try:
-        if feature_engineer:
-            input_df = await feature_engineer.transform(input_df)
-
-        # Inference runs off the loop and serialized per model on the shared
-        # cached estimator (issue #265).
-        predictions, proba_arr = await run_locked_inference(
-            model_id, current_user_id, lambda: _infer(input_df)
-        )
-        proba_list = proba_arr.tolist() if proba_arr is not None else None
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid feature value(s): {exc}")
 
-    # Convert predictions to list
+    predictions = served.predictions
     if isinstance(predictions, np.ndarray):
         predictions = predictions.tolist()
 
     # Confidence / uncertainty / explanation enrichment (issue #83).
     enricher = _prediction_enricher
-    confidence, low_confidence = enricher.per_record_confidence(proba_list)
-    prediction_intervals = enricher.prediction_intervals(
-        predictions, ml_model.residual_std
-    )
+    confidence, low_confidence = enricher.per_record_confidence(served.probabilities)
     explanations = None
     if request.include_explanations:
         explanations = enricher.explanations(
             model,
-            input_df,
+            served.features,
             ml_model.feature_names,
             predictions,
             ml_model.problem_type,
@@ -2320,7 +2356,7 @@ async def predict(
 
     return PredictResponse(
         predictions=predictions,
-        probabilities=proba_list if request.include_probabilities else None,
+        probabilities=served.probabilities if request.include_probabilities else None,
         confidence=confidence,
         class_labels=_extract_class_labels(model, ml_model.problem_type),
         feature_names=ml_model.feature_names,
@@ -2334,8 +2370,9 @@ async def predict(
         is_calibrated=bool(getattr(ml_model, "is_calibrated", False)),
         calibration_method=getattr(ml_model, "calibration_method", None),
         confidence_threshold=enricher.threshold,
-        prediction_intervals=prediction_intervals,
+        prediction_intervals=enricher.prediction_intervals(predictions, ml_model.residual_std),
         explanations=explanations,
+        input_warnings=served.input_warnings,
     )
 
 
