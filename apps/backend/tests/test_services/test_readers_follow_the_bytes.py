@@ -73,6 +73,24 @@ async def test_a_histogram_of_a_transformed_dataset(setup_database):
 
 
 @pytest.mark.asyncio
+async def test_a_box_plot_and_a_correlation_matrix_of_a_transformed_dataset(setup_database):
+    from app.services import visualization_cache
+
+    dataset = Mock(id=PydanticObjectId(), s3_url="s3://bucket/transformed/u/d.parquet")
+    with (
+        patch.object(visualization_cache.UserData, "get", AsyncMock(return_value=dataset)),
+        patch.object(visualization_cache, "get_cached_visualization", AsyncMock(return_value=None)),
+        patch.object(visualization_cache, "cache_visualization", AsyncMock()),
+        patch.object(visualization_cache, "get_file_from_s3", side_effect=lambda _url: io.BytesIO(_parquet())),
+    ):
+        box = await visualization_cache.generate_and_cache_boxplot(str(dataset.id), "spend")
+        matrix = await visualization_cache.generate_and_cache_correlation_matrix(str(dataset.id))
+
+    assert (box["min"], box["median"], box["max"]) == (10.0, 35.0, 60.0)
+    assert matrix["columns"] == ["visits", "spend"] and matrix["matrix"][0][1] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["parquet", "xlsx", "json"])
 async def test_the_chart_routes_loader(kind):
     from app.api.routes import visualizations
