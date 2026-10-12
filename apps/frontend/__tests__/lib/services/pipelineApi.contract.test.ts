@@ -9,7 +9,16 @@
  */
 import schemas from '@/__tests__/fixtures/transformationRequestSchemas.json';
 import available from '@/__tests__/fixtures/availableTransformations.json';
-import { applyRequest, previewRequest, recipeRequest } from '@/lib/services/pipelineApi';
+import recipeLists from '@/__tests__/fixtures/recipeLists.json';
+import {
+  applyRequest,
+  fetchRecipes,
+  previewRequest,
+  recipeListPath,
+  recipeRequest,
+  recipeSteps,
+  type RecipeFilter,
+} from '@/lib/services/pipelineApi';
 
 type Schema = {
   type?: string;
@@ -102,3 +111,46 @@ describe('Prepare-stage payloads match the API request models', () => {
     expect(violations(wrong, schema, schema)).toEqual(['$.dataset_id: not string', '$.parameters: matches no allowed shape']);
   });
 });
+
+/**
+ * #859: the recipe browser listed from `GET /recipes?filter=…&dataset_id=…`, which is no
+ * route, and loading a recipe read `recipe.transformations` where the API sends `steps`.
+ * `recipeLists.json` holds each list route's query parameters and a real response,
+ * captured by the backend's `test_recipe_list_response_fixture.py`.
+ */
+describe('Recipe browsing reads the routes the API has (#859)', () => {
+  const lists = recipeLists as unknown as Record<string, { query: string[]; response: unknown }>;
+
+  it.each<RecipeFilter>(['all', 'mine', 'popular'])('%s: a route that exists, with query parameters it declares', (filter) => {
+    const [path, query = ''] = recipeListPath(filter).split('?');
+    const route = lists[`GET ${path}`];
+
+    expect(route).toBeDefined();
+    expect([...new URLSearchParams(query).keys()].filter((name) => !route.query.includes(name))).toEqual([]);
+  });
+
+  it('"mine" leaves other accounts\' public recipes out, and "all" does not', () => {
+    expect(recipeListPath('mine')).toBe('/transformations/recipes?include_public=false');
+    expect(recipeListPath('all')).toBe('/transformations/recipes');
+  });
+
+  it.each<RecipeFilter>(['all', 'popular'])('%s: a recipe from a real response gives the pipeline its steps', async (filter) => {
+    const response = lists[`GET ${recipeListPath(filter)}`].response;
+    (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => response });
+
+    const [recipe] = await fetchRecipes(filter);
+
+    expect(recipe.name).toBe('Tidy names');
+    expect(recipeSteps(recipe)).toEqual(steps);
+    expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toMatch(new RegExp(`${recipeListPath(filter).replace('?', '\\?')}$`));
+  });
+
+  it('a recipe can be saved as public, in the field the API reads', () => {
+    const schema = routes['POST /transformations/recipes'];
+    const body = recipeRequest({ name: 'Clean', description: 'tidy', datasetId: 'ds1', steps, isPublic: true });
+
+    expect(violations(body, schema, schema)).toEqual([]);
+    expect(body.is_public).toBe(true);
+  });
+});
+

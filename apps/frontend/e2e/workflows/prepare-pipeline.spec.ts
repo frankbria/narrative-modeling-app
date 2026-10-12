@@ -53,4 +53,57 @@ test.describe('Prepare pipeline', () => {
       'remove_duplicates',
     ]);
   });
+
+  // #859: Browse listed from a route that does not exist and was always empty, and a
+  // recipe was loaded from a field the API does not send.
+  test('a saved recipe is listed in Browse and loads back as the same steps @smoke', async ({
+    page,
+    request,
+    uploadTestDataset,
+  }) => {
+    test.slow();
+    const name = `Tidy ${Date.now()}`; // the e2e user's recipes outlive a run on a local database
+
+    datasetId = await uploadTestDataset();
+    await page.getByRole('button', { name: 'Complete & Continue to Data Preparation' }).click();
+    await expect(page.getByRole('heading', { name: 'Data Preparation' })).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: /add remove duplicates/i }).click();
+    await page.getByRole('button', { name: /add trim whitespace/i }).click();
+
+    await page.getByTitle('Manage Recipes').click();
+    await page.getByRole('button', { name: 'Save Recipe' }).first().click();
+    await page.getByPlaceholder('Enter a descriptive name').fill(name);
+    await page.getByPlaceholder('Describe what this recipe does...').fill('drops duplicate rows, trims text');
+    await page.getByRole('button', { name: 'Save Recipe' }).last().click();
+    await expect(page.getByText(`Saved recipe "${name}"`)).toBeVisible({ timeout: 15000 });
+
+    // A fresh page: the pipeline is empty, so what Preview sends can only come from the recipe.
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Data Preparation' })).toBeVisible({ timeout: 15000 });
+    await page.getByTitle('Manage Recipes').click();
+    const card = page.getByRole('button', { name: new RegExp(name) });
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await expect(card).toContainText('2 steps');
+    await page.getByRole('button', { name: 'My Recipes' }).click();
+    await expect(card).toBeVisible({ timeout: 15000 });
+
+    await card.click();
+    await expect(page.getByText('Recipe Manager')).toHaveCount(0);
+    const previewed = page.waitForRequest(
+      (r) => r.url().endsWith('/transformations/preview') && r.method() === 'POST'
+    );
+    await page.getByRole('button', { name: /^preview$/i }).click();
+    expect((await previewed).postDataJSON().transformation_steps).toEqual([
+      { transformation_type: 'remove_duplicates', parameters: {} },
+      { transformation_type: 'trim_whitespace', parameters: {} },
+    ]);
+    await expect(page.getByTestId('pipeline-error')).toHaveCount(0);
+
+    // Leave the shared user's recipe list as it was found.
+    const headers = await apiAuthHeaders(request);
+    const listed = await (await request.get(`${API_BASE}/transformations/recipes?include_public=false`, { headers })).json();
+    const saved = listed.recipes.find((r: { name: string }) => r.name === name);
+    expect(saved).toBeDefined();
+    await request.delete(`${API_BASE}/transformations/recipes/${saved.id}`, { headers });
+  });
 });

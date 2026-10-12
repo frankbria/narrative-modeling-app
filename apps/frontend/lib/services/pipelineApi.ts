@@ -77,13 +77,60 @@ export function applyRequest(datasetId: string, step: PipelineStep) {
   return { dataset_id: datasetId, transformation_type: step.type, parameters: step.parameters };
 }
 
-export function recipeRequest(recipe: { name: string; description: string; datasetId: string; steps: PipelineStep[] }) {
+/** A recipe to save: the pipeline's steps under a name, optionally shared with other accounts. */
+export interface NewRecipe {
+  name: string;
+  description: string;
+  datasetId: string;
+  steps: PipelineStep[];
+  isPublic?: boolean;
+}
+
+export function recipeRequest(recipe: NewRecipe) {
   return {
     name: recipe.name,
     description: recipe.description,
     dataset_id: recipe.datasetId,
+    is_public: recipe.isPublic === true,
     steps: recipe.steps.map((s) => ({ type: s.type, parameters: s.parameters })),
   };
+}
+
+/** Which recipes the browser lists: the caller's and every public one, the caller's
+ * only, or the most used public ones. */
+export type RecipeFilter = 'all' | 'mine' | 'popular';
+
+/** A saved recipe as the recipe list routes return it: the fields the browser reads. */
+export interface SavedRecipe {
+  id: string;
+  name: string;
+  description: string | null;
+  steps: { type: string; parameters: Record<string, unknown> }[];
+  created_at: string;
+  is_public: boolean;
+  usage_count: number;
+}
+
+const RECIPE_LISTS: Record<RecipeFilter, string> = {
+  all: '/transformations/recipes',
+  mine: '/transformations/recipes?include_public=false',
+  popular: '/transformations/recipes/popular',
+};
+
+/** The route a filter reads. The browser used to ask `GET /recipes?filter=…`, which is
+ * no route, so it was always empty (#859); recipeLists.json pins these to the API. */
+export function recipeListPath(filter: RecipeFilter): string {
+  return RECIPE_LISTS[filter];
+}
+
+export async function fetchRecipes(filter: RecipeFilter): Promise<SavedRecipe[]> {
+  const body = await get<{ recipes: SavedRecipe[] }>(recipeListPath(filter), 'the request failed');
+  return body.recipes;
+}
+
+/** The pipeline a saved recipe describes. The API sends `steps`, each with a `type`. */
+export function recipeSteps(recipe: SavedRecipe): PipelineStep[] {
+  return recipe.steps.map((s) => ({ type: s.type, parameters: s.parameters }));
 }
 
 /** The API returns records; the panel draws arrays in column order. */
@@ -157,12 +204,7 @@ export async function applyPipeline(datasetId: string, steps: PipelineStep[]): P
   }
 }
 
-export async function saveRecipe(recipe: {
-  name: string;
-  description: string;
-  datasetId: string;
-  steps: PipelineStep[];
-}): Promise<void> {
+export async function saveRecipe(recipe: NewRecipe): Promise<void> {
   await post('/transformations/recipes', recipeRequest(recipe), 'Saving the recipe failed');
 }
 

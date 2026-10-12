@@ -2011,3 +2011,14 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Two readers, two vocabularies.** The upload stores `"excel"`; one reader knew only
   `xlsx`/`xls`, another knew all three. Grep every reader when a stored value has an
   alias.
+
+## #859 — recipe browse and load (2026-10-12)
+- **A swallowed error and "keep the previous data" make a broken call look like an empty
+  state.** The browser fetched a route that does not exist on every open, and showed
+  "No recipes found". An empty state should be reachable only from a successful answer.
+- **Capture the response, do not describe it.** The component's own `Recipe` type said
+  `transformations`; the shared type said `rating: number` and `description: string`,
+  and the API sends `null` for both. A fixture written by the backend test cannot drift
+  that way.
+- **A control that is not wired is a claim the UI makes.** The public checkbox had an id
+  and a label and no state.

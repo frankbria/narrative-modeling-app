@@ -16,7 +16,6 @@ import {
   NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { TransformationStep } from '@/lib/types/recipe';
 import TransformationSidebar from './TransformationSidebar';
 import TransformationNode, { TransformationFlowNode, TransformationNodeData } from './TransformationNode';
 import { TransformationChainView, TransformationStep as ChainStep } from './TransformationChainView';
@@ -31,12 +30,15 @@ import {
   fetchDatasetRows,
   fetchTransformationTypes,
   previewPipeline,
+  recipeSteps,
   saveRecipe,
   type PipelinePreview,
   type PipelineStep,
   type PreviewTable,
+  type SavedRecipe,
   type TransformationTypeMeta,
 } from '@/lib/services/pipelineApi';
+import { recipeFlow } from './recipeFlow';
 
 interface TransformationPipelineProps {
   datasetId: string;
@@ -151,6 +153,20 @@ function EditStepDialog(props: {
       onAdd={onSave}
     />
   );
+}
+
+interface RecipeModalProps {
+  open: boolean;
+  onClose: VoidFunction;
+  onSave(name: string, description: string, isPublic: boolean): void;
+  onLoad(recipe: SavedRecipe): void;
+}
+
+/** The recipe manager, mounted only while it is open so each opening starts on Browse. */
+function RecipeModal(props: RecipeModalProps) {
+  const { open, ...manager } = props;
+  if (!open) return null;
+  return <RecipeManager {...manager} />;
 }
 
 export default function TransformationPipeline({
@@ -444,40 +460,24 @@ export default function TransformationPipeline({
     });
 
   // The manager closes first, so the outcome shows on the page and not behind it.
-  const handleSaveRecipe = (name: string, description: string) => {
+  const handleSaveRecipe = (name: string, description: string, isPublic: boolean) => {
     setShowRecipeManager(false);
     return runAction(async () => {
-      await saveRecipe({ name, description, datasetId, steps: pipelineSteps() });
+      await saveRecipe({ name, description, datasetId, steps: pipelineSteps(), isPublic });
       return `Saved recipe "${name}"`;
     });
   };
 
-  const handleLoadRecipe = async (recipe: { transformations: TransformationStep[] }) => {
-    // Convert recipe transformations to nodes
-    const newNodes: TransformationFlowNode[] = recipe.transformations.map((transform: TransformationStep, index: number) => ({
-      id: `node-${index + 1}`,
-      type: 'transformation',
-      position: { x: 250, y: 100 + index * 150 },
-      data: {
-        type: transform.type,
-        label: transform.type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
-        parameters: transform.parameters,
-      },
-    }));
+  const closeRecipes = () => setShowRecipeManager(false);
 
-    // Create edges to connect nodes in sequence
-    const newEdges: Edge[] = newNodes.slice(0, -1).map((node, index) => ({
-      id: `edge-${index}`,
-      source: node.id,
-      target: newNodes[index + 1].id,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-      },
-    }));
-
-    setNodes(newNodes);
-    setEdges(newEdges);
-    setShowRecipeManager(false);
+  const handleLoadRecipe = (recipe: SavedRecipe) => {
+    const flow = recipeFlow(recipeSteps(recipe));
+    setNodes(flow.nodes);
+    setEdges(flow.edges);
+    // The recipe's nodes are node-1..node-n, so the next step added must be node-(n+1):
+    // left where it was, the counter handed out an id the recipe had just used.
+    nodeIdCounterRef.current = flow.nodes.length;
+    closeRecipes();
   };
 
   const handleExportCode = () =>
@@ -629,15 +629,12 @@ export default function TransformationPipeline({
         onSave={handleSaveEdit}
       />
 
-      {/* Recipe Manager Modal */}
-      {showRecipeManager && (
-        <RecipeManager
-          onClose={() => setShowRecipeManager(false)}
-          onSave={handleSaveRecipe}
-          onLoad={handleLoadRecipe}
-          datasetId={datasetId}
-        />
-      )}
+      <RecipeModal
+        open={showRecipeManager}
+        onClose={closeRecipes}
+        onSave={handleSaveRecipe}
+        onLoad={handleLoadRecipe}
+      />
     </div>
   );
 }
