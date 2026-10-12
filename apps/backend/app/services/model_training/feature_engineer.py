@@ -321,17 +321,46 @@ class FeatureEngineer:
         label sets "label_encoders" (#697). A label category unseen at fit time
         is served like a missing one (see ``_unseen_label_code``) instead of raising."""
         if "encoder" in self.transformers:
-            encoded_df = pd.DataFrame(
-                self.transformers["encoder"].transform(X[self.categorical_features]),
-                columns=self.transformers["encoded_columns"],
-                index=X.index,
-            )
-            return pd.concat([X.drop(columns=self.categorical_features), encoded_df], axis=1)
+            return pd.concat([X.drop(columns=self.categorical_features), self._one_hot(X)], axis=1)
         for col, le in self.transformers.get("label_encoders", {}).items():
             codes = {label: code for code, label in enumerate(le.classes_)}
             unseen = self._unseen_label_code(col, codes)
             X[col] = self._label_keys(X[col]).map(codes).fillna(unseen).astype(int)
         return X
+
+    _NUMERIC_CATEGORIES = ("integer", "floating", "mixed-integer-float")
+
+    def _one_hot(self, X: pd.DataFrame) -> pd.DataFrame:
+        """The one-hot block, matched on ``_match_keys`` (#906).
+
+        The fitted encoder matches by raw value and type, so the form's ``"1"`` for a
+        category fitted as the int ``1`` (or ``true`` for one fitted as ``"True"``)
+        was an all-zeros block. For a value the encoder would have matched the output
+        is the same; a value with no category is still all zeros."""
+        blocks = []
+        for col, categories in zip(self.categorical_features, self.transformers["encoder"].categories_):
+            # By value: the imputer hands fit an object block, so the dtype says nothing.
+            numeric = pd.api.types.infer_dtype(categories, skipna=True) in self._NUMERIC_CATEGORIES
+            fitted = self._match_keys(pd.Series(categories, dtype=object), numeric)
+            position = {key: i for i, key in enumerate(fitted)}
+            hit = np.array([position.get(key, -1) for key in self._match_keys(X[col], numeric)], dtype=int)
+            block = np.zeros((len(X), len(categories)))
+            block[hit >= 0, hit[hit >= 0]] = 1.0
+            blocks.append(block)
+        return pd.DataFrame(np.hstack(blocks), columns=self.transformers["encoded_columns"], index=X.index)
+
+    @staticmethod
+    def _match_keys(values: pd.Series, numeric: bool) -> list[tuple[bool, str]]:
+        """What one-hot matches a value on: its label key, as label encoding does.
+
+        Two additions. A missing value is kept apart from the text that spells its
+        key (``"nan"``), since without an imputer both can be categories of one
+        column. And in a column fitted on numbers, text that reads as a number is
+        that number, so ``"1.0"`` and ``"01"`` select the category ``1``."""
+        if numeric:
+            as_number = pd.to_numeric(values, errors="coerce")
+            values = values.where(as_number.isna(), as_number)
+        return list(zip(values.isna(), FeatureEngineer._label_keys(values)))
 
     def _unseen_label_code(self, col: str, codes: dict[str, int]) -> int:
         """Code for a category unseen at fit: the column's most-frequent training

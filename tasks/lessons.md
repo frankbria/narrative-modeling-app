@@ -1802,3 +1802,21 @@ checked, and the fix is always the same: the claim is a query, so run it.
   and cut the page component out. Re-check `count == 1` after each insertion, not only
   at the start.
 
+
+## 2026-10-11 — #906 (one-hot serving matches a value on its label key)
+
+- **Test a serving path with what its client sends, not with the fitted types.** Every
+  one-hot test served the frame it was fitted on, so ints met ints. The form sends each
+  categorical as the string its dropdown offered, and for a category fitted as an int or
+  a bool that string was an all-zeros block, 200, no signal. Take the payload from the
+  route that feeds the form (`GET /features`) and post it back.
+- **Before adding a flag, check the thing it reports is computed correctly.** #838 asks
+  for an "unseen value" flag. Probing what "unseen" meant under each encoding showed the
+  one-hot matcher was wrong, and the flag would have fired on values the form offered.
+- **A probe sized like production can take the machine down with it.** A 200k-row,
+  840-feature frame was killed for memory with no output at all, which reads like a hang.
+  Size a timing probe to fit in memory several times over, and wrap it in `timeout`.
+- **`categories_` of an encoder fitted after an imputer is an object array.** A dtype test
+  for "this column was fitted on numbers" was always false; `pd.api.types.infer_dtype`
+  on the values is what answers it. The failing test said so within a minute; reading
+  the dtype off a probe first would have said so sooner.

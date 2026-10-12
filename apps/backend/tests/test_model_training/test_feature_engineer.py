@@ -600,3 +600,157 @@ async def test_the_engine_excludes_ids_through_its_own_split_and_honours_keep_co
     assert engine.feature_engineer.excluded_features == ["customer_id", "row_number"]
     assert result.metadata["feature_engineering"]["excluded_features"] == ["customer_id", "row_number"]
     assert "order_no" in engine.feature_engineer.numeric_features
+
+
+def _typed_categories_frame(n: int = 200) -> pd.DataFrame:
+    """Categorical columns whose fitted categories are not all strings: a boolean
+    with blanks (bools), a low-cardinality int, a low-cardinality float with blanks."""
+    rng = np.random.RandomState(0)
+    active = rng.choice([True, False], n).astype(object)
+    active[:5] = np.nan
+    level = rng.choice([1.0, 2.0, 3.0], n)
+    level[5:9] = np.nan
+    return pd.DataFrame(
+        {
+            "active": active,
+            "tier": rng.choice([1, 2, 3], n),
+            "level": level,
+            "flag": rng.choice([True, False], n),  # bool dtype: fitted as "True"/"False"
+            "plan": rng.choice(["basic", "pro"], n),
+            "spend": rng.uniform(1, 100, n),
+        }
+    )
+
+
+async def _fit_onehot(frame: pd.DataFrame) -> tuple[FeatureEngineer, FeatureEngineeringResult]:
+    fe = FeatureEngineer(FeatureEngineeringConfig(encoding_method="onehot", select_features=False))
+    return fe, await fe.fit_transform(frame.copy())
+
+
+async def _served(fe: FeatureEngineer, records: list[dict]) -> pd.DataFrame:
+    """The platform's transform of these records, which the export must reproduce."""
+    rows = pd.DataFrame(records)
+    out = await fe.transform(rows)
+    standalone = StandaloneFeatureEngineer(pickle.loads(pickle.dumps(feature_engineer_state(fe))))
+    pd.testing.assert_frame_equal(standalone.transform(rows), out, check_dtype=False)
+    return out
+
+
+def _block(out: pd.DataFrame, column: str) -> pd.DataFrame:
+    return out[[c for c in out.columns if c.startswith(f"{column}_")]]
+
+
+_RECORD = {"active": True, "tier": 1, "level": 1.0, "flag": True, "plan": "basic", "spend": 5.0}
+
+
+class TestOneHotMatchesOnTheLabelKey:
+    """#906: one-hot serving matched a value to a category by raw value and type, so
+    the form's "1" for a category fitted as the int 1 was an all-zeros block."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "sent",
+        [
+            {"active": True, "tier": 1, "level": 1.0, "flag": True},
+            {"active": "True", "tier": "1", "level": "1", "flag": "True"},  # what the form sends
+            {"active": True, "tier": 1.0, "level": 1, "flag": "True"},
+        ],
+        ids=["fitted-types", "strings", "other-numeric-types"],
+    )
+    async def test_a_value_selects_its_category_whatever_type_it_is_sent_as(self, sent):
+        fe, _ = await _fit_onehot(_typed_categories_frame())
+        assert {"active", "tier", "level", "flag", "plan"} <= set(fe.categorical_features)
+
+        out = await _served(fe, [{**_RECORD, **sent}])
+
+        assert out.loc[0, ["active_True", "tier_1", "level_1.0", "flag_True", "plan_basic"]].tolist() == [1.0] * 5
+        for column in fe.categorical_features:
+            assert _block(out, column).to_numpy().sum() == 1.0
+
+    @pytest.mark.asyncio
+    async def test_every_option_the_form_offers_is_matched(self):
+        from app.api.routes.model_training import _categorical_options
+
+        fe, _ = await _fit_onehot(_typed_categories_frame())
+
+        assert _categorical_options(fe, "level") == ["1", "2", "3"]
+        for column in fe.categorical_features:
+            for option in _categorical_options(fe, column):
+                out = await _served(fe, [{**_RECORD, column: option}])
+                assert _block(out, column).to_numpy().sum() == 1.0, (column, option)
+
+    @pytest.mark.asyncio
+    async def test_a_blank_category_is_not_offered_to_the_form(self):
+        """Without an imputer a blank is a fitted category. A dropdown cannot send a
+        blank, and the text "nan" is not one, so offering it offers an unseen value."""
+        from app.api.routes.model_training import _categorical_options
+
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(encoding_method="onehot", select_features=False, handle_missing=False)
+        )
+        await fe.fit_transform(_typed_categories_frame().drop(columns=["active"]))
+        assert "level_nan" in fe.transformers["encoded_columns"]  # the blank was fitted
+
+        options = _categorical_options(fe, "level")
+
+        assert options == ["1", "2", "3"]
+        for option in options:
+            out = await _served(fe, [{**_RECORD, "level": option}])
+            assert _block(out, "level").to_numpy().sum() == 1.0, option
+
+    @pytest.mark.asyncio
+    async def test_a_null_in_one_record_leaves_the_others_alone(self):
+        """One null makes the request's whole column `object`, which used to turn
+        every other record's `true` into a value the encoder had never seen."""
+        fe, _ = await _fit_onehot(_typed_categories_frame())
+
+        out = await _served(fe, [_RECORD, {**_RECORD, "flag": None}])
+
+        assert out.loc[0, "flag_True"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_a_value_with_no_category_is_still_all_zeros(self):
+        fe, _ = await _fit_onehot(_typed_categories_frame())
+
+        out = await _served(fe, [_RECORD, {**_RECORD, "tier": "platinum"}])
+
+        assert out.loc[0, "tier_1"] == 1.0
+        assert _block(out, "tier").loc[1].sum() == 0.0  # no such category: all zeros
+
+    @pytest.mark.asyncio
+    async def test_training_rows_encode_exactly_as_the_fitted_encoder_did(self):
+        frame = _typed_categories_frame()
+        fe, fitted = await _fit_onehot(frame)
+
+        out = await fe.transform(frame)
+
+        pd.testing.assert_frame_equal(out, fitted.X_transformed, check_dtype=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("text", ["1", "1.0", "01", " 1", "1e0"])
+    async def test_numeric_text_selects_a_numeric_category(self, text):
+        """A column fitted on numbers is matched numerically. The fitted encoder did
+        this only when every categorical in the request happened to be numeric text."""
+        fe, _ = await _fit_onehot(_typed_categories_frame())
+
+        out = await _served(fe, [{**_RECORD, "tier": text, "level": text}])
+
+        assert out.loc[0, ["tier_1", "level_1.0"]].tolist() == [1.0, 1.0]
+
+    @pytest.mark.asyncio
+    async def test_a_blank_and_the_text_that_spells_it_stay_apart(self):
+        """Without an imputer a blank is a category of its own, and its label key,
+        "nan", is also a string a column can hold."""
+        frame = _typed_categories_frame()
+        frame["plan"] = frame["plan"].astype(object)
+        frame.loc[:9, "plan"] = "nan"
+        frame.loc[10:19, "plan"] = np.nan
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(encoding_method="onehot", select_features=False, handle_missing=False)
+        )
+        fitted = await fe.fit_transform(frame.drop(columns=["active", "level"]))
+
+        out = await _served(fe, frame.drop(columns=["active", "level"]).to_dict("records"))
+
+        assert fe.transformers["encoded_columns"].count("plan_nan") == 2  # the collision is real
+        np.testing.assert_array_equal(out.to_numpy(), fitted.X_transformed.to_numpy())

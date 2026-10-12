@@ -1,42 +1,31 @@
-# #801 — capture at training time what the model report has to call "not recorded" (P1.64)
+# #906 — one-hot serving matches a value on its label key (P0.45)
 
-Self-authored plan (the issue lists four items and four acceptance criteria).
+Self-authored plan. Found while probing #838, whose "unseen" flag would otherwise fire
+on values the form itself offered.
 
 ## Decisions made here
-- **Seed and winner hyperparameters go in `MLModel.training_config`**
-  (`random_seed`, `winner_hyperparameters`), the channel #806 already uses for
-  `excluded_identifier_columns`. No new `MLModel` field, so `save_model` (cc 11) is not
-  touched and the `sample_ml_model` fixture needs no change (AC4 does not arise).
-- **The dataset version is matched by content.** `_trained_version_id` finds the twin
-  by `(user_id, s3_url)` at training time and the `DatasetVersion` whose `content_hash`
-  equals the hash of the bytes training read. The issue's other option, "the latest
-  version of the dataset", can name a version of different bytes after an undo or a
-  transformation that wrote no version. A dataset with no version of those bytes records
-  none, and the report keeps its caveat. It is passed to `save_model` explicitly, which
-  already prefers an explicit id over its own (broken) lookup.
-- **`save_model`'s "latest version" fallback is removed** (cross-family review). Since #850
-  keys a UI upload's twin by the upload's own id, that fallback can match, and it would
-  name the dataset's latest version whenever training found no version of the bytes it
-  read. `save_model` was cc 11, so its two best-effort JSON uploads move to
-  `_upload_json_artifact`.
-- The matched version gets the model id in `used_in_training` (`$addToSet`), which the
-  issue notes nothing ever wrote.
-- **Item 3, the preprocessing applied, is closed without capture, for a recorded
-  reason:** `pipeline/apply`, bulk transformations and data-issue fixes move a dataset
-  without writing a history step (#851), so a list read from the history would be
-  incomplete and stated as fact. The module docstring says so, and #851 gets a comment.
-- **Per-figure provenance:** `seed_provenance` and `hyperparameters_provenance` beside
-  the two new figures, because their sections already carry real stored numbers.
-- **The frontend page is split.** `ModelReportPage` was cc 24, and the seed sentence
-  lived in it, so editing it meant splitting it: one component per section in
-  `components/model-report/ReportSections.tsx`, plus `useModelReport`, `ReportStatus`,
-  `ReportHeader`, `saveMarkdown` and `useModelId` in the page.
+- **`_one_hot` builds the block from `_label_keys`** in `FeatureEngineer` and, identically,
+  in `StandaloneFeatureEngineer`. The fitted `OneHotEncoder` is still what fit uses and what
+  supplies `categories_` and `encoded_columns`; only its `transform` is no longer called at
+  serving. Mapping each sent value back to the fitted type and then calling the encoder was
+  the other option: it leaves a mixed-type column for the encoder to sort.
+- **Linear in rows:** a key-to-position dict per column, not a rows x categories comparison
+  of object arrays (50k rows, 201 one-hot features: 0.12 s).
+- **`_categorical_options` returns the keys** (`"1"`, not `"1.0"`, for a float category), so
+  every option the form offers is one serving matches. It was cc 9, so the lookup moves to
+  `_fitted_category_keys`.
+- **`_match_keys`, from the cross-family review:** the label key alone made a blank and the
+  text `"nan"` one key (two categories when no imputer was fitted, so serving lit a different
+  column than fit), and dropped the fitted encoder's occasional reading of `"1.0"` as `1`.
+  A missing value now carries a flag beside its key, and a column fitted on numbers reads
+  numeric text as the number.
+- Fit is not changed. A boolean column with blanks is still fitted with bool categories;
+  serving now matches `"True"` and `true` to them either way.
 
-## Acceptance criteria (from the issue)
-- [x] AC1: each of the four items is captured, or closed with a recorded reason
-      (seed, dataset version and hyperparameters captured; preprocessing closed, #851).
-- [x] AC2: the report stops disclaiming what is captured, its provenance is STORED, and a
-      test asserts the real value reaches the report.
-- [x] AC3: nothing new is required: a model trained before this validates and the report
-      says `not_recorded` for it.
-- [x] AC4: no `MLModel` field was added, so the `sample_ml_model` fixture is unchanged.
+## Steps
+- [x] Failing tests: a value selects its category whatever type it is sent as (platform and
+      export), every offered option is matched, a null in one record leaves the others alone,
+      training rows encode exactly as fit did, the predict route serves the form's string.
+- [x] `_one_hot` in both engineers; `_categorical_options` through the keys.
+- [x] CLAUDE.md convention.
+- [ ] Gate, cross-family review, PR, demo through the real routes, CI, merge.
