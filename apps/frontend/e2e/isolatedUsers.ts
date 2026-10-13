@@ -17,7 +17,7 @@ import path from 'path';
  * invocation run these specs as the same account at the same time. Every script pins
  * one Chromium project; key the name by `testInfo.project.name` if one stops doing so.
  */
-export const ISOLATED_USERS = ['onboarding', 'erasure'] as const;
+export const ISOLATED_USERS = ['onboarding', 'erasure', 'tenant-b'] as const;
 export type IsolatedUser = (typeof ISOLATED_USERS)[number];
 
 /** `local+slug@domain` of the shared test user's address. */

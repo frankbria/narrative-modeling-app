@@ -166,9 +166,18 @@ class TestCancel:
     ):
         await _job("bjob", OTHER_USER, status=JobStatus.PENDING)
         resp = await async_authorized_client.post(f"{_BATCH}/jobs/bjob/cancel")
-        assert resp.status_code == 400  # not claimable by A
+        # 404, like every other route here: "cannot be cancelled" would confirm the id.
+        assert resp.status_code == 404
         # B's job is untouched.
         assert (await BatchJob.find_one(BatchJob.job_id == "bjob")).status == JobStatus.PENDING
+
+    async def test_cancelling_an_unknown_job_answers_like_a_foreign_one(
+        self, async_authorized_client, setup_database
+    ):
+        await _job("bjob", OTHER_USER, status=JobStatus.PENDING)
+        foreign = await async_authorized_client.post(f"{_BATCH}/jobs/bjob/cancel")
+        unknown = await async_authorized_client.post(f"{_BATCH}/jobs/no-such-job/cancel")
+        assert (unknown.status_code, unknown.json()) == (foreign.status_code, foreign.json())
 
     async def test_cannot_cancel_a_completed_job(
         self, async_authorized_client, setup_database

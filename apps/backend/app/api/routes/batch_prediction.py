@@ -390,6 +390,12 @@ async def cancel_batch_job(
 ):
     """Cancel a pending or running batch job"""
 
+    # 404 for a job that is not the caller's, like the routes beside this one: "cannot
+    # be cancelled" would tell them the id exists. The cancel itself stays one
+    # conditional update, so this lookup decides the answer, not who may cancel.
+    if not await batch_service.get_job_status(job_id, current_user_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+
     success = await batch_service.cancel_job(job_id, current_user_id)
 
     if not success:

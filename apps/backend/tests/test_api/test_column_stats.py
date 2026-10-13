@@ -452,6 +452,32 @@ class TestColumnStatsTenantIsolation:
         assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
 
     @pytest.mark.asyncio
+    async def test_a_true_false_column_is_boolean_not_a_number_to_take_quartiles_of(
+        self, async_authorized_client: AsyncClient, setup_database,
+        mock_user_id: str, monkeypatch
+    ):
+        """pandas counts bool as numeric, so the column went to the numeric statistics
+        and its quartiles failed inside numpy: a 500 for any dataset with a yes/no
+        column pandas reads as bool (#753, found by the tenant-isolation spec)."""
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)
+        fake_body = io.BytesIO(b"salary,remote\n100,true\n200,false\n300,true\n400,true\n")
+
+        with patch(
+            "app.api.routes.column_stats.get_file_from_s3", return_value=fake_body
+        ):
+            response = await async_authorized_client.get(
+                f"/api/v1/column_stats/dataset/{mine.id}"
+            )
+
+        assert response.status_code == 200, response.text
+        by_name = {c["column_name"]: c for c in response.json()}
+        assert by_name["remote"]["data_type"] == "boolean"
+        assert (by_name["remote"]["count"], by_name["remote"]["unique"]) == (4, 2)
+        assert by_name["salary"]["data_type"] == "numeric"
+        assert by_name["salary"]["median"] == 250
+
+    @pytest.mark.asyncio
     async def test_a_file_that_cannot_be_parsed_is_a_400_and_stores_nothing(
         self, async_authorized_client: AsyncClient, setup_database,
         mock_user_id: str, monkeypatch
