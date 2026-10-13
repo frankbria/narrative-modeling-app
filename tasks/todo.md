@@ -1,14 +1,12 @@
-# Issue #752: three e2e specs whose backend calls never reach the backend
+# Issue #787: apps/mcp/uv.lock resolves a yanked numpy
 
-## What each one turned out to be
-- `upload.spec.ts`, the metadata check: a relative `/api/v1` URL (answered by the Next dev
-  server), the wrong id-space, and a branch that logged "skipped" on any failure. The test
-  is `@smoke`.
-- `ai-recommendations.spec.ts`: 15 tests posting to `/ai/analyze-dataset`. No such route.
-- `transformation-preview.spec.ts`: drives a `/datasets` page that does not exist.
+## Problem
+The MCP app's lock pins numpy 2.4.0 for Python 3.11 and later. That release was yanked
+upstream ("Backward compatibility bug").
 
 ## Plan
-- [x] The metadata check reads `GET {API_BASE}/user_data/{id}` with the session's token and
-      asserts 200 and the record. Run on the real stack; mutation-checked (a wrong path fails it).
-- [x] The two specs that cannot run are deleted, with why.
-- [x] The rest of the unrun suite: #991.
+- [x] `uv lock --upgrade-package "numpy<2.5"`: 2.4.0 -> 2.4.6, the newest patch of the same
+      minor (published 2026-05-18). Not the plain upgrade, which also brought in 2.5.4,
+      published three days ago.
+- [x] Nothing else moves: pandas stays 2.3.3, mcp stays below 2 (#620), Python 3.10 keeps 2.2.6.
+- [x] The mcp suite passes (39) and its pip-audit is clean.
