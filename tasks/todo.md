@@ -1,3 +1,17 @@
+# Issue #502: A/B testing is removed (owner decision: hide the UI and nav entry, unmount the routes, keep the models)
+
+## Plan
+- [ ] RED: no route in the published API is under `/ab-testing`; the sidebar offers no
+      "A/B Testing"; no page under `app/experiments`.
+- [ ] Backend: delete `routes/ab_testing.py` and its route tests, drop the mount. Kept for a
+      return: the `ABTest` model (registry, erasure sweep, unique index and its script) and
+      `ABTestingService` with its own tests.
+- [ ] Frontend: delete `app/experiments/` (three pages), `lib/services/abTesting.ts` and
+      its test, the sidebar entry.
+- [ ] Docs: `SECURITY_OWNERSHIP_CHECKS.md` names two routes that no longer exist; CLAUDE.md
+      says what remains and that remounting it is a new feature.
+
+
 # Issues #765 (AC1) and #770 (AC4, AC7): one product name, SheetPredict
 
 ## Plan

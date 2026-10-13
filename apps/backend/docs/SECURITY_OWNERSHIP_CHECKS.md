@@ -156,18 +156,11 @@ a 500.
   there is nothing to compare against (`DatasetMetadata` is the id-space that
   uses `datasets/{user}/...`).
 
-- `app/api/routes/ab_testing.py`:
-  - `GET /api/v1/ab-testing/experiments/{experiment_id}/assign-variant`
-  - `POST /api/v1/ab-testing/track-prediction`
-
-  Both carried **no** auth dependency at all until #450, while the other eight
-  endpoints on the router did and the router is mounted without a router-level
-  `dependencies=[...]`. Both now take `get_current_user_id` and load the
-  experiment with a `user_id` predicate. The ownership check on
-  `track-prediction` lives in the route, not the service:
-  `ABTestingService.track_prediction` looks the experiment up by id alone and
-  returns silently on a miss, which is deliberate for non-blocking tracking but
-  cannot double as authorization.
+- `app/api/routes/ab_testing.py` no longer exists (#502). Two of its routes
+  (`assign-variant`, `track-prediction`) carried no auth dependency until #450;
+  the whole router was removed when A/B testing was, since nothing in the
+  prediction path ever called it. `ABTestingService.track_prediction` takes the
+  caller's `user_id` and matches on it (#565); a router that returns must pass it.
 
 - `app/api/routes/column_stats.py` (via `_require_owned_dataset`, local to that
   module — different model and id type from the versions helper):

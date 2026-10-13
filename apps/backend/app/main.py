@@ -48,7 +48,6 @@ from app.middleware.upload_cleanup import UnownedUploadCleanupMiddleware
 from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
-    ab_testing,
     admin,
     ai_analysis,
     ai_orchestration,
@@ -345,11 +344,6 @@ app.include_router(
     monitoring.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["monitoring"],
-)
-app.include_router(
-    ab_testing.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["ab-testing"],
 )
 app.include_router(
     batch_prediction.router,
