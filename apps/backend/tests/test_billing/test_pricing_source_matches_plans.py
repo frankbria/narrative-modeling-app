@@ -16,35 +16,19 @@ import pytest
 
 from app.billing import plans
 from app.models.subscription import PlanTier
+from tests.adr_table import decision_rows
 
 REPO = Path(__file__).resolve().parents[4]
 PRICING_JSON = REPO / "apps" / "frontend" / "lib" / "billing" / "plans.json"
-ADR = REPO / "docs" / "architecture" / "ADR-003-plan-limits-and-pricing.md"
 
 
 def _adr_prices(text: str | None = None) -> dict[PlanTier, int | None]:
     """The price cell of the ADR-003 decision table: `$0` → 0, `$49 / month` → 49,
-    `contact us` → None (sales-led, ADR-003 AC3).
-
-    Anchored on the table whose header row is `| Tier | Price | ... |`, not on the
-    section it sits in: the worst-case cost tables in the same section also start
-    their rows with the tier names, so a heading-scoped parse would depend on the
-    tables' order in the file.
-    """
-    lines = (text if text is not None else ADR.read_text()).splitlines()
-    header = next(
-        i
-        for i, line in enumerate(lines)
-        if re.match(r"^\|\s*Tier\s*\|\s*Price\s*\|", line)
-    )
+    `contact us` → None (sales-led, ADR-003 AC3)."""
     out: dict[PlanTier, int | None] = {}
-    for line in lines[header + 2 :]:  # skip the `|---|` separator row
-        m = re.match(r"^\|\s*(FREE|PRO|ENTERPRISE)\s*\|\s*([^|]*)\|", line)
-        if not m:
-            break  # the table ends at the first non-row line
-        dollars = re.match(r"\$\s*(\d+)", m.group(2).strip())
-        out[PlanTier[m.group(1)]] = int(dollars.group(1)) if dollars else None
-    assert set(out) == set(PlanTier), f"ADR-003 decision table is missing a tier: {ADR}"
+    for tier, cells in decision_rows(text).items():
+        dollars = re.match(r"\$\s*(\d+)", cells[0])
+        out[tier] = int(dollars.group(1)) if dollars else None
     return out
 
 
