@@ -245,24 +245,37 @@ def test_both_workflows_probe_the_frontend_container_in_the_same_run():
     assert "status=$frontend" in health
 
 
+ON_BOX = REPO_ROOT / "scripts" / "deploy" / "on_box.sh"
+
+# The far side of on_box.sh's ssh: drop ssh's options and the destination, and hand the
+# one command string to a shell with stdin passed through.
+FAKE_SSH = '#!/usr/bin/env bash\nwhile [ $# -gt 1 ]; do shift; done\nexec bash -c "$1"\n'
+
+
 def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
-    """Run the script the way both workflows do: fed to ``bash -s`` on stdin.
+    """Run the script the way both workflows do: through ``scripts/deploy/on_box.sh``.
 
     The fake ``docker`` drains its stdin first, as ``docker compose exec`` does. Run as
     a file, with a ``docker`` that ignored stdin, these tests passed while the real
-    thing printed nothing and exited 0: the exec ate the rest of the script (#756)."""
+    thing printed nothing and exited 0: fed to ``bash -s``, the exec ate the rest of
+    the script (#756). on_box.sh now saves the body before running it (#790)."""
     assert FRONTEND_PROBE.stat().st_mode & stat.S_IXUSR
     with tempfile.TemporaryDirectory() as tmp:
-        fake = Path(tmp) / "bin" / "docker"
-        fake.parent.mkdir()
-        fake.write_text("#!/usr/bin/env bash\ncat > /dev/null\n" + docker_script)
-        fake.chmod(0o755)
+        bin_dir = Path(tmp) / "bin"
+        bin_dir.mkdir()
+        for name, text in (
+            ("docker", "#!/usr/bin/env bash\ncat > /dev/null\n" + docker_script),
+            ("ssh", FAKE_SSH),
+        ):
+            (bin_dir / name).write_text(text)
+            (bin_dir / name).chmod(0o755)
         return subprocess.run(
-            ["bash", "-s"],
-            stdin=FRONTEND_PROBE.open(),
+            ["bash", str(ON_BOX), str(FRONTEND_PROBE)],
             env={
                 **os.environ,
-                "PATH": f"{fake.parent}:{os.environ['PATH']}",
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                "HOST": "box.example",
+                "DEPLOY_USER": "deployer",
                 "DEPLOY_PATH": tmp,
             },
             capture_output=True,
@@ -272,12 +285,12 @@ def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
         )
 
 
-def test_frontend_probe_is_fed_to_bash_on_stdin_by_both_workflows():
+def test_frontend_probe_reaches_the_box_through_the_wrapper_in_both_workflows():
     """Pins what `_frontend_probe` imitates. If a workflow starts running the script
     another way, the harness above stops being the real thing."""
     for wf in (HEALTH_WORKFLOW, DEPLOY_WORKFLOW):
         run = _run_blocks(wf)
-        assert re.search(r"bash -s\"\s*<\s*scripts/deploy/frontend_probe\.sh", run), wf.name
+        assert "scripts/deploy/on_box.sh scripts/deploy/frontend_probe.sh" in run, wf.name
         # And neither takes silence for a pass: no verdict line fails the step. It is
         # looked for in the probe's own file, where no backend line can stand in for it.
         assert "grep -q '^frontend: ' /tmp/frontend-probe.txt" in run, wf.name

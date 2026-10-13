@@ -175,6 +175,27 @@ so `main` stays green. Application secrets stay in `.env.staging` **on the
 server** and are never passed through CI. The deploy checkout must already exist
 at `STAGING_DEPLOY_PATH` with `origin` pointing at this repo (Step 5, Option A).
 
+**Adding a step that runs on the box.** Every step in `deploy.yml` and
+`staging-health.yml` reaches the server through `scripts/deploy/on_box.sh`, never
+its own `ssh` line (#790):
+
+```yaml
+run: |
+  scripts/deploy/on_box.sh scripts/deploy/my_step.sh      # a script in the repo
+  scripts/deploy/on_box.sh <<'REMOTE'                     # or a short inline body
+  cd "$DEPLOY_PATH"
+  docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+  REMOTE
+```
+
+The body reads `"$DEPLOY_PATH"` from its environment; do not write the value into
+the command (`ssh host "cd '$DEPLOY_PATH'"`), because ssh hands the far shell one
+string to parse and a quote in the value ends the quoting. Keep the heredoc
+quoted (`<<'REMOTE'`), or the runner expands it before it is sent. The wrapper
+also saves the body on the box before running it, so a command that reads stdin
+(`docker compose exec`) cannot swallow the rest of it. A test fails on a raw
+`ssh` in either workflow.
+
 ---
 
 ## Step 6: Configure Nginx Reverse Proxy
