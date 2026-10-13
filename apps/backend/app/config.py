@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -73,6 +74,41 @@ def get_environment(default: str = "development") -> str:
     """
     env = os.getenv("ENVIRONMENT") or os.getenv("NODE_ENV")
     return (env or default).strip().lower()
+
+
+def database_name_in_uri(uri: str | None) -> str | None:
+    """The database a MongoDB URI names in its path, or None when it names none.
+
+    Read from the text, never through the driver: parsing a ``mongodb+srv`` URI
+    properly means a DNS lookup. The same reading as the frontend's
+    ``databaseNameFromUri`` (``lib/auth-config.ts``), so the two halves judge a URI alike.
+    """
+    if not uri:
+        return None
+    after_scheme = re.sub(r"^mongodb(\+srv)?://", "", uri, flags=re.IGNORECASE)
+    name = after_scheme.split("?", 1)[0].partition("/")[2].strip()
+    return name or None
+
+
+def resolve_database_name(uri: str | None, configured: str | None) -> str:
+    """The database the backend uses: ``MONGODB_DB``, and nothing else.
+
+    It selects ``client[MONGODB_DB]`` and never reads a database from the URI's path.
+    So a URI naming one database with ``MONGODB_DB`` naming another ran against the
+    second without a word, and could disagree with the frontend, which has refused
+    that since #551. Refuse here too (#694). The message carries the two names only:
+    the URI holds credentials and the cluster's address.
+    """
+    name = (configured or "").strip()
+    if not name:
+        raise RuntimeError("MONGODB_DB environment variable is not set")
+    in_uri = database_name_in_uri(uri)
+    if in_uri and in_uri != name:
+        raise RuntimeError(
+            f"MONGODB_DB ({name}) and the database in the MONGODB_URI path ({in_uri}) "
+            "name different databases; they must agree (#694)"
+        )
+    return name
 
 
 def validate_skip_auth(

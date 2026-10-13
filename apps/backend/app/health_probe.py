@@ -36,6 +36,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.api.routes.health import check_openai_api, check_s3_access
 from app.billing.plans import _env_positive_int
+from app.config import resolve_database_name
 
 DEFAULT_URL = "http://localhost:8000"
 MONGO_TIMEOUT_MS = 10_000
@@ -66,11 +67,15 @@ async def _signup_rate() -> dict[str, Any]:
     """
     threshold = _env_positive_int("SIGNUP_ALERT_THRESHOLD_24H", 100)
     since = ObjectId.from_datetime(datetime.now(UTC) - timedelta(hours=24))
+    uri = os.environ["MONGODB_URI"]
+    # The app's own choice of database, by the app's own rule (#694): a default of
+    # this probe's would count signups somewhere the app does not write them.
+    database = resolve_database_name(uri, os.getenv("MONGODB_DB"))
     client: AsyncIOMotorClient[Any] = AsyncIOMotorClient(
-        os.environ["MONGODB_URI"], serverSelectionTimeoutMS=MONGO_TIMEOUT_MS
+        uri, serverSelectionTimeoutMS=MONGO_TIMEOUT_MS
     )
     try:
-        users = client[os.getenv("MONGODB_DB", "narrative_modeling")]["users"]
+        users = client[database]["users"]
         count = await users.count_documents({"_id": {"$gte": since}})
     finally:
         client.close()

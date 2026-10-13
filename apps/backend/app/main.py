@@ -1,4 +1,5 @@
 # apps/backend/app/main.py
+import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -82,23 +83,28 @@ from app.api.routes import (
 )
 from app.services.api_documentation import published_spec
 from app.auth.nextauth_auth import SKIP_AUTH, require_admin
-from app.config import current_signup_mode, get_environment, settings, is_production_like
+from app.config import (
+    current_signup_mode,
+    get_environment,
+    is_production_like,
+    resolve_database_name,
+    settings,
+)
 from app.models.registry import DOCUMENT_MODELS
 from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: state the auth mode unambiguously (issue #149)
+def _announce_configuration() -> None:
+    """Say at startup how this process is configured, where a wrong value is silent."""
+    # The auth mode, unambiguously (issue #149)
     logger.info(
         "Auth mode: %s (environment=%s)",
         "BYPASSED via SKIP_AUTH" if SKIP_AUTH else "ENFORCED (NextAuth JWT)",
         get_environment(),
     )
     # Signup mode (#768): "open" is a deliberate value, so it is said out loud.
-    signup_mode = current_signup_mode()
-    if signup_mode == "open":
+    if current_signup_mode() == "open":
         logger.warning("Signup mode: OPEN — any OAuth account may sign up (SIGNUP_MODE=open)")
     else:
         logger.info("Signup mode: invite (INVITE_ALLOWLIST only)")
@@ -114,25 +120,80 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Billing: %s", billing_warning)
 
-    # Connect to DB (single place, all models via the canonical registry)
+
+async def _connect_database() -> AsyncIOMotorClient[Any]:
+    """Connect to the one database this process uses (single place, all models via
+    the canonical registry). Refuses a URI whose path names a different one (#694)."""
     mongo_uri = os.getenv("MONGODB_URI")
-    db_name = os.getenv("MONGODB_DB")
-    if not db_name:
-        raise RuntimeError("MONGODB_DB environment variable is not set")
+    db_name = resolve_database_name(mongo_uri, os.getenv("MONGODB_DB"))
     client: AsyncIOMotorClient[Any] = AsyncIOMotorClient(mongo_uri)
     await init_beanie(
         database=client[db_name],
         document_models=DOCUMENT_MODELS,
     )
+    return client
 
-    # Fail fast on a missing/unwritable S3 bucket — but only in a production-like
-    # environment, so dev/test (mock S3) and CI stay unaffected (#495). A refused
-    # boot beats writing to a guessed or wrong bucket, and it catches a broken
-    # credential rotation (P1.33).
+
+def _verify_storage() -> None:
+    """Fail fast on a missing/unwritable S3 bucket — but only in a production-like
+    environment, so dev/test (mock S3) and CI stay unaffected (#495). A refused boot
+    beats writing to a guessed or wrong bucket, and it catches a broken credential
+    rotation (P1.33)."""
     if is_production_like():
         from app.services.s3_service import s3_service
 
         s3_service.verify_bucket_writable()
+
+
+async def _reap_stale_jobs_once() -> None:
+    """Stale-job recovery (#484): reap jobs orphaned by a prior restart/crash so they
+    don't sit RUNNING forever holding quota. Heartbeat-based + atomically claimed, so
+    it is safe across the 2 gunicorn workers and never reaps a live job. A reaper
+    failure must never block startup."""
+    from app.services.job_reaper import reap_stale_jobs
+
+    try:
+        startup_summary = await reap_stale_jobs()
+        logger.info(
+            "stale-job reaper (startup): recovered %d job(s)", startup_summary.total
+        )
+    except Exception:
+        logger.exception("stale-job reaper failed on startup")
+
+
+async def _reaper_loop() -> None:
+    """The same sweep, periodically. A failed iteration must never end the loop."""
+    from app.services.job_reaper import JOB_REAPER_INTERVAL_SECONDS, reap_stale_jobs
+
+    while True:
+        await asyncio.sleep(JOB_REAPER_INTERVAL_SECONDS)
+        try:
+            await reap_stale_jobs()
+        except Exception:
+            logger.exception("stale-job reaper loop iteration failed")
+
+
+async def _stop_reaper(app: FastAPI) -> None:
+    reaper_task = getattr(app.state, "reaper_task", None)
+    if reaper_task is not None:
+        reaper_task.cancel()
+        try:
+            await reaper_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+async def _close_rate_limit_store(app: FastAPI) -> None:
+    store = getattr(app.state, "rate_limit_store", None)
+    if store is not None and hasattr(store, "close"):
+        await store.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _announce_configuration()
+    client = await _connect_database()
+    _verify_storage()
 
     # Initialize OpenAI client
     initialize_openai_client()
@@ -144,43 +205,14 @@ async def lifespan(app: FastAPI):
     # on app.state so RateLimitMiddleware can resolve it per request (#151).
     app.state.rate_limit_store = build_rate_limit_store(settings.REDIS_URL)
 
-    # Stale-job recovery (#484): reap jobs orphaned by a prior restart/crash so
-    # they don't sit RUNNING forever holding quota. Heartbeat-based + atomically
-    # claimed, so it is safe across the 2 gunicorn workers and never reaps a live
-    # job. Sweep once on startup, then periodically. A reaper failure must never
-    # block startup or crash the loop.
-    import asyncio
-
-    from app.services.job_reaper import JOB_REAPER_INTERVAL_SECONDS, reap_stale_jobs
-
-    try:
-        startup_summary = await reap_stale_jobs()
-        logger.info(
-            "stale-job reaper (startup): recovered %d job(s)", startup_summary.total
-        )
-    except Exception:
-        logger.exception("stale-job reaper failed on startup")
-
-    async def _reaper_loop() -> None:
-        while True:
-            await asyncio.sleep(JOB_REAPER_INTERVAL_SECONDS)
-            try:
-                await reap_stale_jobs()
-            except Exception:
-                logger.exception("stale-job reaper loop iteration failed")
-
+    # Sweep once on startup, then periodically.
+    await _reap_stale_jobs_once()
     app.state.reaper_task = asyncio.create_task(_reaper_loop())
 
     yield
 
     # Stop the background reaper first.
-    reaper_task = getattr(app.state, "reaper_task", None)
-    if reaper_task is not None:
-        reaper_task.cancel()
-        try:
-            await reaper_task
-        except (asyncio.CancelledError, Exception):
-            pass
+    await _stop_reaper(app)
 
     # Cleanup
     # Drain any in-flight fire-and-forget API-key usage writes before the Mongo
@@ -190,9 +222,7 @@ async def lifespan(app: FastAPI):
     await flush_usage_tracking()
     client.close()
     await cleanup_cache()
-    store = getattr(app.state, "rate_limit_store", None)
-    if store is not None and hasattr(store, "close"):
-        await store.close()
+    await _close_rate_limit_store(app)
 
 
 # ✅ Create the app only once
