@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Render and install the edge config (#594). Runs ON THE BOX via
-# `ssh host "DEPLOY_PATH=… bash -s" < scripts/deploy/apply_nginx_conf.sh` from
+# `scripts/deploy/on_box.sh scripts/deploy/apply_nginx_conf.sh` from
 # deploy.yml, the same way backend_state.sh does.
 #
 # Why this exists: nginx-staging.conf was applied by hand (the deploy guide said

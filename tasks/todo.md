@@ -1,3 +1,25 @@
+# Issue #790: DEPLOY_PATH is written inside quotes in the remote command string
+
+## Plan
+- [x] `scripts/deploy/on_box.sh`: the one way a workflow runs something on the staging box.
+      The value goes into the remote environment shell-quoted (`printf %q`), never between
+      quotes in a string; the body travels on stdin, from a repo script or a QUOTED heredoc,
+      and reads `"$DEPLOY_PATH"`. The remote side saves the body to a file and runs it with
+      stdin at /dev/null, so no command in it can eat the rest of it (#756's failure, by
+      construction).
+- [x] RED (pytest, with a fake `ssh` that parses the command string the way the far shell
+      does): a `DEPLOY_PATH` holding a quote, a space and a command substitution arrives as
+      one value and runs nothing; a body that reads stdin still runs to its end; the exit
+      code comes back.
+- [x] All eight `ssh` call sites in `deploy.yml` and `staging-health.yml` go through it. A
+      wiring test fails on a raw `ssh` or a `'$DEPLOY_PATH'` in either workflow.
+- [x] Verified on staging before merging by dispatching both workflows from the branch.
+- [x] A note in the deploy guide.
+- [x] On staging, from the branch: `staging-health.yml` (run 38463929566) prints every
+      backend line and the frontend verdict; `deploy.yml` (run 38464038261) resets the
+      checkout to main, brings the stack up, passes the gate and prints the frontend verdict.
+
+
 # Issue #778: the upload page has no jest suite that renders it
 
 ## Plan

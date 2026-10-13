@@ -101,15 +101,16 @@ jobs:
           # field-shadow warnings printed on import used to be the whole issue body
           # (#757) while the verdict — often nothing at all — sat underneath them.
           status=0
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "cd '$DEPLOY_PATH' && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe" \
-            > /tmp/probe.txt 2> /tmp/probe.err || status=$?
+          # Every step reaches the box through on_box.sh (#790): a QUOTED heredoc,
+          # sent as written, reading DEPLOY_PATH on the far side.
+          scripts/deploy/on_box.sh > /tmp/probe.txt 2> /tmp/probe.err <<'REMOTE' || status=$?
+          cd "$DEPLOY_PATH" && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+          REMOTE
           # The frontend container shares MONGODB_URI and NEXTAUTH_SECRET and fails
           # silently on a stale one (#756). Same run, same file, same alert issue; the
           # backend's exit code wins when both fail (137 there means a boot loop).
           frontend=0
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh \
+          scripts/deploy/on_box.sh scripts/deploy/frontend_probe.sh \
             > /tmp/frontend-probe.txt 2>> /tmp/probe.err || frontend=$?
           # A verdict line or it did not run: its first deploy exited 0 having printed
           # nothing, because the exec inside it had eaten the script from stdin. Looked
@@ -139,8 +140,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/backend_state.sh \
+          scripts/deploy/on_box.sh scripts/deploy/backend_state.sh \
             > /tmp/state.txt 2>&1 || echo "(state dump failed: exit $?)" >> /tmp/state.txt
           cat /tmp/state.txt
           { echo "## Backend container state"; echo; echo '```'; cat /tmp/state.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
