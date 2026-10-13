@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import re
 import tempfile
 import uuid
 
@@ -9,6 +8,7 @@ from botocore.exceptions import ClientError
 
 from app.config import development_uses_a_real_bucket
 from app.utils.circuit_breaker import with_circuit_breaker, with_sync_circuit_breaker
+from app.utils.filenames import attachment_disposition
 from app.utils.s3 import (
     allowed_bucket,
     check_object_size,
@@ -451,10 +451,9 @@ class S3Service:
             raise RuntimeError("S3Service is in mock mode - cannot presign URLs")
         params: dict[str, str] = {"Bucket": self._live_bucket(), "Key": file_key}
         if filename:
-            # Escape internally too so this reusable primitive is safe regardless
-            # of the caller: a raw quote/semicolon can't malform the header.
-            safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "download"
-            params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
+            # S3 sends this back as the download's header, so it is built like every
+            # other one: safe whatever the caller passes (#648).
+            params["ResponseContentDisposition"] = attachment_disposition(filename)
         return self.s3_client.generate_presigned_url(
             "get_object", Params=params, ExpiresIn=expires_in
         )
