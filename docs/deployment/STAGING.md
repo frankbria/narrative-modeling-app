@@ -478,7 +478,6 @@ Required secrets:
 - `MONGODB_ROOT_PASSWORD` - MongoDB admin password
 - `MONGODB_PASSWORD` - MongoDB application user password
 - `REDIS_PASSWORD` - Redis authentication password
-- `BACKEND_SECRET_KEY` - FastAPI secret key (64 chars)
 - `NEXTAUTH_SECRET` - NextAuth authentication secret (64 chars)
 
 To generate new secrets if needed:

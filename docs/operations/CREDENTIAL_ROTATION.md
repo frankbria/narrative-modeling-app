@@ -33,7 +33,6 @@ fails if compose interpolates a secret this table does not name.
 | `REDIS_PASSWORD` | yes (in `REDIS_URL`) | | yes | | rotate all three together or the backend cannot reach the cache |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | yes | | | IAM user | a dead key or a missing bucket shows as `s3: unhealthy` in the probe |
 | `OPENAI_API_KEY` | yes | | | OpenAI dashboard | the app degrades to rule-based fallbacks; the probe still fails |
-| `BACKEND_SECRET_KEY` | yes (as `SECRET_KEY`) | | | | nothing reads it today (#681) |
 | `NEXTAUTH_SECRET` | yes | yes | | `ARTIFACT_SIGNING_KEY` fallback — read `docs/deployment/ARTIFACT_INTEGRITY.md` **before** rotating | rotating invalidates every session and, unless the signing key is pinned, every signed model artifact |
 | `GOOGLE_CLIENT_SECRET` (`GOOGLE_CLIENT_ID`) | | yes | | Google Cloud console — redirect URI must still match `NEXTAUTH_URL` | |
 | `GITHUB_SECRET` (`GITHUB_ID`) | | yes | | GitHub OAuth app | |
