@@ -67,7 +67,6 @@ apps/frontend/e2e/
 │   ├── model-config.spec.ts     # Model configuration
 │   ├── data-versioning.spec.ts  # Data versioning UI
 │   ├── complete-ai-workflow.spec.ts   # Full AI-guided workflows
-│   ├── ai-recommendations.spec.ts     # AI validation
 │   ├── performance.spec.ts      # Performance benchmarks
 │   └── production-readiness.spec.ts   # Production quality gates
 ├── test-data/
@@ -485,7 +484,6 @@ jobs:
 | Dataset upload (5MB) | <5s | `performance.spec.ts` |
 | Transformation preview | <3s | `performance.spec.ts` |
 | Model training (500 rows) | <30s | `performance.spec.ts` |
-| AI recommendation | <60s | `ai-recommendations.spec.ts` |
 
 ### Performance Results
 
