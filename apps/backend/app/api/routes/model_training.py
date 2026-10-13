@@ -14,7 +14,6 @@ from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
-from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -119,7 +118,7 @@ from app.services.training_admission import (
     enforce_training_per_user_cap,
     training_semaphore,
 )
-from app.utils.filenames import sanitize_filename
+from app.utils.filenames import attachment_disposition
 from app.utils.heartbeat import heartbeat_pump
 from app.utils.job_failures import user_safe_failure_reason
 from app.utils.s3 import parse_s3_url
@@ -1751,19 +1750,10 @@ async def get_model_report_markdown(
 ):
     """The same report as a downloadable Markdown file."""
     model, report = await _owned_model_report(model_id, current_user_id)
-    # `sanitize_filename` is the model-level rule for client-supplied names; the
-    # model name reaches this header, so it goes through the same normaliser (#585).
-    # But normalising is not encoding: it deliberately keeps non-ASCII characters,
-    # and Starlette encodes headers as latin-1, so a CJK/Cyrillic/emoji model name
-    # raised UnicodeEncodeError and made the download a permanent 500. RFC 5987 is
-    # the header's own answer: an ASCII fallback for old clients plus the real name
-    # percent-encoded as UTF-8.
-    safe = sanitize_filename(f"{model.name or model.model_id}-report.md")
-    ascii_fallback = safe.encode("ascii", "replace").decode("ascii").replace('"', "_")
-    disposition = (
-        f'attachment; filename="{ascii_fallback}"; '
-        f"filename*=UTF-8''{quote(safe, safe='')}"
-    )
+    # The model's name reaches this header, so it is built by the one builder for
+    # download headers: normalised (#585), then both RFC 6266 forms, because a name
+    # outside latin-1 cannot be sent raw and made this download a permanent 500.
+    disposition = attachment_disposition(f"{model.name or model.model_id}-report.md")
     return Response(
         content=render_markdown(report),
         media_type="text/markdown; charset=utf-8",

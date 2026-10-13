@@ -57,3 +57,63 @@ def test_a_small_max_length_never_slices_from_the_end():
     # into a Python slice-from-the-end.
     out = sanitize_filename("abcdefghij.parquet", max_length=6)
     assert out == "abcdef"
+
+
+class TestAttachmentDisposition:
+    """#648: one builder for every download header, so a name cannot break out of it."""
+
+    @staticmethod
+    def _parsed(value: str) -> tuple[str, str]:
+        """(the quoted fallback, the decoded filename*) of a Content-Disposition value."""
+        import re
+        from urllib.parse import unquote
+
+        match = re.fullmatch(r'attachment; filename="([^"\\\r\n]*)"; filename\*=UTF-8\'\'([A-Za-z0-9%._~-]*)', value)
+        assert match, value
+        return match.group(1), unquote(match.group(2))
+
+    def test_a_plain_name_is_quoted_and_repeated_encoded(self):
+        from app.utils.filenames import attachment_disposition
+
+        value = attachment_disposition("churn_1.0.onnx")
+
+        assert value == "attachment; filename=\"churn_1.0.onnx\"; filename*=UTF-8''churn_1.0.onnx"
+
+    def test_a_name_cannot_add_a_parameter_or_a_header(self):
+        from app.utils.filenames import attachment_disposition
+
+        value = attachment_disposition('churn"; x=y\r\nX-Injected: 1_1.0_inference.py')
+
+        fallback, decoded = self._parsed(value)
+        assert "\r" not in value and "\n" not in value
+        assert fallback == decoded == "churn; x=yX-Injected: 1_1.0_inference.py"
+
+    def test_a_name_outside_ascii_survives_in_the_encoded_form(self):
+        from app.utils.filenames import attachment_disposition
+
+        value = attachment_disposition("модель 客户_1.0.pmml")
+
+        value.encode("latin-1")  # what the server does with a header
+        fallback, decoded = self._parsed(value)
+        assert decoded == "модель 客户_1.0.pmml"
+        assert fallback.endswith("_1.0.pmml") and fallback.isascii()
+
+    def test_a_path_is_reduced_to_its_last_segment(self):
+        from app.utils.filenames import attachment_disposition
+
+        assert self._parsed(attachment_disposition("..\\..\\etc/passwd_1.0.onnx"))[1] == "passwd_1.0.onnx"
+
+
+def test_no_download_header_is_built_by_hand():
+    """#648: eight routes interpolated a model's name into the header themselves. A
+    new download goes through `attachment_disposition`, or it reopens the hole."""
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[2] / "app"
+    by_hand = [
+        str(path.relative_to(app_dir))
+        for path in app_dir.rglob("*.py")
+        if "attachment; filename" in path.read_text() and path.name != "filenames.py"
+    ]
+
+    assert by_hand == []
