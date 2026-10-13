@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mcp.types import CallToolResult, TextContent
 
 from app.services.mcp_integration import (
     MCPAnalysisResponse,
@@ -35,7 +36,7 @@ def mcp_service():
 
 def test_sse_url_and_bearer_header():
     svc = MCPIntegrationService(config=MCPConfig(host="h", port=1234, api_key="k"))
-    assert svc._sse_url == "http://h:1234/sse"  # FastMCP serves the stream at /sse
+    assert svc._sse_url == "http://h:1234/sse"  # the server's sse_app() serves the stream at /sse
     assert svc._headers() == {"Authorization": "Bearer k"}
     # No key -> no header (server will 401; we don't send a placeholder)
     assert MCPIntegrationService(config=MCPConfig(host="h", port=1, api_key=None))._headers() == {}
@@ -126,3 +127,52 @@ async def test_check_health_false_when_tool_absent(mcp_service):
 async def test_check_health_false_on_connection_error(mcp_service):
     with patch.object(mcp_service, "_open_session", new=AsyncMock(side_effect=OSError("refused"))):
         assert await mcp_service.check_health() is False
+
+
+# The results below are the SDK's own type, never a stand-in: the client read the 1.x
+# field names through getattr with a default, so on the 2.x SDK a stand-in carrying the
+# old names kept passing while a failed tool call came back as a result (#620).
+def _session_answering(result: CallToolResult) -> SimpleNamespace:
+    return SimpleNamespace(call_tool=AsyncMock(return_value=result))
+
+
+async def _execute(mcp_service, result: CallToolResult):
+    session = _session_answering(result)
+    with patch.object(mcp_service, "_open_session", new=AsyncMock(return_value=session)):
+        return await mcp_service.execute_tool(
+            MCPToolRequest(tool_name="eda_summary_tool", parameters={"params": {}})
+        )
+
+
+async def test_a_failed_tool_call_is_an_error_not_a_result(mcp_service):
+    failed = CallToolResult(content=[TextContent(type="text", text="boom")], is_error=True)
+    resp = await _execute(mcp_service, failed)
+    assert resp.result is None
+    assert "boom" in resp.error
+
+
+async def test_a_dict_result_is_read_from_the_structured_content(mcp_service):
+    answered = CallToolResult(content=[], structured_content={"success": True, "rows": 3})
+    resp = await _execute(mcp_service, answered)
+    assert resp.error is None
+    assert resp.result == {"success": True, "rows": 3}
+
+
+async def test_a_wrapped_scalar_result_is_unwrapped(mcp_service):
+    resp = await _execute(mcp_service, CallToolResult(content=[], structured_content={"result": 7}))
+    assert resp.result == 7
+
+
+async def test_a_text_only_result_is_parsed_as_json(mcp_service):
+    text_only = CallToolResult(content=[TextContent(type="text", text='{"success": false}')])
+    resp = await _execute(mcp_service, text_only)
+    assert resp.result == {"success": False}
+
+
+async def test_text_that_is_not_json_is_returned_as_it_is(mcp_service):
+    plain = CallToolResult(content=[TextContent(type="text", text="twelve rows")])
+    assert (await _execute(mcp_service, plain)).result == "twelve rows"
+
+
+async def test_a_result_with_nothing_in_it_is_none(mcp_service):
+    assert (await _execute(mcp_service, CallToolResult(content=[]))).result is None

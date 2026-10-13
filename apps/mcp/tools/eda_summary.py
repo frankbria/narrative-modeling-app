@@ -146,7 +146,7 @@ def calculate_variable_insights(df: pd.DataFrame) -> Dict[str, Any]:
         .drop_duplicates()
     )
     # unstack() gives a MultiIndex → tuple keys ("colA", "colB"); JSON (and thus
-    # the FastMCP response) can't serialize tuple keys, so stringify the pair.
+    # the MCP response) can't serialize tuple keys, so stringify the pair.
     correlated = {
         f"{a} & {b}": v
         for (a, b), v in correlated.loc[
@@ -165,7 +165,7 @@ def calculate_variable_insights(df: pd.DataFrame) -> Dict[str, Any]:
 def suggest_transformations(df: pd.DataFrame) -> Dict[str, Any]:
     log_candidates = df.skew(numeric_only=True)
     log_transforms = log_candidates[log_candidates > 1].index.tolist()
-    encode_candidates = df.select_dtypes(include="object").columns.tolist()
+    encode_candidates = df.select_dtypes(include=["object", "string"]).columns.tolist()
     id_like = [col for col in df.columns if df[col].is_unique and "id" in col.lower()]
 
     return {
@@ -177,7 +177,7 @@ def suggest_transformations(df: pd.DataFrame) -> Dict[str, Any]:
 
 def generate_grouped_insights(df: pd.DataFrame) -> Dict[str, Any]:
     insights = {}
-    for col in df.select_dtypes(include="object").columns:
+    for col in df.select_dtypes(include=["object", "string"]).columns:
         try:
             insights[col] = df.groupby(col).mean(numeric_only=True).describe().to_dict()
         except Exception as e:

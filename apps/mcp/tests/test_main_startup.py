@@ -1,9 +1,10 @@
-"""Regression: the server module must import without the vendored fastmcp.
+"""Regression: the server module must import from the installed `mcp` SDK.
 
 Before #255, main.py added `fastmcp/src` to sys.path and imported a vendored
 FastMCP that calls `importlib.metadata.version('fastmcp')` — but nothing
 pip-installs `fastmcp`, so it raised PackageNotFoundError and main.py exited(1).
-We now import FastMCP from the installed `mcp.server.fastmcp`.
+The server class comes from the installed SDK: `mcp.server.mcpserver.MCPServer`
+since 2.x (#620), where `mcp.server.fastmcp` raises on import.
 
 Run in a subprocess with cwd=apps/mcp so `import mcp` resolves to the installed
 SDK (under pytest's `pythonpath=..`, the bare name `mcp` would otherwise shadow

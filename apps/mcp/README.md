@@ -5,8 +5,9 @@ Narrative Modeling Application over an SSE transport.
 
 ## Architecture
 
-- **Framework**: FastMCP from the [`mcp`](https://pypi.org/project/mcp/) SDK
-  (`mcp.server.fastmcp`) — there is no separately-installed `fastmcp` package.
+- **Framework**: `MCPServer` from the [`mcp`](https://pypi.org/project/mcp/) SDK, 2.x
+  (`mcp.server.mcpserver`; it was `FastMCP` in 1.x) — there is no separately-installed
+  `fastmcp` package.
 - **Transport**: SSE (Starlette + uvicorn), bound to `127.0.0.1` by default.
 - **Language**: Python 3.10+
 - **Package Manager**: uv
