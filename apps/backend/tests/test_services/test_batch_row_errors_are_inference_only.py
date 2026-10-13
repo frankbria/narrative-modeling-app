@@ -29,17 +29,28 @@ IN_MEMORY = {
     "self._predict_chunk_sequential",
     "self._attach_explanations",
     "feature_engineer.transform",  # fitted transformers, already loaded
-    "run_locked_inference",  # the loaded estimator, behind its lock
-    "asyncio.to_thread",  # SHAP, off the event loop
+    # The two wrappers run whatever they are handed, so they are listed with it.
+    "run_locked_inference(lambda: _infer(X_transformed))",  # the loaded estimator, behind its lock
+    "asyncio.to_thread(self.interpretability.compute_instance_shap_batch)",  # SHAP, off the event loop
 }
+#: Calls that run a callable given to them, and which argument that is.
+RUNS_ITS_ARGUMENT = {"asyncio.to_thread": 0, "run_locked_inference": -1}
+
+
+def _what_is_awaited(awaited: ast.expr) -> str:
+    """The awaited expression as text. A wrapper is named with the callable it runs,
+    since `await asyncio.to_thread(download, key)` waits for the download; anything
+    that is not a call (a coroutine built earlier) is its own text, which no list has."""
+    if not isinstance(awaited, ast.Call):
+        return ast.unparse(awaited)
+    name = ast.unparse(awaited.func)
+    if name not in RUNS_ITS_ARGUMENT:
+        return name
+    return f"{name}({ast.unparse(awaited.args[RUNS_ITS_ARGUMENT[name]])})"
 
 
 def _awaited(function: ast.AsyncFunctionDef) -> set[str]:
-    return {
-        ast.unparse(node.value.func)
-        for node in ast.walk(function)
-        if isinstance(node, ast.Await) and isinstance(node.value, ast.Call)
-    }
+    return {_what_is_awaited(node.value) for node in ast.walk(function) if isinstance(node, ast.Await)}
 
 
 def test_the_per_row_path_waits_for_nothing_but_in_memory_work():
