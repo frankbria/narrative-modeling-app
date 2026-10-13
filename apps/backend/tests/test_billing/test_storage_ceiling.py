@@ -16,6 +16,7 @@ from app.billing.plans import PLAN_LIMITS
 from app.models.ml_model import MLModel
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 from app.models.user_data import UserData
+from app.models.version import DatasetVersion
 
 TEST_USER = "test_user_123"
 MB = 1024 * 1024
@@ -39,6 +40,16 @@ async def _model(user_id: str, size: int) -> None:
     ).insert()
 
 
+async def _version(user_id: str, size: int, number: int = 1) -> None:
+    await DatasetVersion(
+        version_id=f"v-{user_id}-{number}", dataset_id=f"ds-{user_id}", version_number=number,
+        user_id=user_id, content_hash=f"h-{user_id}-{number}", file_size=size,
+        file_path=f"datasets/{user_id}/ds/versions/v{number}/data.parquet",
+        s3_url=f"s3://b/datasets/{user_id}/ds/versions/v{number}/data.parquet",
+        num_rows=1, num_columns=1, columns=["a"], schema_hash="sh", created_by=user_id,
+    ).insert()
+
+
 def test_free_is_capped_and_paid_tiers_are_not():
     assert FREE_LIMIT == 500 * MB
     assert PLAN_LIMITS[PlanTier.PRO].storage_bytes == -1
@@ -52,6 +63,36 @@ async def test_stored_bytes_counts_datasets_and_models_of_this_tenant_only(setup
     await _dataset("someone-else", 400 * MB)
     await _model("someone-else", 90 * MB)
     assert await storage.stored_bytes(TEST_USER) == 13 * MB
+
+
+async def test_versions_count_toward_the_ceiling(setup_database):
+    """#781: every transformation writes a version, its own object under `versions/`,
+    so a tenant could grow storage without uploading and the ceiling never saw it."""
+    await _dataset(TEST_USER, 10 * MB)
+    await _version(TEST_USER, 4 * MB, 1)
+    await _version(TEST_USER, 6 * MB, 2)
+    await _version("someone-else", 300 * MB)
+
+    assert await storage.stored_bytes(TEST_USER) == 20 * MB
+
+    with pytest.raises(HTTPException) as refused:
+        await storage.enforce_storage_ceiling(TEST_USER, FREE_LIMIT - 20 * MB + 1)
+    assert refused.value.detail["used"] == 20
+
+
+async def test_a_dataset_sitting_on_a_version_object_is_counted_once(setup_database):
+    """After an undo the dataset's current file IS a version's object (the history points
+    it there), so adding both would count those bytes twice."""
+    await _version(TEST_USER, 4 * MB, 1)
+    await _version(TEST_USER, 6 * MB, 2)
+    await UserData(
+        user_id=TEST_USER, filename="d.csv", original_filename="d.csv", num_rows=1, num_columns=1,
+        data_schema=[], file_size=4 * MB,
+        s3_url=f"s3://b/datasets/{TEST_USER}/ds/versions/v1/data.parquet",  # version 1's object
+    ).insert()
+    await _dataset(TEST_USER, 10 * MB)  # another dataset, on a file of its own
+
+    assert await storage.stored_bytes(TEST_USER) == 20 * MB
 
 
 async def test_under_the_ceiling_passes(setup_database):

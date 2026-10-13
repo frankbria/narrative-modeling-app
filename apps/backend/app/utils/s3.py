@@ -416,6 +416,24 @@ def check_object_size(client, bucket: str, key: str) -> int:
     return size
 
 
+def object_size(s3_url: str) -> int | None:
+    """Bytes held by the object at ``s3_url``, or None when that cannot be learned.
+
+    For bookkeeping (the storage ceiling sums ``file_size``, #781), so it never raises:
+    no storage configured, a location outside our bucket, or an object that cannot be
+    read all answer None and the caller keeps the size it had.
+    """
+    client = get_s3_client()
+    if client is None:
+        return None
+    try:
+        bucket, key = resolve_validated_object(s3_url)
+        return int(client.head_object(Bucket=bucket, Key=key)["ContentLength"])
+    except (ClientError, ValueError) as e:
+        logger.warning("Could not read the size of a stored object (%s)", type(e).__name__)
+        return None
+
+
 def _allowed_bucket() -> str | None:
     """The single bucket this deployment may read from, or None if unconfigured.
 

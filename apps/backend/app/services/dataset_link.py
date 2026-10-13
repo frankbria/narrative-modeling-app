@@ -26,7 +26,7 @@ from app.models.user_data import UserData
 from app.models.visualization_cache import VisualizationCache
 from app.services.exceptions import NotFoundError
 from app.services.redis_cache import cache_service
-from app.utils.s3 import get_file_from_s3, holds_parquet
+from app.utils.s3 import get_file_from_s3, holds_parquet, object_size
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ async def file_type_at(url: str) -> str | None:
 
 # What the caller may have changed on the document for the new file (#723: these and the
 # link fields are the only ones the move writes). The twin gets the same shape, not the schema.
-_SHAPE_FIELDS = ("num_rows", "num_columns", "columns", "file_type")
+_SHAPE_FIELDS = ("num_rows", "num_columns", "columns", "file_type", "file_size")
 
 Dataset = DatasetMetadata | UserData
 
@@ -87,6 +87,10 @@ async def record_new_file(doc: Dataset, new_url: str, *, in_history: bool = Fals
     # Resolved before the re-read below, never after: this can be a download, and a
     # concurrent move landing during it would be reverted from a stale snapshot (#723).
     file_type = await file_type_at(new_url) or doc.file_type
+    # What the storage ceiling sums (#781): the size of the file the dataset is on now,
+    # not of the upload it started from. Asked of S3 here, so every writer that moves a
+    # dataset is covered, undo and redo included; unreadable, the recorded size stays.
+    file_size = await asyncio.to_thread(object_size, new_url)
     # Look the twin up at the dataset's CURRENT stored location, not the one this
     # in-memory `doc` was loaded with: two overlapping transformations each load the
     # dataset, the first moves both twins, and the second would otherwise search the
@@ -95,6 +99,8 @@ async def record_new_file(doc: Dataset, new_url: str, *, in_history: bool = Fals
     old_url = _current_url(current, doc)
     twin = await _find_twin(doc, old_url)
     doc.file_type = file_type
+    if file_size is not None:
+        doc.file_size = file_size
     docs = _erasure_order(doc, twin)
     await _move_all(docs, doc, current, old_url, new_url)
     await _forget_what_was_computed(docs)

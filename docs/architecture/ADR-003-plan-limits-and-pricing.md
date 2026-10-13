@@ -73,6 +73,15 @@ that is ≈ $0.01 per free account-month — the cap is about growth without bou
 this month's bill. PRO and ENTERPRISE are uncapped; #529's lifecycle rules handle
 reclamation.
 
+What the 500 MB counts (#781): the file each dataset is on now (a transformation, an
+undo or a fix moves it, and the recorded size moves with it), every version kept for
+its history (each is its own stored object), and model artifacts, each stored object
+once. What it does not: the intermediate files a dataset has moved off, whose sizes are
+not recorded and whose bytes equal a version that is counted, so the figure is a floor
+on what the tenant holds. A tenant can therefore
+reach the ceiling by transforming as well as by uploading; the refusal itself still
+happens at upload, never in the middle of a transformation.
+
 ### The reasoning
 
 **The model default is the real lever, and it moved.** Every call site now reads the
