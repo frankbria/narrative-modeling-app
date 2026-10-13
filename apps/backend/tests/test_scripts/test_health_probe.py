@@ -195,6 +195,14 @@ class TestSignupRate:
         result = await health_probe._signup_rate()
         assert result["status"] == "healthy (2 new accounts in 24h, alert above 5)"
 
+    async def test_the_count_is_taken_where_the_app_writes_or_not_at_all(self, users, monkeypatch):
+        """#694: the probe once had its own default database name, which the app
+        does not: with MONGODB_DB unset it counted an empty database as healthy."""
+        monkeypatch.delenv("MONGODB_DB")
+
+        with pytest.raises(RuntimeError, match="MONGODB_DB environment variable is not set"):
+            await health_probe._signup_rate()
+
     async def test_above_the_threshold_is_unhealthy(self, users, monkeypatch):
         monkeypatch.setenv("SIGNUP_ALERT_THRESHOLD_24H", "1")
         result = await health_probe._signup_rate()
