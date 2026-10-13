@@ -181,42 +181,43 @@ class TestModelTrainingEndpoints:
         It used to be given a MagicMock behind a patched lookup, under an id no real
         lookup could match. Only the background task is replaced: it would train a model.
         """
-        dataset = await _real_dataset()
-
-        with patch("app.api.routes.model_training.train_model_task", new_callable=AsyncMock) as task:
-            response = await async_authorized_client.post(
-                "/api/v1/ml/train",
-                json={
-                    "dataset_id": str(dataset.id),
-                    "target_column": "target",
-                    "name": "My Model",
-                    "description": "Test model",
-                },
-            )
-
-        assert response.status_code == 200, response.text
-        data = response.json()
-        assert "model_id" in data
-        assert data["status"] == "training"
-        assert "message" in data
-        assert task.call_args.args[0].id == dataset.id  # the task is handed that dataset
-
         from app.models.training_job import TrainingJob
 
-        await TrainingJob.find(TrainingJob.dataset_id == str(dataset.id)).delete()
-        await dataset.delete()
+        dataset = await _real_dataset()
+        try:
+            with patch("app.api.routes.model_training.train_model_task", new_callable=AsyncMock) as task:
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/train",
+                    json={
+                        "dataset_id": str(dataset.id),
+                        "target_column": "target",
+                        "name": "My Model",
+                        "description": "Test model",
+                    },
+                )
+
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert "model_id" in data
+            assert data["status"] == "training"
+            assert "message" in data
+            assert task.call_args.args[0].id == dataset.id  # the task is handed that dataset
+        finally:
+            await TrainingJob.find(TrainingJob.dataset_id == str(dataset.id)).delete()
+            await dataset.delete()
 
     @pytest.mark.asyncio
     async def test_training_on_someone_elses_dataset_is_not_found(self, async_authorized_client):
         theirs = await _real_dataset(user_id="someone-else")
-
-        for dataset_id in (str(theirs.id), "dataset_123"):
-            response = await async_authorized_client.post(
-                "/api/v1/ml/train", json={"dataset_id": dataset_id, "target_column": "target"}
-            )
-            assert response.status_code == 404, response.text
-            assert response.json()["detail"] == "Dataset not found"
-        await theirs.delete()
+        try:
+            for dataset_id in (str(theirs.id), "dataset_123"):
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/train", json={"dataset_id": dataset_id, "target_column": "target"}
+                )
+                assert response.status_code == 404, response.text
+                assert response.json()["detail"] == "Dataset not found"
+        finally:
+            await theirs.delete()
 
     @pytest.mark.asyncio
     async def test_list_models_endpoint(self, async_authorized_client):
@@ -882,32 +883,32 @@ class TestTrainingStatusEndpoint:
         from app.models.training_job import TrainingJob
 
         dataset = await _real_dataset()
+        try:
+            with patch(
+                "app.api.routes.model_training.train_model_task", new_callable=AsyncMock
+            ):
+                response = await async_authorized_client.post(
+                    "/api/v1/ml/train",
+                    json={"dataset_id": str(dataset.id), "target_column": "target"},
+                )
 
-        with patch(
-            "app.api.routes.model_training.train_model_task", new_callable=AsyncMock
-        ):
-            response = await async_authorized_client.post(
-                "/api/v1/ml/train",
-                json={"dataset_id": str(dataset.id), "target_column": "target"},
-            )
+            assert response.status_code == 200
+            model_id = response.json()["model_id"]
 
-        assert response.status_code == 200
-        model_id = response.json()["model_id"]
+            # A pending TrainingJob now exists for this model_id.
+            job = await TrainingJob.find_one(TrainingJob.model_id == model_id)
+            assert job is not None
+            assert job.status == JobStatus.PENDING
 
-        # A pending TrainingJob now exists for this model_id.
-        job = await TrainingJob.find_one(TrainingJob.model_id == model_id)
-        assert job is not None
-        assert job.status == JobStatus.PENDING
-
-        # And the status endpoint reports it.
-        status_resp = await async_authorized_client.get(f"/api/v1/ml/{model_id}/status")
-        assert status_resp.status_code == 200
-        body = status_resp.json()
-        assert body["status"] == "pending"
-        assert body["progress"] == 0.0
-
-        await job.delete()
-        await dataset.delete()
+            # And the status endpoint reports it.
+            status_resp = await async_authorized_client.get(f"/api/v1/ml/{model_id}/status")
+            assert status_resp.status_code == 200
+            body = status_resp.json()
+            assert body["status"] == "pending"
+            assert body["progress"] == 0.0
+        finally:
+            await TrainingJob.find(TrainingJob.dataset_id == str(dataset.id)).delete()
+            await dataset.delete()
 
     @pytest.mark.asyncio
     async def test_status_returns_completed_results(self, async_authorized_client):

@@ -66,7 +66,7 @@ async def _processed_upload(file_id: str, user_id: str, unprocessed: str) -> Use
     return user_data
 
 
-async def _analysis(user_data: UserData, analysis_type: str) -> MCPAnalysisResponse:
+async def _analysis(user_data: UserData, user_id: str, analysis_type: str) -> MCPAnalysisResponse:
     """Ask the analysis service about the dataset.
 
     The MCP tool reads the dataset server-side from (dataset_id, user_id) and
@@ -75,7 +75,7 @@ async def _analysis(user_data: UserData, analysis_type: str) -> MCPAnalysisRespo
     """
     return await mcp_service.analyze_dataset(
         dataset_id=str(user_data.id),
-        user_id=user_data.user_id,
+        user_id=user_id,  # the authenticated caller, not what the row says
         schema=user_data.schema or {},
         statistics=user_data.statistics or {},
         quality_report=user_data.quality_report or {},
@@ -103,7 +103,7 @@ async def analyze_with_ai(
             "File must be processed before AI analysis. Please process the file first.",
         )
 
-        analysis_result = await _analysis(user_data, request.analysis_type)
+        analysis_result = await _analysis(user_data, current_user_id, request.analysis_type)
         if analysis_result.metadata.get("fallback_mode"):
             # The analysis service did not answer, so this is the rule-based summary
             # computed here: nothing was bought, the reserved unit goes back (#461).
