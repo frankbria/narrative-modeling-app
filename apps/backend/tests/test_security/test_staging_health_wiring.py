@@ -241,7 +241,7 @@ def test_both_workflows_probe_the_frontend_container_in_the_same_run():
     )["run"]
     # Its output joins the backend's in the file the alert quotes, and its exit code
     # reaches the status the alert is keyed on.
-    assert re.search(r"frontend_probe\.sh\s*\\?\s*>> /tmp/probe\.txt", health)
+    assert "cat /tmp/frontend-probe.txt >> /tmp/probe.txt" in health
     assert "status=$frontend" in health
 
 
@@ -278,8 +278,9 @@ def test_frontend_probe_is_fed_to_bash_on_stdin_by_both_workflows():
     for wf in (HEALTH_WORKFLOW, DEPLOY_WORKFLOW):
         run = _run_blocks(wf)
         assert re.search(r"bash -s\"\s*<\s*scripts/deploy/frontend_probe\.sh", run), wf.name
-        # And neither takes silence for a pass: no verdict line fails the step.
-        assert "grep -q '^frontend: '" in run, wf.name
+        # And neither takes silence for a pass: no verdict line fails the step. It is
+        # looked for in the probe's own file, where no backend line can stand in for it.
+        assert "grep -q '^frontend: ' /tmp/frontend-probe.txt" in run, wf.name
         # Nor loses the exit code in a pipe (the run shell has no pipefail).
         assert not re.search(r"frontend_probe\.sh[^\n]*\|", run), wf.name
 

@@ -198,7 +198,7 @@ jobs:
             > /tmp/frontend-probe.txt || frontend=$?
           cat /tmp/frontend-probe.txt
           # A verdict line or it did not run (its first deploy exited 0 having printed nothing).
-          grep -q '^frontend: ' /tmp/frontend-probe.txt || { echo "The frontend probe printed no verdict."; exit 1; }
+          grep -q '^frontend: ' /tmp/frontend-probe.txt || { echo "The frontend probe printed no verdict (exit $frontend)."; exit 1; }
           exit "$frontend"
 
       - name: Backend container state
