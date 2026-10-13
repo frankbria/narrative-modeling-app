@@ -216,6 +216,48 @@ class ProcessingResponse(BaseModel):
     preview: dict[str, Any]
 
 
+async def _owned_upload(file_id: str, user_id: str) -> UserData | None:
+    """The caller's upload, or None: an id that is no ObjectId matches nothing."""
+    from beanie import PydanticObjectId
+
+    try:
+        object_id = PydanticObjectId(file_id)
+    except Exception:
+        return None
+    return await UserData.find_one(UserData.id == object_id, UserData.user_id == user_id)
+
+
+async def _stored_bytes(user_data: UserData) -> bytes:
+    """The upload's bytes from S3 (parse_s3_url handles all persisted URL shapes)."""
+    try:
+        _, file_key = parse_s3_url(user_data.s3_url)
+    except ValueError as err:
+        # Strip the query string before logging — presigned URLs carry
+        # credentials; the error handler echoes exception text to clients
+        sanitized_url = user_data.s3_url.split("?")[0]
+        logger.error(f"Could not extract file key from S3 URL: {sanitized_url}")
+        raise ValueError("Could not extract file key from stored S3 URL") from err
+    return await s3_service.download_file_bytes(file_key)
+
+
+def _processing_results(processed_data: Any) -> dict[str, Any]:
+    """What processing found, as plain values: stored on the dataset and returned."""
+    return {
+        "schema": convert_numpy_types(processed_data.schema.model_dump()),
+        "statistics": convert_numpy_types(processed_data.statistics.model_dump()),
+        "quality_report": convert_numpy_types(processed_data.quality_report.model_dump()),
+    }
+
+
+async def _store_processing(user_data: UserData, results: dict[str, Any], processed_at: Any) -> None:
+    """Write what processing computed, and only that (#983).
+
+    The upload's AI summary is written by a background task while this request runs.
+    A save() of the copy read at the top would write its empty aiSummary back over it.
+    """
+    await user_data.set({**results, "processed_at": processed_at, "is_processed": True})
+
+
 @router.post("/process", response_model=ProcessingResponse)
 async def process_uploaded_file(
     request: ProcessingRequest,
@@ -225,92 +267,32 @@ async def process_uploaded_file(
     Process an uploaded file to infer schema, calculate statistics, and assess quality
     """
     try:
-        # Get file metadata from database
-        # Try to convert string ID to PydanticObjectId
-        from beanie import PydanticObjectId
-        
-        try:
-            file_obj_id = PydanticObjectId(request.file_id)
-            user_data = await UserData.find_one(
-                UserData.id == file_obj_id,
-                UserData.user_id == current_user_id
-            )
-        except Exception:
-            # If conversion fails, try as string
-            user_data = await UserData.find_one(
-                UserData.id == request.file_id,
-                UserData.user_id == current_user_id
-            )
-        
+        user_data = await _owned_upload(request.file_id, current_user_id)
         if not user_data:
             raise HTTPException(status_code=404, detail="File not found")
-        
-        # Download file from S3 (parse_s3_url handles all persisted URL shapes)
-        try:
-            _, file_key = parse_s3_url(user_data.s3_url)
-        except ValueError as err:
-            # Strip the query string before logging — presigned URLs carry
-            # credentials; the error handler echoes exception text to clients
-            sanitized_url = user_data.s3_url.split("?")[0]
-            logger.error(f"Could not extract file key from S3 URL: {sanitized_url}")
-            raise ValueError("Could not extract file key from stored S3 URL") from err
 
-        file_bytes = await s3_service.download_file_bytes(file_key)
-        
-        # Process the file
         processed_data = await data_processor.process_bytes(
-            file_bytes=file_bytes,
+            file_bytes=await _stored_bytes(user_data),
             filename=user_data.original_filename,
             file_type=user_data.file_type
         )
-        
-        # Store processing results in database
-        try:
-            user_data.schema = convert_numpy_types(processed_data.schema.model_dump())
-        except Exception:
-            logger.error("Error dumping schema", exc_info=True)
-            raise
+        results = _processing_results(processed_data)
+        await _store_processing(user_data, results, processed_data.processed_at)
 
-        try:
-            user_data.statistics = convert_numpy_types(processed_data.statistics.model_dump())
-        except Exception:
-            logger.error("Error dumping statistics", exc_info=True)
-            raise
-
-        try:
-            user_data.quality_report = convert_numpy_types(processed_data.quality_report.model_dump())
-        except Exception:
-            logger.error("Error dumping quality_report", exc_info=True)
-            raise
-        user_data.processed_at = processed_data.processed_at
-        user_data.is_processed = True
-
-        logger.debug("About to save user_data")
-        try:
-            await user_data.save()
-            logger.debug("user_data saved successfully")
-        except Exception:
-            logger.error("Error saving user_data", exc_info=True)
-            raise
-        
-        # Return processing results
-        # Convert all numpy types to Python types before returning
         response_data = {
             "status": "success",
             "file_id": str(user_data.id),
             "processing_id": str(user_data.id),  # Using same ID for now
-            "schema": convert_numpy_types(processed_data.schema.model_dump()),
-            "statistics": convert_numpy_types(processed_data.statistics.model_dump()),
-            "quality_report": convert_numpy_types(processed_data.quality_report.model_dump()),
+            **results,
             "preview": convert_numpy_types(processed_data.get_preview())
         }
-        
+
         # Use custom JSON encoder to handle any remaining numpy types
         return JSONResponse(
             content=json.loads(json.dumps(response_data, cls=NumpyJSONEncoder)),
             status_code=200
         )
-        
+
     except HTTPException:
         # Re-raise HTTP exceptions without wrapping
         raise
