@@ -2214,11 +2214,17 @@ async def deploy_model(
         raise HTTPException(status_code=404, detail="Model not found")
 
     endpoint = payload.endpoint or f"{_public_api_base(http_request)}/production/v1/models/{model_id}"
-    model.is_deployed = True
-    model.deployment_endpoint = endpoint
-    model.deployed_at = datetime.now(UTC)
-    model.updated_at = datetime.now(UTC)
-    await model.save()
+    now = datetime.now(UTC)
+    # Only these fields (#674): a save() writes the whole copy read above and would
+    # revert anything set since, such as the last_used_at every prediction stamps.
+    await model.set(
+        {
+            MLModel.is_deployed: True,
+            MLModel.deployment_endpoint: endpoint,
+            MLModel.deployed_at: now,
+            MLModel.updated_at: now,
+        }
+    )
 
     # Bump the shared cache generation so every worker picks up the deploy
     # transition, not just the one that handled this request (#265, #489).
@@ -2561,8 +2567,7 @@ async def deactivate_model(
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    model.is_active = False
-    model.updated_at = datetime.now(UTC)
-    await model.save()
+    # Only these fields, for the reason deploy_model gives (#674).
+    await model.set({MLModel.is_active: False, MLModel.updated_at: datetime.now(UTC)})
 
     return {"message": f"Model {model_id} deactivated"}

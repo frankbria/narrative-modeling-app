@@ -322,7 +322,7 @@ class TestModelTrainingEndpoints:
         self, async_authorized_client, sample_ml_model
     ):
         """Test PUT /api/v1/ml/{model_id}/deactivate"""
-        sample_ml_model.save = AsyncMock()
+        sample_ml_model.set = AsyncMock()
 
         with patch(
             "app.models.ml_model.MLModel.find_one", new_callable=AsyncMock
@@ -337,7 +337,10 @@ class TestModelTrainingEndpoints:
             assert response.status_code == 200
             assert "message" in data
             assert "deactivated" in data["message"]
-            assert sample_ml_model.is_active is False
+            # A targeted write of the flag, never a save of the whole copy (#674).
+            written = sample_ml_model.set.await_args.args[0]
+            assert False in written.values()
+            sample_ml_model.save.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_train_model_not_found(self, async_authorized_client):
