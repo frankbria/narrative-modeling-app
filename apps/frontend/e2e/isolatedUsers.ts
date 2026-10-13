@@ -12,6 +12,10 @@ import path from 'path';
  * and every fixture (`page`, `request`, `authenticatedPage`, `trainModel`) is then
  * that user. global-setup signs each one in; `test-e2e.sh` turns the identities on
  * (`TEST_ISOLATED_USERS=1`, read by lib/test-credentials.ts).
+ *
+ * shortcut: one account per name, not per Playwright project, so two projects in one
+ * invocation run these specs as the same account at the same time. Every script pins
+ * one Chromium project; key the name by `testInfo.project.name` if one stops doing so.
  */
 export const ISOLATED_USERS = ['onboarding', 'erasure'] as const;
 export type IsolatedUser = (typeof ISOLATED_USERS)[number];

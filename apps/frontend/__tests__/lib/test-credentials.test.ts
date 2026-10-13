@@ -72,6 +72,8 @@ describe('resolveIsolatedTestUser', () => {
     expect(resolveIsolatedTestUser(email, SECRET, { ...on, TEST_ISOLATED_USERS: 'true' })).toBeNull();
     expect(resolveIsolatedTestUser(email, SECRET, { ...on, TEST_USER_EMAIL: undefined })).toBeNull();
     expect(resolveIsolatedTestUser(email, SECRET, { ...on, TEST_USER_PASSWORD: undefined })).toBeNull();
+    // an address with no @ has no mailbox to plus-address
+    expect(resolveIsolatedTestUser('e2+x', SECRET, { ...on, TEST_USER_EMAIL: 'e2e' })).toBeNull();
   });
 
   it('refuses a wrong secret, another mailbox or domain, and a slug that is not a plain word', () => {

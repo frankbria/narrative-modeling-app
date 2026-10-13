@@ -58,7 +58,7 @@ export function resolveIsolatedTestUser(
 function isolatedRun(env: Env): { base: string; password: string } | null {
   const base = env.TEST_USER_EMAIL;
   const password = env.TEST_USER_PASSWORD;
-  if (env.TEST_ISOLATED_USERS !== '1' || !base || !password) return null;
+  if (env.TEST_ISOLATED_USERS !== '1' || !base?.includes('@') || !password) return null;
   return { base, password };
 }
 
