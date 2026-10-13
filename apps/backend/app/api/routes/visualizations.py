@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import json
+import numbers
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -10,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.services.redis_cache import cache_service
-from app.services.s3_service import read_dataframe_from_bytes
+from app.services.s3_service import read_columns_from_bytes
 from app.services.visualization_cache import (
     generate_and_cache_boxplot,
     generate_and_cache_correlation_matrix,
@@ -29,16 +31,25 @@ MAX_CHART_POINTS = 5000
 _CHART_CACHE_TTL = 300
 
 
-async def _load_dataframe(s3_url: str) -> pd.DataFrame:
-    """Download + parse the dataset OFF the event loop (#514).
+async def _load_dataframe(s3_url: str, columns: set[str]) -> pd.DataFrame:
+    """Download the dataset and parse the columns a chart needs, OFF the event loop (#514).
 
-    The handlers are ``async`` but this is blocking I/O + a full pandas parse; running it
+    The handlers are ``async`` but this is blocking I/O + a pandas parse; running it
     inline stalled the worker for every other request for the whole download+parse.
+    Read by what the bytes are, not as CSV (#733): the dataset is Parquet once
+    transformed, and then only ``columns`` are decoded (#712).
     """
-    # By what the bytes are, not as CSV (#733): the dataset is Parquet once transformed.
     return await asyncio.to_thread(
-        lambda: read_dataframe_from_bytes(get_file_from_s3(s3_url).getvalue())
+        lambda: read_columns_from_bytes(get_file_from_s3(s3_url).getvalue(), columns)
     )
+
+
+def _columns_needed(chart_columns: list[str], filters: str | None) -> set[str]:
+    """What a chart reads: the columns it draws and the ones its filters test. The
+    filter list is parsed here, before anything is downloaded, so a malformed one is
+    refused first (json.JSONDecodeError, which the handlers map to 400)."""
+    filtered = [f["column"] for f in json.loads(filters)] if filters else []
+    return {*chart_columns, *filtered}
 
 
 def _apply_filters(df: pd.DataFrame, filters: str | None) -> pd.DataFrame:
@@ -158,6 +169,59 @@ async def get_correlation_matrix(
         )
 
 
+async def _chart(
+    kind: str,
+    dataset_id: str,
+    user_id: str,
+    columns: list[str],
+    filters: str | None,
+    build: Callable[[pd.DataFrame], dict[str, Any]],
+) -> dict[str, Any]:
+    """One chart of the caller's dataset: from the cache, or built from the filtered
+    frame of the columns it needs and cached for the next request (#514)."""
+    dataset = await UserData.get(dataset_id)
+    if not dataset or dataset.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    cache_key = _chart_cache_key(kind, dataset_id, dataset.s3_url, *columns, filters)
+    cached = await cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+
+    df = await _load_dataframe(dataset.s3_url, _columns_needed(columns, filters))
+    payload = build(_apply_filters(df, filters))
+    await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
+    return payload
+
+
+def _scatter_payload(df: pd.DataFrame, x_column: str, y_column: str) -> dict[str, Any]:
+    # Correlation is computed over the FULL (filtered) data, before downsampling.
+    correlation = df[x_column].corr(df[y_column])
+
+    # Coerce to numeric and DROP rows where either coordinate is missing/non-numeric,
+    # rather than emitting {x|y: null} — a scatter point needs both coords, and the
+    # frontend ScatterPlotData types x/y as non-nullable numbers and calls .toFixed()
+    # on them unguarded. Drop first, then cap the returned points (#513).
+    numeric = pd.DataFrame({
+        "x": pd.to_numeric(df[x_column], errors="coerce"),
+        "y": pd.to_numeric(df[y_column], errors="coerce"),
+    }).dropna()
+    sample, sampled, sample_rate = _downsample(numeric, ordered=False)
+    data_points = [
+        {"x": float(x), "y": float(y)}
+        for x, y in zip(sample["x"].to_numpy(), sample["y"].to_numpy(), strict=True)
+    ]
+    return {
+        "data": data_points,
+        "xLabel": x_column,
+        "yLabel": y_column,
+        "correlation": float(correlation) if not np.isnan(correlation) else None,
+        "sampled": sampled,
+        "sample_rate": sample_rate,
+        "total_rows": int(len(df)),
+    }
+
+
 @router.get("/scatter/{dataset_id}/{x_column}/{y_column}")
 async def get_scatter_plot(
     dataset_id: str,
@@ -168,48 +232,10 @@ async def get_scatter_plot(
 ):
     """Get scatter plot data for two columns"""
     try:
-        # Get dataset
-        dataset = await UserData.get(dataset_id)
-        if not dataset or dataset.user_id != current_user_id:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        cache_key = _chart_cache_key("scatter", dataset_id, dataset.s3_url, x_column, y_column, filters)
-        cached = await cache_service.get(cache_key)
-        if cached is not None:
-            return cached
-
-        df = await _load_dataframe(dataset.s3_url)
-        df = _apply_filters(df, filters)
-
-        # Correlation is computed over the FULL (filtered) data, before downsampling.
-        correlation = df[x_column].corr(df[y_column])
-
-        # Coerce to numeric and DROP rows where either coordinate is missing/non-numeric,
-        # rather than emitting {x|y: null} — a scatter point needs both coords, and the
-        # frontend ScatterPlotData types x/y as non-nullable numbers and calls .toFixed()
-        # on them unguarded. Drop first, then cap the returned points (#513).
-        numeric = pd.DataFrame({
-            "x": pd.to_numeric(df[x_column], errors="coerce"),
-            "y": pd.to_numeric(df[y_column], errors="coerce"),
-        }).dropna()
-        sample, sampled, sample_rate = _downsample(numeric, ordered=False)
-        data_points = [
-            {"x": float(x), "y": float(y)}
-            for x, y in zip(sample["x"].to_numpy(), sample["y"].to_numpy(), strict=True)
-        ]
-
-        payload = {
-            "data": data_points,
-            "xLabel": x_column,
-            "yLabel": y_column,
-            "correlation": float(correlation) if not np.isnan(correlation) else None,
-            "sampled": sampled,
-            "sample_rate": sample_rate,
-            "total_rows": int(len(df)),
-        }
-        await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
-        return payload
-
+        return await _chart(
+            "scatter", dataset_id, current_user_id, [x_column, y_column], filters,
+            lambda df: _scatter_payload(df, x_column, y_column),
+        )
     except HTTPException:
         raise
     except json.JSONDecodeError:
@@ -218,6 +244,45 @@ async def get_scatter_plot(
         raise HTTPException(
             status_code=500, detail=f"Error generating scatter plot: {str(e)}"
         )
+
+
+def _native_x(value: Any) -> Any:
+    """An x value as JSON can carry it: a missing one is null, a number stays a number.
+
+    The records come out of pandas as plain ``int`` and ``float``, which the numpy
+    checks this used to make never matched, so a numeric x was sent as text (#712).
+    """
+    if pd.isna(value):
+        return None
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        return str(value)
+    return int(value) if isinstance(value, numbers.Integral) else float(value)
+
+
+def _line_point(record: dict[str, Any], x_column: str, y_cols: list[str]) -> dict[str, Any]:
+    point = {"x": _native_x(record[x_column])}
+    for y_col in y_cols:
+        value = record[y_col]
+        point[y_col] = None if pd.isna(value) else float(value)
+    return point
+
+
+def _line_payload(df: pd.DataFrame, x_column: str, y_columns: str) -> dict[str, Any]:
+    y_cols = [c for c in y_columns.split(",") if c in df.columns]
+
+    # Cap the returned points, preserving the line's shape (#513), then build
+    # vectorized from records (no iterrows).
+    sample, sampled, sample_rate = _downsample(df, ordered=True)
+    records = sample[[x_column, *y_cols]].to_dict("records")
+    return {
+        "data": [_line_point(record, x_column, y_cols) for record in records],
+        "lines": [{"dataKey": col, "label": col} for col in y_cols],
+        "xLabel": x_column,
+        "yLabel": "Value",
+        "sampled": sampled,
+        "sample_rate": sample_rate,
+        "total_rows": int(len(df)),
+    }
 
 
 @router.get("/line/{dataset_id}/{x_column}")
@@ -230,58 +295,10 @@ async def get_line_chart(
 ):
     """Get line chart data"""
     try:
-        # Get dataset
-        dataset = await UserData.get(dataset_id)
-        if not dataset or dataset.user_id != current_user_id:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        cache_key = _chart_cache_key("line", dataset_id, dataset.s3_url, x_column, y_columns, filters)
-        cached = await cache_service.get(cache_key)
-        if cached is not None:
-            return cached
-
-        df = await _load_dataframe(dataset.s3_url)
-        df = _apply_filters(df, filters)
-
-        # Parse y_columns
-        y_cols = [c for c in y_columns.split(",") if c in df.columns]
-
-        # Cap the returned points, preserving the line's shape (#513), then build
-        # vectorized from records (no iterrows).
-        sample, sampled, sample_rate = _downsample(df, ordered=True)
-
-        def _native_x(value):
-            if pd.isna(value):
-                return None
-            if isinstance(value, np.integer):
-                return int(value)
-            if isinstance(value, np.floating):
-                return float(value)
-            return str(value)
-
-        records = sample[[x_column, *y_cols]].to_dict("records")
-        data = []
-        for rec in records:
-            point = {"x": _native_x(rec[x_column])}
-            for y_col in y_cols:
-                v = rec[y_col]
-                point[y_col] = None if pd.isna(v) else float(v)
-            data.append(point)
-
-        lines = [{"dataKey": col, "label": col} for col in y_cols]
-
-        payload = {
-            "data": data,
-            "lines": lines,
-            "xLabel": x_column,
-            "yLabel": "Value",
-            "sampled": sampled,
-            "sample_rate": sample_rate,
-            "total_rows": int(len(df)),
-        }
-        await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
-        return payload
-
+        return await _chart(
+            "line", dataset_id, current_user_id, [x_column, *y_columns.split(",")], filters,
+            lambda df: _line_payload(df, x_column, y_columns),
+        )
     except HTTPException:
         raise
     except json.JSONDecodeError:
@@ -290,6 +307,23 @@ async def get_line_chart(
         raise HTTPException(
             status_code=500, detail=f"Error generating line chart: {str(e)}"
         )
+
+
+def _timeseries_payload(df: pd.DataFrame, time_column: str, value_column: str) -> dict[str, Any]:
+    # Convert time column to datetime and sort
+    df[time_column] = pd.to_datetime(df[time_column])
+    df = df.sort_values(time_column)
+
+    # Cap the returned points with an evenly-spaced stride to preserve the curve (#513).
+    sample, sampled, sample_rate = _downsample(df, ordered=True)
+    return {
+        "timestamps": sample[time_column].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+        "values": sample[value_column].fillna(0).tolist(),
+        "label": value_column,
+        "sampled": sampled,
+        "sample_rate": sample_rate,
+        "total_rows": int(len(df)),
+    }
 
 
 @router.get("/timeseries/{dataset_id}/{time_column}/{value_column}")
@@ -302,40 +336,10 @@ async def get_time_series(
 ):
     """Get time series data"""
     try:
-        # Get dataset
-        dataset = await UserData.get(dataset_id)
-        if not dataset or dataset.user_id != current_user_id:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        cache_key = _chart_cache_key("timeseries", dataset_id, dataset.s3_url, time_column, value_column, filters)
-        cached = await cache_service.get(cache_key)
-        if cached is not None:
-            return cached
-
-        df = await _load_dataframe(dataset.s3_url)
-        df = _apply_filters(df, filters)
-
-        # Convert time column to datetime and sort
-        df[time_column] = pd.to_datetime(df[time_column])
-        df = df.sort_values(time_column)
-
-        # Cap the returned points with an evenly-spaced stride to preserve the curve (#513).
-        sample, sampled, sample_rate = _downsample(df, ordered=True)
-
-        timestamps = sample[time_column].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
-        values = sample[value_column].fillna(0).tolist()
-
-        payload = {
-            "timestamps": timestamps,
-            "values": values,
-            "label": value_column,
-            "sampled": sampled,
-            "sample_rate": sample_rate,
-            "total_rows": int(len(df)),
-        }
-        await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
-        return payload
-
+        return await _chart(
+            "timeseries", dataset_id, current_user_id, [time_column, value_column], filters,
+            lambda df: _timeseries_payload(df, time_column, value_column),
+        )
     except HTTPException:
         raise
     except json.JSONDecodeError:

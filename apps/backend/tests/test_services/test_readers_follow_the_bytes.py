@@ -96,7 +96,7 @@ async def test_the_chart_routes_loader(kind):
     from app.api.routes import visualizations
 
     with patch.object(visualizations, "get_file_from_s3", return_value=io.BytesIO(STORED_AS[kind])):
-        frame = await visualizations._load_dataframe(f"s3://bucket/datasets/u/d.{kind}")
+        frame = await visualizations._load_dataframe(f"s3://bucket/datasets/u/d.{kind}", set(FRAME.columns))
 
     assert _same(frame)
 
