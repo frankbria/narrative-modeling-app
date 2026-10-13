@@ -2131,3 +2131,14 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Rule:** for a spec you did not write, run it on the stack and break the thing it claims
   to test. For one you did write, do the same before the PR (the Visual-default mutation).
 
+## 2026-10-13: a script on stdin is eaten by the first command that reads stdin (#756)
+- `ssh host "bash -s" < probe.sh` with a `docker compose exec` inside: the exec read the
+  rest of the script, bash hit end of file and exited 0. The probe's first deploy passed
+  having printed nothing. The tests ran the script as a file, with a fake `docker` that
+  ignored stdin, so they imitated neither half of the real thing.
+- **Rule:** in a script delivered on stdin, every command that can read stdin gets
+  `</dev/null`. Test a script through the same door the caller uses. And a check whose
+  success is silence is not a check: require the line that says what was found.
+- **Rule:** after merging something that runs in a deploy, read that deploy's log for the
+  new step's own output. "The run is green" was true and wrong here.
+

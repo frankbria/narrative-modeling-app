@@ -1,3 +1,17 @@
+# Issue #756, second pass: the frontend probe printed nothing and passed
+
+## Plan
+- [x] Read the first real run (the deploy after PR 1007): the backend probe's lines, then
+      nothing, step green. The deployed route itself answers healthy when asked directly.
+- [x] Cause: the workflows feed the script to `bash -s` over ssh, and `docker compose exec`
+      inside it reads the rest of the script from that stdin. Bash meets end of file and
+      exits 0. The tests ran the script as a file with a `docker` that ignored stdin.
+- [x] RED: the tests feed the script on stdin with a `docker` that drains it: `(0, '')`.
+- [x] `</dev/null` on the exec. Both workflows fail the step when no verdict line was
+      printed, and the deploy gate captures the exit code by redirect (no pipefail there).
+- [x] Verified by dispatching `staging-health.yml` from this branch before merging: the run
+      prints `frontend: {"status":"healthy",…}` after the backend probe, exit status 0.
+
 # Issue #756: the staging probe does not cover the frontend container
 
 ## Plan

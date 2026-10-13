@@ -190,9 +190,16 @@ jobs:
              docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe"
           # The frontend's half of the shared credentials (#756): a fresh Mongo
           # connection from its container, and a token it signed, verified by the backend.
-          # Its exit code fails this step (the run shell is `bash -e`).
+          # Captured by redirect, not a pipe: this shell has no pipefail, and a pipe
+          # would hand the step tee's exit code instead of the probe's.
+          frontend=0
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh \
+            > /tmp/frontend-probe.txt || frontend=$?
+          cat /tmp/frontend-probe.txt
+          # A verdict line or it did not run (its first deploy exited 0 having printed nothing).
+          grep -q '^frontend: ' /tmp/frontend-probe.txt || { echo "The frontend probe printed no verdict (exit $frontend)."; exit 1; }
+          exit "$frontend"
 
       - name: Backend container state
         # Status fields and exception CLASS names only (public run log) — see the
