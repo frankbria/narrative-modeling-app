@@ -15,7 +15,7 @@ from app.models.visualization_cache import (
     VisualizationCache,
 )
 from app.services.redis_cache import cache_service
-from app.services.s3_service import read_dataframe_from_bytes
+from app.services.s3_service import read_columns_from_bytes, read_dataframe_from_bytes
 from app.utils.s3 import get_file_from_s3
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ async def cache_visualization(
     return cache
 
 
-async def _dataset_frame(s3_url: str) -> pd.DataFrame:
+async def _dataset_frame(s3_url: str, columns: list[str] | None = None) -> pd.DataFrame:
     """The dataset at ``s3_url`` as a frame, read by what its bytes are (#733).
 
     These readers used ``pd.read_csv`` on every object. A transformation rewrites the
@@ -136,9 +136,15 @@ async def _dataset_frame(s3_url: str) -> pd.DataFrame:
     workbook or JSON upload failed from the start. Blocking download and parse, so off
     the event loop (#514).
     """
-    return await asyncio.to_thread(
-        lambda: read_dataframe_from_bytes(get_file_from_s3(s3_url).getvalue())
-    )
+    # A chart of one column reads that column (#712); the correlation matrix, which
+    # is of every numeric column, reads the file whole.
+    def read() -> pd.DataFrame:
+        content = get_file_from_s3(s3_url).getvalue()
+        if columns is None:
+            return read_dataframe_from_bytes(content)
+        return read_columns_from_bytes(content, columns)
+
+    return await asyncio.to_thread(read)
 
 
 async def _dataset(dataset_id: str) -> UserData:
@@ -183,7 +189,7 @@ async def generate_and_cache_histogram(
         return cached_data
 
     # Offload the blocking download + parse off the event loop (#514).
-    df = await _dataset_frame(dataset.s3_url)
+    df = await _dataset_frame(dataset.s3_url, [column_name])
 
     # Calculate histogram
     counts, bin_edges = np.histogram(df[column_name].dropna(), bins=num_bins)
@@ -211,7 +217,7 @@ async def generate_and_cache_boxplot(
         return cached_data
 
     # Offload the blocking download + parse off the event loop (#514).
-    df = await _dataset_frame(dataset.s3_url)
+    df = await _dataset_frame(dataset.s3_url, [column_name])
 
     # Calculate boxplot statistics
     q1 = df[column_name].quantile(0.25)

@@ -1,11 +1,14 @@
-# Issue #776: the plan-limit test reads ADR-003's table by section order
-
-## Problem
-`_adr_limits` took the `## Decision` section and kept the first row it met per tier. The
-cost tables in the same section also start their rows with the tier names, so it was
-right only while the decision table came first. `_adr_prices` was fixed for this in #775.
+# Issue #712: charts read the whole dataset to use one or two columns
 
 ## Plan
-- [x] `tests/adr_table.py::decision_rows`: the table found by its `| Tier | Price |` header,
-      read to its end. Both tests use it.
-- [x] A reordered-table test for the limits, like the one the prices have.
+- [x] RED: each chart reads its own columns from a Parquet-backed dataset (the reads are
+      watched, not replaced); a CSV is parsed with the others skipped.
+- [x] `s3_service.read_columns_from_bytes(content, columns)`: Parquet by column, CSV with a
+      callable `usecols` (a name the file lacks is left out, never an error), anything else
+      read whole and narrowed.
+- [x] Histogram and box plot read their one column; the correlation matrix still reads all.
+- [x] Scatter, line and time series: the column set is the chart's columns plus the ones the
+      parsed filter list names. The three handlers were at cc 9, 13 and 7 and repeated one
+      flow, which is now `_chart`; each keeps its own payload builder.
+- [x] Found on the way: a line chart's numeric x was sent as text (pandas hands plain ints,
+      the numpy checks never matched). Numbers stay numbers.

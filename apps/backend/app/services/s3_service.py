@@ -3,6 +3,8 @@ import logging
 import os
 import tempfile
 import uuid
+from collections.abc import Collection
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -139,10 +141,10 @@ def _kind_of(local_path: str) -> str:
     return "csv"
 
 
-def _read_csv(local_path: str, nrows: int | None):
+def _read_csv(local_path: str, nrows: int | None, usecols: Any = None):
     import pandas as pd
 
-    return pd.read_csv(local_path, nrows=nrows)
+    return pd.read_csv(local_path, nrows=nrows, usecols=usecols)
 
 
 def _read_excel(local_path: str, nrows: int | None):
@@ -241,6 +243,39 @@ def read_dataframe_from_bytes(content: bytes, file_type: str | None = None, nrow
         held.write(content)
         held.flush()
         return _read_dataframe(held.name, file_type, nrows)
+
+
+def _parquet_columns(local_path: str, wanted: set[str]):
+    """Those columns of a Parquet file, in file order. The format is stored column by
+    column, so the others are never decoded."""
+    import pandas as pd
+    import pyarrow.parquet as pq
+
+    present = [name for name in pq.read_schema(local_path).names if name in wanted]
+    return pd.read_parquet(local_path, columns=present)
+
+
+def read_columns_from_bytes(content: bytes, columns: Collection[str]):
+    """The named columns of an object already in memory, read by what its bytes are.
+
+    For the readers that use a column or two of a dataset (#712): a Parquet file,
+    which is what a dataset is once transformed, gives up only those columns, and a
+    CSV is parsed with the others skipped. A workbook or JSON is read whole and
+    narrowed. A name the file does not have is left out, never an error: the caller
+    finds out when it uses the column, as it did before. Blocking: call it off the
+    event loop.
+    """
+    wanted = set(columns)
+    with tempfile.NamedTemporaryFile() as held:
+        held.write(content)
+        held.flush()
+        kind = _kind_of(held.name)
+        if kind == "parquet":
+            return _parquet_columns(held.name, wanted)
+        if kind == "csv":
+            return _read_csv(held.name, None, usecols=wanted.__contains__)
+        frame = _read_by_content(held.name, None)
+        return frame.loc[:, [name for name in frame.columns if name in wanted]]
 
 
 def load_dataframe_from_s3(
