@@ -82,13 +82,17 @@ async def test_processing_does_not_drop_a_summary_written_while_it_ran(
 ):
     doc = await _uploaded()
 
-    async def download_during_which_the_summary_lands(_key):
+    async def download_during_which_the_summary_lands(_service, _key):
         await UserData.get_motor_collection().update_one(
             {"_id": doc.id}, {"$set": {"aiSummary": SUMMARY.model_dump()}}
         )
         return CSV
 
-    monkeypatch.setattr(data_processing.s3_service, "download_file_bytes", download_during_which_the_summary_lands)
+    # On the class, not the shared instance: restoring an instance attribute leaves
+    # one behind, and every later test that patches the class is then bypassed.
+    monkeypatch.setattr(
+        type(data_processing.s3_service), "download_file_bytes", download_during_which_the_summary_lands
+    )
 
     response = await async_authorized_client.post("/api/v1/data/process", json={"file_id": str(doc.id)})
 
