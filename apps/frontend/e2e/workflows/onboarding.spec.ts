@@ -133,14 +133,19 @@ test.describe('Onboarding progress card at desktop widths (#809)', () => {
     expect((await page.request.post(`${API}/onboarding/reset`, { headers })).ok()).toBeTruthy();
     // An achievement puts the points badge and the two count labels on the card.
     const steps = await (await page.request.get(`${API}/onboarding/steps`, { headers })).json();
+    let earned = 0;
     for (const step of steps as Array<{ step_id: string }>) {
       await page.request.post(`${API}/onboarding/steps/${step.step_id}/complete`, { headers, data: {} });
-      const earned = await (await page.request.get(`${API}/onboarding/achievements`, { headers })).json();
-      if ((earned.achievements || []).length > 0) break;
+      const achievements = await (await page.request.get(`${API}/onboarding/achievements`, { headers })).json();
+      earned = (achievements.achievements || []).length;
+      if (earned > 0) break;
     }
-    // Leave the tutorial unfinished, or the page shows the completion screen instead.
+    // The setup this test stands on, said plainly if the achievement rules ever change:
+    // one achievement on the card, and a tutorial still in progress (a finished one shows
+    // the completion screen, which has no progress card).
     const status = await (await page.request.get(`${API}/onboarding/status`, { headers })).json();
-    expect(status.is_onboarding_complete).toBe(false);
+    expect(earned, 'completing early steps should earn an achievement to put on the card').toBeGreaterThan(0);
+    expect(status.is_onboarding_complete, 'the tutorial must still be in progress').toBe(false);
 
     for (const width of [1024, 1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
