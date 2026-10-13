@@ -1,98 +1,18 @@
 """
-Tests for AI analysis API endpoints
+The two AI routes that are deliberately not implemented.
 
-The summarize route is tested against real documents in
-`test_ai_summarize_real_document.py` (#981).
+The analyze and summarize routes are tested against real documents in
+`test_ai_analyze_real_document.py` and `test_ai_summarize_real_document.py`. They were
+tested here with a `MagicMock` dataset behind a patched lookup, which hid a summary that
+failed and a fallback that was charged (#981, #683).
 """
-
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.mcp_integration import MCPAnalysisResponse
-
-
-@pytest.fixture
-def mock_user_data_with_analysis(mock_user_data):
-    """Mock user data object with processed data and analysis"""
-    # Add analysis-specific properties to the base mock
-    mock_user_data.statistics = {
-        "columns": {
-            "value": {"mean": 50.0, "std": 10.0}
-        }
-    }
-    mock_user_data.quality_report = {
-        "overall_quality_score": 0.85,
-        "issues": ["Some missing values in 'category' column"]
-    }
-    mock_user_data.data_preview = [
-        {"id": 1, "value": 10.5, "category": "A"},
-        {"id": 2, "value": 20.3, "category": "B"},
-        {"id": 3, "value": 30.1, "category": "C"}
-    ]
-    # Ensure is_processed is True for analysis tests
-    mock_user_data.is_processed = True
-    
-    # Add schema property for the AI analysis endpoint
-    mock_user_data.schema = {
-        "columns": [
-            {"name": "id", "type": "integer"},
-            {"name": "value", "type": "float"},
-            {"name": "category", "type": "string"}
-        ]
-    }
-    return mock_user_data
-
 
 class TestAIAnalysisAPI:
-    """Test suite for AI analysis endpoints"""
-    
-    @pytest.mark.asyncio
-    async def test_analyze_dataset_success(self, authorized_client, mock_user_data_with_analysis):
-        """Test successful AI analysis of dataset"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data_with_analysis
-            # Fix to use the actual mock data fixture
-            mock_user_data_with_analysis.is_processed = True
-            
-            with patch('app.services.mcp_integration.mcp_service.analyze_dataset', new_callable=AsyncMock) as mock_analyze:
-                mock_analyze.return_value = MCPAnalysisResponse(
-                    file_id="test-file-123",
-                    analysis_type="comprehensive",
-                    summary="Comprehensive analysis of the dataset shows good data quality.",
-                    insights=[
-                        {"type": "data_overview", "title": "Dataset Overview", "description": "100 rows, 5 columns"},
-                        {"type": "quality", "title": "Data Quality", "description": "85% quality score"}
-                    ],
-                    recommendations=["Address missing values", "Consider feature engineering"],
-                    visualizations=None,
-                    metadata={"execution_time": 1.5}
-                )
-                
-                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
-                
-                assert response.status_code == 200
-                data = response.json()
-                assert "summary" in data
-                assert "insights" in data
-                assert len(data["insights"]) == 2
-                assert "recommendations" in data
-                assert len(data["recommendations"]) == 2
-    
-    @pytest.mark.asyncio
-    async def test_analyze_dataset_not_processed(self, authorized_client, mock_user_data):
-        """Test analyzing unprocessed dataset"""
-        # Use the mock_user_data fixture and set is_processed to False
-        mock_user_data.is_processed = False
-        
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data
+    """Test suite for the AI stubs"""
 
-            response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
-
-            assert response.status_code == 400
-            assert "File must be processed" in response.json()["detail"]
-    
     @pytest.mark.asyncio
     async def test_chat_not_implemented(self, authorized_client):
         """Chat is a stub — it must reject with 501, not a fake 'coming soon' 200 (#274).
@@ -116,82 +36,3 @@ class TestAIAnalysisAPI:
 
         assert response.status_code == 501
         assert response.json()["detail"] == "Not implemented"
-    
-    @pytest.mark.asyncio
-    async def test_analyze_with_custom_prompts(self, authorized_client, mock_user_data_with_analysis):
-        """Test AI analysis with custom prompts"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data_with_analysis
-            
-            with patch('app.services.mcp_integration.mcp_service.analyze_dataset', new_callable=AsyncMock) as mock_analyze:
-                mock_analyze.return_value = MCPAnalysisResponse(
-                    file_id="test-file-123",
-                    analysis_type="comprehensive",
-                    summary="Analysis focused on business metrics.",
-                    insights=[
-                        {"type": "business", "title": "Business Insights", "description": "Revenue trends identified"}
-                    ],
-                    recommendations=["Optimize pricing strategy"],
-                    visualizations=None,
-                    metadata={"execution_time": 2.0}
-                )
-                
-                response = authorized_client.post(
-                    "/api/v1/ai/analyze/test-file-123",
-                    json={
-                        "file_id": "test-file-123",
-                        "analysis_type": "comprehensive",
-                        "include_visualization": False,
-                        "custom_prompts": ["Focus on business metrics", "Identify revenue patterns"]
-                    }
-                )
-                
-                assert response.status_code == 200
-                data = response.json()
-                assert "Business Insights" in str(data["insights"])
-    
-    @pytest.mark.asyncio
-    async def test_analyze_with_mcp_failure(self, authorized_client, mock_user_data_with_analysis):
-        """Test AI analysis when MCP service fails"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data_with_analysis
-            
-            with patch('app.services.mcp_integration.mcp_service.analyze_dataset', new_callable=AsyncMock) as mock_analyze:
-                # Simulate MCP failure - should return fallback analysis
-                mock_analyze.side_effect = Exception("MCP service unavailable")
-
-                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
-
-                # Should fail with a generic 500 (issue #269: no internal leak)
-                assert response.status_code == 500
-                body = response.json()
-                assert body["detail"] == "Internal server error"
-                assert body.get("request_id")
-                assert "MCP service unavailable" not in response.text
-
-    async def test_analyze_returns_honest_fallback_when_mcp_unreachable(
-        self, authorized_client, mock_user_data_with_analysis
-    ):
-        """#539 AC4: with the real client and the MCP server unreachable, the endpoint
-        must NOT present fabricated analysis as a plain success — it returns a rule-based
-        fallback clearly labeled as such (fallback_mode), computed from the data."""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data_with_analysis
-            # Simulate the MCP server being down at the transport layer (real analyze_dataset
-            # runs and must fall back, not raise, not fabricate).
-            with patch(
-                'app.services.mcp_integration.mcp_service._call_tool',
-                new_callable=AsyncMock,
-            ) as mock_call:
-                mock_call.side_effect = ConnectionError("connection refused")
-                response = authorized_client.post("/api/v1/ai/analyze/test-file-123")
-
-        assert response.status_code == 200, response.text
-        body = response.json()
-        # Honestly labeled as a non-AI fallback (AC1/AC2)
-        assert body["metadata"]["fallback_mode"] is True
-        assert body["metadata"]["mcp_available"] is False
-        assert "unavailable" in body["summary"].lower()
-        # Real computed content, not invented AI insights
-        assert any(i["type"] == "data_overview" for i in body["insights"])
-        assert not any(i.get("type") == "fabricated" for i in body["insights"])

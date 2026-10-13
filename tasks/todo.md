@@ -1,18 +1,20 @@
-# Issue #983: the upload-time AI summary undoes processing
+# Issue #683: audit the remaining consumers of the mocked dataset
 
-## Problem
-`generate_dataset_summary` (the background task after every upload) reads the dataset,
-waits for the model, then `save()`s its whole copy. `POST /data/process`, which the
-Explore page calls meanwhile, does the same with its own copy. The later save reverts the
-other's fields: `is_processed`/`schema`/`statistics`/`quality_report`, or `aiSummary`.
+## What the audit found
+| consumer | what it did | outcome |
+|---|---|---|
+| `test_ai_analysis.py`, summarize (3 tests) | `MagicMock` dataset, `save = AsyncMock()`, stubbed summarizer returning an invented shape | hid #981 (the summary failed for a real dataset and the failure was saved). Replaced there. |
+| `test_ai_summary.py`, success path | `UserData.save` patched out | hid #983 (the stale save that undid processing). Replaced there. |
+| `test_ai_analysis.py`, analyze (5 tests) | `MagicMock` dataset behind a patched lookup, under an id no lookup could match | the route works, but a rule-based fallback was charged as an AI call. Fixed and replaced here. |
+| `test_model_training.py`, `POST /ml/train` (2 tests) | `MagicMock` behind a patched lookup | no bug. Converted to a real document here, plus the foreign-dataset case. |
+| `test_transformations_integration.py` (3 tests) | its own mock behind a patched lookup | kept: they test the response shape; the lookups have real-document tests in `test_object_id_lookups.py`. |
+| `test_ai_summary.py`, the other paths | patched `UserData.get` | kept: unit tests of "already summarised", "not found" and "model failed", none of which writes. |
+| `test_secure_upload.py`, `test_chunked_upload_flow.py`, `integration/test_upload_workflow.py` | mention the fixture in comments only | not consumers. |
 
 ## Plan
-- [x] RED, real documents: processing lands during the model call (both summary paths);
-      the summary lands during processing.
-- [x] `generate_dataset_summary` and `generate_ai_summary_safe`: `set({aiSummary})`.
-- [x] `/data/process`: `set` of the five fields it computes. The handler was at cc 10 and
-      is split (`_owned_upload`, `_stored_bytes`, `_processing_results`, `_store_processing`).
-- [x] A guard: no `.save(` in those three modules.
-- [x] The other writers of a `UserData`: `PUT /user_data/{id}` saves with no await between
-      read and write and needs `validate_on_save`; `dataset_service` saves a new document;
-      `/ai/summarize` is fixed in #981. Recorded in CLAUDE.md.
+- [x] RED: `/ai/analyze` with nothing stubbed leaves `ai_calls` at 0.
+- [x] The route releases its unit when the answer is the rule-based fallback.
+      `analyze_with_ai` was at cc 10: `_processed_upload` (shared with summarize), `_analysis`.
+- [x] Real-document tests for analyze replace the five mocked ones.
+- [x] The two mocked `/ml/train` route tests use a real document.
+- [x] `conftest.mock_user_data` has no consumer left and is removed.
