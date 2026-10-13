@@ -191,7 +191,12 @@ class TestHistogramBinCountCaching:
             "counts": [1] * DEFAULT_HISTOGRAM_BINS,
             "bin_edges": list(range(DEFAULT_HISTOGRAM_BINS + 1)),
         }
+        # The dataset is read first now: a cached chart is served only for the file
+        # the dataset is at (#964).
         with patch(
+            "app.services.visualization_cache.UserData.get",
+            new=AsyncMock(return_value=mock_dataset),
+        ), patch(
             "app.services.visualization_cache.get_cached_visualization",
             new=AsyncMock(return_value=cached),
         ) as mock_get_cached, patch(

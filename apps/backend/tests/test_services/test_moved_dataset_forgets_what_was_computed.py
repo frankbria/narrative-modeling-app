@@ -52,7 +52,7 @@ async def test_a_move_drops_the_charts_and_statistics_of_that_dataset_only(setup
 
     assert await _kept(moved) == (0, 0)
     assert await _kept(untouched) == (3, 1)
-    assert {call.args[0] for call in redis.await_args_list} == {f"viz:{moved.id}:*", f"stats_{moved.id}_*"}
+    assert {call.args[0] for call in redis.await_args_list} == {f"viz:{moved.id}:*"}
 
 
 async def test_a_cache_that_cannot_be_cleared_does_not_undo_the_move(setup_database):

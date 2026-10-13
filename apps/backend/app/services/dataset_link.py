@@ -121,7 +121,6 @@ async def _forget_what_was_computed(docs: list[Dataset]) -> None:
             await VisualizationCache.find({"dataset_id.$id": upload.id}).delete()
             await ColumnStats.find({"dataset_id.$id": upload.id}).delete()
             await cache_service.delete_pattern(f"viz:{upload.id}:*")
-            await cache_service.delete_pattern(f"stats_{upload.id}_*")
         except Exception:
             logger.exception("Could not clear what was computed from dataset %s before it moved", upload.id)
 

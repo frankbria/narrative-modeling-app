@@ -130,7 +130,13 @@ class TestTransformationApply:
         """The move landed and something after it failed: the row names the object."""
         upload = await _upload()
 
-        with _fails("app.services.redis_cache.cache_service.delete_pattern"):
+        from app.services.dataset_link import record_new_file
+
+        async def move_then_fail(*args, **kwargs):
+            await record_new_file(*args, **kwargs)
+            raise RuntimeError("something after the move")
+
+        with patch("app.services.transformation_service.record_new_file", move_then_fail):
             response = await async_authorized_client.post(f"{T}/apply", json={
                 "dataset_id": str(upload.id), "transformation_type": "remove_duplicates", "parameters": {}})
 
@@ -220,8 +226,7 @@ class TestBulkJob:
         upload = await _upload()
         service = BulkTransformationService()
 
-        with _fails("app.services.bulk_transformation_service.record_new_file"), \
-             patch("app.services.bulk_transformation_service.cache_service.delete_pattern", new_callable=AsyncMock):
+        with _fails("app.services.bulk_transformation_service.record_new_file"):
             job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
             await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
 
@@ -259,9 +264,8 @@ class TestBulkJob:
         upload = await _upload()
         service = BulkTransformationService()
 
-        with patch("app.services.bulk_transformation_service.cache_service.delete_pattern", new_callable=AsyncMock):
-            job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
-            await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
+        job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
+        await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
 
         stored = await BulkTransformationJob.find_one({"job_id": job.job_id})
         assert stored.status == BulkJobStatus.COMPLETED, stored.error_message
