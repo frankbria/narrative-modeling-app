@@ -107,6 +107,17 @@ def _point_app_at_test_database():
     os.environ["MONGODB_DB"] = settings.TEST_MONGODB_DB
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _app_uses_the_test_database():
+    """Any test that starts the app's lifespan gets the test database (#502).
+
+    Three test files started it without `_point_app_at_test_database()`. They passed
+    because a module that ran earlier had set the variables for the whole process;
+    run alone, or first, they connected the app to whatever `.env` names.
+    """
+    _point_app_at_test_database()
+
+
 @pytest.fixture(scope="module")
 def beanie_models_initialized():
     """Bind Beanie document models without any real database.

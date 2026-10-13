@@ -1,15 +1,19 @@
 # Issue #502: A/B testing is removed (owner decision: hide the UI and nav entry, unmount the routes, keep the models)
 
 ## Plan
-- [ ] RED: no route in the published API is under `/ab-testing`; the sidebar offers no
+- [x] RED: no route in the published API is under `/ab-testing`; the sidebar offers no
       "A/B Testing"; no page under `app/experiments`.
-- [ ] Backend: delete `routes/ab_testing.py` and its route tests, drop the mount. Kept for a
+- [x] Backend: delete `routes/ab_testing.py` and its route tests, drop the mount. Kept for a
       return: the `ABTest` model (registry, erasure sweep, unique index and its script) and
       `ABTestingService` with its own tests.
-- [ ] Frontend: delete `app/experiments/` (three pages), `lib/services/abTesting.ts` and
+- [x] Frontend: delete `app/experiments/` (three pages), `lib/services/abTesting.ts` and
       its test, the sidebar entry.
-- [ ] Docs: `SECURITY_OWNERSHIP_CHECKS.md` names two routes that no longer exist; CLAUDE.md
+- [x] Docs: `SECURITY_OWNERSHIP_CHECKS.md` names two routes that no longer exist; CLAUDE.md
       says what remains and that remounting it is a new feature.
+- [x] Found on the way: deleting the route tests changed which module starts the app
+      first, and `test_admin_funnel.py` then failed with no `MONGODB_DB`. Three files start
+      the lifespan without pointing it at the test database and had been relying on an
+      earlier module's side effect. A session fixture in `conftest.py` does it for all.
 
 
 # Issues #765 (AC1) and #770 (AC4, AC7): one product name, SheetPredict
