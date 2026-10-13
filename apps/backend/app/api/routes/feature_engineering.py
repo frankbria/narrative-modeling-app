@@ -9,6 +9,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import pandas as pd
 from fastapi import (
@@ -33,6 +34,7 @@ from app.schemas.feature_engineering import (
     FeatureFeedbackRecord,
     FeatureFeedbackRequest,
     FeatureFeedbackResponse,
+    FeatureSuggestion,
     FeatureSuggestionRequest,
     FeatureSuggestionResponse,
     FeatureType,
@@ -142,7 +144,6 @@ async def suggest_features(
             include_ai=request.include_ai_suggestions,
             feature_types=request.feature_types,
             user_id=current_user_id,
-            read_cache=False,  # generator: write through so consumers resolve this set (#522)
         )
 
         logger.info(f"Generated {response.total_suggestions} suggestions for dataset {dataset_id}")
@@ -163,7 +164,7 @@ async def suggest_features(
 
 @router.get(
     "/datasets/{dataset_id}/features/suggestions/{suggestion_id}",
-    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
+    # No quota: a lookup of the set /suggest handed out; it reaches no model (#728).
     response_model=FeatureExplanationResponse,
     summary="Get detailed explanation for a suggestion",
     description="Retrieve detailed explanation, example calculations, and use cases for a specific feature suggestion."
@@ -175,31 +176,8 @@ async def get_suggestion_explanation(
 ) -> FeatureExplanationResponse:
     """Get detailed explanation for a feature suggestion"""
     try:
-        # First regenerate suggestions to find the one we need
+        suggestion = await _handed_out(current_user_id, dataset_id, suggestion_id)
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
-
-        # Generate suggestions (should hit cache)
-        suggestions_response = await feature_engineering_service.suggest_features(
-            df=df,
-            dataset_id=dataset_id,
-            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
-            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
-        )
-
-        # Find the specific suggestion
-        suggestion = None
-        for s in suggestions_response.suggestions:
-            if s.id == suggestion_id:
-                suggestion = s
-                break
-
-        if not suggestion:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Suggestion {suggestion_id} not found"
-            )
-
-        # Generate explanation
         analysis = await feature_engineering_service._analyze_dataset(df, None, None)
         explanation = await feature_engineering_service.explain_feature(suggestion, analysis)
 
@@ -304,6 +282,7 @@ async def record_suggestion_feedback(
     description="Generate additional feature suggestions, excluding previously shown suggestions."
 )
 async def suggest_more_features(
+    http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),
     request: GenerateMoreRequest = Body(...),
     current_user_id: str = Depends(get_current_user_id)
@@ -312,52 +291,13 @@ async def suggest_more_features(
     try:
         logger.info(f"Generating additional suggestions for dataset {dataset_id}")
 
-        # Load dataset
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
+        shown = await _current_suggestions(current_user_id, dataset_id)
+        response = await _another_batch(df, dataset_id, current_user_id, request, shown)
 
-        # Ensure list fields have safe defaults
-        excluded_ids = request.excluded_suggestion_ids or []
-        prefer_types = request.prefer_feature_types or []
-
-        # The set already shown to the user (from the prior /suggest). The UI
-        # APPENDS this endpoint's result to that list, so both batches must stay
-        # resolvable by apply/feedback/explain — we merge, not replace (#522).
-        existing = await feature_engineering_service.get_cached_suggestions(
-            current_user_id, dataset_id
-        )
-        existing_suggestions = existing.suggestions if existing else []
-        existing_ids = {s.id for s in existing_suggestions}
-
-        # Compute a fresh batch WITHOUT clobbering the cached set (write_cache=False).
-        response = await feature_engineering_service.suggest_features(
-            df=df,
-            dataset_id=dataset_id,
-            target_column=request.target_column,
-            problem_type=request.problem_type,
-            max_suggestions=request.count + len(excluded_ids) + len(existing_ids),
-            include_ai=True,
-            feature_types=prefer_types if prefer_types else None,
-            user_id=current_user_id,
-            read_cache=False,
-            write_cache=False,
-        )
-
-        # New ones: not excluded by the client, not already shown.
-        new_suggestions = [
-            s for s in response.suggestions
-            if s.id not in excluded_ids and s.id not in existing_ids
-        ][:request.count]
-
-        # Persist the UNION so the original batch's ids keep resolving alongside
-        # the new ones; return only the new batch (the UI appends it).
-        response.suggestions = existing_suggestions + new_suggestions
-        await feature_engineering_service.cache_suggestions(
-            current_user_id, dataset_id, response
-        )
-
-        response.suggestions = new_suggestions
-        response.total_suggestions = len(new_suggestions)
-
+        if not response.metadata.get("ai_used"):
+            # no key, breaker open or ceiling reached: no model was called, the unit goes back (#461)
+            await enforcement.release(http_request)
         return response
 
     except HTTPException:
@@ -370,9 +310,43 @@ async def suggest_more_features(
         )
 
 
+async def _another_batch(
+    df: pd.DataFrame,
+    dataset_id: str,
+    user_id: str,
+    request: GenerateMoreRequest,
+    shown: list[FeatureSuggestion],
+) -> FeatureSuggestionResponse:
+    """A fresh batch beyond what the user already has, cached together with it.
+
+    The UI appends this batch to the list on screen, so both must stay resolvable
+    by apply/feedback/explain: the cache gets the union, the caller the batch (#522).
+    """
+    excluded = (request.excluded_suggestion_ids or []) + [s.id for s in shown]
+    response = await feature_engineering_service.suggest_features(
+        df=df,
+        dataset_id=dataset_id,
+        target_column=request.target_column,
+        problem_type=request.problem_type,
+        max_suggestions=request.count + len(excluded),
+        include_ai=True,
+        feature_types=request.prefer_feature_types,
+        user_id=user_id,
+        write_cache=False,  # the union is written below, not this batch alone
+    )
+    fresh = [s for s in response.suggestions if s.id not in excluded][:request.count]
+
+    response.suggestions = shown + fresh
+    await feature_engineering_service.cache_suggestions(user_id, dataset_id, response)
+
+    response.suggestions = fresh
+    response.total_suggestions = len(fresh)
+    return response
+
+
 @router.post(
     "/datasets/{dataset_id}/features/apply",
-    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
+    # No quota: a lookup of the set /suggest handed out; it reaches no model (#728).
     response_model=ApplyFeatureResponse,
     summary="Preview a feature suggestion",
     description="Compute a preview of a single feature suggestion. The new "
@@ -388,64 +362,15 @@ async def apply_feature(
     try:
         logger.info(f"Applying feature {request.suggestion_id} to dataset {dataset_id}")
 
-        # Load dataset
+        suggestion = await _handed_out(current_user_id, dataset_id, request.suggestion_id)
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
-
-        # Get the suggestion
-        suggestions_response = await feature_engineering_service.suggest_features(
-            df=df,
-            dataset_id=dataset_id,
-            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
-            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
+        error = await _why_not_applied(
+            df, suggestion, request.parameters, "Feature application not implemented for this type"
         )
+        applied = [] if error else [suggestion.name]
+        failed = [{"name": suggestion.name, "error": error}] if error else []
 
-        suggestion = None
-        for s in suggestions_response.suggestions:
-            if s.id == request.suggestion_id:
-                suggestion = s
-                break
-
-        if not suggestion:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Suggestion {request.suggestion_id} not found"
-            )
-
-        # Apply the feature (simplified implementation)
-        applied_features = []
-        failed_features = []
-
-        try:
-            # Apply based on feature type
-            new_col = await _apply_single_feature(df, suggestion, request.parameters)
-            if new_col is not None:
-                applied_features.append(suggestion.name)
-            else:
-                failed_features.append({
-                    "name": suggestion.name,
-                    "error": "Feature application not implemented for this type"
-                })
-        except Exception as e:
-            failed_features.append({
-                "name": suggestion.name,
-                "error": str(e)
-            })
-
-        # Get preview data
-        preview = df.head(5).to_dict(orient="records") if applied_features else None
-
-        return ApplyFeatureResponse(
-            dataset_id=dataset_id,
-            persisted=False,  # preview-only (#274)
-            applied_features=applied_features,
-            failed_features=failed_features,
-            new_column_count=len(applied_features),
-            preview_data=preview,
-            message=(
-                f"Previewed {len(applied_features)} feature(s). "
-                "Not saved to the dataset — use the transformation pipeline to persist."
-            )
-        )
+        return _preview(dataset_id, df, applied, failed, f"Previewed {len(applied)} feature(s).")
 
     except HTTPException:
         raise
@@ -459,7 +384,7 @@ async def apply_feature(
 
 @router.post(
     "/datasets/{dataset_id}/features/apply-multiple",
-    dependencies=[Depends(quota("ai_calls"))],  # reaches suggest_features(include_ai) (#461)
+    # No quota: a lookup of the set /suggest handed out; it reaches no model (#728).
     response_model=ApplyFeatureResponse,
     summary="Preview multiple feature suggestions",
     description="Compute a preview of multiple feature suggestions at once. The "
@@ -475,64 +400,13 @@ async def apply_multiple_features(
     try:
         logger.info(f"Applying {len(request.suggestion_ids)} features to dataset {dataset_id}")
 
-        # Load dataset
         df = await _load_dataset_dataframe(dataset_id, current_user_id)
+        known = {s.id: s for s in await _current_suggestions(current_user_id, dataset_id)}
+        applied, failed = await _apply_each(df, known, request)
 
-        # Get suggestions (fetched once, cached by service via Redis)
-        suggestions_response = await feature_engineering_service.suggest_features(
-            df=df,
-            dataset_id=dataset_id,
-            user_id=current_user_id,  # same tenant+dataset key as /suggest (#522)
-            read_cache=True,  # lookup: resolve /suggest's current set, don't recompute
-        )
-
-        # Build lookup map for O(1) access per suggestion
-        suggestion_map = {s.id: s for s in suggestions_response.suggestions}
-
-        applied_features = []
-        failed_features = []
-
-        for suggestion_id in request.suggestion_ids:
-            suggestion = suggestion_map.get(suggestion_id)
-            if not suggestion:
-                failed_features.append({
-                    "name": suggestion_id,
-                    "error": "Suggestion not found"
-                })
-                continue
-
-            try:
-                params = None
-                if request.parameter_overrides:
-                    params = request.parameter_overrides.get(suggestion_id)
-
-                new_col = await _apply_single_feature(df, suggestion, params)
-                if new_col is not None:
-                    applied_features.append(suggestion.name)
-                else:
-                    failed_features.append({
-                        "name": suggestion.name,
-                        "error": "Feature application not implemented"
-                    })
-            except Exception as e:
-                failed_features.append({
-                    "name": suggestion.name,
-                    "error": str(e)
-                })
-
-        preview = df.head(5).to_dict(orient="records") if applied_features else None
-
-        return ApplyFeatureResponse(
-            dataset_id=dataset_id,
-            persisted=False,  # preview-only (#274)
-            applied_features=applied_features,
-            failed_features=failed_features,
-            new_column_count=len(applied_features),
-            preview_data=preview,
-            message=(
-                f"Previewed {len(applied_features)} of {len(request.suggestion_ids)} feature(s). "
-                "Not saved to the dataset — use the transformation pipeline to persist."
-            )
+        return _preview(
+            dataset_id, df, applied, failed,
+            f"Previewed {len(applied)} of {len(request.suggestion_ids)} feature(s).",
         )
 
     except HTTPException:
@@ -543,6 +417,73 @@ async def apply_multiple_features(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error applying features: {str(e)}"
         )
+
+
+async def _current_suggestions(user_id: str, dataset_id: str) -> list[FeatureSuggestion]:
+    """The set /suggest last handed this tenant for this dataset; empty once it expired.
+
+    A lookup never generates one. Suggestion ids are minted per generation, so a
+    fresh set cannot hold the id being asked for: recomputing paid for a model
+    call and still answered not found (#728).
+    """
+    cached = await feature_engineering_service.get_cached_suggestions(user_id, dataset_id)
+    return cached.suggestions if cached else []
+
+
+async def _handed_out(user_id: str, dataset_id: str, suggestion_id: str) -> FeatureSuggestion:
+    for suggestion in await _current_suggestions(user_id, dataset_id):
+        if suggestion.id == suggestion_id:
+            return suggestion
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Suggestion {suggestion_id} not found"
+    )
+
+
+async def _why_not_applied(
+    df: pd.DataFrame, suggestion: FeatureSuggestion, parameters: dict[str, Any] | None, unsupported: str
+) -> str | None:
+    """None once the suggestion's column is on `df`, otherwise the reason it is not."""
+    try:
+        new_col = await _apply_single_feature(df, suggestion, parameters)
+    except Exception as e:
+        return str(e)
+    return None if new_col is not None else unsupported
+
+
+async def _apply_each(
+    df: pd.DataFrame, known: dict[str, FeatureSuggestion], request: ApplyMultipleFeaturesRequest
+) -> tuple[list[str], list[dict[str, str]]]:
+    applied: list[str] = []
+    failed: list[dict[str, str]] = []
+    overrides = request.parameter_overrides or {}
+    for suggestion_id in request.suggestion_ids:
+        suggestion = known.get(suggestion_id)
+        if not suggestion:
+            failed.append({"name": suggestion_id, "error": "Suggestion not found"})
+            continue
+        error = await _why_not_applied(
+            df, suggestion, overrides.get(suggestion_id), "Feature application not implemented"
+        )
+        if error:
+            failed.append({"name": suggestion.name, "error": error})
+        else:
+            applied.append(suggestion.name)
+    return applied, failed
+
+
+def _preview(
+    dataset_id: str, df: pd.DataFrame, applied: list[str], failed: list[dict[str, str]], summary: str
+) -> ApplyFeatureResponse:
+    return ApplyFeatureResponse(
+        dataset_id=dataset_id,
+        persisted=False,  # preview-only (#274)
+        applied_features=applied,
+        failed_features=failed,
+        new_column_count=len(applied),
+        preview_data=df.head(5).to_dict(orient="records") if applied else None,
+        message=f"{summary} Not saved to the dataset — use the transformation pipeline to persist.",
+    )
 
 
 async def _apply_single_feature(
