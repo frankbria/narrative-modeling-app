@@ -1,16 +1,24 @@
-# Issue #964: a chart request in flight during a transformation re-caches the old data
+# Issue #728: the feature lookups charge an ai_call for a cache read
 
 ## Problem
-#960 clears a dataset's chart caches when it moves. A request that started before the
-move finishes afterwards and writes the old chart back under `(dataset, type, column)`.
-Nothing on the row says which file it came from and it never expires.
+`GET …/features/suggestions/{id}`, `…/features/apply` and `…/features/apply-multiple`
+carry `quota("ai_calls")` and never release it. On a warm cache they read the cached set
+and are charged a unit each. On a cold cache they regenerate the set, model call included,
+but suggestion ids are minted per generation (`uuid4` suffix), so the new set can never
+hold the id asked for: a paid call that still answers not found.
 
 ## Plan
-- [ ] RED: compute from the old file, move the dataset, write the cache, read.
-- [ ] A cached chart carries the file it was computed from: `VisualizationCache.source_url`,
-      and a digest of it in the Redis key. A read for a dataset's current file is served
-      only an entry computed from that file. The three generators read the dataset first
-      and pass its `s3_url` to both the read and the write.
-- [ ] `get_cached_visualization` and `cache_visualization` are at cc 9 and 7: split.
-- [ ] Remove the three `delete_pattern("stats_{id}_*")` calls: nothing writes such a key.
-- [ ] `ColumnStats`: its route is called by nothing (#889); the criterion moves there.
+- [x] RED: three lookups on a warm cache leave `ai_calls` at 0; on a cold cache nothing is
+      generated (404, 404, and "Suggestion not found" per id).
+- [x] The lookups read `get_cached_suggestions` only, like feedback since #523, and carry no
+      quota. Registry: the three move to `_EXEMPT`.
+- [x] `suggest_features(read_cache=…)` has no caller left: remove it. The function is at
+      cc 14, so it is split (`_model_suggestions`, `_shortlist`, `_response`).
+- [x] `/suggest-more` never released its unit when no model ran. It does now, as `/suggest`
+      does. At cc 11 it is split (`_another_batch`).
+- [x] `apply_feature` (cc 9) and `apply_multiple_features` (cc 10) are split.
+
+## Found, not done here
+- `/suggest-more` filters "already shown" by id, and ids are new on every generation, so
+  it returns the same rule-based suggestions again under new ids.
+- The `/features` page fetches `GET /datasets/{id}/features/suggestions`, which no route serves.

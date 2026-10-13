@@ -172,8 +172,185 @@ async def test_cache_key_is_tenant_scoped(hermetic):
     svc = fe_service.FeatureEngineeringService()
     df = _df()
     await svc.suggest_features(df=df, dataset_id=DATASET, user_id="u1",
-                              include_ai=False, read_cache=False)
+                              include_ai=False)
     await svc.suggest_features(df=df, dataset_id=DATASET, user_id="u2",
-                              include_ai=False, read_cache=False)
+                              include_ai=False)
     assert svc._get_cache_key("u1", DATASET) != svc._get_cache_key("u2", DATASET)
     assert len(hermetic.store) == 2  # one entry per tenant, not shared
+
+
+# --- #728: a lookup reads the set /suggest handed out, and is not a model call ----------
+
+TEST_USER = "test_user_123"
+
+
+def _lookups(suggestion_id: str) -> list[tuple[str, str, dict | None]]:
+    return [
+        ("GET", f"/api/v1/datasets/{DATASET}/features/suggestions/{suggestion_id}", None),
+        ("POST", f"/api/v1/datasets/{DATASET}/features/apply", {"suggestion_id": suggestion_id}),
+        ("POST", f"/api/v1/datasets/{DATASET}/features/apply-multiple", {"suggestion_ids": [suggestion_id]}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_looking_a_suggestion_up_costs_no_ai_call(setup_database, async_authorized_client, hermetic):
+    from app.billing import metering
+
+    sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
+    # as stored after a /suggest the model took part in
+    for cached in hermetic.store.values():
+        cached["metadata"]["ai_used"] = True
+
+    for method, url, body in _lookups(sid):
+        resp = await async_authorized_client.request(method, url, json=body)
+        assert resp.status_code == 200, resp.text
+
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_out_of_ai_calls_can_still_use_what_they_were_given(
+    setup_database, async_authorized_client, hermetic
+):
+    from app.billing import metering
+    from app.billing.plans import PLAN_LIMITS, PlanTier
+
+    limit = PLAN_LIMITS[PlanTier.FREE].ai_calls
+    sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
+    await metering.record(TEST_USER, "ai_calls", limit)
+    assert await metering.usage_for(TEST_USER, "ai_calls") == limit
+
+    for method, url, body in _lookups(sid):
+        resp = await async_authorized_client.request(method, url, json=body)
+        assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_an_expired_set_is_not_recomputed(setup_database, async_authorized_client, hermetic, monkeypatch):
+    """Ids are minted per generation, so a fresh set can never hold the id asked for:
+    recomputing bought a model call and still answered not found."""
+    from unittest.mock import AsyncMock
+
+    sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
+    hermetic.store.clear()  # the hour passed
+    recompute = AsyncMock(side_effect=AssertionError("a lookup must not generate suggestions"))
+    monkeypatch.setattr(fe_service.feature_engineering_service, "suggest_features", recompute)
+
+    explain, apply, apply_many = [
+        await async_authorized_client.request(method, url, json=body) for method, url, body in _lookups(sid)
+    ]
+
+    assert explain.status_code == 404 and apply.status_code == 404
+    assert apply_many.status_code == 200
+    assert apply_many.json()["failed_features"] == [{"name": sid, "error": "Suggestion not found"}]
+    recompute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_feature_that_cannot_be_previewed_is_reported_not_raised(
+    setup_database, async_authorized_client, hermetic, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
+    name = next(s["name"] for c in hermetic.store.values() for s in c["suggestions"] if s["id"] == sid)
+
+    monkeypatch.setattr(fe_routes, "_apply_single_feature", AsyncMock(return_value=None))
+    _, apply, apply_many = [
+        await async_authorized_client.request(method, url, json=body) for method, url, body in _lookups(sid)
+    ]
+    assert apply.json()["failed_features"] == [
+        {"name": name, "error": "Feature application not implemented for this type"}
+    ]
+    assert apply.json()["preview_data"] is None
+    assert apply_many.json()["failed_features"] == [{"name": name, "error": "Feature application not implemented"}]
+
+    monkeypatch.setattr(fe_routes, "_apply_single_feature", AsyncMock(side_effect=ValueError("no such column")))
+    _, apply, apply_many = [
+        await async_authorized_client.request(method, url, json=body) for method, url, body in _lookups(sid)
+    ]
+    for resp in (apply, apply_many):
+        (failure,) = resp.json()["failed_features"]
+        assert failure["name"] == name
+        assert failure["error"].startswith("Feature preview failed because of an internal error (reference ")
+        assert "no such column" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_a_previewed_feature_is_named_and_shown(setup_database, async_authorized_client, hermetic):
+    suggestions = await _suggest_with_target(async_authorized_client)
+    ids = [s["id"] for s in suggestions[:2]]
+
+    resp = await async_authorized_client.post(
+        f"/api/v1/datasets/{DATASET}/features/apply-multiple",
+        json={"suggestion_ids": ids + ["gone"], "parameter_overrides": {ids[0]: {}}},
+    )
+
+    body = resp.json()
+    assert resp.status_code == 200, resp.text
+    assert {"name": "gone", "error": "Suggestion not found"} in body["failed_features"]
+    assert body["new_column_count"] == len(body["applied_features"])
+    assert body["message"].startswith(f"Previewed {len(body['applied_features'])} of 3 feature(s). Not saved")
+    assert body["persisted"] is False
+
+
+@pytest.mark.asyncio
+async def test_more_suggestions_with_no_model_cost_no_ai_call(setup_database, async_authorized_client, hermetic):
+    """No key is configured here, so the batch is rule-based: nothing was bought."""
+    from app.billing import metering
+
+    await _suggest_with_target(async_authorized_client)
+    more = await async_authorized_client.post(
+        f"/api/v1/datasets/{DATASET}/features/suggest-more", json={"count": 2}
+    )
+
+    assert more.status_code == 200, more.text
+    assert more.json()["metadata"]["ai_used"] is False
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+
+@pytest.mark.asyncio
+async def test_more_suggestions_from_the_model_cost_one(setup_database, async_authorized_client, hermetic, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.billing import metering
+
+    monkeypatch.setattr(
+        fe_service.feature_engineering_service, "_model_suggestions", AsyncMock(return_value=([], True))
+    )
+    more = await async_authorized_client.post(
+        f"/api/v1/datasets/{DATASET}/features/suggest-more", json={"count": 2}
+    )
+
+    assert more.status_code == 200, more.text
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+
+
+@pytest.mark.asyncio
+async def test_suggestions_need_no_request_body(setup_database, async_authorized_client, hermetic):
+    resp = await async_authorized_client.post(f"/api/v1/datasets/{DATASET}/features/suggest")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["suggestions"]
+
+
+@pytest.mark.asyncio
+async def test_a_generation_that_fails_is_a_sanitised_500_and_costs_nothing(
+    setup_database, async_authorized_client, hermetic, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from app.billing import metering
+
+    monkeypatch.setattr(
+        fe_service.feature_engineering_service, "suggest_features",
+        AsyncMock(side_effect=RuntimeError("s3://bucket/datasets/secret.csv unreadable")),
+    )
+    for path in ("suggest", "suggest-more"):
+        resp = await async_authorized_client.post(
+            f"/api/v1/datasets/{DATASET}/features/{path}", json={"count": 2} if path == "suggest-more" else {}
+        )
+        assert resp.status_code == 500
+        assert "secret.csv" not in resp.text
+
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 0

@@ -112,11 +112,13 @@ class FeatureEngineeringService:
         include_ai: bool = True,
         feature_types: list[FeatureType] | None = None,
         user_id: str | None = None,
-        read_cache: bool = False,
         write_cache: bool = True,
     ) -> FeatureSuggestionResponse:
         """
         Generate feature suggestions for a dataset.
+
+        Always computes: the cache is written here and read by the lookups
+        (apply/feedback/explain) through `get_cached_suggestions`, never by this.
 
         Args:
             df: Input dataframe
@@ -126,100 +128,89 @@ class FeatureEngineeringService:
             max_suggestions: Maximum suggestions to return
             include_ai: Whether to include AI-generated suggestions
             feature_types: Filter by feature types
+            write_cache: False lets /suggest-more compute a batch without replacing
+                the cached set (it writes the union itself)
 
         Returns:
             FeatureSuggestionResponse with suggestions
         """
         start_time = datetime.now(UTC)
 
-        # One tenant+dataset-scoped key every endpoint can reproduce (#522). The
-        # key deliberately ignores target/problem/feature_types/max/include_ai, so
-        # a cache READ only makes sense for the param-less lookup endpoints
-        # (apply/feedback/explain) that just want /suggest's current set — they opt
-        # in with read_cache=True. Every other caller (the generators, and any
-        # direct service caller varying params) uses the default read_cache=False
-        # and computes fresh, so a differing target/filter never returns a stale
-        # set. Either way the fresh result is written through for the consumers.
-        cache_key = self._get_cache_key(user_id, dataset_id)
-        if read_cache:
-            cached = await self._get_cached_suggestions(cache_key)
-            if cached:
-                logger.info(f"Returning cached suggestions for dataset {dataset_id}")
-                return cached
-
-        # Analyze dataset
         analysis = await self._analyze_dataset(df, target_column, problem_type)
 
-        # Generate rule-based suggestions
         rule_based = await self._generate_rule_based_suggestions(analysis)
         logger.info(f"Generated {len(rule_based)} rule-based suggestions")
 
-        # Generate AI suggestions if enabled
         ai_suggestions: list[FeatureSuggestion] = []
-        ai_used = False  # did a paid model call happen? the route's ai_calls charge keys on this (#461)
+        ai_used = False
         if include_ai:
-            try:
-                ai_suggestions = await self._generate_ai_suggestions(
-                    analysis,
-                    existing_suggestions=rule_based
-                )
-                # Set only once the call returned: an open breaker or the #768
-                # daily ceiling raises above, so no model ran and nothing is charged.
-                ai_used = get_openai_client() is not None  # without a client the step above is a no-op
-                logger.info(f"Generated {len(ai_suggestions)} AI suggestions")
-            except Exception as e:
-                logger.warning(f"AI suggestion generation failed: {e}")
+            ai_suggestions, ai_used = await self._model_suggestions(analysis, rule_based)
 
-        # Combine and deduplicate
-        all_suggestions = rule_based + ai_suggestions
-        all_suggestions = self._deduplicate_suggestions(all_suggestions)
-
-        # Estimate importance scores
-        all_suggestions = await self._estimate_importance_batch(
-            all_suggestions, analysis
+        ranked = await self._estimate_importance_batch(
+            self._deduplicate_suggestions(rule_based + ai_suggestions), analysis
+        )
+        response = self._response(
+            dataset_id, self._shortlist(ranked, feature_types, max_suggestions), analysis, ai_used, start_time
         )
 
-        # Sort by importance
-        all_suggestions.sort(key=lambda s: s.expected_importance, reverse=True)
+        if write_cache:
+            await self._cache_suggestions(self._get_cache_key(user_id, dataset_id), response)
 
-        # Filter by feature types if specified
+        return response
+
+    async def _model_suggestions(
+        self, analysis: DatasetAnalysis, rule_based: list[FeatureSuggestion]
+    ) -> tuple[list[FeatureSuggestion], bool]:
+        """The model's suggestions, and whether a paid call ran.
+
+        The route's ai_calls charge keys on the flag (#461), so it is true only
+        once the call returned: an open breaker or the daily ceiling (#768) raises
+        instead, and without a client the call is a no-op.
+        """
+        try:
+            suggestions = await self._generate_ai_suggestions(analysis, existing_suggestions=rule_based)
+        except Exception as e:
+            logger.warning(f"AI suggestion generation failed: {e}")
+            return [], False
+        logger.info(f"Generated {len(suggestions)} AI suggestions")
+        return suggestions, get_openai_client() is not None
+
+    @staticmethod
+    def _shortlist(
+        suggestions: list[FeatureSuggestion], feature_types: list[FeatureType] | None, max_suggestions: int
+    ) -> list[FeatureSuggestion]:
+        """Most important first, of the requested types, up to the limit."""
+        suggestions.sort(key=lambda s: s.expected_importance, reverse=True)
         if feature_types:
-            all_suggestions = [
-                s for s in all_suggestions
-                if s.feature_type in feature_types
-            ]
+            suggestions = [s for s in suggestions if s.feature_type in feature_types]
+        return suggestions[:max_suggestions]
 
-        # Limit to max suggestions
-        all_suggestions = all_suggestions[:max_suggestions]
-
-        # Build response
-        processing_time = (datetime.now(UTC) - start_time).total_seconds() * 1000
-
-        response = FeatureSuggestionResponse(
+    @staticmethod
+    def _response(
+        dataset_id: str,
+        suggestions: list[FeatureSuggestion],
+        analysis: DatasetAnalysis,
+        ai_used: bool,
+        start_time: datetime,
+    ) -> FeatureSuggestionResponse:
+        return FeatureSuggestionResponse(
             dataset_id=dataset_id,
-            suggestions=all_suggestions,
+            suggestions=suggestions,
             detected_problem_type=analysis.problem_type.value if analysis.problem_type else None,
             detected_target_column=analysis.target_column,
             detected_domain=analysis.domain.value,
-            total_suggestions=len(all_suggestions),
-            rule_based_count=len([s for s in all_suggestions if s.source == "rule_based"]),
-            ai_count=len([s for s in all_suggestions if s.source == "ai"]),
+            total_suggestions=len(suggestions),
+            rule_based_count=sum(s.source == "rule_based" for s in suggestions),
+            ai_count=sum(s.source == "ai" for s in suggestions),
             metadata={
                 "ai_used": ai_used,
-                "processing_time_ms": processing_time,
+                "processing_time_ms": (datetime.now(UTC) - start_time).total_seconds() * 1000,
                 "numeric_columns": len(analysis.numeric_columns),
                 "categorical_columns": len(analysis.categorical_columns),
                 "datetime_columns": len(analysis.datetime_columns)
             },
             generated_at=datetime.now(UTC)
         )
-
-        # Cache response (write_cache=False lets /suggest-more compute a batch
-        # without clobbering /suggest's cached set — it merges + writes itself).
-        if write_cache:
-            await self._cache_suggestions(cache_key, response)
-
-        return response
 
     async def _analyze_dataset(
         self,
@@ -1087,7 +1078,7 @@ Domain: {analysis.domain.value}"""
         entry and 404 the suggestion ids it had just handed out. Keying on
         ``(user_id, dataset_id)`` is what all four endpoints can reproduce
         identically. Excluding target/problem is safe because the generators
-        (`/suggest`, `/suggest-more`) write through (``read_cache=False``), so the
+        (`/suggest`, `/suggest-more`) always compute and write through, so the
         latest generation defines the current set the consumers resolve against.
         ``user_id`` scopes it per tenant (a shared key leaked one tenant's
         suggestions to another — the recurring class in CLAUDE.md).

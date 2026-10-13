@@ -103,13 +103,9 @@ _MUST_BE_METERED = {
     # ai_orchestration.py — rule-based core, OpenAI pass when a key is present
     "/api/v1/ai/recommend-tools",
     "/api/v1/ai/stage-guidance",
-    # feature_engineering.py — every one of these reaches suggest_features(include_ai),
-    # the lookups included (#522: the cache key mismatch means they re-run the model).
+    # feature_engineering.py — the two generators reach suggest_features(include_ai)
     "/api/v1/datasets/{dataset_id}/features/suggest",
     "/api/v1/datasets/{dataset_id}/features/suggest-more",
-    "/api/v1/datasets/{dataset_id}/features/suggestions/{suggestion_id}",
-    "/api/v1/datasets/{dataset_id}/features/apply",
-    "/api/v1/datasets/{dataset_id}/features/apply-multiple",
     # model_training.py — report card / improvement suggestions; both release the
     # unit on the branch that has no artifacts to explain.
     "/api/v1/ml/{model_id}/evaluation",
@@ -132,8 +128,12 @@ _UPLOAD_SUMMARY = (
 _EXEMPT = {
     "/api/v1/ai/health": "MCP liveness probe; calls no model.",
     "/api/v1/ai/feedback": "Persists a recommendation rating; calls no model.",
-    "/api/v1/features/suggestions/{suggestion_id}/feedback":
-        "#523: reads the cached suggestion only, never reaches the model.",
+    **{p: "Reads the cached suggestion set only, never reaches the model (#523, #728)." for p in (
+        "/api/v1/features/suggestions/{suggestion_id}/feedback",
+        "/api/v1/datasets/{dataset_id}/features/suggestions/{suggestion_id}",
+        "/api/v1/datasets/{dataset_id}/features/apply",
+        "/api/v1/datasets/{dataset_id}/features/apply-multiple",
+    )},
     "/api/v1/ai/optimize-parameters": "Rule-based only; never touches the OpenAI client.",
     **{p: "Reads or applies stored detection results; the model ran at /detect." for p in (
         "/api/v1/data-issues/{dataset_id}/issues", "/api/v1/data-issues/{dataset_id}/history",
