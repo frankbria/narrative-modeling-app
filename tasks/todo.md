@@ -1,3 +1,25 @@
+# Issue #825: StatisticsDashboard fetched a route that does not exist
+
+## Plan
+- [x] RED: the suite's two tests of the fetch path (loading, error) go; in their place the
+      component is shown to make no request, and `statistics` is required at the type level
+      (`@ts-expect-error` on a render without it, which `tsc` fails while the prop is optional).
+- [x] Remove `useAsyncData`, the fetch and the loading/error cards; `statistics` is required.
+- [x] The complexity gate could not read the component (typed destructured parameter) and it
+      holds four tabs of conditionals in one function. Take `props`, and split: tiles, the
+      two overview cards, one card per numeric and per categorical column, the correlations
+      tab. Behaviour held by the existing 14 tests.
+- [x] The explore page passes `dataset.statistics` inside `<Present when=…>`; it needs the
+      same cast its schema line has.
+- [x] Found on the way: a column with over 10% missing and a zero outlier share showed
+      "15.0% missing0" (`{0 && …}` renders the 0). The issue text is built as a string now.
+- [x] The gate still read zero functions after the split. Bisected with lizard: an inline
+      object type as a generic argument (`ComponentType<{ className?: string }>`) blinds its
+      TypeScript reader for the whole file, and `a > 50 ? 'x' : 'y'` followed by `?.` leaves a
+      function unclosed. Both written another way.
+- [x] Real browser, real upload: the tab's text is identical on main and on the branch.
+
+
 # Issue #743: specs that change account state get their own e2e user
 
 ## Plan
