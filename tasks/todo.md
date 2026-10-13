@@ -1,17 +1,14 @@
-# Issues #761 and #762: what importing the backend loads and prints
+# Issue #752: three e2e specs whose backend calls never reach the backend
 
-## #761: the health probe imports the whole routes package
-Already fixed, by #530: the routes package's init is empty, so importing the probe
-loads `app.api.routes.health` and nothing heavy. What the issue still asks for is a
-guard, so it stays that way.
-- [x] A test imports `app.health_probe` in a fresh interpreter and fails if scikit-learn,
-      SHAP, pandas, numpy, scipy or optuna is loaded, or any route module but `health`.
-      Mutation-checked with an import of the training routes added to `health.py`.
+## What each one turned out to be
+- `upload.spec.ts`, the metadata check: a relative `/api/v1` URL (answered by the Next dev
+  server), the wrong id-space, and a branch that logged "skipped" on any failure. The test
+  is `@smoke`.
+- `ai-recommendations.spec.ts`: 15 tests posting to `/ai/analyze-dataset`. No such route.
+- `transformation-preview.spec.ts`: drives a `/datasets` page that does not exist.
 
-## #762: five field-shadow warnings at every import
-`UserData.schema`, `ColumnStats.count`, `UserDataResponse.schema`, and two the issue did
-not list: `DatasetSummaryRequest.schema`, `DatasetSchemaResponse.schema`.
-- [x] The names are the stored key or a public response key, so they stay. An alias would
-      rename the attribute for every reader with no change in behaviour.
-- [x] `expect_field_shadow(field, model)` declares each one above its class.
-- [x] A test imports `app.main` in a fresh interpreter with UserWarning as an error.
+## Plan
+- [x] The metadata check reads `GET {API_BASE}/user_data/{id}` with the session's token and
+      asserts 200 and the record. Run on the real stack; mutation-checked (a wrong path fails it).
+- [x] The two specs that cannot run are deleted, with why.
+- [x] The rest of the unrun suite: #991.

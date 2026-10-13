@@ -14,6 +14,7 @@
  */
 
 import { test, expect } from '../fixtures';
+import { API_BASE, apiAuthHeaders } from '../helpers/apiAuth';
 import { UploadPage } from '../pages/UploadPage';
 import { join } from 'path';
 import { readFileSync } from 'fs';
@@ -97,24 +98,19 @@ test.describe('Dataset Upload Workflow', () => {
     await uploadPage.continueToExplore();
     const datasetId = await uploadPage.getDatasetId();
 
-    // Verify metadata in database via API (graceful - API may not exist)
-    try {
-      const response = await request.get(`/api/v1/datasets/${datasetId}`);
-
-      if (response.ok()) {
-        const data = await response.json();
-        expect(data.filename).toContain('sample');
-        expect(data.row_count).toBeGreaterThan(0);
-        expect(data.column_count).toBeGreaterThan(0);
-
-        // Verify S3 key exists
-        expect(data.s3_key || data.s3_url).toBeTruthy();
-      } else {
-        console.log(`API returned ${response.status()} - metadata check skipped (upload verified visually)`);
-      }
-    } catch (error) {
-      console.log('API endpoint not available - metadata check skipped (upload verified visually)');
-    }
+    // The stored record, read from the backend itself as the signed-in user. This used
+    // to be a relative /api/v1 URL, which never leaves the Next dev server, under an id
+    // from the wrong id-space, with a branch that logged "skipped" on any failure: the
+    // check had never run (#752).
+    const stored = await request.get(`${API_BASE}/user_data/${datasetId}`, {
+      headers: await apiAuthHeaders(request),
+    });
+    expect(stored.status()).toBe(200);
+    const record = await stored.json();
+    expect(record.filename).toContain('sample');
+    expect(record.num_rows).toBeGreaterThan(0);
+    expect(record.num_columns).toBeGreaterThan(0);
+    expect(record.s3_url).toBeTruthy();
   });
 
   test('should detect and display schema information', async ({ authenticatedPage }) => {
