@@ -274,7 +274,7 @@ async def upload_dataset(
 _UPDATABLE = {"statistics", "quality_report", "ai_summary", "inferred_schema"}
 
 
-async def _owned_dataset(dataset_id: str, user_id: str) -> DatasetMetadata:
+async def _callers_dataset(dataset_id: str, user_id: str) -> DatasetMetadata:
     """The caller's dataset, or 404.
 
     A dataset that is someone else's answers exactly like one that does not exist.
@@ -330,7 +330,7 @@ async def get_dataset(
     try:
         logger.info(f"Getting dataset {dataset_id}")
 
-        dataset = await _owned_dataset(dataset_id, current_user_id)
+        dataset = await _callers_dataset(dataset_id, current_user_id)
 
         return _detail(dataset)
 
@@ -358,7 +358,7 @@ async def update_dataset(
     try:
         logger.info(f"Updating dataset {dataset_id}")
 
-        await _owned_dataset(dataset_id, current_user_id)
+        await _callers_dataset(dataset_id, current_user_id)
 
         updated_dataset = await DatasetService().update_dataset(
             dataset_id=dataset_id,
@@ -401,7 +401,7 @@ async def delete_dataset(
     try:
         logger.info(f"Deleting dataset {dataset_id}")
 
-        await _owned_dataset(dataset_id, current_user_id)
+        await _callers_dataset(dataset_id, current_user_id)
 
         # Cascade-delete dataset + all children/artifacts
         success = await DatasetService().delete_dataset(
@@ -497,7 +497,7 @@ async def get_dataset_schema(
     try:
         logger.info(f"Getting schema for dataset {dataset_id}")
 
-        dataset = await _owned_dataset(dataset_id, current_user_id)
+        dataset = await _callers_dataset(dataset_id, current_user_id)
 
         # Build schema response
         return DatasetSchemaResponse(
@@ -530,7 +530,7 @@ async def get_dataset_preview(
     try:
         logger.info(f"Getting preview for dataset {dataset_id}")
 
-        dataset = await _owned_dataset(dataset_id, current_user_id)
+        dataset = await _callers_dataset(dataset_id, current_user_id)
 
         # Get preview data
         preview_data = dataset.data_preview or []
@@ -569,7 +569,7 @@ async def mark_dataset_processed(
     try:
         logger.info(f"Marking dataset {dataset_id} as processed")
 
-        await _owned_dataset(dataset_id, current_user_id)
+        await _callers_dataset(dataset_id, current_user_id)
 
         # Mark as processed with results
         updated_dataset = await DatasetService().mark_dataset_processed(
@@ -1191,7 +1191,7 @@ async def get_selected_features(
     """
     logger.info(f"Retrieving selected features for dataset {dataset_id}")
 
-    dataset = await _owned_dataset(dataset_id, current_user_id)
+    dataset = await _callers_dataset(dataset_id, current_user_id)
 
     # Check if feature selection results are stored in metadata
     selected_features = dataset.metadata.get("selected_features", []) if hasattr(dataset, "metadata") else []
