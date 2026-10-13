@@ -217,3 +217,39 @@ class TestSignupRate:
         transport = _ready_transport(200, {"mongodb": {"status": "healthy"}})
         assert health_probe.main(transport=transport) == 1
         assert "FAIL: signups_24h" in capsys.readouterr().out
+
+
+def test_the_probe_loads_none_of_the_app_it_does_not_use():
+    """#761: the probe runs hourly inside the backend container, beside two workers.
+
+    It needs two check functions. Importing them used to run the routes package's
+    init, which imported every route module and with them scikit-learn, SHAP and
+    pandas: a third full copy of the app, 188 MB, for two HTTP calls. #530 emptied
+    that init. A fresh interpreter, because this process has already imported it all.
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = (
+        "import json, sys\n"
+        "import app.health_probe\n"
+        "print(json.dumps(sorted(sys.modules)))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-W", "ignore", "-c", code],
+        cwd=Path(__file__).resolve().parents[2],
+        env={**os.environ, "PYTHONPATH": "."},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    loaded = json.loads(result.stdout.strip().splitlines()[-1])
+
+    heavy = {name.split(".")[0] for name in loaded} & {"sklearn", "shap", "pandas", "numpy", "scipy", "optuna"}
+    routes = [name for name in loaded if name.startswith("app.api.routes.")]
+    assert heavy == set()
+    assert routes == ["app.api.routes.health"]
