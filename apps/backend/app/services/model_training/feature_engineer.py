@@ -236,6 +236,7 @@ class FeatureEngineeringConfig:
     encoding_method: str = "onehot"  # onehot, label
     missing_strategy: str = "mean"  # mean, median, most_frequent, constant
     keep_columns: list[str] = field(default_factory=list)  # never excluded as identifiers
+    exclude_columns: list[str] = field(default_factory=list)  # left out by the caller's choice (#969)
 
 
 @dataclass
@@ -260,6 +261,7 @@ class FeatureEngineer:
         self.excluded_features: list[str] = []
         self.excluded_dates: list[str] = []
         self.excluded_empty: list[str] = []
+        self.excluded_by_choice: list[str] = []
 
     async def fit_transform(
         self,
@@ -302,33 +304,51 @@ class FeatureEngineer:
                 "excluded_features": self._excluded_identifiers(),
                 "excluded_date_columns": self.excluded_dates,
                 "excluded_empty_columns": self.excluded_empty,
+                "excluded_user_columns": self.excluded_by_choice,
                 "final_feature_count": len(self.feature_names)
             }
         )
     
     def _exclude_unlearnable(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Record and drop the columns left out of the features: per-row identifiers
-        (#806), dates (#840) and columns with no value at all (#911).
-        ``excluded_features`` holds all three, in column order, and is what
-        ``transform`` and the export drop."""
+        """Record and drop the columns left out of the features: the caller's own
+        choice (#969), per-row identifiers (#806), dates (#840) and columns with no
+        value at all (#911). ``excluded_features`` holds all four, in column order,
+        and is what ``transform`` and the export drop."""
         self._find_unlearnable(X)
         if not self.excluded_features:
             return X
         if len(self.excluded_features) == X.shape[1]:
-            raise ValueError(
-                "Every feature column is a per-row identifier, a date or empty, "
+            raise ValueError(self._nothing_left())
+        logger.info("Excluding columns from features: %s", self.excluded_features)
+        return X.drop(columns=self.excluded_features)
+
+    def _nothing_left(self) -> str:
+        if self.excluded_by_choice:
+            return (
+                "Every feature column was left out or cannot be learned from, "
                 "so there is nothing to learn from"
             )
-        logger.info("Excluding identifier, date and empty columns from features: %s", self.excluded_features)
-        return X.drop(columns=self.excluded_features)
+        return (
+            "Every feature column is a per-row identifier, a date or empty, "
+            "so there is nothing to learn from"
+        )
 
     def _find_unlearnable(self, X: pd.DataFrame) -> None:
         keep = self.config.keep_columns
+        chosen = set(self.config.exclude_columns)
+        self.excluded_by_choice = [col for col in X.columns if col in chosen]
+        # A column left out by choice is reported as that and as nothing else.
+        rest = X.drop(columns=self.excluded_by_choice)
         # Not subject to ``keep``: there is no value to encode, and an imputer drops
         # a column it has nothing to learn a fill from. An empty date is "empty".
-        self.excluded_empty = self._empty_columns(X)
-        self.excluded_dates = self._date_columns(X.drop(columns=self.excluded_empty), keep)
-        left_out = {*self.excluded_empty, *self.excluded_dates, *self._identifier_columns(X, keep)}
+        self.excluded_empty = self._empty_columns(rest)
+        self.excluded_dates = self._date_columns(rest.drop(columns=self.excluded_empty), keep)
+        left_out = {
+            *self.excluded_by_choice,
+            *self.excluded_empty,
+            *self.excluded_dates,
+            *self._identifier_columns(rest, keep),
+        }
         self.excluded_features = [col for col in X.columns if col in left_out]
 
     @staticmethod
@@ -349,8 +369,12 @@ class FeatureEngineer:
         return X
 
     def _excluded_identifiers(self) -> list[str]:
-        # getattr: engineers pickled before #806 / #840 / #911 lack one list or another.
-        other = {*getattr(self, "excluded_dates", []), *getattr(self, "excluded_empty", [])}
+        # getattr: engineers pickled before #806 / #840 / #911 / #969 lack one list or another.
+        other = {
+            *getattr(self, "excluded_dates", []),
+            *getattr(self, "excluded_empty", []),
+            *getattr(self, "excluded_by_choice", []),
+        }
         return [col for col in getattr(self, "excluded_features", []) if col not in other]
 
     def exclusion_notes(self) -> list[str]:
@@ -360,7 +384,9 @@ class FeatureEngineer:
             ("date", getattr(self, "excluded_dates", [])),
             ("empty", getattr(self, "excluded_empty", [])),
         )
-        return [
+        chosen = getattr(self, "excluded_by_choice", [])
+        by_choice = [f"Left out of the features by choice: {', '.join(chosen)}"] if chosen else []
+        return by_choice + [
             f"Excluded {kind} columns from the features: {', '.join(columns)}"
             for kind, columns in kinds
             if columns

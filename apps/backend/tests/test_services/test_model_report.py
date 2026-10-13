@@ -719,6 +719,19 @@ class TestFreeTextCannotInjectStructure:
         assert "Excluded as identifiers" not in md
 
     @pytest.mark.asyncio
+    async def test_columns_left_out_by_choice_are_reported(self, setup_database):
+        """#969: what the user left out in Feature Engineering is named as their choice."""
+        model = _model("m-chosen", training_config={"excluded_user_columns": ["region", "visits"]})
+
+        report = await build_model_report(model, USER)
+
+        assert report.dataset.excluded_user_columns == ["region", "visits"]
+        md = render_markdown(report)
+        assert "Left out by you: `region`, `visits`" in md
+        assert "Excluded as identifiers" not in md
+        assert (await build_model_report(_model("m-older"), USER)).dataset.excluded_user_columns == []
+
+    @pytest.mark.asyncio
     async def test_exactly_one_row_is_the_winner_when_a_job_exists(
         self, setup_database
     ):

@@ -1290,3 +1290,80 @@ async def test_the_engine_trains_on_a_file_with_an_empty_column():
     assert "Excluded empty columns from the features: notes" in events
     assert "plan_basic" in engine.feature_engineer.feature_names
     assert result.best_model.test_score > 0.8
+
+
+class TestColumnsLeftOutByChoice:
+    """#969: the Feature Engineering stage's selection reaches training as
+    ``exclude_columns``; a column left out there is not a feature anywhere."""
+
+    @staticmethod
+    def _frame() -> tuple[pd.DataFrame, pd.Series]:
+        n = 60
+        X = pd.DataFrame({
+            "customer_id": [f"C{i:05d}" for i in range(n)],
+            "plan": ["basic", "pro"] * (n // 2),
+            "region": ["north", "south", "east"] * (n // 3),
+            "spend": [float(i % 7) for i in range(n)],
+            "visits": [i % 5 for i in range(n)],
+        })
+        return X, pd.Series([i % 2 for i in range(n)])
+
+    @pytest.mark.asyncio
+    async def test_a_column_left_out_is_not_a_feature_and_is_reported_as_chosen(self):
+        X, y = self._frame()
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(select_features=False, exclude_columns=["region", "visits", "no_such_column"])
+        )
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert result.feature_names == ["spend", "plan_basic", "plan_pro"]
+        assert result.metadata["excluded_user_columns"] == ["region", "visits"]
+        assert result.metadata["excluded_features"] == ["customer_id"]  # identifiers only
+        assert fe.excluded_features == ["customer_id", "region", "visits"]  # what serving drops
+        assert fe.exclusion_notes() == [
+            "Left out of the features by choice: region, visits",
+            "Excluded per-row identifier columns from the features: customer_id",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_column_left_out_is_reported_once_whatever_else_it_is(self):
+        X, y = self._frame()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, exclude_columns=["customer_id"]))
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert result.metadata["excluded_user_columns"] == ["customer_id"]
+        assert result.metadata["excluded_features"] == []
+
+    @pytest.mark.asyncio
+    async def test_serving_and_the_export_ignore_a_column_left_out(self):
+        X, y = self._frame()
+        fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, exclude_columns=["region"]))
+        await fe.fit_transform(X, y, "binary_classification")
+        record = {"plan": "pro", "spend": 3.0, "visits": 2}
+
+        without = await _served(fe, [record])
+        with_it = await _served(fe, [{**record, "region": "west", "customer_id": "C99999"}])
+
+        pd.testing.assert_frame_equal(without, with_it)
+        assert feature_engineer_state(fe)["excluded_features"] == ["customer_id", "region"]
+
+    @pytest.mark.asyncio
+    async def test_leaving_everything_out_says_so(self):
+        X, y = self._frame()
+        fe = FeatureEngineer(FeatureEngineeringConfig(exclude_columns=["plan", "region", "spend", "visits"]))
+
+        with pytest.raises(ValueError, match="left out") as raised:
+            await fe.fit_transform(X, y, "binary_classification")
+
+        from app.utils.job_failures import user_safe_failure_reason
+
+        assert "Feature Engineering" in user_safe_failure_reason(raised.value)
+
+    def test_an_engineer_pickled_before_the_choice_existed_still_reports(self):
+        fe = FeatureEngineer()
+        del fe.excluded_by_choice
+        fe.excluded_features = ["customer_id"]
+
+        assert fe.exclusion_notes() == ["Excluded per-row identifier columns from the features: customer_id"]
