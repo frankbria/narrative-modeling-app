@@ -1,3 +1,25 @@
+# Issue #809: the onboarding sidebar is crushed at desktop widths
+
+## Plan
+- [x] RED: an e2e check on the real stack at 1024, 1280 and 1440px, as the isolated
+      `onboarding` user with one achievement earned: no step title is cut off, and no badge
+      or label in the progress card leaves its box or overlaps its neighbour.
+- [x] The grid is keyed to the viewport (`lg:grid-cols-4`), while the page sits beside the
+      256px app sidebar: at 1280 the progress column is about 120px. Key it to the container:
+      stacked until the page itself is 48rem wide, then a fixed 16rem column. Titles wrap
+      instead of truncating; when stacked, the steps sit two to a row.
+- [x] `OnboardingProgress`: the points badge row and the two count labels wrap.
+- [x] Neither file can take an edit as it is: the page reads as zero functions to the
+      complexity gate (451 lines, one component), `OnboardingProgress` has cc 14. Split both;
+      the page becomes a shell over `components/onboarding/`. Held by the page's 5 tests,
+      `OnboardingProgress`'s 14, and the two real-stack onboarding smoke tests.
+- [x] Measured on main: the progress card is 78px wide at 1024 (30 problems), 142px at 1280
+      (13), 182px at 1440 (9). On the branch: 384, 640 and 256px, no problems at any width.
+      The page is not the viewport minus one sidebar: the shell also reserves 320px on the
+      right for the chat panel.
+- [x] The step rows were clickable `div`s; they are buttons now, with `aria-current`.
+
+
 # Issue #753: the tenant-isolation smoke spec covers column stats, batch jobs and B's own data
 
 ## Plan
