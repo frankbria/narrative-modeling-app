@@ -155,34 +155,13 @@ import { TransformationConfigDialog } from '@/components/transformation';
 
 ## Integration with Prepare Page
 
-The `/app/datasets/[id]/prepare/page.tsx` integrates both visual and chain views:
+The Data Preparation workflow stage, `app/prepare/page.tsx`, renders the pipeline, and
+the pipeline owns both views (Chain by default, Visual one toggle away):
 
 ```typescript
 import TransformationPipeline from '@/components/transformation/TransformationPipeline';
-import { TransformationChainView } from '@/components/transformation/TransformationChainView';
 
-const [viewMode, setViewMode] = useState<'visual' | 'chain'>('visual');
-const [transformations, setTransformations] = useState<TransformationStep[]>([]);
-
-// View toggle buttons
-<Button onClick={() => setViewMode('visual')}>Visual</Button>
-<Button onClick={() => setViewMode('chain')}>Chain</Button>
-
-// Conditional rendering based on view mode
-{viewMode === 'visual' ? (
-  <TransformationPipeline
-    datasetId={datasetId}
-    onComplete={handleComplete}
-    onUnsavedChanges={setHasUnsavedChanges}
-  />
-) : (
-  <TransformationChainView
-    transformations={transformations}
-    onReorder={handleReorder}
-    onEdit={handleEditTransformation}
-    onDelete={handleDeleteTransformation}
-  />
-)}
+<TransformationPipeline datasetId={datasetId} onComplete={handleTransformationComplete} />
 ```
 
 ## File Structure
@@ -214,11 +193,11 @@ apps/frontend/__tests__/components/transformation/
 └── ColumnSelector.test.tsx                           (Unit tests)
 
 apps/frontend/e2e/workflows/
-├── data-preparation.spec.ts                          (E2E tests - NEW)
-└── transform.spec.ts                                 (Legacy transform tests)
+├── data-preparation.spec.ts                          (the stage's two views)
+└── prepare-pipeline.spec.ts                          (preview, apply, history, recipes)
 
-apps/frontend/app/datasets/[id]/prepare/
-└── page.tsx                                          (Data preparation page)
+apps/frontend/app/prepare/
+└── page.tsx                                          (Data Preparation workflow stage)
 
 Project root documentation:
 ├── ACCEPTANCE_CRITERIA_VALIDATION.md                 (Validation report)

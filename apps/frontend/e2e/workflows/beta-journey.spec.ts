@@ -11,8 +11,8 @@
  *  4. A p95 < 500ms sanity check on the journey's lightweight API endpoints.
  *
  * The ML backend is MOCKED (like stage-transitions.spec.ts) for the journey and
- * routing tests so they are deterministic and fast; the real ML pipeline is
- * exercised by complete-ai-workflow.spec.ts. The performance test hits the LIVE
+ * routing tests so they are deterministic and fast; the stages run against the
+ * real stack in prepare-pipeline, features-stage and train-form. The performance test hits the LIVE
  * backend and skips gracefully if it is unreachable.
  *
  * Tagged @beta-acceptance for selective CI execution. Not part of the CI gate

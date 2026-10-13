@@ -10,8 +10,9 @@
  * Per the issue's decision, the ML backend is MOCKED here (training, evaluation,
  * prediction, etc.) so the journey is deterministic and fast and does not depend
  * on a trainable dataset or the full ML stack — this test exercises the
- * frontend transition behaviour, which is what #88 delivers. The real
- * end-to-end ML pipeline is covered by complete-ai-workflow.spec.ts.
+ * frontend transition behaviour, which is what #88 delivers. The stages are
+ * exercised against the real stack one at a time: prepare-pipeline.spec.ts,
+ * features-stage.spec.ts and train-form.spec.ts.
  */
 
 import { test, expect } from '../fixtures';
