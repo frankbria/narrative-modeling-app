@@ -103,24 +103,31 @@ async def _store(column_stats_list: list[ColumnStats]) -> None:
             raise RuntimeError(f"column stats bulk write failed: codes {codes}") from None
 
 
+# In this order: pandas counts bool as a numeric dtype, and numpy cannot take the
+# quartiles of one ("boolean subtract ... is not supported"), so bool is asked first.
+_DTYPE_KINDS = (
+    (pd.api.types.is_bool_dtype, "boolean"),
+    (pd.api.types.is_numeric_dtype, "numeric"),
+    (pd.api.types.is_datetime64_any_dtype, "date"),
+)
+
+
 def _determine_data_type(series: pd.Series) -> str:
     """Determine the data type of a pandas Series"""
-    if pd.api.types.is_numeric_dtype(series):
-        return "numeric"
-    elif pd.api.types.is_datetime64_any_dtype(series):
-        return "date"
-    elif pd.api.types.is_bool_dtype(series):
-        return "boolean"
-    elif pd.api.types.is_string_dtype(series) or pd.api.types.is_categorical_dtype(
+    for is_kind, name in _DTYPE_KINDS:
+        if is_kind(series):
+            return name
+    return _text_kind(series)
+
+
+def _text_kind(series: pd.Series) -> str:
+    """Categorical for a string column with few distinct values, text for anything else."""
+    stringy = pd.api.types.is_string_dtype(series) or pd.api.types.is_categorical_dtype(
         series
-    ):
-        # Check if it's a categorical with few unique values
-        if series.nunique() < min(len(series) * 0.5, 50):
-            return "categorical"
-        else:
-            return "text"
-    else:
-        return "text"  # Default to text for unknown types
+    )
+    if stringy and series.nunique() < min(len(series) * 0.5, 50):
+        return "categorical"
+    return "text"
 
 
 def _add_numeric_stats(column_stats: ColumnStats, series: pd.Series) -> None:

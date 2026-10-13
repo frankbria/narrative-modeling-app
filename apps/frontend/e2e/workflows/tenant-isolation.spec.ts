@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures';
-import { API_BASE, apiAuthHeaders, signInAs } from '../helpers/apiAuth';
+import { API_BASE, apiAuthHeaders } from '../helpers/apiAuth';
+import { isolatedState } from '../isolatedUsers';
 import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
 
 /**
@@ -9,15 +10,27 @@ import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
  * to one user — so the only gate on main was structurally single-tenant and could
  * not see a cross-tenant read. This spec is the durable guard: tenant A (the
  * stored session) owns a dataset in both id-spaces, its base version, a workflow
- * and a trained model; tenant B (the second dev-credentials identity, #613) must
- * not be able to read any of them.
+ * a trained model, that upload's column statistics and a batch-prediction job
+ * (#753); tenant B must not be able to read or change any of them, and B's own
+ * data is unaffected by A's.
+ *
+ * B is the isolated `tenant-b` user (#743), not the admin: the admin tenant's plan
+ * has an upload ceiling another spec depends on, and B uploads here.
  *
  * A reads each surface first so a refusal below is isolation, not a dead token:
  * with a broken JWT both tenants would 401 and the "cannot read" checks would
  * pass vacuously.
  */
+// Three rows of the training file's inputs (binary-classification-small.csv, without its target).
+const BATCH_ROWS = [
+  'age,tenure,monthly_charges,contract_type,has_internet,has_phone,payment_method,total_charges,support_calls',
+  '48,28,79.49,Two year,true,false,Bank Transfer,2323.18,5',
+  '18,33,106.74,Two year,false,true,Credit Card,3758.47,2',
+  '35,12,55.10,Two year,true,true,Bank Transfer,661.20,1',
+].join('\n');
+
 test.describe('tenant isolation (#493)', () => {
-  test('a second signed-in user cannot read the first user\'s dataset, version, workflow or model @smoke', async ({
+  test('a second signed-in user cannot read or change the first user\'s data, and keeps its own @smoke', async ({
     authenticatedPage: page,
     request,
     uploadTestDataset,
@@ -29,11 +42,6 @@ test.describe('tenant isolation (#493)', () => {
     // Real AutoML training + the artifact poll can exceed the default timeout.
     test.setTimeout(180000);
 
-    const adminEmail = process.env.TEST_ADMIN_EMAIL;
-    const adminSecret = process.env.TEST_ADMIN_PASSWORD;
-    expect(adminEmail, 'TEST_ADMIN_EMAIL must be exported (test-e2e.sh does)').toBeTruthy();
-    expect(adminSecret, 'TEST_ADMIN_PASSWORD must be exported (test-e2e.sh does)').toBeTruthy();
-
     const a = await apiAuthHeaders(request);
     const filename = `isolation-e2e-${Date.now()}.csv`;
 
@@ -42,6 +50,7 @@ test.describe('tenant isolation (#493)', () => {
     let datasetId: string | undefined;
     let fileId: string | undefined;
     let modelId: string | undefined;
+    let jobId: string | undefined;
     try {
       // --- Tenant A owns: a DatasetMetadata (+ its base DatasetVersion) ...
       const seeded = await request.post(`${API_BASE}/datasets/upload`, {
@@ -64,6 +73,17 @@ test.describe('tenant isolation (#493)', () => {
       modelId = await trainModel(fileId, 'churned');
       await seedEvaluationWorkflow(page, request, fileId, modelId);
 
+      // ... and a batch-prediction job on that model: three rows, no second training run.
+      const created = await request.post(`${API_BASE}/batch/jobs`, {
+        headers: a,
+        multipart: {
+          model_id: modelId,
+          file: { name: 'isolation-batch.csv', mimeType: 'text/csv', buffer: Buffer.from(BATCH_ROWS) },
+        },
+      });
+      expect(created.status(), `A creates a batch job: ${await created.text()}`).toBe(200);
+      jobId = (await created.json()).job_id as string;
+
       const owned: Array<[string, string]> = [
         ['dataset', `/datasets/${datasetId}`],
         ['version list', `/datasets/${datasetId}/versions`],
@@ -71,6 +91,9 @@ test.describe('tenant isolation (#493)', () => {
         ['user_data', `/user_data/${fileId}`],
         ['workflow', `/workflows/${fileId}`],
         ['model', `/ml/${modelId}`],
+        ['column statistics', `/column_stats/dataset/${fileId}`],
+        ['batch job', `/batch/jobs/${jobId}`],
+        ['batch job progress', `/batch/jobs/${jobId}/progress`],
       ];
 
       // --- A can read every surface (a dead token would fail here, not below).
@@ -80,7 +103,8 @@ test.describe('tenant isolation (#493)', () => {
       }
 
       // --- Tenant B: a genuinely different signed-in user.
-      const bContext = await signInAs(browser, baseURL as string, adminEmail as string, adminSecret as string);
+      const bContext = await browser.newContext({ baseURL, storageState: isolatedState('tenant-b') });
+      let bDatasetId: string | undefined;
       try {
         const b = await apiAuthHeaders(bContext.request);
         expect(b.Authorization, 'B must hold a different token from A').not.toBe(a.Authorization);
@@ -111,10 +135,49 @@ test.describe('tenant isolation (#493)', () => {
         const workflow = await request.get(`${API_BASE}/workflows/${fileId}`, { headers: a });
         expect(workflow.status()).toBe(200);
         expect((await workflow.json()).current_stage, "A's workflow survives B's put").toBe('model_evaluation');
+
+        // The batch job's write paths, and its results (#753).
+        for (const [what, call] of [
+          ['cancel', () => bContext.request.post(`${API_BASE}/batch/jobs/${jobId}/cancel`, { headers: b })],
+          ['delete', () => bContext.request.delete(`${API_BASE}/batch/jobs/${jobId}`, { headers: b })],
+          ['download', () => bContext.request.get(`${API_BASE}/batch/jobs/${jobId}/download`, { headers: b })],
+        ] as const) {
+          expect((await call()).status(), `B must not ${what} A's batch job`).toBe(404);
+        }
+        const job = await request.get(`${API_BASE}/batch/jobs/${jobId}`, { headers: a });
+        expect(job.status(), "A's batch job survives B's cancel and delete").toBe(200);
+        expect((await job.json()).status, "B's cancel did not land").not.toBe('cancelled');
+
+        // The other direction (#753): B's own data, while A's exists.
+        const bFilename = `isolation-b-${Date.now()}.csv`;
+        const bSeeded = await bContext.request.post(`${API_BASE}/datasets/upload`, {
+          headers: b,
+          multipart: {
+            file: { name: bFilename, mimeType: 'text/csv', buffer: Buffer.from('c,d\n5,6\n7,8\n') },
+          },
+        });
+        expect(bSeeded.ok(), `B uploads its own dataset: ${bSeeded.status()}`).toBeTruthy();
+        bDatasetId = (await bSeeded.json()).dataset_id as string;
+
+        const bList = await (await bContext.request.get(`${API_BASE}/datasets?page=1&limit=100`, { headers: b })).text();
+        expect(bList, "B's list holds B's dataset").toContain(bFilename);
+        expect(bList, "B's list does not hold A's").not.toContain(filename);
+        const aList = await (await request.get(`${API_BASE}/datasets?page=1&limit=100`, { headers: a })).text();
+        expect(aList, "A's list holds A's dataset").toContain(filename);
+        expect(aList, "A's list does not hold B's").not.toContain(bFilename);
+        expect(
+          (await request.get(`${API_BASE}/datasets/${bDatasetId}`, { headers: a })).status(),
+          "A must not read B's dataset either",
+        ).toBe(404);
       } finally {
+        if (bDatasetId) {
+          const b = await apiAuthHeaders(bContext.request);
+          await bContext.request.delete(`${API_BASE}/datasets/${bDatasetId}`, { headers: b }).catch(() => {});
+        }
         await bContext.close();
       }
     } finally {
+      if (jobId) await request.delete(`${API_BASE}/batch/jobs/${jobId}`, { headers: a }).catch(() => {});
       if (modelId) await request.delete(`${API_BASE}/ml/${modelId}`, { headers: a }).catch(() => {});
       if (datasetId) await request.delete(`${API_BASE}/datasets/${datasetId}`, { headers: a }).catch(() => {});
       if (fileId) await cleanupDataset(fileId);

@@ -1,3 +1,24 @@
+# Issue #753: the tenant-isolation smoke spec covers column stats, batch jobs and B's own data
+
+## Plan
+- [x] Tenant B becomes an isolated e2e user (`tenant-b`, #743) instead of the admin: the
+      admin tenant may not upload (its PRO plan has a two-upload ceiling that
+      `plan-limit.spec` depends on), and the issue asks for a B-owned upload.
+- [x] Column stats for A's upload: A 200, B 404.
+- [x] A batch job from the model the spec already trains (3-row CSV, no extra training):
+      B gets 404 on read, progress, download, cancel and delete; A's job is untouched.
+- [x] `POST /batch/jobs/{id}/cancel` answers 400 "cannot be cancelled" for a job that is
+      not the caller's or does not exist. RED: 404 for both, 400 kept for the caller's own
+      finished job (the convention since #751).
+- [x] B uploads its own dataset while A's exist: each tenant's list holds its own file only.
+- [x] Found by the new column-statistics assertion: A's own read answered 500. pandas counts
+      bool as numeric, so a true/false column went to the quartile code and numpy refused
+      it. Any dataset with such a column failed. Bool is classified first now (backend test
+      red first), and the type function is a table plus `_text_kind` for the gate.
+- [x] Mutation check: with the cancel fix undone the spec fails on "B must not cancel A's
+      batch job" (400 for 404).
+
+
 # Issue #825: StatisticsDashboard fetched a route that does not exist
 
 ## Plan
