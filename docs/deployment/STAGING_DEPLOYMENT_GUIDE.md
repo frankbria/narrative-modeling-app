@@ -76,9 +76,6 @@ chown -R narrative-deploy:narrative-deploy /opt/narrative-modeling-app
 # and base64's / + = characters break URL parsing
 openssl rand -hex 32  # For REDIS_PASSWORD
 
-# Backend secret key
-openssl rand -hex 32  # For BACKEND_SECRET_KEY (64 chars)
-
 # NextAuth secret
 openssl rand -hex 32  # For NEXTAUTH_SECRET (64 chars)
 
@@ -111,7 +108,6 @@ nano .env.staging
 - `AWS_SECRET_ACCESS_KEY`: Your AWS secret
 - `S3_BUCKET_NAME`: narrative-staging-uploads
 - `OPENAI_API_KEY`: Your OpenAI key
-- `BACKEND_SECRET_KEY`: Generated secret
 - `NEXTAUTH_SECRET`: Generated secret
 - `NEXT_PUBLIC_API_URL`: https://narrative.yourdomain.com/api/v1 (must include `/api/v1`)
 - `NEXTAUTH_URL`: https://narrative.yourdomain.com
