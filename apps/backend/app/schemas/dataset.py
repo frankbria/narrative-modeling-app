@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.utils.field_shadows import expect_field_shadow
+
 # Request Schemas
 
 class DatasetUploadResponse(BaseModel):
@@ -140,6 +142,9 @@ class DatasetProcessingResponse(BaseModel):
     processed_at: datetime = Field(..., description="Processing timestamp")
     statistics: dict[str, Any] | None = None
     quality_report: dict[str, Any] | None = None
+
+
+expect_field_shadow("schema", "DatasetSchemaResponse")
 
 
 class DatasetSchemaResponse(BaseModel):

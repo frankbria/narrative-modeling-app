@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.user_data import AISummary, SchemaField
+from app.utils.field_shadows import expect_field_shadow
 
 
 class UserDataUpdate(BaseModel):
@@ -33,6 +34,9 @@ class UserDataUpdate(BaseModel):
     original_filename: str | None = Field(None, min_length=1)
 
     model_config = ConfigDict(extra="ignore")
+
+
+expect_field_shadow("schema", "UserDataResponse")
 
 
 class UserDataResponse(BaseModel):
