@@ -20,34 +20,24 @@ import pytest
 
 from app.billing import plans
 from app.models.subscription import PlanTier
+from tests.adr_table import decision_rows
 
 REPO = Path(__file__).resolve().parents[4]
-ADR = REPO / "docs" / "architecture" / "ADR-003-plan-limits-and-pricing.md"
 
 _METRICS = ("training_runs", "predictions", "uploads", "ai_calls")
 
 
-def _adr_limits() -> dict[PlanTier, dict[str, int]]:
-    """Parse the per-tier table: `| FREE | $0 | 5 | 1 000 | 10 | 30 |`."""
-    out: dict[PlanTier, dict[str, int]] = {}
-    decision = ADR.read_text().split("## Decision", 1)[1].split("\n## ", 1)[0]
-    for line in decision.splitlines():
-        m = re.match(r"^\|\s*(FREE|PRO|ENTERPRISE)\s*\|(.*)\|\s*$", line)
-        if not m:
-            continue
-        cells = [c.strip() for c in m.group(2).split("|")]
-        # cells[0] is the price; the four metrics follow in METERED_METRICS order.
-        values = []
-        for cell in cells[1:5]:
-            if cell.lower() == "unlimited":
-                values.append(plans.UNLIMITED)
-            else:
-                values.append(int(cell.replace(" ", "").replace(",", "")))
-        out[PlanTier[m.group(1)]] = dict(zip(_METRICS, values, strict=True))
-        if len(out) == len(PlanTier):
-            break  # the first table is the decision; the cost tables follow it
-    assert set(out) == set(PlanTier), f"ADR-003 table is missing a tier: {ADR}"
-    return out
+def _limit(cell: str) -> int:
+    return plans.UNLIMITED if cell.lower() == "unlimited" else int(cell.replace(" ", "").replace(",", ""))
+
+
+def _adr_limits(text: str | None = None) -> dict[PlanTier, dict[str, int]]:
+    """The four limits of each tier in the decision table: `| FREE | $0 | 5 | 1 000 | 10 | 30 |`.
+    The price is the first cell; the metrics follow in METERED_METRICS order."""
+    return {
+        tier: dict(zip(_METRICS, map(_limit, cells[1:5]), strict=True))
+        for tier, cells in decision_rows(text).items()
+    }
 
 
 @pytest.fixture
@@ -143,3 +133,25 @@ def test_free_tier_worst_case_is_within_the_acquisition_budget(default_plans):
         f"${FREE_TIER_MONTHLY_BUDGET_USD:.2f} budget (ADR-003)."
     )
     assert free.ai_calls > 0 and free.ai_calls != plans.UNLIMITED
+
+
+@pytest.mark.unit
+def test_adr_limit_parse_is_anchored_on_the_table_header():
+    """Table order in the ADR must not matter (#776): a cost table whose rows start
+    with the tier names, placed before the decision table, is not read as limits."""
+    reordered = (
+        "## Decision\n\n"
+        "| Tier | ai_calls | uploads | training_runs | predictions |\n|---|---|---|---|---|\n"
+        "| FREE | 7 | 7 | 7 | 7 |\n| PRO | 8 | 8 | 8 | 8 |\n| ENTERPRISE | 9 | 9 | 9 | 9 |\n\n"
+        "| Tier | Price | training_runs | predictions | uploads | ai_calls |\n|---|---|---|---|---|---|\n"
+        "| FREE | $0 | 5 | 1 000 | 10 | 30 |\n"
+        "| PRO | $49 / month | 100 | 50,000 | 500 | 1 000 |\n"
+        "| ENTERPRISE | contact us | unlimited | unlimited | unlimited | 20 000 |\n"
+    )
+
+    limits = _adr_limits(reordered)
+
+    assert limits[PlanTier.FREE] == {"training_runs": 5, "predictions": 1000, "uploads": 10, "ai_calls": 30}
+    assert limits[PlanTier.PRO]["predictions"] == 50000
+    assert limits[PlanTier.ENTERPRISE]["uploads"] == plans.UNLIMITED
+    assert limits[PlanTier.ENTERPRISE]["ai_calls"] == 20000

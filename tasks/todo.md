@@ -1,14 +1,11 @@
-# Issue #752: three e2e specs whose backend calls never reach the backend
+# Issue #776: the plan-limit test reads ADR-003's table by section order
 
-## What each one turned out to be
-- `upload.spec.ts`, the metadata check: a relative `/api/v1` URL (answered by the Next dev
-  server), the wrong id-space, and a branch that logged "skipped" on any failure. The test
-  is `@smoke`.
-- `ai-recommendations.spec.ts`: 15 tests posting to `/ai/analyze-dataset`. No such route.
-- `transformation-preview.spec.ts`: drives a `/datasets` page that does not exist.
+## Problem
+`_adr_limits` took the `## Decision` section and kept the first row it met per tier. The
+cost tables in the same section also start their rows with the tier names, so it was
+right only while the decision table came first. `_adr_prices` was fixed for this in #775.
 
 ## Plan
-- [x] The metadata check reads `GET {API_BASE}/user_data/{id}` with the session's token and
-      asserts 200 and the record. Run on the real stack; mutation-checked (a wrong path fails it).
-- [x] The two specs that cannot run are deleted, with why.
-- [x] The rest of the unrun suite: #991.
+- [x] `tests/adr_table.py::decision_rows`: the table found by its `| Tier | Price |` header,
+      read to its end. Both tests use it.
+- [x] A reordered-table test for the limits, like the one the prices have.
