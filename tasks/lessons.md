@@ -2104,3 +2104,30 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **What happened:** two full gates failed on test pollution in one evening. First a test patched a method on the shared `s3_service` instance with `monkeypatch.setattr(instance, name, fake)`; pytest restores that by setting the original bound method back as an *instance attribute*, which stays for the rest of the run and bypasses every later patch of the class (30 failures, #983). The first fix was to patch the class. Then a class-level patch of `mcp_service` was itself bypassed, because an older test had left exactly such an instance attribute behind (2 failures, #683).
 - **Rule:** patch a singleton service through its own dict: `monkeypatch.setitem(vars(service), "method", fake)`, with `fake` taking no `self`. It sits on the instance, so it wins over anything an earlier test left, and `setitem` deletes the key on undo, so it leaves nothing for a later one. `unittest.mock.patch.object(service, ...)` also cleans up after itself. Never `monkeypatch.setattr` on a shared instance, by object or by dotted string.
 - **And:** a test that pollutes, or is polluted, passes every targeted run. Only the full gate shows it; run it before opening the PR.
+
+## 2026-10-13: a default on `getattr` hides a renamed field (#620)
+- The backend's MCP client read `getattr(result, "isError", False)`. The 2.x SDK renamed the
+  field to `is_error`, so the read answered "no error" and a failed tool call was returned
+  as a result. The unit tests used stand-in objects carrying the old names and stayed green.
+- **Rule:** read a library object's fields as attributes, so a rename raises. Build the
+  library's own type in the test, not a namespace with the names the code expects.
+
+## 2026-10-13: check that the flag catches the thing before writing "with warnings as errors" (#620)
+- A demo ran pytest with `-W error::FutureWarning` to show a pandas deprecation was gone.
+  `Pandas4Warning` is a `DeprecationWarning`, so the flag would have passed either way.
+- **Rule:** when a command's flag is the evidence, first run it against the broken state and
+  see it fail. `-W error` (everything) is the honest default.
+
+## 2026-10-13: a count taken with grep includes the comments (#999)
+- "8 tests in the smoke gate" came from `grep -c "@smoke"`; one match was a comment. The
+  number went into an issue title and a commit-bound doc before the test list showed 7.
+- **Rule:** count tests from the runner's own list (`--list` or the run log), not from a
+  text match on the tag.
+
+## 2026-10-13: an e2e spec passing is not evidence until it has been seen to fail (#999, #743)
+- Four specs (56 tests) drove a page no user could reach, through selectors that matched
+  nothing, inside `try/catch`. Running them once on the real stack and grepping the log for
+  `waiting for locator` sorted fiction from coverage in five minutes.
+- **Rule:** for a spec you did not write, run it on the stack and break the thing it claims
+  to test. For one you did write, do the same before the PR (the Visual-default mutation).
+

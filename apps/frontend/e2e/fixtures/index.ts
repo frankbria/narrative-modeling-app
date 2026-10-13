@@ -47,9 +47,12 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     // that here:
     //   - Auth: global-setup's saved session (e2e/.auth/user.json) didn't take for the
     //     run, so every navigation bounces to /auth/signin.
-    //   - Onboarding: the shared single e2e user is mid first-time — its server-side
-    //     /onboarding/status is reset by a concurrent spec (#550) — and lands on
-    //     /onboarding. (Note the dashboard's redirect effect short-circuits on
+    //   - Onboarding: the signed-in user is mid first-time and lands on /onboarding.
+    //     For the shared user that used to be a concurrent spec resetting its
+    //     /onboarding/status (#550); since #743 the specs that reset or erase account
+    //     state are their own users (e2e/isolatedUsers.ts), so for the shared user this
+    //     should no longer happen, and for an isolated one it is that user's own state.
+    //     (Note the dashboard's redirect effect short-circuits on
     //     ?skipOnboarding=true while that param is in the URL — app/dashboard/page.tsx —
     //     so a bounce means the param was dropped by a navigation before the effect ran,
     //     or the redirect came from that shared-state path; the exact trigger isn't
@@ -80,8 +83,9 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
     if (!url.includes('/dashboard')) {
       throw new Error(
         `[authenticatedPage] could not settle on /dashboard — landed on ${url} after a ` +
-        'skip-onboarding retry. If that is /onboarding, the shared e2e user is mid ' +
-        'first-time (a concurrent onboarding-state reset, #550), not a product regression; ' +
+        'skip-onboarding retry. If that is /onboarding, this user is mid first-time. ' +
+        'For the shared test user that means some spec changed its account state without ' +
+        'being an isolated user (e2e/isolatedUsers.ts, #743), not a product regression; ' +
         'any other route is an unexpected redirect worth investigating from this URL. This ' +
         "is the per-run state #578 describes — check whether this run's own retries all " +
         'failed before dismissing it as flaky.',

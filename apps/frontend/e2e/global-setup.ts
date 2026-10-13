@@ -1,5 +1,7 @@
 import { chromium, FullConfig } from '@playwright/test';
 import path from 'path';
+import { signInAs } from './helpers/apiAuth';
+import { ISOLATED_USERS, isolatedEmail, isolatedState } from './isolatedUsers';
 
 /**
  * Global setup for Playwright tests
@@ -119,6 +121,15 @@ async function globalSetup(config: FullConfig) {
     // Save the authenticated state
     await context.storageState({ path: storageStatePath });
     console.log(`💾 Saved auth state to: ${storageStatePath}`);
+
+    // One saved session per isolated user (#743), for the specs that change
+    // account-scoped state and must not share the user above.
+    for (const user of ISOLATED_USERS) {
+      const isolated = await signInAs(browser, baseURL!, isolatedEmail(user), testPassword);
+      await isolated.storageState({ path: isolatedState(user) });
+      await isolated.close();
+    }
+    console.log(`💾 Saved ${ISOLATED_USERS.length} isolated user sessions`);
 
   } catch (error) {
     console.error('❌ Authentication setup failed:', error);
