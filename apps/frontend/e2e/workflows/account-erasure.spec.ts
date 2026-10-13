@@ -62,6 +62,9 @@ test.describe('right-to-erasure UI (#482)', () => {
 
 test.describe('account erasure, as a user of its own (#743)', () => {
   test.use({ storageState: isolatedState('erasure') });
+  // One account: a second browser project running this at the same time would upload
+  // into it after the erase, or erase it mid-test.
+  test.skip(({ browserName }) => browserName !== 'chromium', 'runs in one browser');
 
   test("erases everything the account holds from Settings, and the account still works @smoke", async ({
     authenticatedPage: page,

@@ -116,6 +116,8 @@ export default defineConfig({
     reuseExistingServer: true,
     timeout: 120 * 1000,
     env: {
+      // global-setup signs in the isolated users (e2e/isolatedUsers.ts, #743)
+      TEST_ISOLATED_USERS: '1',
       NODE_ENV: 'development',
       PORT: process.env.PORT || '3010',
       TEST_USER_EMAIL: process.env.TEST_USER_EMAIL || 'test@narrativeml.com',
