@@ -92,6 +92,8 @@ describe('checkApiToken', () => {
 
   it('says so when the backend is failing or cannot be reached, without the error text', async () => {
     expect(await checkApiToken(ENV, answering(502))).toBe('unhealthy (the backend answered 502)');
+    // A wrong address answers too; an answer that never met the auth check proves nothing.
+    expect(await checkApiToken(ENV, answering(404))).toBe('unhealthy (the backend answered 404)');
 
     const refused = jest.fn(async () => {
       throw new TypeError('fetch failed: connect ECONNREFUSED 10.0.0.7:443');

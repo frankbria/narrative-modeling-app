@@ -53,13 +53,16 @@ export async function checkMongo(env: Env = process.env): Promise<string> {
   }
 }
 
+// The two answers that can only come after the backend verified the signature: the
+// list itself, or the invite gate refusing a probe user who is on no allowlist.
+const SIGNATURE_ACCEPTED = [200, 403];
+
 /** What the backend's answer to a signed request says about the shared secret. */
 function secretVerdict(status: number): string {
+  if (SIGNATURE_ACCEPTED.includes(status)) return 'healthy';
   if (status === 401) return unhealthy('the backend rejected a token signed with this NEXTAUTH_SECRET');
-  if (status >= 500) return unhealthy(`the backend answered ${status}`);
-  // Anything else got past signature verification: a 200, or the invite gate's 403
-  // for a probe user who is on no allowlist.
-  return 'healthy';
+  // A 404, a 5xx, a proxy's page: the request never reached the check, so it proves nothing.
+  return unhealthy(`the backend answered ${status}`);
 }
 
 /**
