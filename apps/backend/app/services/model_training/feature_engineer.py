@@ -337,7 +337,8 @@ class FeatureEngineer:
         keep = self.config.keep_columns
         chosen = set(self.config.exclude_columns)
         self.excluded_by_choice = [col for col in X.columns if col in chosen]
-        # A column left out by choice is reported as that and as nothing else.
+        # A column left out by choice is reported as that and as nothing else, and
+        # stays out even if it is also named in ``keep``: keeping only overrides a rule.
         rest = X.drop(columns=self.excluded_by_choice)
         # Not subject to ``keep``: there is no value to encode, and an imputer drops
         # a column it has nothing to learn a fill from. An empty date is "empty".

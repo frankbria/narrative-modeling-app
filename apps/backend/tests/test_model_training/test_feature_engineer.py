@@ -1337,6 +1337,20 @@ class TestColumnsLeftOutByChoice:
         assert result.metadata["excluded_features"] == []
 
     @pytest.mark.asyncio
+    async def test_a_column_left_out_stays_out_even_when_it_is_also_kept(self):
+        X, y = self._frame()
+        fe = FeatureEngineer(
+            FeatureEngineeringConfig(
+                select_features=False, exclude_columns=["customer_id"], keep_columns=["customer_id"]
+            )
+        )
+
+        result = await fe.fit_transform(X, y, "binary_classification")
+
+        assert result.metadata["excluded_user_columns"] == ["customer_id"]
+        assert not [name for name in result.feature_names if name.startswith("customer_id")]
+
+    @pytest.mark.asyncio
     async def test_serving_and_the_export_ignore_a_column_left_out(self):
         X, y = self._frame()
         fe = FeatureEngineer(FeatureEngineeringConfig(select_features=False, exclude_columns=["region"]))

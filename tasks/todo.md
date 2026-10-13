@@ -15,21 +15,21 @@ checkboxes had nothing behind them and go.
 
 ## Plan
 Backend
-- [ ] RED: `FeatureEngineer(exclude_columns=[…])` leaves those columns out at fit, at serving
+- [x] RED: `FeatureEngineer(exclude_columns=[…])` leaves those columns out at fit, at serving
       and in the export, and reports them apart from identifiers, dates and empties.
-- [ ] `FeatureEngineeringConfig.exclude_columns`, `FeatureConfigRequest.exclude_columns`
+- [x] `FeatureEngineeringConfig.exclude_columns`, `FeatureConfigRequest.exclude_columns`
       (the request dumps straight onto the config).
-- [ ] `training_config["excluded_user_columns"]`, the model report ("Left out by you").
-- [ ] Everything left out: a failure reason that says so.
+- [x] `training_config["excluded_user_columns"]`, the model report ("Left out by you").
+- [x] Everything left out: a failure reason that says so.
 Frontend
-- [ ] `lib/services/datasetColumns.ts`: the column loader the Model page already uses
+- [x] `lib/services/datasetColumns.ts`: the column loader the Model page already uses
       (both id-spaces), shared.
-- [ ] `/features`: the dataset's columns, at least two selected, a failed load shown with a
+- [x] `/features`: the dataset's columns, at least two selected, a failed load shown with a
       retry, "Continue" completes the stage with `selectedFeatures`.
-- [ ] Model page: columns not selected (other than the target) go out as `exclude_columns`;
+- [x] Model page: columns not selected (other than the target) go out as `exclude_columns`;
       the form says how many columns the model will see. The report lists them.
-- [ ] Contract: the train request the page builds is checked against `TrainModelRequest`'s
+- [x] Contract: the train request the page builds is checked against `TrainModelRequest`'s
       schema, captured the way the Prepare stage's are (#855).
 E2E
-- [ ] A spec walks upload → features → model on the real stack with no mocks for this page.
-- [ ] `beta-journey` and `stage-transitions` stop mocking the two routes that never existed.
+- [x] A spec walks upload → features → model on the real stack with no mocks for this page.
+- [x] `beta-journey` and `stage-transitions` stop mocking the two routes that never existed.
