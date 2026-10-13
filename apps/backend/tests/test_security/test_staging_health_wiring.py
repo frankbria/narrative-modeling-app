@@ -305,6 +305,13 @@ def test_frontend_probe_prints_a_report_or_a_fixed_phrase_and_nothing_else():
         "frontend: unhealthy (the readiness route answered 500 with no report)"
     )
 
+    # A 200 that carries no report is still a failure: something sat between curl and the route.
+    proxied = _frontend_probe(_answering("<html>welcome</html>", 200))
+    assert proxied.returncode == 1
+    assert proxied.stdout.strip() == (
+        "frontend: unhealthy (the readiness route answered 200 with no report)"
+    )
+
     dead = _frontend_probe(
         "echo 'service \"frontend\" is not running: secret=hunter2' >&2; exit 1\n"
     )

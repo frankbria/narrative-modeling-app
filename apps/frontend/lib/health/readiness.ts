@@ -41,15 +41,18 @@ function errorKind(error: unknown): string {
 export async function checkMongo(env: Env = process.env): Promise<string> {
   const uri = env.MONGODB_URI;
   if (!uri) return unhealthy('MONGODB_URI is not set');
-  const client = new MongoClient(uri, { serverSelectionTimeoutMS: TIMEOUT_MS, connectTimeoutMS: TIMEOUT_MS });
+  let client: MongoClient | undefined;
   try {
+    // Inside the try: the driver parses the connection string in its constructor, so a
+    // value mangled during a rotation throws here, before anything connects.
+    client = new MongoClient(uri, { serverSelectionTimeoutMS: TIMEOUT_MS, connectTimeoutMS: TIMEOUT_MS });
     await client.connect();
     await client.db(env.MONGODB_DB).command({ ping: 1 });
     return 'healthy';
   } catch (error) {
     return unhealthy(errorKind(error));
   } finally {
-    await client.close().catch(() => undefined);
+    await client?.close().catch(() => undefined);
   }
 }
 

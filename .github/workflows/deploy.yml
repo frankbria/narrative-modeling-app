@@ -190,6 +190,7 @@ jobs:
              docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe"
           # The frontend's half of the shared credentials (#756): a fresh Mongo
           # connection from its container, and a token it signed, verified by the backend.
+          # Its exit code fails this step (the run shell is `bash -e`).
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh
 

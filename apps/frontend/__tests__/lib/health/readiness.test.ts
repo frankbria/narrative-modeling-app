@@ -64,6 +64,17 @@ describe('checkMongo', () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
+  it('reports a connection string the driver cannot even parse, instead of throwing', async () => {
+    class MongoParseError extends Error {}
+    const { MongoClient } = jest.requireMock('mongodb') as { MongoClient: jest.Mock };
+    MongoClient.mockImplementationOnce(() => {
+      throw new MongoParseError(`Invalid scheme in ${MONGO_URI}`);
+    });
+
+    expect(await checkMongo(ENV)).toBe('unhealthy (MongoParseError)');
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it('is unhealthy without a connection string, and opens nothing', async () => {
     expect(await checkMongo({ ...ENV, MONGODB_URI: '' })).toBe('unhealthy (MONGODB_URI is not set)');
     expect(constructed).toEqual([]);

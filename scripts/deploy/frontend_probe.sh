@@ -23,12 +23,16 @@ answer=$(compose exec -T frontend curl -sS -m 30 -w '\n%{http_code}' http://loca
 code=${answer##*$'\n'}
 body=${answer%$'\n'*}
 
-# Only the route's own report is repeated; anything else is named, not printed.
-case "$body" in '{"status":'*) ;; *) body="unhealthy (the readiness route answered $code with no report)" ;; esac
+# An image built before the route existed: nothing to ask yet, and not a failure.
+if [ "$code" = 404 ]; then
+  echo "frontend: skipped (this image has no readiness route)"
+  exit 0
+fi
 
-case "$code" in
-  200) echo "frontend: $body" ;;
-  # An image built before the route existed: nothing to ask yet, and not a failure.
-  404) echo "frontend: skipped (this image has no readiness route)" ;;
-  *) echo "frontend: $body"; exit 1 ;;
+# Only the route's own report is repeated; anything else is named, not printed, and
+# is a failure whatever the status code says.
+case "$body" in
+  '{"status":'*) echo "frontend: $body" ;;
+  *) echo "frontend: unhealthy (the readiness route answered $code with no report)"; exit 1 ;;
 esac
+[ "$code" = 200 ]
