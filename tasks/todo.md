@@ -1,3 +1,27 @@
+# Issue #810: a URL assertion passes at push time, before the stage guard bounces
+
+## Plan
+- [x] `e2e/helpers/landing.ts::expectLandedOnStage(page, url, stage)`: the address, then the
+      stage bar naming that stage as current (it follows the workflow state the guard
+      reads), then, once the network is quiet, no guard banner and the same address.
+- [x] The onboarding sample spec uses it after "Use This", and asserts the dataset preview.
+- [x] RED by mutation: take out the #807 fix (the sample load completing Data Loading). The
+      spec passed with it missing before; it must fail now.
+- [x] Audit of every `waitForURL` / `toHaveURL` in `e2e/`: which are followed by work on the
+      landed page (safe), which end on the address (fix), which sit in specs that cannot
+      fail anyway (#921, #991).
+- [x] Mutation result on the real stack: with the stage completion taken out of the sample
+      loader, the spec as it is on main passes; the new one fails with
+      `Received string: "http://localhost:3010/upload"`.
+- [x] Audit: 31 address assertions in `e2e/`. Safe (followed by work on the landed page):
+      the 12 in `stage-transitions` and `beta-journey` before their last step,
+      `features-stage`, `predict`, and the upload fixture (it already waits for the dataset
+      heading). Fixed: the onboarding sample spec and `stage-transitions`' last step
+      (`/deploy`). Left, in specs that cannot fail for other reasons: `train.spec:54`,
+      `evaluate.spec:255` (a `.catch`), `error-scenarios.spec:192`, both in
+      `recipes/recipe-management.spec`, and `UploadPage.waitForUploadComplete` (#921, #991).
+
+
 # Issue #756, second pass: the frontend probe printed nothing and passed
 
 ## Plan
