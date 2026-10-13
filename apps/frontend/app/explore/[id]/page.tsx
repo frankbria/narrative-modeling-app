@@ -463,7 +463,7 @@ export default function DatasetAnalysisPage() {
 
           <TabsContent value="statistics">
             <Present when={dataset.statistics} fallback="Statistics not available">
-              <StatisticsDashboard datasetId={dataset.id} statistics={dataset.statistics} />
+              <StatisticsDashboard datasetId={dataset.id} statistics={dataset.statistics as DatasetStatistics} />
             </Present>
           </TabsContent>
 

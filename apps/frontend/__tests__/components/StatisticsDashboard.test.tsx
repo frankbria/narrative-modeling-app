@@ -211,19 +211,39 @@ describe('StatisticsDashboard', () => {
     )
   })
 
-  it('handles loading state when statistics not provided', () => {
-    render(<StatisticsDashboard datasetId="test-id" />)
-    
-    expect(screen.getByText('Loading statistics...')).toBeInTheDocument()
+  // #825: with no `statistics` the component used to fetch /api/data/{id}/statistics,
+  // a route with no handler. The page always passed them, so the fetch never ran.
+  it('draws from the statistics it is given and asks the network for nothing', () => {
+    render(<StatisticsDashboard datasetId="test-id" statistics={mockStatistics} />)
+
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(screen.queryByText('Loading statistics...')).not.toBeInTheDocument()
   })
 
-  it('handles error state gracefully', () => {
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Failed to fetch'))
-    
-    render(<StatisticsDashboard datasetId="test-id" />)
-    
-    // Should eventually show error
-    expect(screen.getByText('Loading statistics...')).toBeInTheDocument()
+  it('cannot be rendered without statistics', () => {
+    // @ts-expect-error `statistics` is required: there is nowhere to fetch them from
+    const withoutStatistics = <StatisticsDashboard datasetId="test-id" />
+
+    expect(withoutStatistics.props.statistics).toBeUndefined()
+  })
+
+  it('names what is wrong with a column and nothing more', () => {
+    const [age] = mockStatistics.column_statistics
+    const sparse = { ...age, column_name: 'sparse', null_percentage: 15, outlier_percentage: 0 }
+    const noisy = { ...age, column_name: 'noisy', null_percentage: 0, outlier_percentage: 6 }
+    const both = { ...age, column_name: 'both', null_percentage: 12, outlier_percentage: 7.5 }
+    render(
+      <StatisticsDashboard
+        datasetId="test-id"
+        statistics={{ ...mockStatistics, column_statistics: [sparse, noisy, both, age] }}
+      />,
+    )
+
+    // A zero outlier share used to be rendered as a literal "0" after the text.
+    expect(screen.getByText('sparse').nextElementSibling).toHaveTextContent(/^15\.0% missing$/)
+    expect(screen.getByText('noisy').nextElementSibling).toHaveTextContent(/^6\.0% outliers$/)
+    expect(screen.getByText('both').nextElementSibling).toHaveTextContent(/^12\.0% missing • 7\.5% outliers$/)
+    expect(screen.queryByText('No significant issues detected')).not.toBeInTheDocument()
   })
 
   it('filters columns by data type correctly', () => {
