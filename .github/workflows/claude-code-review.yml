@@ -12,6 +12,11 @@ concurrency:
 
 jobs:
   claude-review:
+    # People's pull requests only. A run Dependabot triggers is given Dependabot's
+    # secrets, not the repository's, so the review step started with an empty token
+    # and failed on every dependency PR (#555). Those PRs get a supply-chain triage
+    # instead of a code review.
+    if: github.event.pull_request.user.type == 'User'
     runs-on: ubuntu-latest
     # Runaway-run safeguard (issue #188): normal runs take ~3.5 min; a malfunctioning
     # run on PR #187 ran 55+ min posting junk comments before manual cancellation.
