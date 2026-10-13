@@ -15,7 +15,9 @@ that model cannot be exported (the encode error is a `ValueError`, answered 400)
       (`export_model_custom` was at cc 11).
 - [x] `batch_prediction.download_results` uses it too (cc 6: the media-type chain becomes
       a lookup).
-- [x] A guard: no `attachment; filename` literal in `app/` outside the builder.
+- [x] A guard: no `attachment; filename` literal in `app/` outside the builder. It found a
+      fourth site on its first run: the presigned export URL's `ResponseContentDisposition`
+      in `s3_service.py` (already escaped, by its own rule). It uses the builder now.
 - [x] `MLModel.name` is not given a filename validator: it is a display name ("v2 / churn",
       a trailing dot, any script), and changing what users typed to make one header safe
       is the wrong end to fix.
