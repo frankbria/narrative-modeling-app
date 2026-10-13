@@ -85,7 +85,6 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
 
       # Security
-      SECRET_KEY: ${BACKEND_SECRET_KEY}
       # CORS: the backend reads BACKEND_CORS_ORIGINS (config.py). It refuses '*'
       # in production-like envs, so this MUST list explicit staging origin(s) —
       # the old ALLOWED_ORIGINS name was read by nothing and left CORS wildcard.
