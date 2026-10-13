@@ -177,7 +177,12 @@ test.describe('tenant isolation (#493)', () => {
         await bContext.close();
       }
     } finally {
-      if (jobId) await request.delete(`${API_BASE}/batch/jobs/${jobId}`, { headers: a }).catch(() => {});
+      if (jobId) {
+        // Delete refuses a job that is still running, so stop it first (a finished one
+        // answers 400 to the cancel, which is fine).
+        await request.post(`${API_BASE}/batch/jobs/${jobId}/cancel`, { headers: a }).catch(() => {});
+        await request.delete(`${API_BASE}/batch/jobs/${jobId}`, { headers: a }).catch(() => {});
+      }
       if (modelId) await request.delete(`${API_BASE}/ml/${modelId}`, { headers: a }).catch(() => {});
       if (datasetId) await request.delete(`${API_BASE}/datasets/${datasetId}`, { headers: a }).catch(() => {});
       if (fileId) await cleanupDataset(fileId);
