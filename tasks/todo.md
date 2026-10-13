@@ -12,7 +12,10 @@
       both views, the chain view's accessible names, both views on a phone and a tablet.
       Dropped: assertions that cannot fail (`|| true`, `>= 0`, either-or) and the legacy
       header, Back link and error card.
-- [x] Delete `app/datasets/[id]/prepare/page.tsx` and the `showViewToggle` prop only it passed.
+- [x] The legacy page's UI is deleted with the `showViewToggle` prop only it passed. Its address
+      stays as a redirect to `/prepare?datasetId=…`: the legacy engineer page (#738, owner's
+      call) still links there, and editing that page's links means splitting a 240-line
+      untested component for the CRAP gate (review finding).
 - [x] Mutation check: default the pipeline to Visual, three of the new tests fail.
 - [x] Lint ceiling 228 -> 190 (the deleted specs carried 34 warnings).
 
