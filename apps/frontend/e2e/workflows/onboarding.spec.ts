@@ -1,6 +1,7 @@
 import { test, expect } from '../fixtures';
 import { apiAuthHeaders } from '../helpers/apiAuth';
 import { isolatedState } from '../isolatedUsers';
+import { textLayoutProblems } from '../helpers/layoutProblems';
 
 /**
  * #470 — the onboarding flow every first-time user is forced into must talk to the
@@ -115,5 +116,38 @@ test.describe('Onboarding sample trains (#770)', () => {
     const steps = await (await page.request.get(`${API}/onboarding/steps`, { headers })).json();
     expect(steps.find((s: { step_id: string }) => s.step_id === 'train_model').status).toBe('completed');
     expect(failed, 'onboarding requests that failed').toEqual([]);
+  });
+});
+
+/**
+ * #809 — the page sits beside the app sidebar, so its own width is far less than the
+ * viewport's. Keyed to the viewport, the progress column was about 120px at 1280: step
+ * titles cut to "Welc…", the points badge out of its row, the two count labels on top of
+ * each other. Measured in a real browser at the three widths the issue names.
+ */
+test.describe('Onboarding progress card at desktop widths (#809)', () => {
+  test('nothing in the progress card is cut off, outside it, or overlapping @smoke', async ({
+    authenticatedPage: page,
+  }) => {
+    const headers = await apiAuthHeaders(page.request);
+    expect((await page.request.post(`${API}/onboarding/reset`, { headers })).ok()).toBeTruthy();
+    // An achievement puts the points badge and the two count labels on the card.
+    const steps = await (await page.request.get(`${API}/onboarding/steps`, { headers })).json();
+    for (const step of steps as Array<{ step_id: string }>) {
+      await page.request.post(`${API}/onboarding/steps/${step.step_id}/complete`, { headers, data: {} });
+      const earned = await (await page.request.get(`${API}/onboarding/achievements`, { headers })).json();
+      if ((earned.achievements || []).length > 0) break;
+    }
+    // Leave the tutorial unfinished, or the page shows the completion screen instead.
+    const status = await (await page.request.get(`${API}/onboarding/status`, { headers })).json();
+    expect(status.is_onboarding_complete).toBe(false);
+
+    for (const width of [1024, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/onboarding');
+      await expect(page.getByText('Tutorial Steps')).toBeVisible({ timeout: 20000 });
+      await expect(page.getByText(/points$/).first()).toBeVisible();
+      expect(await textLayoutProblems(page, 'Your Progress'), `at ${width}px`).toEqual([]);
+    }
   });
 });
