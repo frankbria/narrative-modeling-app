@@ -1,3 +1,24 @@
+# Issue #999: 72 e2e tests drove a legacy Prepare page no user can reach
+
+## Plan
+- [x] Baseline: run the five specs on the real stack as they are. 31 pass, 36 fail, 5 never
+      run (a serial suite stops at its first failure).
+- [x] `transform`, `data-versioning`, `transformation-config`, `complete-ai-workflow`: every
+      test either fails (the page object clicks controls that exist nowhere: 19 of its 21
+      selectors match nothing in the app) or passes inside a `try/catch` or an `if visible`.
+      None can fail on a regression. Deleted, with the page objects only they used.
+- [x] `data-preparation`: the one spec with real assertions, on the legacy page's own header.
+      Rewritten against `/prepare` (the stage a user gets): default view, a step shared by
+      both views, the chain view's accessible names, both views on a phone and a tablet.
+      Dropped: assertions that cannot fail (`|| true`, `>= 0`, either-or) and the legacy
+      header, Back link and error card.
+- [x] The legacy page's UI is deleted with the `showViewToggle` prop only it passed. Its address
+      stays as a redirect to `/prepare?datasetId=…`: the legacy engineer page (#738, owner's
+      call) still links there, and editing that page's links means splitting a 240-line
+      untested component for the CRAP gate (review finding).
+- [x] Mutation check: default the pipeline to Visual, three of the new tests fail.
+- [x] Lint ceiling 228 -> 190 (the deleted specs carried 34 warnings).
+
 # Issue #620: the MCP server and its backend client move to the mcp 2.x SDK
 
 ## Plan

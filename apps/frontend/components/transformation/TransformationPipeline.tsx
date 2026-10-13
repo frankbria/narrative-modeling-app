@@ -45,14 +45,6 @@ interface TransformationPipelineProps {
   datasetId: string;
   onComplete?: (transformedDatasetId: string) => void;
   onUnsavedChanges?: (hasChanges: boolean) => void;
-  /**
-   * Whether to render the built-in Visual/Chain view toggle (issue #275).
-   * Default `true` — the standalone `/prepare` route relies on it for its
-   * keyboard path. Set `false` when an embedding page already provides its own
-   * view switching (e.g. `/datasets/[id]/prepare`) to avoid a duplicate toggle;
-   * in that mode the pipeline shows the visual canvas and the host controls views.
-   */
-  showViewToggle?: boolean;
 }
 
 
@@ -173,8 +165,7 @@ function RecipeModal(props: RecipeModalProps) {
 export default function TransformationPipeline({
   datasetId,
   onComplete,
-  onUnsavedChanges,
-  showViewToggle = true
+  onUnsavedChanges
 }: TransformationPipelineProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<TransformationFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -202,11 +193,8 @@ export default function TransformationPipeline({
   // Default to the accessible Chain view so keyboard-only users get a fully
   // operable path (add/reorder/edit/delete) without touching the drag-only
   // React Flow canvas (issue #275, WCAG 2.1.1). The Visual canvas stays one
-  // keyboard-operable toggle away. When the toggle is suppressed (embedded in a
-  // host that owns view switching), fall back to the visual canvas.
-  const [viewMode, setViewMode] = useState<PipelineView>(
-    showViewToggle ? 'chain' : 'visual'
-  );
+  // keyboard-operable toggle away.
+  const [viewMode, setViewMode] = useState<PipelineView>('chain');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   // Monotonic counter for collision-free node IDs (mirrors FeatureBuilder);
   // Date.now()+length can collide on rapid adds within the same millisecond.
@@ -214,8 +202,7 @@ export default function TransformationPipeline({
 
 
   // Transformation-type metadata + column names so the Chain view's Edit action
-  // can open a keyboard-accessible parameter dialog (mirrors the wiring in
-  // app/datasets/[id]/prepare/page.tsx).
+  // can open a keyboard-accessible parameter dialog.
   const { data: metadata } = useAsyncData(() => loadMetadata(datasetId), [datasetId], {
     enabled: !!datasetId,
   });
@@ -580,7 +567,6 @@ export default function TransformationPipeline({
           busy={loading || nodes.length === 0}
           onPreview={handlePreviewTransformation}
           onApply={handleApplyTransformations}
-          showViewToggle={showViewToggle}
           viewMode={viewMode}
           onViewChange={setViewMode}
           onRecipes={() => setShowRecipeManager(true)}

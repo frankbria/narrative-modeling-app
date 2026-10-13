@@ -10,8 +10,6 @@ interface PipelineToolbarProps {
   busy: boolean;
   onPreview: VoidFunction;
   onApply: VoidFunction;
-  /** Render the Visual/Chain toggle (#275); an embedding page may own view switching. */
-  showViewToggle: boolean;
   viewMode: PipelineView;
   onViewChange(view: PipelineView): void;
   onRecipes: VoidFunction;
@@ -23,7 +21,7 @@ interface PipelineToolbarProps {
 }
 
 export default function PipelineToolbar(props: PipelineToolbarProps) {
-  const { busy, onPreview, onApply, showViewToggle, viewMode, onViewChange } = props;
+  const { busy, onPreview, onApply, viewMode, onViewChange } = props;
   const { onRecipes, canUndo, canRedo, onUndo, onRedo, onExport } = props;
   return (
     <div className="bg-card border-b p-4 flex items-center justify-between">
@@ -47,7 +45,7 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        {showViewToggle && <ViewToggle viewMode={viewMode} onViewChange={onViewChange} />}
+        <ViewToggle viewMode={viewMode} onViewChange={onViewChange} />
         <button onClick={onRecipes} className="p-2 hover:bg-muted rounded" title="Manage Recipes">
           <Save className="w-5 h-5" />
         </button>

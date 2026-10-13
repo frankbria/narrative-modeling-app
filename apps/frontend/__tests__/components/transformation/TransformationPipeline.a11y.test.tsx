@@ -94,19 +94,6 @@ describe('TransformationPipeline — keyboard accessibility (#275)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('suppresses the built-in toggle when a host provides its own (showViewToggle=false)', () => {
-    // /datasets/[id]/prepare owns its own Visual/Chain toggle; embedding the
-    // pipeline must not render a second one (would duplicate "Visual"/"Chain").
-    render(<TransformationPipeline datasetId="dataset-1" showViewToggle={false} />);
-
-    expect(screen.queryByRole('group', { name: /pipeline view/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^chain$/i })).not.toBeInTheDocument();
-    // Falls back to the visual canvas (no accessible chain list rendered)...
-    expect(screen.queryByRole('list', { name: /transformation pipeline steps/i })).not.toBeInTheDocument();
-    // ...and the React Flow canvas IS rendered (positive assertion).
-    expect(document.querySelector('.react-flow')).toBeInTheDocument();
-  });
-
   it('deletes a step with the keyboard (Delete key)', async () => {
     const user = userEvent.setup();
     render(<TransformationPipeline datasetId="dataset-1" />);

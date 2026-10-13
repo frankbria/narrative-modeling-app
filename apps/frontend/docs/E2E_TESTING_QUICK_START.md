@@ -277,10 +277,9 @@ apps/frontend/e2e/
 └── workflows/          # Test specs
     ├── upload.spec.ts
     ├── dataset-metadata.spec.ts
-    ├── transform.spec.ts
+    ├── prepare-pipeline.spec.ts
     ├── train.spec.ts
-    ├── predict.spec.ts
-    └── complete-ai-workflow.spec.ts
+    └── predict.spec.ts
 ```
 
 ### Page Object Model Usage
