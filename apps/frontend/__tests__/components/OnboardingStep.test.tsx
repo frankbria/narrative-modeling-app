@@ -201,7 +201,7 @@ describe('OnboardingStep', () => {
     const welcomeStep = {
       ...mockStep,
       step_type: 'welcome',
-      title: 'Welcome to Narrative Modeling',
+      title: 'Welcome to SheetPredict',
       video_url: '/videos/welcome'
     };
 

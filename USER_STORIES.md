@@ -1,8 +1,8 @@
 # User Stories Document
-## Narrative Modeling Application
+## SheetPredict
 
 ### Document Overview
-This document contains comprehensive user stories covering both happy path scenarios and edge cases for the Narrative Modeling Application. Stories are organized by workflow stage and user persona, with acceptance criteria and technical notes included.
+This document contains comprehensive user stories covering both happy path scenarios and edge cases for SheetPredict. Stories are organized by workflow stage and user persona, with acceptance criteria and technical notes included.
 
 > **These are desired behaviours, not shipped ones.** Several stories describe features
 > that do not exist — database connections, multi-file joins, upload sizes far above the

@@ -6,7 +6,7 @@
 
 ## Overview
 
-The Narrative Modeling App backend has comprehensive integration test coverage across all major service dependencies. This document summarizes the integration test suite, coverage, and usage.
+The SheetPredict backend has comprehensive integration test coverage across all major service dependencies. This document summarizes the integration test suite, coverage, and usage.
 
 ## Test Coverage Summary
 

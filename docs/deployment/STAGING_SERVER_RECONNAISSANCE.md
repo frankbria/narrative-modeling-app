@@ -45,7 +45,7 @@
 | 8001  | Python/FastAPI             | App |
 | 8080  | Docker proxy (nginx)       | Container |
 
-### Assigned Ports for Narrative Modeling App (Staging)
+### Assigned Ports for SheetPredict (Staging)
 
 | Service          | Default Port | Staging Port | Reason |
 |------------------|--------------|--------------|--------|
@@ -75,7 +75,7 @@ Currently running containers (SprintForge project):
 
 **Notes**:
 - SprintForge project uses internal networking (no port conflicts expected)
-- Narrative Modeling App will use separate Docker network
+- SheetPredict will use separate Docker network
 - No MongoDB container running (need to deploy)
 
 ---
@@ -91,7 +91,7 @@ Internet → Nginx (80/443)
 SprintForge Apps    (Available for new apps)
 ```
 
-### Proposed Narrative Modeling App Setup
+### Proposed SheetPredict Setup
 ```
 Internet → Nginx (80/443)
              ↓

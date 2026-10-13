@@ -1,6 +1,6 @@
 # E2E Testing with Playwright
 
-This directory contains end-to-end tests for the Narrative Modeling App using Playwright.
+This directory contains end-to-end tests for SheetPredict using Playwright.
 
 > **📚 For comprehensive testing documentation covering all test types, CI/CD workflows, and best practices, see [Testing Guide](/docs/testing/guide.md)**
 

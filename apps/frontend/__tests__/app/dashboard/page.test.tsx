@@ -119,7 +119,7 @@ describe('DashboardPage', () => {
 
       expect(screen.getByTestId('dashboard')).toBeInTheDocument();
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
-      expect(screen.getByText(/Welcome to Narrative Modeling/)).toBeInTheDocument();
+      expect(screen.getByText(/Welcome to SheetPredict/)).toBeInTheDocument();
     });
 
     it('renders workflow progress section', async () => {
@@ -966,6 +966,26 @@ describe('DashboardPage', () => {
       fireEvent.keyDown(datasetItem!, { key: 'Enter' });
 
       expect(mockPush).toHaveBeenCalledWith('/explore/ds-1');
+    });
+
+    // #482: the trash button opens the erase dialog for that row and nothing else.
+    it('opens the erase dialog from a row without opening the dataset', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ datasets: mockDatasets, models: [] }),
+      });
+      render(<DashboardPage />);
+
+      const trash = await screen.findByRole('button', { name: 'Delete dataset sales_data.csv' });
+      fireEvent.keyDown(trash, { key: 'Enter' });
+      fireEvent.click(trash);
+
+      expect(mockPush).not.toHaveBeenCalledWith('/explore/ds-1');
+      const dialog = await screen.findByRole('dialog', { name: 'Delete "sales_data.csv"' });
+      expect(dialog).toHaveTextContent(/permanently deletes this dataset/i);
+
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
 
     it('displays dataset row and column counts', async () => {

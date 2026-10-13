@@ -5,7 +5,7 @@
 
 ## 🚀 Overview
 
-This guide covers deploying the Narrative Modeling App to production using Docker containers, nginx reverse proxy, and comprehensive monitoring. For staging deployment, see [`docs/deployment/STAGING.md`](docs/deployment/STAGING.md).
+This guide covers deploying SheetPredict to production using Docker containers, nginx reverse proxy, and comprehensive monitoring. For staging deployment, see [`docs/deployment/STAGING.md`](docs/deployment/STAGING.md).
 
 ## 🏗️ Architecture
 
@@ -474,4 +474,4 @@ tar -xzf backup/latest/application.tar.gz
 
 ---
 
-**🎉 Your Narrative Modeling App is now ready for production!**
+**🎉 SheetPredict is now ready for production!**

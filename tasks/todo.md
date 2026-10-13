@@ -1,3 +1,24 @@
+# Issues #765 (AC1) and #770 (AC4, AC7): one product name, SheetPredict
+
+## Plan
+- [x] RED: a repo-wide guard (`test_security/test_product_name.py`) reads every tracked
+      text file and fails on a retired variant ("Narrative Modeling [App|Application|API]",
+      the sidebar's "Modeling App", "NarrativeML", the `vnd.narrativeml` media type).
+      Exempt, each with its reason: the historical record (`tasks/`, the `claudedocs/` trees,
+      `docs/archive`, `docs/deployment/archive`, `docs/sprints`) and `positioning.md`, which
+      says why the names were retired.
+- [x] RED: `/auth/new-user` shows the signed value line from `positioning.md`; the sidebar,
+      the dashboard and the onboarding welcome show the name from `COMPANY.serviceName`.
+- [x] The rename: frontend copy reads `COMPANY.serviceName` (one source), backend strings,
+      the vendor media type (`application/vnd.sheetpredict.v1+json`; nothing sends the old
+      one), LICENSE, READMEs and the live docs.
+- [x] Not renamed, on purpose: identifiers that are not the product's name to a user (the
+      repository, package names, database and bucket names, container names) and the
+      `test@narrativeml.com` fixture address, which `noDeadDomains.test.ts` already confines.
+- [x] The CRAP gate reads a JSX line in a page as the page's: `Sidebar` (cc 18) and
+      `DashboardPage` (cc 11) each hold one of the strings, so both are split under 6.
+
+
 # Issue #781: the storage ceiling does not see transformation outputs or versions
 
 ## Plan

@@ -157,7 +157,7 @@ const STAGES: QuickstartStage[] = [
 ];
 
 export const metadata = {
-  title: 'Quickstart Guide | Narrative Modeling App',
+  title: 'Quickstart Guide | SheetPredict',
 };
 
 export default function QuickstartPage() {

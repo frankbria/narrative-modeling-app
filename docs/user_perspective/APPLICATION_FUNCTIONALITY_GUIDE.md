@@ -1,8 +1,8 @@
-# 🧠 Narrative Modeling App: User Functionality Guide
+# 🧠 SheetPredict: User Functionality Guide
 
-## 🎯 What is the Narrative Modeling App?
+## 🎯 What is SheetPredict?
 
-The Narrative Modeling App is an AI-guided platform that empowers non-expert analysts, business professionals, and domain experts to build, explore, and deploy machine learning models without writing code. It combines powerful automation with an intuitive, story-driven workflow to make machine learning accessible to everyone.
+SheetPredict is an AI-guided platform that empowers non-expert analysts, business professionals, and domain experts to build, explore, and deploy machine learning models without writing code. It combines powerful automation with an intuitive, story-driven workflow to make machine learning accessible to everyone.
 
 ## 🚀 Key Capabilities: What You Can Do
 
@@ -151,7 +151,7 @@ The Narrative Modeling App is an AI-guided platform that empowers non-expert ana
 
 ## 🎭 The Narrative Workflow: Your Guided Journey
 
-The Narrative Modeling App uses a unique **8-stage workflow** that guides you through the machine learning process like a story:
+SheetPredict uses a unique **8-stage workflow** that guides you through the machine learning process like a story:
 
 ### 📊 Stage 1: Data Loading
 **"Begin your story with data"**
@@ -203,7 +203,7 @@ The Narrative Modeling App uses a unique **8-stage workflow** that guides you th
 
 ## 🤝 AI Assistance Throughout Your Journey
 
-The Narrative Modeling App features **AI-powered guidance** at every stage:
+SheetPredict features **AI-powered guidance** at every stage:
 
 ### 💬 AI Chat Assistant
 - **Context-aware help**: Get answers specific to your current task
@@ -441,7 +441,7 @@ The Narrative Modeling App features **AI-powered guidance** at every stage:
 - ⏳ **Deployment**: Currently manual (use external API services)
 
 ### Recommended Workflow for Now
-1. **Upload and profile data** in Narrative Modeling App
+1. **Upload and profile data** in SheetPredict
 2. **Export cleaned data** for external processing
 3. **Use external tools** for model training (scikit-learn, TensorFlow, etc.)
 4. **Import results** back for visualization and sharing
@@ -449,8 +449,8 @@ The Narrative Modeling App features **AI-powered guidance** at every stage:
 
 ## 🎯 Conclusion
 
-The Narrative Modeling App represents a new paradigm in machine learning - one that combines the power of AI with the intuition of human experts. By providing a guided, narrative-driven workflow, it makes sophisticated data analysis accessible to business professionals who don't have coding or statistical expertise.
+SheetPredict represents a new paradigm in machine learning - one that combines the power of AI with the intuition of human experts. By providing a guided, narrative-driven workflow, it makes sophisticated data analysis accessible to business professionals who don't have coding or statistical expertise.
 
-Whether you're a marketing analyst predicting customer behavior, an operations manager forecasting demand, or a researcher uncovering patterns in complex data, the Narrative Modeling App gives you the tools to turn data into actionable insights and predictive models.
+Whether you're a marketing analyst predicting customer behavior, an operations manager forecasting demand, or a researcher uncovering patterns in complex data, SheetPredict gives you the tools to turn data into actionable insights and predictive models.
 
 **Start your data story today and discover what your data can tell you!**

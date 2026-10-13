@@ -51,7 +51,7 @@ Sprint 8 focused on **Resilience Patterns and API Versioning** to improve system
 - Created `/api/v1/` directory structure for versioned endpoints
 - Implemented `APIVersionMiddleware` for version negotiation
 - Added support for multiple version specification methods:
-  - Accept header: `application/vnd.narrativeml.v1+json`
+  - Accept header: `application/vnd.sheetpredict.v1+json`
   - URL path: `/api/v1/endpoint`
   - Default fallback to v1
 - Implemented deprecation warnings for old versions
@@ -266,7 +266,7 @@ async def query_database():
 **API Versioning**:
 ```
 GET /api/v1/health
-Accept: application/vnd.narrativeml.v1+json
+Accept: application/vnd.sheetpredict.v1+json
 ```
 
 ---

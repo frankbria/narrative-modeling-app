@@ -58,7 +58,7 @@ class TestAPIVersionMiddleware:
         """Test version parsing from Accept header."""
         response = client.get(
             "/test",
-            headers={"Accept": "application/vnd.narrativeml.v1+json"}
+            headers={"Accept": "application/vnd.sheetpredict.v1+json"}
         )
 
         assert response.status_code == 200
@@ -78,7 +78,7 @@ class TestAPIVersionMiddleware:
         client = TestClient(app)
         response = client.get(
             "/api/v1/test",
-            headers={"Accept": "application/vnd.narrativeml.v2+json"}
+            headers={"Accept": "application/vnd.sheetpredict.v2+json"}
         )
 
         # URL version (v1) takes precedence over header version (v2)
@@ -89,7 +89,7 @@ class TestAPIVersionMiddleware:
         """Test unsupported version returns 406."""
         response = client.get(
             "/test",
-            headers={"Accept": "application/vnd.narrativeml.v99+json"}
+            headers={"Accept": "application/vnd.sheetpredict.v99+json"}
         )
 
         assert response.status_code == 406
@@ -115,7 +115,7 @@ class TestAPIVersionMiddleware:
         """Test current version doesn't have deprecation warning."""
         response = client.get(
             "/test",
-            headers={"Accept": f"application/vnd.narrativeml.{CURRENT_VERSION}+json"}
+            headers={"Accept": f"application/vnd.sheetpredict.{CURRENT_VERSION}+json"}
         )
 
         assert response.status_code == 200
@@ -132,7 +132,7 @@ class TestAPIVersionMiddleware:
 
         response = client.get(
             "/test",
-            headers={"Accept": "application/vnd.narrativeml.v1+json"}
+            headers={"Accept": "application/vnd.sheetpredict.v1+json"}
         )
 
         assert response.status_code == 200
@@ -153,9 +153,9 @@ class TestAPIVersionMiddleware:
     def test_version_pattern_parsing(self, client):
         """Test various Accept header patterns."""
         test_cases = [
-            ("application/vnd.narrativeml.v1+json", "v1"),
-            ("application/json, application/vnd.narrativeml.v1+json", "v1"),
-            ("application/vnd.narrativeml.v1+json; charset=utf-8", "v1"),
+            ("application/vnd.sheetpredict.v1+json", "v1"),
+            ("application/json, application/vnd.sheetpredict.v1+json", "v1"),
+            ("application/vnd.sheetpredict.v1+json; charset=utf-8", "v1"),
         ]
 
         for accept_header, expected_version in test_cases:
@@ -195,7 +195,7 @@ class TestAPIVersionMiddleware:
             return {"ok": True}
 
         client = TestClient(app)
-        client.get("/test", headers={"Accept": "application/vnd.narrativeml.v1+json"})
+        client.get("/test", headers={"Accept": "application/vnd.sheetpredict.v1+json"})
 
         assert captured_state["api_version"] == "v1"
 
@@ -284,7 +284,7 @@ class TestVersionNegotiation:
         client = TestClient(app)
         response = client.get(
             "/api/v1/test",
-            headers={"Accept": "application/vnd.narrativeml.v2+json"}
+            headers={"Accept": "application/vnd.sheetpredict.v2+json"}
         )
 
         # URL version (v1) wins
@@ -302,7 +302,7 @@ class TestVersionNegotiation:
         client = TestClient(app)
         response = client.get(
             "/test",
-            headers={"Accept": "application/vnd.narrativeml.v1+json"}
+            headers={"Accept": "application/vnd.sheetpredict.v1+json"}
         )
 
         # Header version (v1) wins over default
@@ -327,7 +327,7 @@ class TestErrorHandling:
         # Malformed patterns should use default
         response = client.get(
             "/test",
-            headers={"Accept": "application/vnd.narrativeml.invalid+json"}
+            headers={"Accept": "application/vnd.sheetpredict.invalid+json"}
         )
 
         assert response.status_code == 200

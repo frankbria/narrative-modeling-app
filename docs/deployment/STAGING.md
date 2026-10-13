@@ -178,7 +178,7 @@ The staging server (dev.briaanalytics.com) hosts multiple services. Custom ports
 
 ```ini
 [Unit]
-Description=Narrative Modeling Backend
+Description=SheetPredict Backend
 After=network.target docker.service
 Requires=docker.service
 

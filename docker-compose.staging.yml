@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# Narrative Modeling App - STAGING DEPLOYMENT
+# SheetPredict - STAGING DEPLOYMENT
 # Server: dev.briaanalytics.com (resolve with `dig +short dev.briaanalytics.com`;
 #         do not hardcode the IP — it has changed before)
 # Environment: Staging (pre-production)

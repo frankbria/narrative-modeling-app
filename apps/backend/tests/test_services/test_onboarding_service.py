@@ -118,7 +118,7 @@ class TestOnboardingService:
             assert step is not None
             assert step["step_id"] == "welcome"
             assert step["status"] == "completed"
-            assert step["title"] == "Welcome to Narrative Modeling"
+            assert step["title"] == "Welcome to SheetPredict"
     
     @pytest.mark.asyncio
     async def test_get_onboarding_step_not_exists(self, onboarding_service, mock_user_progress):

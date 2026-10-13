@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
 import Link from "next/link";
+import { COMPANY } from "@/lib/legal/company";
 
 export default function SignUpPage() {
   return (
@@ -14,7 +15,7 @@ export default function SignUpPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
           <CardDescription>
-            Sign up to start using the Narrative Modeling App
+            {COMPANY.valueLine}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -1,7 +1,7 @@
 # Dataset-Specific Data Preparation Page - Implementation Summary
 
 **Date Completed**: December 17, 2025
-**Project**: Narrative Modeling App (Next.js 15 + React + TypeScript)
+**Project**: SheetPredict (Next.js 15 + React + TypeScript)
 **Route**: `/datasets/[id]/prepare`
 **Status**: ✅ COMPLETED AND COMMITTED
 
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Successfully created the dataset-specific data preparation page route for the Narrative Modeling App, implementing Phase 3a of the architecture migration plan. The new route `/datasets/[id]/prepare` replaces the legacy `/prepare?datasetId=X` query-parameter approach with a cleaner, more RESTful URL structure.
+Successfully created the dataset-specific data preparation page route for SheetPredict, implementing Phase 3a of the architecture migration plan. The new route `/datasets/[id]/prepare` replaces the legacy `/prepare?datasetId=X` query-parameter approach with a cleaner, more RESTful URL structure.
 
 **Key Achievement**: Full implementation with 252-line page component, WorkflowContext integration, unsaved changes tracking, and comprehensive error handling.
 

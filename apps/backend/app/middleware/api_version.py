@@ -22,8 +22,8 @@ SUPPORTED_VERSIONS = ["v1"]
 CURRENT_VERSION = "v1"
 DEFAULT_VERSION = "v1"
 
-# Version header pattern: application/vnd.narrativeml.v1+json
-VERSION_PATTERN = re.compile(r"application/vnd\.narrativeml\.v(\d+)\+json")
+# Version header pattern: application/vnd.sheetpredict.v1+json
+VERSION_PATTERN = re.compile(r"application/vnd\.sheetpredict\.v(\d+)\+json")
 
 
 class APIVersionMiddleware(BaseHTTPMiddleware):
@@ -85,7 +85,7 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         """
         Parse API version from Accept header.
 
-        Looks for pattern: application/vnd.narrativeml.v1+json
+        Looks for pattern: application/vnd.sheetpredict.v1+json
 
         Returns:
             Version string (e.g., "v1") or None if not found

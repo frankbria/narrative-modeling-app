@@ -1,5 +1,5 @@
 """
-Feature Selection Service for Narrative Modeling App
+Feature Selection Service for SheetPredict
 
 Implements multiple feature selection algorithms with importance scoring,
 redundancy detection, and human-readable explanations.

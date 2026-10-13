@@ -1,580 +1,138 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useRouter } from 'next/navigation';
-import { useWorkflow } from '@/lib/contexts/WorkflowContext';
-import { WORKFLOW_STAGES, WorkflowStage } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { useOnboardingStatus } from '@/lib/hooks/useOnboardingStatus';
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Button } from '@/components/ui/button';
+import { useOnboardingRedirect } from '@/lib/hooks/useOnboardingRedirect';
 import { ErasureConfirmDialog } from '@/components/settings/ErasureConfirmDialog';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { erasureApi } from '@/lib/services/erasure';
-import {
-  Upload,
-  BarChart3,
-  Wrench,
-  Sparkles,
-  Brain,
-  LineChart,
-  Target,
-  Rocket,
-  ArrowRight,
-  Database,
-  CheckCircle,
-  AlertCircle,
-  Lock,
-  Trash2
-} from 'lucide-react';
+import { COMPANY } from '@/lib/legal/company';
+import { HelpCard, QuickActions, StageCards, WorkflowProgress } from '@/components/dashboard/StageOverview';
+import { RecentDatasets, RecentModels, type DatasetItem, type ModelItem } from '@/components/dashboard/RecentLists';
 
-// Icon mapping for workflow stages
-const STAGE_ICONS: Record<string, React.ElementType> = {
-  Upload,
-  BarChart3,
-  Wrench,
-  Sparkles,
-  Brain,
-  LineChart,
-  Target,
-  Rocket
-};
+type EraseDialogProps = { dataset: DatasetItem; onClose: VoidFunction; onErased: VoidFunction };
 
-interface DatasetItem {
-  dataset_id: string;
-  filename: string;
-  num_rows: number;
-  num_columns: number;
-  created_at: string;
-}
+const HEADER = (
+  <div className="mb-8">
+    <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+    <p className="text-muted-foreground mt-2">
+      Welcome to {COMPANY.serviceName}. Track your progress through the 8-stage ML workflow.
+    </p>
+  </div>
+);
 
-interface ModelItem {
-  model_id: string;
-  name: string;
-  algorithm: string;
-  status: string;
-  test_score: number | null;
-  created_at: string;
-}
+const ERASE_BODY = (
+  <p>
+    This permanently deletes this dataset and everything derived from it —
+    transformations, versions, trained models and their stored files. This cannot be
+    undone.
+  </p>
+);
 
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSecs = Math.floor(diffMs / 1000);
-  const diffMins = Math.floor(diffSecs / 60);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSecs < 60) return 'just now';
-  if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
-  if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
-  return date.toLocaleDateString();
-}
-
-function getStatusColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case 'training':
-      return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
-    case 'trained':
-      return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
-    case 'deployed':
-      return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
-    case 'failed':
-      return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
-    default:
-      return 'bg-muted text-foreground';
+function listOf(data: unknown, key: string): unknown[] {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid API response format');
   }
+  const items = (data as Record<string, unknown>)[key];
+  if (items === undefined) return [];
+  if (!Array.isArray(items)) {
+    throw new Error(`Invalid ${key} format: expected array`);
+  }
+  return items;
 }
 
-// localStorage flag set when a returning user opts out of onboarding so the
-// dashboard stops redirecting them ("Skip for now" / ?skipOnboarding=true).
-// Scoped per user so one account's choice can't bypass onboarding for another
-// account on a shared browser.
-function onboardingSkipKey(userId: string | null | undefined): string {
-  return `onboarding_skipped:${userId ?? 'anonymous'}`;
+async function fetchList(key: string): Promise<unknown[]> {
+  const token = await getAuthToken();
+  const response = await fetch(`${API_URL}/${key}?page=1&limit=5`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${key}`);
+  }
+  return listOf(await response.json(), key);
+}
+
+async function fetchDatasets() {
+  return (await fetchList('datasets')) as DatasetItem[];
+}
+
+async function fetchModels() {
+  return (await fetchList('models')) as ModelItem[];
+}
+
+function isDeployed(model: ModelItem): boolean {
+  return model.status.toLowerCase() === 'deployed';
+}
+
+// Per-dataset right-to-erasure (#482).
+function EraseDatasetDialog(props: EraseDialogProps) {
+  const { dataset, onClose, onErased } = props;
+  const closeWhenDismissed = (next: boolean) => {
+    if (!next) onClose();
+  };
+  const erase = () => erasureApi.eraseDataset(dataset.dataset_id);
+
+  return (
+    <ErasureConfirmDialog
+      open
+      onOpenChange={closeWhenDismissed}
+      title={`Delete "${dataset.filename}"`}
+      confirmWord={dataset.filename}
+      onConfirm={erase}
+      // Keep the dialog open so its success summary shows; refresh the list
+      // behind it. Closing (the Close button) clears the dataset.
+      onErased={onErased}
+      body={ERASE_BODY}
+    />
+  );
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { state, canAccessStage } = useWorkflow();
-  const { user } = useCurrentUser();
-  const {
-    isComplete: onboardingComplete,
-    isLoading: onboardingLoading,
-    error: onboardingError,
-  } = useOnboardingStatus();
+  useOnboardingRedirect();
 
-  // Redirect first-time users into the onboarding flow (issue #152, AC1).
-  // Honors an explicit skip request (persisted per user) so users aren't
-  // trapped, and fails open: a status error or in-flight request never
-  // triggers a redirect.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const skipKey = onboardingSkipKey(user?.id);
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('skipOnboarding') === 'true') {
-      window.localStorage.setItem(skipKey, 'true');
-      return;
-    }
-
-    if (onboardingLoading || onboardingError) return;
-    const skipped = window.localStorage.getItem(skipKey) === 'true';
-    if (!onboardingComplete && !skipped) {
-      router.push('/onboarding');
-    }
-  }, [onboardingComplete, onboardingLoading, onboardingError, user?.id, router]);
-
-
-  // Calculate workflow progress
-  const progressPercentage = useMemo(() => {
-    return (state.completedStages.size / WORKFLOW_STAGES.length) * 100;
-  }, [state.completedStages]);
-
-  const fetchList = async <T,>(path: string, key: string, label: string): Promise<T[]> => {
-    const token = await getAuthToken();
-    const response = await fetch(`${API_URL}/${path}?page=1&limit=5`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${label}`);
-    }
-    const data = await response.json();
-    if (!data || typeof data !== 'object') {
-      throw new Error('Invalid API response format');
-    }
-    const items = data[key];
-    if (items !== undefined && !Array.isArray(items)) {
-      throw new Error(`Invalid ${label} format: expected array`);
-    }
-    return (items || []) as T[];
-  };
-
-  const { data: datasetList, loading: isLoadingDatasets, error: datasetsError, reload: fetchRecentDatasets } = useAsyncData(
-    () => fetchList<DatasetItem>('datasets', 'datasets', 'datasets'),
-    [],
-    { errorMessage: 'Unable to load datasets' },
-  );
-  const recentDatasets = datasetList ?? [];
-  // Per-dataset right-to-erasure (#482): the row targeted for permanent deletion.
+  const datasets = useAsyncData(fetchDatasets, [], { errorMessage: 'Unable to load datasets' });
+  const models = useAsyncData(fetchModels, [], { errorMessage: 'Unable to load models' });
+  const recentDatasets = datasets.data || [];
+  const recentModels = models.data || [];
   const [datasetToErase, setDatasetToErase] = useState<DatasetItem | null>(null);
   const [samplesOpen, setSamplesOpen] = useState(false);
 
-  const { data: modelList, loading: isLoadingModels, error: modelsError, reload: fetchRecentModels } = useAsyncData(
-    () => fetchList<ModelItem>('models', 'models', 'models'),
-    [],
-    { errorMessage: 'Unable to load models' },
-  );
-  const recentModels = modelList ?? [];
-
-  const handleNavigateToStage = (route: string, stageId: WorkflowStage) => {
-    if (canAccessStage(stageId)) {
-      const datasetId = state.datasetId;
-      // For stages that need dataset ID in the URL
-      if (datasetId && route !== '/upload') {
-        router.push(`${route}/${datasetId}`);
-      } else {
-        router.push(route);
-      }
-    }
-  };
-
-  const hasDeployedModels = recentModels.some(m => m.status.toLowerCase() === 'deployed');
+  const hasDatasets = recentDatasets.length > 0;
+  const openSamples = () => setSamplesOpen(true);
+  const stopErasing = () => setDatasetToErase(null);
+  const exploreSample = (datasetId: string) => router.push(`/explore/${datasetId}`);
 
   return (
     <div className="max-w-7xl mx-auto p-6" data-testid="dashboard">
-      {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Welcome to Narrative Modeling. Track your progress through the 8-stage ML workflow.
-        </p>
-      </div>
+      {HEADER}
+      <QuickActions canTrain={hasDatasets} canDeploy={recentModels.some(isDeployed)} />
+      <WorkflowProgress />
+      <StageCards />
 
-      {/* Quick Actions */}
-      <Card className="mb-6">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4">
-            <Button
-              onClick={() => router.push('/upload')}
-              className="flex items-center gap-2"
-            >
-              <Upload size={16} />
-              Upload New Dataset
-              <ArrowRight size={16} />
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => router.push('/model')}
-              disabled={recentDatasets.length === 0}
-              className="flex items-center gap-2"
-            >
-              <Brain size={16} />
-              Train Model
-              <ArrowRight size={16} />
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push('/deploy')}
-              disabled={!hasDeployedModels}
-              className="flex items-center gap-2"
-            >
-              <Rocket size={16} />
-              View Deployments
-              <ArrowRight size={16} />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Workflow Progress */}
-      <Card className="mb-6" data-testid="workflow-progress">
-        <CardHeader>
-          <CardTitle className="text-lg">Workflow Progress</CardTitle>
-          <CardDescription>
-            {state.completedStages.size} of {WORKFLOW_STAGES.length} stages completed
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Progress value={progressPercentage} className="h-3 mb-4" />
-          <div className="flex flex-wrap gap-2">
-            {WORKFLOW_STAGES.map((stage) => {
-              const isCompleted = state.completedStages.has(stage.id);
-              const isCurrent = state.currentStage === stage.id;
-
-              return (
-                <div
-                  key={stage.id}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                    isCompleted
-                      ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200'
-                      : isCurrent
-                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {isCompleted && <CheckCircle size={12} />}
-                  {stage.name}
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Navigation Cards */}
-      <div className="mb-6" data-testid="navigation-cards">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Workflow Stages</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {WORKFLOW_STAGES.map((stage) => {
-            const Icon = STAGE_ICONS[stage.icon] || Database;
-            const isCompleted = state.completedStages.has(stage.id);
-            const isAccessible = canAccessStage(stage.id);
-            const isCurrent = state.currentStage === stage.id;
-
-            return (
-              <Card
-                key={stage.id}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  !isAccessible ? 'opacity-60' : ''
-                } ${isCurrent ? 'ring-2 ring-blue-500' : ''}`}
-                onClick={() => isAccessible && handleNavigateToStage(stage.route, stage.id)}
-                role="button"
-                tabIndex={isAccessible ? 0 : -1}
-                aria-label={`${stage.name}: ${stage.description}${!isAccessible ? ' (locked)' : ''}`}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && isAccessible) {
-                    handleNavigateToStage(stage.route, stage.id);
-                  }
-                }}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className={`p-2 rounded-lg ${
-                      isCompleted
-                        ? 'bg-green-100 dark:bg-green-900/40'
-                        : isCurrent
-                        ? 'bg-blue-100 dark:bg-blue-900/40'
-                        : 'bg-muted'
-                    }`}>
-                      <Icon
-                        size={20}
-                        className={
-                          isCompleted
-                            ? 'text-green-600'
-                            : isCurrent
-                            ? 'text-blue-600'
-                            : 'text-muted-foreground'
-                        }
-                      />
-                    </div>
-                    {isCompleted ? (
-                      <CheckCircle size={18} className="text-green-500" />
-                    ) : !isAccessible ? (
-                      <Lock size={18} className="text-gray-400" />
-                    ) : null}
-                  </div>
-                  <h3 className="font-semibold text-foreground text-sm mb-1">{stage.name}</h3>
-                  <p className="text-xs text-muted-foreground">{stage.description}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Recent Activity Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Datasets */}
-        <Card data-testid="recent-datasets">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Database size={20} />
-              Recent Datasets
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoadingDatasets ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse flex items-center gap-3">
-                    <div className="h-10 w-10 bg-gray-200 rounded" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-3/4" />
-                      <div className="h-3 bg-gray-200 rounded w-1/2" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : datasetsError ? (
-              <div className="flex items-center gap-2 text-red-600 py-4">
-                <AlertCircle size={16} />
-                <span className="text-sm">{datasetsError}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={fetchRecentDatasets}
-                  className="ml-2"
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : recentDatasets.length > 0 ? (
-              <div className="space-y-3">
-                {recentDatasets.map((dataset) => (
-                  <div
-                    key={dataset.dataset_id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
-                    onClick={() => router.push(`/explore/${dataset.dataset_id}`)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        router.push(`/explore/${dataset.dataset_id}`);
-                      }
-                    }}
-                  >
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded">
-                      <Database size={16} className="text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-foreground truncate">
-                        {dataset.filename}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {dataset.num_rows.toLocaleString()} rows, {dataset.num_columns} columns
-                      </p>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {formatRelativeTime(dataset.created_at)}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Delete dataset ${dataset.filename}`}
-                      data-testid="erase-dataset"
-                      className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDatasetToErase(dataset);
-                      }}
-                      onKeyDown={(e) => {
-                        // Don't let Enter/Space bubble to the row's onKeyDown,
-                        // which navigates to /explore/{id}. The button's own
-                        // native activation still fires its onClick.
-                        e.stopPropagation();
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push('/explore')}
-                  className="w-full mt-2"
-                >
-                  View All Datasets
-                  <ArrowRight size={14} className="ml-1" />
-                </Button>
-              </div>
-            ) : (
-              <div className="text-center py-8" data-testid="datasets-empty-state">
-                <Database size={32} className="mx-auto text-muted-foreground mb-3" />
-                <p className="font-medium text-sm mb-1">Start with some data</p>
-                <p className="text-muted-foreground text-sm mb-4">
-                  Upload a CSV of your own, or start with a sample that trains in under a minute.
-                </p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  <Button size="sm" onClick={() => router.push('/upload')}>
-                    <Upload size={14} className="mr-1" />
-                    Upload a CSV
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setSamplesOpen(true)}>
-                    <Sparkles size={14} className="mr-1" />
-                    Try a sample dataset
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Models */}
-        <Card data-testid="recent-models">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Brain size={20} />
-              Recent Models
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoadingModels ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse flex items-center gap-3">
-                    <div className="h-10 w-10 bg-gray-200 rounded" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-3/4" />
-                      <div className="h-3 bg-gray-200 rounded w-1/2" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : modelsError ? (
-              <div className="flex items-center gap-2 text-red-600 py-4">
-                <AlertCircle size={16} />
-                <span className="text-sm">{modelsError}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={fetchRecentModels}
-                  className="ml-2"
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : recentModels.length > 0 ? (
-              <div className="space-y-3">
-                {recentModels.map((model) => (
-                  <div
-                    key={model.model_id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
-                    onClick={() => router.push(`/model/${model.model_id}`)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        router.push(`/model/${model.model_id}`);
-                      }
-                    }}
-                  >
-                    <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded">
-                      <Brain size={16} className="text-purple-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-foreground truncate">
-                        {model.name}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{model.algorithm}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${getStatusColor(model.status)}`}>
-                          {model.status}
-                        </span>
-                      </div>
-                    </div>
-                    {model.test_score !== null && (
-                      <span className="text-xs font-medium text-green-600">
-                        {(model.test_score * 100).toFixed(1)}%
-                      </span>
-                    )}
-                  </div>
-                ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push('/model')}
-                  className="w-full mt-2"
-                >
-                  View All Models
-                  <ArrowRight size={14} className="ml-1" />
-                </Button>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Brain size={32} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-muted-foreground text-sm mb-4">No models trained yet</p>
-                <Button
-                  size="sm"
-                  onClick={() => router.push('/model')}
-                  disabled={recentDatasets.length === 0}
-                >
-                  <Sparkles size={14} className="mr-1" />
-                  Train Model
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <RecentDatasets
+          datasets={recentDatasets}
+          loading={datasets.loading}
+          error={datasets.error}
+          onRetry={datasets.reload}
+          onErase={setDatasetToErase}
+          onTrySample={openSamples}
+        />
+        <RecentModels
+          models={recentModels}
+          loading={models.loading}
+          error={models.error}
+          onRetry={models.reload}
+          canTrain={hasDatasets}
+        />
       </div>
 
-      {/* Help Section */}
-      <Card className="mt-6">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <h3 className="font-semibold text-foreground">Need help getting started?</h3>
-              <p className="text-sm text-muted-foreground">
-                Follow the 8-stage workflow to build and deploy your ML models.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={() => router.push('/quickstart')}
-              >
-                Read the Quickstart Guide
-              </Button>
-              <Button
-                onClick={() => router.push('/upload')}
-              >
-                Start with Data Upload
-                <ArrowRight size={14} className="ml-1" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <HelpCard />
 
       <Dialog open={samplesOpen} onOpenChange={setSamplesOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -584,32 +142,12 @@ export default function DashboardPage() {
               Each sample is a few thousand rows and trains in quick mode in under a minute.
             </DialogDescription>
           </DialogHeader>
-          <SampleDatasetSelector onDatasetSelected={(datasetId) => router.push(`/explore/${datasetId}`)} />
+          <SampleDatasetSelector onDatasetSelected={exploreSample} />
         </DialogContent>
       </Dialog>
 
       {datasetToErase && (
-        <ErasureConfirmDialog
-          open={datasetToErase !== null}
-          onOpenChange={(next) => {
-            if (!next) setDatasetToErase(null);
-          }}
-          title={`Delete "${datasetToErase.filename}"`}
-          confirmWord={datasetToErase.filename}
-          onConfirm={() => erasureApi.eraseDataset(datasetToErase.dataset_id)}
-          onErased={() => {
-            // Keep the dialog open so its success summary shows; refresh the list
-            // behind it. Closing (the Close button) clears datasetToErase.
-            fetchRecentDatasets();
-          }}
-          body={
-            <p>
-              This permanently deletes this dataset and everything derived from it —
-              transformations, versions, trained models and their stored files. This cannot be
-              undone.
-            </p>
-          }
-        />
+        <EraseDatasetDialog dataset={datasetToErase} onClose={stopErasing} onErased={datasets.reload} />
       )}
     </div>
   );

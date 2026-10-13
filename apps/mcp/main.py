@@ -9,7 +9,7 @@ try:
     from auth import BearerAuthMiddleware, require_api_key
     from tools.eda_summary import EdaInput, run_eda_summary
 
-    mcp = MCPServer("Narrative Modeling Application")
+    mcp = MCPServer("SheetPredict")
 
     @mcp.tool()
     async def eda_summary_tool(params: EdaInput) -> dict:

@@ -1,8 +1,8 @@
 # Product Requirements Document
-## Narrative Modeling Application
+## SheetPredict
 
 ### Executive Summary
-The Narrative Modeling Application is an AI-guided platform that democratizes machine learning by enabling non-expert analysts to build, explore, and deploy predictive models through an intuitive, story-driven interface. The platform removes technical barriers by automating complex ML workflows while maintaining transparency and user control throughout the modeling journey.
+SheetPredict is an AI-guided platform that democratizes machine learning by enabling non-expert analysts to build, explore, and deploy predictive models through an intuitive, story-driven interface. The platform removes technical barriers by automating complex ML workflows while maintaining transparency and user control throughout the modeling journey.
 
 ### Vision Statement
 To empower researchers, analysts, and domain experts to harness the power of machine learning without requiring programming skills or deep statistical knowledge, while maintaining the rigor and reliability expected from professional data science work — so that the person who has to defend the result can.
@@ -631,4 +631,4 @@ class CustomModelTool(ModelingTool):
 
 ### Conclusion
 
-The Narrative Modeling Application represents a paradigm shift in how organizations approach predictive analytics. By leveraging an AI-orchestrated tool architecture, we remove technical barriers while maintaining professional-grade capabilities and full transparency. This unique approach enables a new generation of data-driven decision makers to harness the power of machine learning through natural conversation and guided exploration. Success depends on maintaining our focus on user experience, building a robust tool ecosystem, and ensuring every AI decision is explainable and trustworthy.
+SheetPredict represents a paradigm shift in how organizations approach predictive analytics. By leveraging an AI-orchestrated tool architecture, we remove technical barriers while maintaining professional-grade capabilities and full transparency. This unique approach enables a new generation of data-driven decision makers to harness the power of machine learning through natural conversation and guided exploration. Success depends on maintaining our focus on user experience, building a robust tool ecosystem, and ensuring every AI decision is explainable and trustworthy.
