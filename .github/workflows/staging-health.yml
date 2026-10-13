@@ -86,7 +86,7 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/staging_key
           printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
 
-      - name: Run the probe in the backend container
+      - name: Run the probes in the backend and frontend containers
         id: probe
         if: steps.preflight.outputs.configured == 'true'
         env:
@@ -104,6 +104,14 @@ jobs:
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "cd '$DEPLOY_PATH' && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe" \
             > /tmp/probe.txt 2> /tmp/probe.err || status=$?
+          # The frontend container shares MONGODB_URI and NEXTAUTH_SECRET and fails
+          # silently on a stale one (#756). Same run, same file, same alert issue; the
+          # backend's exit code wins when both fail (137 there means a boot loop).
+          frontend=0
+          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh \
+            >> /tmp/probe.txt 2>> /tmp/probe.err || frontend=$?
+          if [ "$status" -eq 0 ]; then status=$frontend; fi
           echo "$status" > /tmp/probe.status
           echo "probe exit status: $status"
           cat /tmp/probe.txt

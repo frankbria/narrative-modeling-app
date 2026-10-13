@@ -68,9 +68,19 @@ no rotation step.
    docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
    ```
 
-   Every line must read `healthy`; the exit code is the verdict. Then load the
-   sign-in page and sign in once — the frontend has no probe and shares
-   `MONGODB_URI` and `NEXTAUTH_SECRET`.
+   Every line must read `healthy`; the exit code is the verdict. Then the
+   frontend's half, which shares `MONGODB_URI` and `NEXTAUTH_SECRET` and fails
+   silently on a stale one (pages render, sign-in breaks):
+
+   ```bash
+   DEPLOY_PATH=<the staging directory> bash scripts/deploy/frontend_probe.sh
+   ```
+
+   It asks the frontend container's `/api/health/ready`, which opens a new Mongo
+   connection with that container's credential and has the backend verify a token
+   signed with its `NEXTAUTH_SECRET`. `frontend: {"status":"healthy",…}` and exit 0
+   is the verdict. Signing in once by hand is still a fine last look, and is no
+   longer the only check.
 5. **Retire the old credential** at the provider, and re-run step 4 — this is the
    check that no consumer was missed, because the old value stops working now.
 

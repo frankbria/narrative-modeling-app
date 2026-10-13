@@ -216,3 +216,99 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
             check=False,
         ).stdout
     assert "LogsFetchError" in failed
+
+
+# --- #756: the frontend container shares MONGODB_URI and NEXTAUTH_SECRET -------------
+
+FRONTEND_PROBE = REPO_ROOT / "scripts" / "deploy" / "frontend_probe.sh"
+FRONTEND_ROUTE = (
+    REPO_ROOT / "apps" / "frontend" / "app" / "api" / "health" / "ready" / "route.ts"
+)
+
+
+def test_both_workflows_probe_the_frontend_container_in_the_same_run():
+    """A stale credential in the frontend breaks sign-in while pages still render. The
+    probe ran in the backend container only; the frontend's half must fail the same
+    run, so it lands on the same alert issue."""
+    assert FRONTEND_ROUTE.exists(), "the script asks a route that must exist"
+    for wf in (HEALTH_WORKFLOW, DEPLOY_WORKFLOW):
+        step = next(s for s in _steps(wf).values() if PROBE in s.get("run", ""))
+        assert "frontend_probe.sh" in step["run"], (
+            f"{wf.name}: the frontend probe must run in the step that runs the backend's"
+        )
+    health = next(
+        s for s in _steps(HEALTH_WORKFLOW).values() if PROBE in s.get("run", "")
+    )["run"]
+    # Its output joins the backend's in the file the alert quotes, and its exit code
+    # reaches the status the alert is keyed on.
+    assert re.search(r"frontend_probe\.sh\s*\\?\s*>> /tmp/probe\.txt", health)
+    assert "status=$frontend" in health
+
+
+def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
+    assert FRONTEND_PROBE.stat().st_mode & stat.S_IXUSR
+    with tempfile.TemporaryDirectory() as tmp:
+        fake = Path(tmp) / "bin" / "docker"
+        fake.parent.mkdir()
+        fake.write_text("#!/usr/bin/env bash\n" + docker_script)
+        fake.chmod(0o755)
+        return subprocess.run(
+            ["bash", str(FRONTEND_PROBE)],
+            env={
+                **os.environ,
+                "PATH": f"{fake.parent}:{os.environ['PATH']}",
+                "DEPLOY_PATH": tmp,
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+
+def _answering(body: str, code: int) -> str:
+    """A `docker compose … exec -T frontend curl -w '\\n%{http_code}' …` that answers."""
+    return f"printf '%s\\n%s' '{body}' '{code}'\n"
+
+
+HEALTHY = '{"status":"healthy","checks":{"mongo":"healthy","api_token":"healthy"}}'
+STALE = (
+    '{"status":"unhealthy","checks":{"mongo":"unhealthy (MongoServerError'
+    ' AuthenticationFailed)","api_token":"healthy"}}'
+)
+
+
+def test_frontend_probe_passes_the_routes_verdict_through():
+    healthy = _frontend_probe(_answering(HEALTHY, 200))
+    assert (healthy.returncode, healthy.stdout.strip()) == (0, f"frontend: {HEALTHY}")
+
+    stale = _frontend_probe(_answering(STALE, 503))
+    assert stale.returncode == 1
+    assert "MongoServerError AuthenticationFailed" in stale.stdout
+
+
+def test_frontend_probe_does_not_fail_an_image_that_predates_the_route():
+    """The scheduled probe can run between the merge and the deploy that ships the route."""
+    older = _frontend_probe(_answering("<html>404: This page could not be found</html>", 404))
+    assert older.returncode == 0
+    assert older.stdout.strip() == "frontend: skipped (this image has no readiness route)"
+
+
+def test_frontend_probe_prints_a_report_or_a_fixed_phrase_and_nothing_else():
+    """The repo is public. Whatever the container answers, only the route's own report
+    is repeated; an error page or a dead container is named, not printed."""
+    crashed = _frontend_probe(
+        _answering("Error: connect to mongodb+srv://svc_user:hunter2@cluster0.abc.mongodb.net", 500)
+    )
+    assert crashed.returncode == 1
+    assert crashed.stdout.strip() == (
+        "frontend: unhealthy (the readiness route answered 500 with no report)"
+    )
+
+    dead = _frontend_probe(
+        "echo 'service \"frontend\" is not running: secret=hunter2' >&2; exit 1\n"
+    )
+    assert dead.returncode == 1
+    assert dead.stdout.strip() == "frontend: unhealthy (the frontend container did not answer)"
+    for run in (crashed, dead):
+        assert "hunter2" not in run.stdout + run.stderr

@@ -1,3 +1,26 @@
+# Issue #756: the staging probe does not cover the frontend container
+
+## Plan
+- [x] RED (jest): a readiness report for the frontend's two shared secrets.
+      `mongo`: a NEW connection with this process's `MONGODB_URI` and a ping of `MONGODB_DB`
+      (the adapter's own pool stays authenticated on a rotated credential, so only a fresh
+      connection sees a stale value, the same reasoning as the backend probe).
+      `api_token`: a token minted with this process's `NEXTAUTH_SECRET`, sent to the
+      backend; 401 means the two halves disagree. Failures carry a class name or a fixed
+      phrase, never a message (a Mongo error names the cluster).
+- [x] `GET /api/health/ready` returns it, 200 or 503. The edge sends `/api/health*` to the
+      backend, so the route answers only on the container's loopback port.
+- [x] `scripts/deploy/frontend_probe.sh` asks it from inside the frontend container;
+      `staging-health.yml` and `deploy.yml` run it after the backend probe, so a failure
+      fails the same run and lands on the same alert issue. An image that predates the
+      route answers 404: reported as skipped, not as a failure.
+- [x] RED (pytest wiring): both workflows run the script; the script prints statuses only.
+- [x] Runbook: the manual sign-in after a rotation becomes optional.
+- [x] Checked on a production build (`next build`, `next start`) against the real backend:
+      healthy; a secret the backend does not share is a 503 naming it; a stale Mongo
+      credential is `MongoServerError AuthenticationFailed` while `/pricing` still answers 200.
+
+
 # Issue #809: the onboarding sidebar is crushed at desktop widths
 
 ## Plan
