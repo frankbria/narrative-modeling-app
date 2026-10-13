@@ -43,6 +43,9 @@ class VisualizationCache(Document):
     data: dict[
         str, Any
     ]  # Will contain HistogramData, BoxplotData, or CorrelationMatrixData
+    # The file the chart was computed from (#964). An entry is served only for that
+    # file; one without it predates the field and is not trusted for any.
+    source_url: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 

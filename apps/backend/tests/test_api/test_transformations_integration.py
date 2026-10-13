@@ -256,8 +256,6 @@ class TestTransformationApply:
             assert "transformation_id" in data
             assert data["execution_time_ms"] >= 0
 
-            # Verify cache was cleared
-            mock_cache_service.delete_pattern.assert_called_once()
 
 
 class TestTransformationValidation:

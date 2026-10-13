@@ -805,9 +805,7 @@ async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=get_df), \
          patch("app.services.bulk_transformation_service.upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
          patch("app.services.bulk_transformation_service.record_new_file", new_callable=AsyncMock) as move, \
-         patch("app.services.bulk_transformation_service.cache_service") as cache, \
          patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
-        cache.delete_pattern = AsyncMock()
         await bulk_service._process_bulk_job(job)
 
     assert job.status.value == "completed", job.error_message if hasattr(job, "error_message") else job.status

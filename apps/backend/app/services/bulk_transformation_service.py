@@ -32,7 +32,6 @@ from app.models.bulk_transformation import (
 from app.models.dataset import DatasetMetadata, SchemaField
 from app.services.dataset_link import ensure_metadata_twin, record_new_file
 from app.services.exceptions import NotFoundError, OperationError, ValidationError
-from app.services.redis_cache import cache_service
 from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
     upload_dataframe_to_s3,
@@ -592,7 +591,6 @@ class BulkTransformationService:
         dataset.num_columns = len(df.columns)
         dataset.columns = df.columns.tolist()
         await record_new_file(dataset, new_file_path)
-        await cache_service.delete_pattern(f"stats_{job.dataset_id}_*")
         return new_file_path
 
     async def _apply_column_transformation(

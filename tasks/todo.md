@@ -1,27 +1,16 @@
-# Issue #962: the first transformation on a dataset cannot be undone
+# Issue #964: a chart request in flight during a transformation re-caches the old data
 
 ## Problem
-The history has no position for "the dataset before any step". `current_position` is 0
-after the first step and undo moves to `position - 1`, which must be a step. So undo
-works from the second step back to the first and never further.
-
-## Design
-Position -1 becomes reachable when, and only when, the version the dataset was at before
-its first step is known for certain:
-
-- `TransformationConfig.base_version_id`: set when the first step of a history is
-  recorded, to that step's parent version, if the dataset had never moved before
-  (`source_s3_url` unset). Then the parent is the upload itself. If the dataset had
-  already been moved by an edit the history holds no step for, the latest version is not
-  the file being transformed, and nothing is recorded: the first step stays not undoable.
-- `can_reach(-1)`: the base is known and no outside edit has closed the history.
-- `_close_history` at position -1 (an outside edit after undoing to the start) forgets
-  the base and drops every step: none of them describes the edited file.
-- Undo to -1 restores the base version through the same `_move_to_step` as any other
-  undo; redo from -1 is the existing code.
+#960 clears a dataset's chart caches when it moves. A request that started before the
+move finishes afterwards and writes the old chart back under `(dataset, type, column)`.
+Nothing on the row says which file it came from and it never expires.
 
 ## Plan
-- [ ] RED: model tests, a `_close_history` test, and a LocalStack test through the
-      routes (upload, one step, undo, redo, watching the box plot's median).
-- [ ] Model, service, `dataset_link`, the apply path.
-- [ ] Existing tests that pin "position 0 cannot be undone".
+- [ ] RED: compute from the old file, move the dataset, write the cache, read.
+- [ ] A cached chart carries the file it was computed from: `VisualizationCache.source_url`,
+      and a digest of it in the Redis key. A read for a dataset's current file is served
+      only an entry computed from that file. The three generators read the dataset first
+      and pass its `s3_url` to both the read and the write.
+- [ ] `get_cached_visualization` and `cache_visualization` are at cc 9 and 7: split.
+- [ ] Remove the three `delete_pattern("stats_{id}_*")` calls: nothing writes such a key.
+- [ ] `ColumnStats`: its route is called by nothing (#889); the criterion moves there.

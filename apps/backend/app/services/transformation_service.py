@@ -766,7 +766,6 @@ class TransformationService(BaseService[TransformationConfig]):
         last: pd.DataFrame, done: dict[str, Any], timestamp: float,
     ) -> None:
         """Upload the final frame, record the steps, and move the dataset to it."""
-        from app.services.redis_cache import cache_service
         from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
 
         new_file_path = await upload_dataframe_to_s3(
@@ -781,7 +780,6 @@ class TransformationService(BaseService[TransformationConfig]):
         # moving only this side severed the (user_id, s3_url) join the twin lives on.
         # in_history: this move has its steps, so it must not close the history (#851).
         await record_new_file(dataset, new_file_path, in_history=True)
-        await cache_service.delete_pattern(f"stats_{dataset_id}_*")
 
     async def _versioned(
         self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", done: dict[str, Any]
