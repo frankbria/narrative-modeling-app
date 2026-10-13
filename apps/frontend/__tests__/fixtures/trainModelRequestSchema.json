@@ -312,7 +312,6 @@
         "n_jobs": {
           "anyOf": [
             {
-              "maximum": 8,
               "minimum": -1,
               "type": "integer"
             },

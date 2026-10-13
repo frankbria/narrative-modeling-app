@@ -22,8 +22,18 @@ FIXTURE = (
 )
 
 
-def test_the_frontend_fixture_is_the_api_request_schema():
+def _portable_schema() -> dict:
+    """The request schema, less the one bound that is a fact about the machine:
+    ``n_jobs`` is capped at the host's core count, so its ``maximum`` is 8 on one
+    box and 4 on the next, and a fixture holding it passes only where it was written."""
     schema = TrainModelRequest.model_json_schema()
+    for option in schema["$defs"]["TuningConfigRequest"]["properties"]["n_jobs"]["anyOf"]:
+        option.pop("maximum", None)
+    return schema
+
+
+def test_the_frontend_fixture_is_the_api_request_schema():
+    schema = _portable_schema()
     if os.getenv("UPDATE_FIXTURES"):
         FIXTURE.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
     assert json.loads(FIXTURE.read_text()) == json.loads(json.dumps(schema)), (
