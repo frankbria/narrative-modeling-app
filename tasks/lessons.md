@@ -2094,3 +2094,8 @@ checked, and the fix is always the same: the claim is a query, so run it.
 ## Read the exit code of the test you just wrote before committing (#648)
 - **What happened:** a new guard test (`test_no_download_header_is_built_by_hand`) was added and run in the same command as the commit; the run printed `exit 1`, the command went on to commit and the next command pushed. The guard had found a real fourth site (`s3_service.py`), so the branch was red for one push.
 - **Rule:** a command that runs a new test must stop on failure (`&&` before `git commit`), never `;`. A guard test's first run is the one most likely to fail, because it is looking for what was missed.
+
+## Patch a shared service on its class, never on the instance (#983)
+- **What happened:** a new test did `monkeypatch.setattr(data_processing.s3_service, "download_file_bytes", fake)`. The targeted run passed. The full gate then failed 30 unrelated tests (training, feature store, product events) with "S3Service is in mock mode" and "expected download_file_bytes to have been called".
+- **Why:** for an instance, `monkeypatch` restores by `setattr(instance, name, old_bound_method)`, which leaves an instance attribute behind. `s3_service` is one object shared by the whole suite, so every later test that patches `S3Service.download_file_bytes` on the class is bypassed by that leftover.
+- **Rule:** patch `type(service)` (or the class by name) with a function that takes `self`. And run the full gate before opening the PR, not after: a test that pollutes later tests passes any targeted run.

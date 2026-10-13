@@ -65,9 +65,10 @@ async def generate_dataset_summary(user_data_id: str) -> AISummary | None:
         ai_summary = await call_openai_api(dataset_summary)
 
         if ai_summary:
-            # Update the UserData document with the AI summary
-            user_data.aiSummary = ai_summary
-            await user_data.save()
+            # Only this field (#983). The model call above takes seconds, and the
+            # Explore page has the dataset processed meanwhile; a save() would write
+            # this copy's older schema, statistics and is_processed back over it.
+            await user_data.set({UserData.aiSummary: ai_summary})
             logger.info(f"AI summary generated and saved for dataset {user_data_id}")
             return ai_summary
         else:

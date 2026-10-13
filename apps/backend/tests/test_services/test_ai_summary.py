@@ -63,23 +63,9 @@ def mock_ai_summary():
         createdAt=datetime.now(UTC))
 
 
-@pytest.mark.asyncio
-async def test_generate_dataset_summary_success(mock_user_data, mock_ai_summary):
-    """Test successful generation of dataset summary."""
-    with patch("app.models.user_data.UserData.get") as mock_get, patch(
-        "app.utils.ai_summary.call_openai_api"
-    ) as mock_call_api, patch("app.models.user_data.UserData.save") as mock_save:
-
-        mock_get.return_value = mock_user_data
-        mock_call_api.return_value = mock_ai_summary
-        mock_save.return_value = None
-
-        result = await generate_dataset_summary(str(mock_user_data.id))
-
-        assert result == mock_ai_summary
-        mock_get.assert_called_once_with(str(mock_user_data.id))
-        mock_call_api.assert_called_once()
-        mock_save.assert_called_once()
+# The success path, through to what is stored, is tested against a real document in
+# tests/test_api/test_dataset_writers_keep_each_others_fields.py (#983). It was tested here
+# with UserData.save patched out, which is the write that did the damage.
 
 
 @pytest.mark.asyncio
