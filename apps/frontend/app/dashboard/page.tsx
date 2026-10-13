@@ -33,19 +33,19 @@ const ERASE_BODY = (
   </p>
 );
 
-function listOf<T>(data: unknown, key: string, label: string): T[] {
+function listOf(data: unknown, key: string): unknown[] {
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid API response format');
   }
   const items = (data as Record<string, unknown>)[key];
   if (items === undefined) return [];
   if (!Array.isArray(items)) {
-    throw new Error(`Invalid ${label} format: expected array`);
+    throw new Error(`Invalid ${key} format: expected array`);
   }
-  return items as T[];
+  return items;
 }
 
-async function fetchList<T>(key: string): Promise<T[]> {
+async function fetchList(key: string): Promise<unknown[]> {
   const token = await getAuthToken();
   const response = await fetch(`${API_URL}/${key}?page=1&limit=5`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -53,15 +53,15 @@ async function fetchList<T>(key: string): Promise<T[]> {
   if (!response.ok) {
     throw new Error(`Failed to fetch ${key}`);
   }
-  return listOf<T>(await response.json(), key, key);
+  return listOf(await response.json(), key);
 }
 
-function fetchDatasets() {
-  return fetchList<DatasetItem>('datasets');
+async function fetchDatasets() {
+  return (await fetchList('datasets')) as DatasetItem[];
 }
 
-function fetchModels() {
-  return fetchList<ModelItem>('models');
+async function fetchModels() {
+  return (await fetchList('models')) as ModelItem[];
 }
 
 function isDeployed(model: ModelItem): boolean {
