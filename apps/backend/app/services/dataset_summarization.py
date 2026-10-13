@@ -12,10 +12,8 @@ from typing import Any
 from openai import OpenAIError
 from pydantic import BaseModel, Field
 
+from app.middleware.error_handlers import internal_error_message
 from app.models.user_data import AISummary
-from app.services.data_processing.quality_assessment import QualityReport
-from app.services.data_processing.schema_inference import SchemaDefinition
-from app.services.data_processing.statistics_engine import DatasetStatistics
 from app.utils.circuit_breaker import CircuitBreakerOpen, with_circuit_breaker
 from app.utils.datetime import utcnow
 from app.utils.openai_client import build_openai_client, openai_model
@@ -28,9 +26,11 @@ class DatasetSummaryRequest(BaseModel):
     file_id: str
     # `schema` shadows Pydantic's deprecated `BaseModel.schema()`; it is part of
     # the public request contract and cannot be renamed.
-    schema: dict[str, Any] | SchemaDefinition  # type: ignore[assignment]
-    statistics: dict[str, Any] | DatasetStatistics
-    quality_report: dict[str, Any] | QualityReport
+    # Each part is what processing stored on the dataset, or nothing: a processed
+    # dataset can hold null for a part processing could not produce (#981).
+    schema: dict[str, Any] | None = None  # type: ignore[assignment]
+    statistics: dict[str, Any] | None = None
+    quality_report: dict[str, Any] | None = None
     sample_data: list[dict[str, Any]] | None = None
     focus_areas: list[str] | None = Field(
         default=["patterns", "quality", "relationships", "recommendations"]
@@ -99,106 +99,98 @@ class DatasetSummarizationService:
             
             return summary
             
-        except Exception as e:
-            logger.error(f"Error generating dataset summary: {e}")
-            return self._create_error_summary(str(e))
+        except Exception:
+            logger.exception("Dataset summary failed for %s", request.file_id)
+            return self._create_error_summary()
     
+    @staticmethod
+    def _stored(source: dict[str, Any] | None, key: str, default: Any) -> Any:
+        """What processing stored under ``key``, or ``default`` when it stored nothing.
+
+        Processing writes an explicit null for what it could not compute (no
+        correlation matrix under two numeric columns, no outlier count for text), and
+        ``.get(key, default)`` returns that null, not the default. One such read used
+        to turn the whole summary into the error card (#409, #981).
+        """
+        value = (source or {}).get(key)
+        return default if value is None else value
+
     def _prepare_context(self, request: DatasetSummaryRequest) -> dict[str, Any]:
         """Prepare context for AI summarization"""
-        # Convert models to dicts if needed
         schema = request.schema
-        if hasattr(schema, 'model_dump'):
-            schema = schema.model_dump()
-        elif hasattr(schema, 'dict'):
-            schema = schema.dict()
-            
-        statistics = request.statistics
-        if hasattr(statistics, 'model_dump'):
-            statistics = statistics.model_dump()
-        elif hasattr(statistics, 'dict'):
-            statistics = statistics.dict()
-            
-        quality_report = request.quality_report
-        if hasattr(quality_report, 'model_dump'):
-            quality_report = quality_report.model_dump()
-        elif hasattr(quality_report, 'dict'):
-            quality_report = quality_report.dict()
-        
         context = {
             "file_id": request.file_id,
             "dataset_overview": {
-                "row_count": schema.get("row_count", 0),
-                "column_count": schema.get("column_count", 0),
-                "file_type": schema.get("file_type", "unknown")
+                "row_count": self._stored(schema, "row_count", 0),
+                "column_count": self._stored(schema, "column_count", 0),
+                "file_type": self._stored(schema, "file_type", "unknown")
             },
             "column_details": self._extract_column_details(schema),
-            "data_quality": self._extract_quality_insights(quality_report),
-            "statistical_summary": self._extract_statistical_highlights(statistics),
+            "data_quality": self._extract_quality_insights(request.quality_report),
+            "statistical_summary": self._extract_statistical_highlights(request.statistics),
             "sample_data": request.sample_data[:5] if request.sample_data else None
         }
-        
+
         return context
-    
-    def _extract_column_details(self, schema: dict[str, Any]) -> list[dict[str, Any]]:
+
+    def _extract_column_details(self, schema: dict[str, Any] | None) -> list[dict[str, Any]]:
         """Extract important column details from schema"""
         columns = []
-        
-        for col in schema.get("columns", []):
+
+        for col in self._stored(schema, "columns", []):
             columns.append({
                 "name": col.get("name"),
                 "type": col.get("data_type"),
                 "nullable": col.get("nullable"),
                 "unique": col.get("unique"),
                 "cardinality": col.get("cardinality"),
-                "null_percentage": col.get("null_percentage", 0)
+                "null_percentage": self._stored(col, "null_percentage", 0)
             })
-        
+
         return columns
-    
-    def _extract_quality_insights(self, quality_report: dict[str, Any]) -> dict[str, Any]:
+
+    def _extract_quality_insights(self, quality_report: dict[str, Any] | None) -> dict[str, Any]:
         """Extract key quality insights"""
         return {
-            "overall_score": quality_report.get("overall_quality_score", 0),
-            "critical_issues": len(quality_report.get("critical_issues", [])),
-            "warnings": len(quality_report.get("warnings", [])),
-            "recommendations": quality_report.get("recommendations", [])[:3],
-            "dimension_scores": quality_report.get("dimension_scores", {})
+            "overall_score": self._stored(quality_report, "overall_quality_score", 0),
+            "critical_issues": len(self._stored(quality_report, "critical_issues", [])),
+            "warnings": len(self._stored(quality_report, "warnings", [])),
+            "recommendations": self._stored(quality_report, "recommendations", [])[:3],
+            "dimension_scores": self._stored(quality_report, "dimension_scores", {})
         }
-    
-    def _extract_statistical_highlights(self, statistics: dict[str, Any]) -> dict[str, Any]:
+
+    def _extract_statistical_highlights(self, statistics: dict[str, Any] | None) -> dict[str, Any]:
         """Extract statistical highlights"""
-        highlights = {
-            "missing_data_summary": statistics.get("missing_value_summary", {}),
-            "correlations": [],
-            "outlier_columns": []
+        return {
+            "missing_data_summary": self._stored(statistics, "missing_value_summary", {}),
+            "correlations": self._strong_correlations(self._stored(statistics, "correlation_matrix", {})),
+            "outlier_columns": self._outlier_columns(self._stored(statistics, "column_statistics", [])),
         }
-        
-        # Extract high correlations. A missing correlation is stored as null
-        # (non-numeric pairs), and `abs(None)` raises — same shape as the
-        # outlier_count bug below.
-        correlation_matrix = statistics.get("correlation_matrix", {})
-        for col1, correlations in correlation_matrix.items():
-            for col2, corr_value in correlations.items():
-                if col1 != col2 and corr_value is not None and abs(corr_value) > 0.7:
-                    highlights["correlations"].append({
-                        "columns": [col1, col2],
-                        "correlation": corr_value
-                    })
-        
-        # Extract columns with outliers. Categorical columns store
-        # `outlier_count: null` — outliers are not a concept for them — and
-        # `.get(key, 0)` returns None for a key that EXISTS with a null value, so
-        # `None > 0` raised and collapsed the whole summary into the error card.
-        # Any dataset with a single categorical column hit this (#409).
-        for col_stats in statistics.get("column_statistics", []):
-            if (col_stats.get("outlier_count") or 0) > 0:
-                highlights["outlier_columns"].append({
-                    "column": col_stats.get("column_name"),
-                    "outlier_count": col_stats.get("outlier_count"),
-                    "outlier_percentage": col_stats.get("outlier_percentage")
-                })
-        
-        return highlights
+
+    @staticmethod
+    def _is_strong(first: str, second: str, value: float | None) -> bool:
+        """A correlation worth reporting. A pair with a non-numeric column is stored as null."""
+        return first != second and value is not None and abs(value) > 0.7
+
+    def _strong_correlations(self, matrix: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {"columns": [first, second], "correlation": value}
+            for first, row in matrix.items()
+            for second, value in row.items()
+            if self._is_strong(first, second, value)
+        ]
+
+    def _outlier_columns(self, column_statistics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Columns with outliers. A text column stores ``outlier_count: null`` (#409)."""
+        return [
+            {
+                "column": stats.get("column_name"),
+                "outlier_count": stats.get("outlier_count"),
+                "outlier_percentage": stats.get("outlier_percentage"),
+            }
+            for stats in column_statistics
+            if self._stored(stats, "outlier_count", 0) > 0
+        ]
 
     @with_circuit_breaker(
         "openai",
@@ -351,14 +343,17 @@ This is a basic analysis generated without AI assistance. For more detailed insi
             
         return min(score, 1.0)
     
-    def _create_error_summary(self, error_message: str) -> EnhancedAISummary:
-        """Create error summary"""
+    def _create_error_summary(self) -> EnhancedAISummary:
+        """What the caller gets when the summary could not be made. This is a 200
+        body, which the 5xx sanitiser never sees, so it carries a fixed sentence and
+        the request's reference; the exception is in the log (#637, #981)."""
+        reason = internal_error_message("The summary")
         return EnhancedAISummary(
-            overview="Failed to generate dataset summary",
-            issues=[f"Error: {error_message}"],
+            overview="The summary could not be generated for this dataset.",
+            issues=[reason],
             relationships=[],
-            suggestions=["Check logs for error details", "Ensure all required data is available"],
-            rawMarkdown=f"# Error\n\nFailed to generate summary: {error_message}",
+            suggestions=["Try again. If it keeps failing, contact support and quote the reference above."],
+            rawMarkdown=f"# Summary unavailable\n\n{reason}",
             confidence_score=0.0,
             analysis_depth="basic",
             model_used="error"

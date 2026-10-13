@@ -15,6 +15,7 @@ from app.models.user_data import UserData
 from app.services.ai_chat import ChatRequest, ai_chat_service
 from app.services.dataset_summarization import (
     DatasetSummaryRequest,
+    EnhancedAISummary,
     dataset_summarization_service,
 )
 from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
@@ -169,6 +170,34 @@ async def chat_with_data(
     )
 
 
+def _summary_request(user_data: UserData, focus_areas: list[str] | None) -> DatasetSummaryRequest:
+    """What the summarizer is told about the dataset: its parts as stored, null
+    included. The summarizer reads a null part as an empty one (#981)."""
+    return DatasetSummaryRequest(
+        file_id=str(user_data.id),
+        schema=user_data.schema,
+        statistics=user_data.statistics,
+        quality_report=user_data.quality_report,
+        sample_data=user_data.data_preview[:20] if user_data.data_preview else None,
+        focus_areas=focus_areas or ["patterns", "quality", "relationships", "recommendations"],
+    )
+
+
+async def _settle(user_data: UserData, summary: EnhancedAISummary, http_request: Request) -> None:
+    """Charge for the summary only if a model wrote it, and keep it only if it is one.
+
+    A rule-based or failed summary is not a model call (no key, breaker open, or the
+    #768 daily ceiling), so the reserved unit goes back. A failed one is returned to
+    the caller but never stored: it used to replace the dataset's real summary (#981).
+    The write sets the one field, so it cannot revert what changed while the summary
+    was being made.
+    """
+    if summary.model_used in ("fallback", "error"):
+        await enforcement.release(http_request)
+    if summary.model_used != "error":
+        await user_data.set({UserData.aiSummary: summary})
+
+
 @router.post("/summarize/{file_id}", dependencies=[Depends(quota("ai_calls"))])
 async def generate_ai_summary(
     http_request: Request,
@@ -195,26 +224,11 @@ async def generate_ai_summary(
                 detail="File must be processed before generating summary"
             )
 
-        # Create summary request
-        summary_request = DatasetSummaryRequest(
-            file_id=str(user_data.id),
-            schema=user_data.schema,
-            statistics=user_data.statistics,
-            quality_report=user_data.quality_report,
-            sample_data=user_data.data_preview[:20] if user_data.data_preview else None,
-            focus_areas=focus_areas or ["patterns", "quality", "relationships", "recommendations"]
+        summary = await dataset_summarization_service.generate_comprehensive_summary(
+            _summary_request(user_data, focus_areas)
         )
+        await _settle(user_data, summary, http_request)
 
-        # Generate summary
-        summary = await dataset_summarization_service.generate_comprehensive_summary(summary_request)
-        if getattr(summary, "model_used", None) in ("fallback", "error"):
-            # No model ran (no key, breaker open, or the #768 daily ceiling): no charge.
-            await enforcement.release(http_request)
-
-        # Optionally save to database
-        user_data.aiSummary = summary
-        await user_data.save()
-        
         return summary
         
     except HTTPException:
