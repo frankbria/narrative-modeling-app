@@ -1,3 +1,18 @@
+# Issue #620: the MCP server and its backend client move to the mcp 2.x SDK
+
+## Plan
+- [x] Server (`apps/mcp`): `FastMCP` is `MCPServer` in 2.x (`mcp.server.mcpserver`); `sse_app()`
+      and `tool()` keep their shape. Pin `mcp>=2,<3`, full `uv lock --upgrade` (no yanked pin).
+- [x] Client (`apps/backend`): the two apps speak SSE to each other, so they move together
+      (Dependabot PR 758 widened the range without a relock; this replaces it). 2.x renames
+      the result fields to `is_error` / `structured_content`; the client read the 1.x names
+      through `getattr` with a default, so on 2.x a failed tool call would have been returned
+      as a result. RED: unit tests on the SDK's own `CallToolResult`, and a real failed tool
+      call over SSE in the round-trip test.
+- [x] Relocking the backend for mcp 2.x also moves pydantic 2.11.5 -> 2.13.5 on Python 3.13
+      (mcp 2.x needs the newer one; the lock had forked by Python version). Full gate + mypy.
+- [x] Live SSE smoke recorded (`curl -N` with the bearer -> `event: endpoint`), docs.
+
 # Issue #712: charts read the whole dataset to use one or two columns
 
 ## Plan

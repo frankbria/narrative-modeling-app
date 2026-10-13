@@ -1,9 +1,9 @@
 """#506 AC5: a real tool call against a running MCP server over SSE.
 
 Everything the unit suite mocks — the SSE transport, the tool name, the `params` arg
-shape, and result parsing — is exercised here end-to-end against the actual FastMCP
+shape, and result parsing — is exercised here end-to-end against the actual MCP
 server (`apps/mcp/main.py`) started as a subprocess. Before #506 this was impossible:
-the client spoke REST to paths FastMCP never exposes.
+the client spoke REST to paths the server never exposes.
 
 The tool call uses a non-existent dataset id, so the server returns a well-formed
 ``{"success": False, "message": ...}`` (owner check fails) — which only round-trips if
@@ -111,3 +111,14 @@ async def test_real_tool_call_round_trips_over_sse(mcp_server):
 async def test_wrong_api_key_is_rejected(mcp_server):
     # The server fails closed (BearerAuthMiddleware): a bad token can't open a session.
     assert await _service(mcp_server, api_key="wrong-key").check_health() is False
+
+
+async def test_a_tool_call_the_server_fails_is_reported_as_an_error(mcp_server):
+    """A tool the server cannot run answers with the result's error flag set, not a
+    transport failure. The client must read that flag from the SDK's own result (#620:
+    2.x renamed it, and the old name read as "no error")."""
+    resp = await _service(mcp_server).execute_tool(
+        MCPToolRequest(tool_name="eda_summary_tool", parameters={"params": {}})
+    )
+    assert resp.result is None, resp.result
+    assert resp.error and "eda_summary_tool" in resp.error

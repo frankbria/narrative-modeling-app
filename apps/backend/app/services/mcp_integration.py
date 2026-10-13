@@ -12,31 +12,35 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from mcp.types import CallToolResult
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 
-def _result_payload(result: Any) -> Any:
+def _result_payload(result: CallToolResult) -> Any:
     """Extract a tool's return value from an MCP ``CallToolResult`` (#506).
 
-    FastMCP serves a tool's dict return as ``structuredContent`` (and mirrors it into
+    The server sends a tool's dict return as ``structured_content`` (and mirrors it into
     a text block). A non-object return is wrapped as ``{"result": ...}``; a dict return
     passes through. Fall back to JSON-parsing the first text block, then raw text.
+
+    The result's fields are read as attributes, never through ``getattr`` with a default:
+    the 2.x SDK renamed them, and a default turned the old names into "no error" (#620).
     """
-    structured = getattr(result, "structuredContent", None)
+    structured = result.structured_content
     if isinstance(structured, dict):
-        if set(structured.keys()) == {"result"}:
-            return structured["result"]
-        return structured
-    for content in getattr(result, "content", None) or []:
-        text = getattr(content, "text", None)
-        if text is not None:
-            try:
-                return json.loads(text)
-            except (ValueError, TypeError):
-                return text
-    return None
+        return structured["result"] if set(structured) == {"result"} else structured
+    return _parsed(next((c.text for c in result.content if hasattr(c, "text")), None))
+
+
+def _parsed(text: str | None) -> Any:
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
 
 
 class MCPToolRequest(BaseModel):
@@ -97,7 +101,7 @@ class MCPConfig:
 
 
 class MCPIntegrationService:
-    """Client for the FastMCP server, which exposes ``eda_summary_tool`` over MCP-on-SSE.
+    """Client for the MCP server, which exposes ``eda_summary_tool`` over MCP-on-SSE.
 
     #506: the previous client POSTed to REST paths FastMCP never exposes, ``await``ed
     httpx's synchronous ``.json()``, and sent a tool name/arg shape the server does not
@@ -116,7 +120,7 @@ class MCPIntegrationService:
 
     @property
     def _sse_url(self) -> str:
-        # FastMCP's sse_app() serves the SSE stream at /sse (main.py: mcp.sse_app()).
+        # The server's sse_app() serves the SSE stream at /sse (main.py: mcp.sse_app()).
         return f"{self.config.base_url}/sse"
 
     def _headers(self) -> dict[str, str]:
@@ -162,12 +166,12 @@ class MCPIntegrationService:
         async with AsyncExitStack() as stack:
             session = await self._open_session(stack)
             result = await session.call_tool(tool_name, arguments)
-            if getattr(result, "isError", False):
-                text = "; ".join(
-                    getattr(c, "text", "") for c in (getattr(result, "content", None) or [])
-                )
-                raise RuntimeError(f"MCP tool {tool_name} returned an error: {text}")
-            return _result_payload(result)
+        # Raised once the session is closed: inside it the transport's task group
+        # wraps the error, and the caller is told only "unhandled errors in a TaskGroup".
+        if result.is_error:
+            text = "; ".join(getattr(c, "text", "") for c in result.content)
+            raise RuntimeError(f"MCP tool {tool_name} returned an error: {text}")
+        return _result_payload(result)
 
     async def execute_tool(self, request: MCPToolRequest) -> MCPToolResponse:
         """Execute a named MCP tool over SSE (thin wrapper over ``_call_tool``)."""

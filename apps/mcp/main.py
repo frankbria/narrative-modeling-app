@@ -4,12 +4,12 @@ import os
 
 try:
     import uvicorn
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from auth import BearerAuthMiddleware, require_api_key
     from tools.eda_summary import EdaInput, run_eda_summary
 
-    mcp = FastMCP("Narrative Modeling Application")
+    mcp = MCPServer("Narrative Modeling Application")
 
     @mcp.tool()
     async def eda_summary_tool(params: EdaInput) -> dict:
