@@ -9,6 +9,7 @@ path (traversal) from them. Normalise once, at ingestion, and store only that.
 import re
 import unicodedata
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from pydantic import AfterValidator
 
@@ -50,6 +51,21 @@ def sanitize_filename(name: str, max_length: int = MAX_FILENAME_LENGTH) -> str:
             base = base[:max_length]
         base = _EDGE_DOTS_AND_SPACE.sub("", base) or _FALLBACK
     return base
+
+
+def attachment_disposition(name: str) -> str:
+    """The ``Content-Disposition`` value for downloading a file as ``name``.
+
+    Every download header is built here (#648). A name that reaches a header raw
+    can close its quotes and add a parameter, or with a line break a header, and a
+    name outside latin-1 cannot be sent at all: the server fails to encode it and
+    the download is a 500. So the name is normalised first, then given both forms
+    RFC 6266 defines: a quoted ASCII fallback for old clients, and the real name
+    percent-encoded as UTF-8.
+    """
+    safe = sanitize_filename(name)
+    fallback = safe.encode("ascii", "replace").decode("ascii")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(safe, safe='')}"
 
 
 #: Field type for a client-supplied filename: validated once, shared by every

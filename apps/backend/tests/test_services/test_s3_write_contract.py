@@ -77,6 +77,18 @@ class TestWriteMethodsValidateTheirKey:
             await svc.delete_file("unauthorized/u/file.csv")
         client.delete_object.assert_not_called()
 
+    def test_a_presigned_download_names_its_file_through_the_header_builder(self, monkeypatch):
+        """#648: S3 returns this value as the download's Content-Disposition."""
+        svc, client = _live_service(monkeypatch, "test-bucket")
+
+        svc.generate_presigned_url("exports/u/file.csv", filename='sales"; x=y\r\nX-Injected: 1.csv')
+        svc.generate_presigned_url("exports/u/file.csv")
+
+        named, bare = (call.kwargs["Params"] for call in client.generate_presigned_url.call_args_list)
+        assert named["ResponseContentDisposition"].startswith('attachment; filename="sales; x=yX-Injected: 1.csv"; filename*=')
+        assert "\r" not in named["ResponseContentDisposition"]
+        assert "ResponseContentDisposition" not in bare
+
     @pytest.mark.asyncio
     async def test_get_file_size_and_presign_refuse_traversal(self, monkeypatch):
         svc, client = _live_service(monkeypatch, "test-bucket")

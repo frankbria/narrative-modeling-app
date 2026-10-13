@@ -129,7 +129,7 @@ class TestModelExportRoutes:
         # Verify response
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/x-python; charset=utf-8"
-        assert f'attachment; filename={filename}' in response.headers["content-disposition"]
+        assert f'attachment; filename="{filename}"' in response.headers["content-disposition"]
         assert response.content.decode('utf-8') == python_code
         
         # Verify service was called with correct parameters
@@ -217,7 +217,7 @@ class TestModelExportRoutes:
         # Verify response
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/zip"
-        assert f'attachment; filename={filename}' in response.headers["content-disposition"]
+        assert f'attachment; filename="{filename}"' in response.headers["content-disposition"]
         assert response.content == zip_bytes
         # Verify service was called
         mock_export_service.export_docker_container.assert_called_once_with(
@@ -244,7 +244,7 @@ class TestModelExportRoutes:
         # Verify response
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/octet-stream"
-        assert f'attachment; filename={filename}' in response.headers["content-disposition"]
+        assert f'attachment; filename="{filename}"' in response.headers["content-disposition"]
         assert response.content == onnx_bytes
         
         # Verify service was called
@@ -293,7 +293,7 @@ class TestModelExportRoutes:
         # Verify response
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/xml"
-        assert f'attachment; filename={filename}' in response.headers["content-disposition"]
+        assert f'attachment; filename="{filename}"' in response.headers["content-disposition"]
         assert response.content.decode('utf-8') == pmml_content
         
         # Verify service was called
