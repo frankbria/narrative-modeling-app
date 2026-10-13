@@ -209,6 +209,23 @@ async def test_looking_a_suggestion_up_costs_no_ai_call(setup_database, async_au
 
 
 @pytest.mark.asyncio
+async def test_a_tenant_out_of_ai_calls_can_still_use_what_they_were_given(
+    setup_database, async_authorized_client, hermetic
+):
+    from app.billing import metering
+    from app.billing.plans import PLAN_LIMITS, PlanTier
+
+    limit = PLAN_LIMITS[PlanTier.FREE].ai_calls
+    sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
+    await metering.record(TEST_USER, "ai_calls", limit)
+    assert await metering.usage_for(TEST_USER, "ai_calls") == limit
+
+    for method, url, body in _lookups(sid):
+        resp = await async_authorized_client.request(method, url, json=body)
+        assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
 async def test_an_expired_set_is_not_recomputed(setup_database, async_authorized_client, hermetic, monkeypatch):
     """Ids are minted per generation, so a fresh set can never hold the id asked for:
     recomputing bought a model call and still answered not found."""

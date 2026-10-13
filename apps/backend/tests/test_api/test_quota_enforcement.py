@@ -1192,7 +1192,7 @@ class TestAiQuota:
             ("/api/v1/ai/chat", "app.services.ai_chat.ai_chat_service.reply"),
             ("/api/v1/datasets/ds-1/features/suggest",
              "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
-            ("/api/v1/datasets/ds-1/features/apply",
+            ("/api/v1/datasets/ds-1/features/suggest-more",
              "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
             # orchestration: the 402 lands before the body is even validated
             ("/api/v1/ai/recommend-tools",
