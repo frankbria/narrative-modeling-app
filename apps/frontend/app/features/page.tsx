@@ -85,6 +85,32 @@ function ColumnBox(props: ColumnBoxProps) {
   );
 }
 
+interface ShownProps {
+  show: boolean;
+}
+
+function TooFew(props: ShownProps) {
+  const { show } = props;
+  if (!show) return null;
+  return (
+    <p className="text-sm text-destructive flex items-center gap-2">
+      <AlertCircle className="w-4 h-4" />
+      Select at least {MIN_COLUMNS} columns.
+    </p>
+  );
+}
+
+function Recorded(props: ShownProps) {
+  const { show } = props;
+  if (!show) return null;
+  return (
+    <p data-testid="choice-recorded" className="text-sm flex items-center gap-2">
+      <CheckCircle2 className="w-4 h-4 text-green-600" />
+      This choice is recorded. Continue to Model Training below.
+    </p>
+  );
+}
+
 interface ColumnChoiceFormProps {
   columns: string[];
   selected: string[];
@@ -112,18 +138,8 @@ function ColumnChoiceForm(props: ColumnChoiceFormProps) {
           <ColumnBox key={column} column={column} checked={selected.includes(column)} onToggle={onToggle} />
         ))}
       </div>
-      {!enough && (
-        <p className="text-sm text-destructive flex items-center gap-2">
-          <AlertCircle className="w-4 h-4" />
-          Select at least {MIN_COLUMNS} columns.
-        </p>
-      )}
-      {recorded && (
-        <p data-testid="choice-recorded" className="text-sm flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-green-600" />
-          This choice is recorded. Continue to Model Training below.
-        </p>
-      )}
+      <TooFew show={!enough} />
+      <Recorded show={recorded} />
       <div className="flex justify-end">
         <button
           onClick={onRecord}
@@ -136,6 +152,12 @@ function ColumnChoiceForm(props: ColumnChoiceFormProps) {
       </div>
     </div>
   );
+}
+
+/** What completing the stage stores: the choice, and when it was made. */
+function stageRecord(columns: string[], selected: string[]) {
+  const choice = choiceOf(columns, selected);
+  return { ...choice, timestamp: new Date().toISOString() };
 }
 
 interface Edited {
@@ -210,11 +232,7 @@ export default function FeaturesPage() {
   const selection = useSelection(datasetId, columns, recorded);
   const isRecorded = sameChoice(recorded, selection.selected);
   const goToUpload = () => router.push('/upload');
-  const record = () =>
-    completeStage(WorkflowStage.FEATURE_ENGINEERING, {
-      ...choiceOf(columns, selection.selected),
-      timestamp: new Date().toISOString(),
-    });
+  const record = () => completeStage(WorkflowStage.FEATURE_ENGINEERING, stageRecord(columns, selection.selected));
 
   if (!datasetId) return <NoDataset onUpload={goToUpload} />;
 
