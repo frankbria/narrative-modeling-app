@@ -50,7 +50,12 @@ async def _sum(model, field: str, user_id: str) -> int:
 
 async def _dataset_and_version_bytes(user_id: str) -> int:
     """Each stored object once: every version, and every dataset's current file unless
-    that file IS a version's object (where an undo leaves it)."""
+    that file IS a version's object (where an undo leaves it).
+
+    # shortcut: reads the tenant's dataset and version locations (two small fields a
+    # row) to compare them here; move the comparison into an aggregation if a capped
+    # tenant can come to hold tens of thousands of versions.
+    """
     versions = await _locations(DatasetVersion, user_id)
     datasets = await _locations(UserData, user_id)
     held_by_a_version = {url for url, _ in versions}

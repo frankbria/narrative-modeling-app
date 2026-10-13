@@ -37,8 +37,11 @@ async def _write(collection, doc_id, size: int, apply: bool) -> int:
     would write every other field back as it was when the run read it."""
     if not apply:
         return 0
-    await collection.update_one({"_id": doc_id, "file_size": None}, {"$set": {"file_size": size}})
-    return 1
+    # Only a row still unsized: a move that landed since the scan has already written the
+    # size of the file the dataset is on now, and that one is the truth. Counted only if
+    # this write was the one that landed.
+    result = await collection.update_one({"_id": doc_id, "file_size": None}, {"$set": {"file_size": size}})
+    return result.modified_count
 
 
 async def backfill(*, apply: bool) -> dict[str, int]:
