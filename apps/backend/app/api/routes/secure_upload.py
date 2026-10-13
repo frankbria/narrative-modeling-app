@@ -616,8 +616,8 @@ async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):
             )
             return
 
-        user_data.aiSummary = summary
-        await user_data.save()
+        # Only this field: the copy read before the model call is stale by now (#983).
+        await user_data.set({UserData.aiSummary: summary})
         logger.info("AI summary generated for dataset %s", user_data_id)
     except Exception as e:
         logger.warning("Failed to generate AI summary for dataset %s: %s", user_data_id, e)

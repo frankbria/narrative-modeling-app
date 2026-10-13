@@ -8,7 +8,6 @@ Implements Story 12.1: API Integration for New Models (Dataset portion).
 import logging
 import time
 import uuid
-from typing import Any
 
 import numpy as np
 from fastapi import (
@@ -270,6 +269,54 @@ async def upload_dataset(
         )
 
 
+#: What PUT /datasets/{id} may change. The request also carries pii_report, which this
+#: route has never applied.
+_UPDATABLE = {"statistics", "quality_report", "ai_summary", "inferred_schema"}
+
+
+async def _callers_dataset(dataset_id: str, user_id: str) -> DatasetMetadata:
+    """The caller's dataset, or 404.
+
+    A dataset that is someone else's answers exactly like one that does not exist.
+    These routes used to answer 403 "Access denied" for it, which told any signed-in
+    caller which ids are real (#751).
+    """
+    dataset = await DatasetService().get_dataset(dataset_id=dataset_id)
+    if dataset is None or dataset.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset {dataset_id} not found"
+        )
+    return dataset
+
+
+def _detail(dataset: DatasetMetadata) -> DatasetDetailResponse:
+    return DatasetDetailResponse(
+        dataset_id=dataset.dataset_id,
+        filename=dataset.filename,
+        original_filename=dataset.original_filename,
+        file_type=dataset.file_type,
+        file_path=dataset.file_path,
+        s3_url=dataset.s3_url,
+        file_size=dataset.file_size,
+        num_rows=dataset.num_rows,
+        num_columns=dataset.num_columns,
+        columns=dataset.columns,
+        data_schema=[field.model_dump() for field in dataset.data_schema],
+        inferred_schema=dataset.inferred_schema,
+        statistics=dataset.statistics,
+        quality_report=dataset.quality_report,
+        data_preview=dataset.data_preview,
+        ai_summary=dataset.ai_summary.model_dump() if dataset.ai_summary else None,
+        pii_report=dataset.pii_report.model_dump() if dataset.pii_report else None,
+        is_processed=dataset.is_processed,
+        processed_at=dataset.processed_at,
+        version=dataset.version,
+        created_at=dataset.created_at,
+        updated_at=dataset.updated_at
+    )
+
+
 @router.get("/datasets/{dataset_id}", response_model=DatasetDetailResponse)
 async def get_dataset(
     dataset_id: str,
@@ -283,47 +330,9 @@ async def get_dataset(
     try:
         logger.info(f"Getting dataset {dataset_id}")
 
-        service = DatasetService()
-        dataset = await service.get_dataset(dataset_id=dataset_id)
+        dataset = await _callers_dataset(dataset_id, current_user_id)
 
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Verify ownership
-        if dataset.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this dataset"
-            )
-
-        # Build response
-        return DatasetDetailResponse(
-            dataset_id=dataset.dataset_id,
-            filename=dataset.filename,
-            original_filename=dataset.original_filename,
-            file_type=dataset.file_type,
-            file_path=dataset.file_path,
-            s3_url=dataset.s3_url,
-            file_size=dataset.file_size,
-            num_rows=dataset.num_rows,
-            num_columns=dataset.num_columns,
-            columns=dataset.columns,
-            data_schema=[field.model_dump() for field in dataset.data_schema],
-            inferred_schema=dataset.inferred_schema,
-            statistics=dataset.statistics,
-            quality_report=dataset.quality_report,
-            data_preview=dataset.data_preview,
-            ai_summary=dataset.ai_summary.model_dump() if dataset.ai_summary else None,
-            pii_report=dataset.pii_report.model_dump() if dataset.pii_report else None,
-            is_processed=dataset.is_processed,
-            processed_at=dataset.processed_at,
-            version=dataset.version,
-            created_at=dataset.created_at,
-            updated_at=dataset.updated_at
-        )
+        return _detail(dataset)
 
     except HTTPException:
         raise
@@ -349,37 +358,11 @@ async def update_dataset(
     try:
         logger.info(f"Updating dataset {dataset_id}")
 
-        service = DatasetService()
-        dataset = await service.get_dataset(dataset_id=dataset_id)
+        await _callers_dataset(dataset_id, current_user_id)
 
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Verify ownership
-        if dataset.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this dataset"
-            )
-
-        # Build update fields from request
-        update_fields: dict[str, Any] = {}
-        if update_data.statistics is not None:
-            update_fields['statistics'] = update_data.statistics
-        if update_data.quality_report is not None:
-            update_fields['quality_report'] = update_data.quality_report
-        if update_data.ai_summary is not None:
-            update_fields['ai_summary'] = update_data.ai_summary
-        if update_data.inferred_schema is not None:
-            update_fields['inferred_schema'] = update_data.inferred_schema
-
-        # Update dataset
-        updated_dataset = await service.update_dataset(
+        updated_dataset = await DatasetService().update_dataset(
             dataset_id=dataset_id,
-            **update_fields
+            **update_data.model_dump(exclude_none=True, include=_UPDATABLE),
         )
 
         if not updated_dataset:
@@ -390,31 +373,7 @@ async def update_dataset(
 
         logger.info(f"Dataset {dataset_id} updated successfully")
 
-        # Build response
-        return DatasetDetailResponse(
-            dataset_id=updated_dataset.dataset_id,
-            filename=updated_dataset.filename,
-            original_filename=updated_dataset.original_filename,
-            file_type=updated_dataset.file_type,
-            file_path=updated_dataset.file_path,
-            s3_url=updated_dataset.s3_url,
-            file_size=updated_dataset.file_size,
-            num_rows=updated_dataset.num_rows,
-            num_columns=updated_dataset.num_columns,
-            columns=updated_dataset.columns,
-            data_schema=[field.model_dump() for field in updated_dataset.data_schema],
-            inferred_schema=updated_dataset.inferred_schema,
-            statistics=updated_dataset.statistics,
-            quality_report=updated_dataset.quality_report,
-            data_preview=updated_dataset.data_preview,
-            ai_summary=updated_dataset.ai_summary.model_dump() if updated_dataset.ai_summary else None,
-            pii_report=updated_dataset.pii_report.model_dump() if updated_dataset.pii_report else None,
-            is_processed=updated_dataset.is_processed,
-            processed_at=updated_dataset.processed_at,
-            version=updated_dataset.version,
-            created_at=updated_dataset.created_at,
-            updated_at=updated_dataset.updated_at
-        )
+        return _detail(updated_dataset)
 
     except HTTPException:
         raise
@@ -442,24 +401,10 @@ async def delete_dataset(
     try:
         logger.info(f"Deleting dataset {dataset_id}")
 
-        service = DatasetService()
-        dataset = await service.get_dataset(dataset_id=dataset_id)
-
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Verify ownership
-        if dataset.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this dataset"
-            )
+        await _callers_dataset(dataset_id, current_user_id)
 
         # Cascade-delete dataset + all children/artifacts
-        success = await service.delete_dataset(
+        success = await DatasetService().delete_dataset(
             dataset_id=dataset_id, user_id=current_user_id
         )
 
@@ -552,21 +497,7 @@ async def get_dataset_schema(
     try:
         logger.info(f"Getting schema for dataset {dataset_id}")
 
-        service = DatasetService()
-        dataset = await service.get_dataset(dataset_id=dataset_id)
-
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Verify ownership
-        if dataset.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this dataset"
-            )
+        dataset = await _callers_dataset(dataset_id, current_user_id)
 
         # Build schema response
         return DatasetSchemaResponse(
@@ -599,21 +530,7 @@ async def get_dataset_preview(
     try:
         logger.info(f"Getting preview for dataset {dataset_id}")
 
-        service = DatasetService()
-        dataset = await service.get_dataset(dataset_id=dataset_id)
-
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Verify ownership
-        if dataset.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this dataset"
-            )
+        dataset = await _callers_dataset(dataset_id, current_user_id)
 
         # Get preview data
         preview_data = dataset.data_preview or []
@@ -652,24 +569,10 @@ async def mark_dataset_processed(
     try:
         logger.info(f"Marking dataset {dataset_id} as processed")
 
-        service = DatasetService()
-        dataset = await service.get_dataset(dataset_id=dataset_id)
-
-        if not dataset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset {dataset_id} not found"
-            )
-
-        # Verify ownership
-        if dataset.user_id != current_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this dataset"
-            )
+        await _callers_dataset(dataset_id, current_user_id)
 
         # Mark as processed with results
-        updated_dataset = await service.mark_dataset_processed(
+        updated_dataset = await DatasetService().mark_dataset_processed(
             dataset_id=dataset_id,
             statistics=processing_data.statistics,
             quality_report=processing_data.quality_report,
@@ -1284,29 +1187,11 @@ async def get_selected_features(
         Previously selected features or empty list
 
     Raises:
-        HTTPException: 404 if dataset not found, 403 if not authorized
+        HTTPException: 404 if the dataset is not the caller's or does not exist
     """
     logger.info(f"Retrieving selected features for dataset {dataset_id}")
 
-    # Get dataset
-    dataset_service = DatasetService()
-    dataset = await dataset_service.get_by_id(dataset_id, current_user_id)
-
-    # Check if dataset exists
-    if dataset is None:
-        logger.warning(f"Dataset {dataset_id} not found")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dataset {dataset_id} not found"
-        )
-
-    # Verify ownership
-    if dataset.user_id != current_user_id:
-        logger.warning(f"User {current_user_id} unauthorized to access dataset {dataset_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this dataset"
-        )
+    dataset = await _callers_dataset(dataset_id, current_user_id)
 
     # Check if feature selection results are stored in metadata
     selected_features = dataset.metadata.get("selected_features", []) if hasattr(dataset, "metadata") else []
