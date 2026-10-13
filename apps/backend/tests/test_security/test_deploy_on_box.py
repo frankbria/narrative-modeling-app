@@ -133,6 +133,20 @@ def test_inline_bodies_are_quoted_heredocs():
     """An unquoted heredoc is expanded by the runner's shell before it is sent, which
     puts the value back into the text. Quoted, the body reaches the box as written and
     reads the variable there."""
+    openers = {}
     for workflow in WORKFLOWS:
-        for opener in re.findall(r"on_box\.sh\s*<<\s*(\S+)", _run_blocks(workflow)):
+        # Anywhere on the line: one call has its redirects between the name and the `<<`.
+        openers[workflow.name] = re.findall(r"on_box\.sh[^\n]*?<<\s*(\S+)", _run_blocks(workflow))
+        for opener in openers[workflow.name]:
             assert opener.startswith("'"), f"{workflow.name}: heredoc {opener} is not quoted"
+    # The three inline bodies this guards: deploy, its health gate, and the hourly probe.
+    assert {name: len(found) for name, found in openers.items()} == {
+        "deploy.yml": 2,
+        "staging-health.yml": 1,
+    }
+
+
+def test_it_takes_one_script_or_none():
+    run = _on_box("echo ran", "/srv/app", "one.sh", "two.sh")
+    assert run.returncode == 2
+    assert "ran" not in run.stdout

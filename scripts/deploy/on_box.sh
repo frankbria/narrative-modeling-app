@@ -25,8 +25,12 @@
 #    the run ends there with exit 0 (#756). The far side saves the body to a file
 #    first and runs it with stdin at /dev/null.
 set -euo pipefail
+[ $# -le 1 ] || { echo "usage: on_box.sh [script]   (or a body on stdin)" >&2; exit 2; }
 : "${HOST:?HOST is not set}" "${DEPLOY_USER:?DEPLOY_USER is not set}" "${DEPLOY_PATH:?DEPLOY_PATH is not set}"
 
+# %q writes bash quoting, and the far login shell is bash. If that ever changes, a value
+# with control characters is the case to recheck (%q would write it as $'…').
+#
 # Single-quoted on purpose: this text is for the far shell, nothing in it is ours.
 # shellcheck disable=SC2016
 run_saved_body='body=$(mktemp) && cat > "$body" && bash "$body" </dev/null; status=$?; rm -f "$body"; exit $status'
