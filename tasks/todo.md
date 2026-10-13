@@ -1,3 +1,27 @@
+# Issue #781: the storage ceiling does not see transformation outputs or versions
+
+## Plan
+- [x] RED: `stored_bytes` counts the tenant's `DatasetVersion.file_size` (each version is
+      its own object under `versions/`), and nobody else's.
+- [x] RED: a move records the size of the file it moved to, on both twins. Six writers call
+      `record_new_file`; it asks S3 for the new object's size itself (`utils.s3.object_size`,
+      one HEAD), so every one of them and the next is covered, undo and redo included. When
+      the size cannot be read the recorded one stays: the move is not failed for bookkeeping.
+- [x] `scripts/backfill_dataset_file_sizes.py`: `UserData` rows with no `file_size` get the
+      size of the object they point at. Dry run by default, counts only, a targeted `$set`.
+      Run against staging.
+- [x] ADR-003's storage paragraph and `storage.py` say what is counted. Not counted, and
+      said so: the superseded `transformed/` copies a dataset has moved off (their bytes are
+      the same as the version written beside them).
+- [x] Against real S3 (LocalStack), through the routes: after a transformation the recorded
+      size is the new object's own, on both twins; the sum is that file plus the two
+      versions; after an undo it is the size of the object the dataset is back on.
+- [x] Found in the demo: after an undo the dataset's current file IS a version's object, so
+      adding both counted it twice. The sum takes each stored object once (test first).
+- [ ] The backfill run against staging happens after the deploy (the script's helper ships
+      with this change); its counts go on the issue.
+
+
 # Issue #790: DEPLOY_PATH is written inside quotes in the remote command string
 
 ## Plan
