@@ -87,9 +87,9 @@ test.describe('tenant isolation (#493)', () => {
 
         for (const [name, path] of owned) {
           const theirs = await bContext.request.get(`${API_BASE}${path}`, { headers: b });
-          // 404 is the convention (unknown and foreign answer identically);
-          // GET /datasets/{id} still answers 403 — either way, not readable.
-          expect([403, 404], `B must not read A's ${name} (${path})`).toContain(theirs.status());
+          // 404 on every surface: a foreign id answers like an unknown one, so
+          // no response confirms that the id exists (#751).
+          expect(theirs.status(), `B must not read A's ${name} (${path})`).toBe(404);
           expect(await theirs.text(), `B's ${name} response must not carry A's data`).not.toContain(filename);
         }
 

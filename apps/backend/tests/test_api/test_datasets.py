@@ -325,8 +325,8 @@ class TestDatasetRoutes:
     @pytest.mark.asyncio
     async def test_get_dataset_wrong_user(self, async_authorized_client, setup_database):
         """
-        🔴 RED: Test accessing dataset owned by different user.
-        Should return 403 Forbidden.
+        A dataset owned by a different user is not found, like one that does not
+        exist: a 403 would confirm the id is real (#751).
         """
         # ARRANGE: Create dataset for different user
         from app.services.dataset_service import DatasetService
@@ -349,8 +349,8 @@ class TestDatasetRoutes:
         # ACT: Try to access as test_user_123
         response = await async_authorized_client.get(f"/api/v1/datasets/{dataset.dataset_id}")
 
-        # ASSERT: Verify forbidden
-        assert response.status_code == 403
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Dataset other_dataset not found"
 
     # =====================================================================
     # PUT /api/v1/datasets/{id} - Update Dataset
