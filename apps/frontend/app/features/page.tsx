@@ -102,8 +102,9 @@ function ColumnChoiceForm(props: ColumnChoiceFormProps) {
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Choose the columns the model may learn from. A column you leave out is never shown to
-        the model. You pick the column to predict in the next step; leave it selected here.
-        Identifiers, dates and empty columns are set aside automatically at training.
+        the model. You pick the column to predict in the next step, and it is never used as a
+        feature, whatever you choose here. Identifiers, dates and empty columns are set aside
+        automatically at training.
       </p>
       <p className="text-sm font-medium">{summary}</p>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
