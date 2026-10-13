@@ -9,7 +9,8 @@
 - [x] RED: the tests feed the script on stdin with a `docker` that drains it: `(0, '')`.
 - [x] `</dev/null` on the exec. Both workflows fail the step when no verdict line was
       printed, and the deploy gate captures the exit code by redirect (no pipefail there).
-- [ ] Verified by dispatching `staging-health.yml` from this branch before merging.
+- [x] Verified by dispatching `staging-health.yml` from this branch before merging: the run
+      prints `frontend: {"status":"healthy",…}` after the backend probe, exit status 0.
 
 # Issue #756: the staging probe does not cover the frontend container
 
