@@ -24,8 +24,11 @@ function base64url(input: string): string {
  * The optional `email` claim lets the backend mirror the invite-only allowlist
  * gate (issue #261) as defense-in-depth; omitted when the user has no email.
  */
-export function mintApiToken(userId: string, email?: string | null): string {
-  const secret = process.env.NEXTAUTH_SECRET;
+export function mintApiToken(
+  userId: string,
+  email?: string | null,
+  secret: string | undefined = process.env.NEXTAUTH_SECRET,
+): string {
   if (!secret) {
     throw new Error('NEXTAUTH_SECRET is not set; cannot mint API token');
   }
