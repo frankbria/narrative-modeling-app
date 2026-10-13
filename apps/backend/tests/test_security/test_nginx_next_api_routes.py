@@ -29,6 +29,10 @@ EDGE_ROUTED_ELSEWHERE = {
     # The edge's /api/health is the backend liveness probe. The frontend's own
     # handler is reached on its container port, not through nginx.
     "/api/health",
+    # Readiness of the frontend's own credentials (#756): asked from inside the
+    # container by scripts/deploy/frontend_probe.sh. It opens a database connection
+    # per call, so it must NOT gain an edge route.
+    "/api/health/ready",
 }
 
 

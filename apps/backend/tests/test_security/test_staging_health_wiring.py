@@ -216,3 +216,125 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
             check=False,
         ).stdout
     assert "LogsFetchError" in failed
+
+
+# --- #756: the frontend container shares MONGODB_URI and NEXTAUTH_SECRET -------------
+
+FRONTEND_PROBE = REPO_ROOT / "scripts" / "deploy" / "frontend_probe.sh"
+FRONTEND_ROUTE = (
+    REPO_ROOT / "apps" / "frontend" / "app" / "api" / "health" / "ready" / "route.ts"
+)
+
+
+def test_both_workflows_probe_the_frontend_container_in_the_same_run():
+    """A stale credential in the frontend breaks sign-in while pages still render. The
+    probe ran in the backend container only; the frontend's half must fail the same
+    run, so it lands on the same alert issue."""
+    assert FRONTEND_ROUTE.exists(), "the script asks a route that must exist"
+    for wf in (HEALTH_WORKFLOW, DEPLOY_WORKFLOW):
+        step = next(s for s in _steps(wf).values() if PROBE in s.get("run", ""))
+        assert "frontend_probe.sh" in step["run"], (
+            f"{wf.name}: the frontend probe must run in the step that runs the backend's"
+        )
+    health = next(
+        s for s in _steps(HEALTH_WORKFLOW).values() if PROBE in s.get("run", "")
+    )["run"]
+    # Its output joins the backend's in the file the alert quotes, and its exit code
+    # reaches the status the alert is keyed on.
+    assert "cat /tmp/frontend-probe.txt >> /tmp/probe.txt" in health
+    assert "status=$frontend" in health
+
+
+def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
+    """Run the script the way both workflows do: fed to ``bash -s`` on stdin.
+
+    The fake ``docker`` drains its stdin first, as ``docker compose exec`` does. Run as
+    a file, with a ``docker`` that ignored stdin, these tests passed while the real
+    thing printed nothing and exited 0: the exec ate the rest of the script (#756)."""
+    assert FRONTEND_PROBE.stat().st_mode & stat.S_IXUSR
+    with tempfile.TemporaryDirectory() as tmp:
+        fake = Path(tmp) / "bin" / "docker"
+        fake.parent.mkdir()
+        fake.write_text("#!/usr/bin/env bash\ncat > /dev/null\n" + docker_script)
+        fake.chmod(0o755)
+        return subprocess.run(
+            ["bash", "-s"],
+            stdin=FRONTEND_PROBE.open(),
+            env={
+                **os.environ,
+                "PATH": f"{fake.parent}:{os.environ['PATH']}",
+                "DEPLOY_PATH": tmp,
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+
+def test_frontend_probe_is_fed_to_bash_on_stdin_by_both_workflows():
+    """Pins what `_frontend_probe` imitates. If a workflow starts running the script
+    another way, the harness above stops being the real thing."""
+    for wf in (HEALTH_WORKFLOW, DEPLOY_WORKFLOW):
+        run = _run_blocks(wf)
+        assert re.search(r"bash -s\"\s*<\s*scripts/deploy/frontend_probe\.sh", run), wf.name
+        # And neither takes silence for a pass: no verdict line fails the step. It is
+        # looked for in the probe's own file, where no backend line can stand in for it.
+        assert "grep -q '^frontend: ' /tmp/frontend-probe.txt" in run, wf.name
+        # Nor loses the exit code in a pipe (the run shell has no pipefail).
+        assert not re.search(r"frontend_probe\.sh[^\n]*\|", run), wf.name
+
+
+def _answering(body: str, code: int) -> str:
+    """A `docker compose … exec -T frontend curl -w '\\n%{http_code}' …` that answers."""
+    return f"printf '%s\\n%s' '{body}' '{code}'\n"
+
+
+HEALTHY = '{"status":"healthy","checks":{"mongo":"healthy","api_token":"healthy"}}'
+STALE = (
+    '{"status":"unhealthy","checks":{"mongo":"unhealthy (MongoServerError'
+    ' AuthenticationFailed)","api_token":"healthy"}}'
+)
+
+
+def test_frontend_probe_passes_the_routes_verdict_through():
+    healthy = _frontend_probe(_answering(HEALTHY, 200))
+    assert (healthy.returncode, healthy.stdout.strip()) == (0, f"frontend: {HEALTHY}")
+
+    stale = _frontend_probe(_answering(STALE, 503))
+    assert stale.returncode == 1
+    assert "MongoServerError AuthenticationFailed" in stale.stdout
+
+
+def test_frontend_probe_does_not_fail_an_image_that_predates_the_route():
+    """The scheduled probe can run between the merge and the deploy that ships the route."""
+    older = _frontend_probe(_answering("<html>404: This page could not be found</html>", 404))
+    assert older.returncode == 0
+    assert older.stdout.strip() == "frontend: skipped (this image has no readiness route)"
+
+
+def test_frontend_probe_prints_a_report_or_a_fixed_phrase_and_nothing_else():
+    """The repo is public. Whatever the container answers, only the route's own report
+    is repeated; an error page or a dead container is named, not printed."""
+    # Assembled, so no connection string with a password in it sits in the repo.
+    leaked = "mongodb+srv://" + ":".join(("svc_user", "hunter2")) + "@cluster0.example.net"
+    crashed = _frontend_probe(_answering(f"Error: connect to {leaked}", 500))
+    assert crashed.returncode == 1
+    assert crashed.stdout.strip() == (
+        "frontend: unhealthy (the readiness route answered 500 with no report)"
+    )
+
+    # A 200 that carries no report is still a failure: something sat between curl and the route.
+    proxied = _frontend_probe(_answering("<html>welcome</html>", 200))
+    assert proxied.returncode == 1
+    assert proxied.stdout.strip() == (
+        "frontend: unhealthy (the readiness route answered 200 with no report)"
+    )
+
+    dead = _frontend_probe(
+        "echo 'service \"frontend\" is not running: secret=hunter2' >&2; exit 1\n"
+    )
+    assert dead.returncode == 1
+    assert dead.stdout.strip() == "frontend: unhealthy (the frontend container did not answer)"
+    for run in (crashed, dead):
+        assert "hunter2" not in run.stdout + run.stderr
