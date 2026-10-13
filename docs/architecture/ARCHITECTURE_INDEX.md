@@ -1,6 +1,6 @@
 # Architecture Review - Phase 3 Documentation Index
 
-**Project**: Narrative Modeling App - Data Preparation Interface Enhancement
+**Project**: SheetPredict - Data Preparation Interface Enhancement
 **Review Date**: 2025-12-17
 **Status**: Architecture Design Complete ✅
 

@@ -1,4 +1,4 @@
-# 🧠 Narrative Modeling App
+# 🧠 SheetPredict
 
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 

@@ -17,7 +17,7 @@ import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
 
 export const metadata: Metadata = {
-  title: 'Narrative Modeling App',
+  title: 'SheetPredict',
   description: 'Build and deploy machine learning models with ease.',
   icons: {
     icon: [

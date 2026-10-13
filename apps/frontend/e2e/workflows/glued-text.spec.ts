@@ -43,10 +43,10 @@ async function read(request: APIRequestContext, routes: string[]) {
 
 test.describe('glued text in the server render (#603)', () => {
   test('the detector names the text around a glued boundary @smoke', () => {
-    const glued = '<p>Welcome to <!-- -->Narrative Modeling App<!-- -->service, version <!-- -->2.</p>';
+    const glued = '<p>Welcome to <!-- -->SheetPredict<!-- -->service, version <!-- -->2.</p>';
 
-    expect(gluedBoundaries(glued)).toEqual([expect.stringContaining('Narrative Modeling App|service')]);
-    expect(gluedBoundaries('<p>Narrative Modeling App<!-- --> <!-- -->service</p>')).toEqual([]);
+    expect(gluedBoundaries(glued)).toEqual([expect.stringContaining('SheetPredict|service')]);
+    expect(gluedBoundaries('<p>SheetPredict<!-- --> <!-- -->service</p>')).toEqual([]);
   });
 
   test('the legal and pricing pages join no interpolation to the prose after it @smoke', async ({

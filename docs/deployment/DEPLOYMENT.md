@@ -1,4 +1,4 @@
-# Deployment Process - Narrative Modeling App
+# Deployment Process - SheetPredict
 
 This project follows a 4-stage deployment process to ensure code quality and stability:
 

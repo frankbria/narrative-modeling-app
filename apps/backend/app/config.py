@@ -360,7 +360,7 @@ class Settings(BaseModel):
 
     # API settings
     API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "Narrative Modeling API"
+    PROJECT_NAME: str = "SheetPredict API"
 
     # AWS/S3 settings
     AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")

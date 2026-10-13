@@ -1,8 +1,8 @@
-# E2E Testing Guide for Narrative Modeling App
+# E2E Testing Guide for SheetPredict
 
 ## Overview
 
-This guide covers the comprehensive End-to-End (E2E) testing infrastructure for the Narrative Modeling App, including setup, execution, and best practices.
+This guide covers the comprehensive End-to-End (E2E) testing infrastructure for SheetPredict, including setup, execution, and best practices.
 
 ## Test Infrastructure
 

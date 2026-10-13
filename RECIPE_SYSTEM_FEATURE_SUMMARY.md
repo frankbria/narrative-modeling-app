@@ -2,7 +2,7 @@
 
 ## Overview
 
-Complete implementation of comprehensive recipe system enhancement adding versioning, compatibility checking, sharing, and import/export functionality to the Narrative Modeling App.
+Complete implementation of comprehensive recipe system enhancement adding versioning, compatibility checking, sharing, and import/export functionality to SheetPredict.
 
 **Branch:** `feature/recipe-system-enhancement`
 **Status:** ✅ Complete - Ready for Review

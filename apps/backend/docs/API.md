@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Narrative Modeling App backend provides RESTful APIs for dataset management, transformations, AI-powered analysis, and model training.
+The SheetPredict backend provides RESTful APIs for dataset management, transformations, AI-powered analysis, and model training.
 
 **Base URL**: `http://localhost:8000/api/v1`
 **Production URL**: Contact deployment team for production endpoint

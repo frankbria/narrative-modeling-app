@@ -448,7 +448,7 @@ SOURCE_CODE_URL = "https://github.com/frankbria/narrative-modeling-app"
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to the Narrative Modeling API",
+        "message": "Welcome to the SheetPredict API",
         "license": "AGPL-3.0-or-later",
         "source_code": SOURCE_CODE_URL,
         "source_offer": (

@@ -539,7 +539,7 @@ class OnboardingService:
         return [
             {
                 "step_id": "welcome",
-                "title": "Welcome to Narrative Modeling",
+                "title": "Welcome to SheetPredict",
                 "description": "Learn about the platform and what you can accomplish",
                 "step_type": OnboardingStepType.WELCOME,
                 "order": 1,

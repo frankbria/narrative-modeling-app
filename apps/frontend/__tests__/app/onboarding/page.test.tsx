@@ -69,7 +69,7 @@ describe('OnboardingPage (#281 dead controls)', () => {
 
     // Welcome card renders once loading resolves.
     expect(
-      await screen.findByText('Welcome to Narrative Modeling!')
+      await screen.findByText('Welcome to SheetPredict!')
     ).toBeInTheDocument();
 
     activateTab(/sample data/i);
@@ -85,7 +85,7 @@ describe('OnboardingPage (#281 dead controls)', () => {
 
   it('Help tab documentation buttons link to the real /quickstart page', async () => {
     render(<OnboardingPage />);
-    await screen.findByText('Welcome to Narrative Modeling!');
+    await screen.findByText('Welcome to SheetPredict!');
 
     activateTab(/help & resources/i);
 
@@ -97,7 +97,7 @@ describe('OnboardingPage (#281 dead controls)', () => {
 
   it('removes the inert video-tutorial buttons', async () => {
     render(<OnboardingPage />);
-    await screen.findByText('Welcome to Narrative Modeling!');
+    await screen.findByText('Welcome to SheetPredict!');
 
     activateTab(/help & resources/i);
     await screen.findByRole('link', { name: /understanding data quality/i });

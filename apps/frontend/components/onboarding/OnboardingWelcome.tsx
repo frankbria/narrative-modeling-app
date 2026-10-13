@@ -28,7 +28,7 @@ export function OnboardingWelcome(props: { onStart: VoidFunction }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Zap className="h-6 w-6 text-blue-600" />
-          Welcome to Narrative Modeling!
+          Welcome to SheetPredict!
         </CardTitle>
         <CardDescription>Your AI-powered machine learning platform</CardDescription>
       </CardHeader>

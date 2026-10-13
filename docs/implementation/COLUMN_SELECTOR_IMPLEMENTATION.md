@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully created a production-ready `ColumnSelector` component for the data preparation interface in the Narrative Modeling App. This component provides a searchable, multi-select column list with advanced features for handling datasets with 1000+ columns.
+Successfully created a production-ready `ColumnSelector` component for the data preparation interface in SheetPredict. This component provides a searchable, multi-select column list with advanced features for handling datasets with 1000+ columns.
 
 ## Files Created
 

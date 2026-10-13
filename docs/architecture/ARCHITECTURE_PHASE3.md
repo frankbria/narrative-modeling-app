@@ -1,6 +1,6 @@
 # Data Preparation Interface Enhancement - Architecture Design Document
 
-**Project**: Narrative Modeling App  
+**Project**: SheetPredict  
 **Phase**: Phase 3 (Architecture Review)  
 **Date**: 2025-12-17  
 **Status**: Architecture Design Complete

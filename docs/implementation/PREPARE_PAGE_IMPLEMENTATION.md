@@ -1,7 +1,7 @@
 # Dataset-Specific Data Preparation Page Implementation
 
 **Date**: December 17, 2025
-**Project**: Narrative Modeling App (Next.js 15 + React + TypeScript)
+**Project**: SheetPredict (Next.js 15 + React + TypeScript)
 **Scope**: Phase 3 - Data Preparation Route Migration
 **Status**: ✅ COMPLETED
 
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This document summarizes the implementation of the dataset-specific data preparation page route at `/datasets/[id]/prepare` for the Narrative Modeling App. This represents Phase 3a of the architecture migration plan outlined in `ARCHITECTURE_PHASE3.md`.
+This document summarizes the implementation of the dataset-specific data preparation page route at `/datasets/[id]/prepare` for SheetPredict. This represents Phase 3a of the architecture migration plan outlined in `ARCHITECTURE_PHASE3.md`.
 
 ---
 

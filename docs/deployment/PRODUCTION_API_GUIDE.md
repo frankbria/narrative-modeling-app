@@ -1,6 +1,6 @@
 # Production API Guide
 
-## Getting Started with the Narrative Modeling Production API
+## Getting Started with the SheetPredict Production API
 
 ### 1. Generate an API Key
 

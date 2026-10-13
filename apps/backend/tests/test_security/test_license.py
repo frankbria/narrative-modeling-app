@@ -34,7 +34,7 @@ def test_license_is_agpl3(license_text: str) -> None:
 
 
 def test_license_names_correct_product_and_holder(license_text: str) -> None:
-    assert "Narrative Modeling App" in license_text
+    assert "SheetPredict" in license_text
     assert HOLDER in license_text
     # The wrong-product leftovers must be gone.
     assert "CodeFRAME" not in license_text

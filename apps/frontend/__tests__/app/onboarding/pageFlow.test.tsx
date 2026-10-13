@@ -42,7 +42,7 @@ const step = (order: number, step_id: string, title: string, status = 'not_start
 });
 
 const STEPS = [
-  step(1, 'welcome', 'Welcome to Narrative Modeling', 'completed'),
+  step(1, 'welcome', 'Welcome to SheetPredict', 'completed'),
   step(2, 'upload_data', 'Upload Your First Dataset', 'in_progress'),
   step(3, 'explore_data', 'Explore Your Data'),
 ];
@@ -83,7 +83,7 @@ describe('OnboardingPage flow (#809)', () => {
     serve();
     render(<OnboardingPage />);
 
-    expect(await screen.findByText('Welcome to Narrative Modeling!')).toBeInTheDocument();
+    expect(await screen.findByText('Welcome to SheetPredict!')).toBeInTheDocument();
     expect(sidebar().getAllByTestId('onboarding-step-title').map((t) => t.textContent)).toEqual(STEPS.map((s) => s.title));
     expect(stepButton('Explore Your Data')).not.toHaveAttribute('aria-current');
 
@@ -91,7 +91,7 @@ describe('OnboardingPage flow (#809)', () => {
 
     expect(stepButton('Explore Your Data')).toHaveAttribute('aria-current', 'step');
     expect(screen.getAllByText('Explore Your Data description').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Welcome to Narrative Modeling!')).not.toBeInTheDocument();
+    expect(screen.queryByText('Welcome to SheetPredict!')).not.toBeInTheDocument();
   });
 
   it('opens the step the backend says is current, and Start Tutorial opens the first', async () => {
@@ -103,7 +103,7 @@ describe('OnboardingPage flow (#809)', () => {
     serve();
     render(<OnboardingPage />);
     fireEvent.click(await screen.findByRole('button', { name: /start tutorial/i }));
-    expect(screen.getAllByText('Welcome to Narrative Modeling description').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Welcome to SheetPredict description').length).toBeGreaterThan(0);
   });
 
   it('completing a step that earns something celebrates and reloads the progress', async () => {
@@ -178,7 +178,7 @@ describe('OnboardingPage flow (#809)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /retry/i }));
 
-    expect(await screen.findByText('Welcome to Narrative Modeling!')).toBeInTheDocument();
+    expect(await screen.findByText('Welcome to SheetPredict!')).toBeInTheDocument();
     expect(api.getStatus).toHaveBeenCalledTimes(2);
   });
 });

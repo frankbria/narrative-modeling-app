@@ -20,7 +20,10 @@
 
 export const COMPANY = {
   /** Product name as it appears to users. */
-  serviceName: 'Narrative Modeling App',
+  serviceName: 'SheetPredict',
+  /** The one-line value proposition, word for word from docs/product/positioning.md. */
+  valueLine:
+    'SheetPredict turns a spreadsheet into a validated, explained, deployable model in minutes — and shows its work.',
   /** The contracting party. */
   legalEntity: 'Noatak Enterprises, LLC, dba Bria Strategy Group',
   governingLaw: 'State of Arizona, USA',

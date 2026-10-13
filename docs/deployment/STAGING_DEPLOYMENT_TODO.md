@@ -7,7 +7,7 @@
 
 ## Overview
 
-This document outlines the steps needed to set up the staging deployment server for the Narrative Modeling App. The staging server will serve as an integration testing and demo environment before production deployment.
+This document outlines the steps needed to set up the staging deployment server for SheetPredict. The staging server will serve as an integration testing and demo environment before production deployment.
 
 ## Server Information
 

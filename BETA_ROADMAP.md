@@ -1,4 +1,4 @@
-# Beta Roadmap - Narrative Modeling App
+# Beta Roadmap - SheetPredict
 
 ## ⚡ 2026-06-05 Issue Triage Update
 
