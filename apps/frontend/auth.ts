@@ -10,7 +10,7 @@ import { mintApiToken } from "./lib/api-token"
 import { isSignInAllowed, signupMode } from "./lib/invite-allowlist"
 import { isAdminEmail } from "./lib/admin-allowlist"
 import { assertAuthConfig, assertDatabaseConfig } from "./lib/auth-config"
-import { resolveTestAdmin } from "./lib/test-credentials"
+import { resolveExtraTestIdentity } from "./lib/test-credentials"
 import { recordAccountCreated } from "./lib/product-events"
 
 // Fail fast (issue #271): in production, refuse to start when OAuth creds or
@@ -55,9 +55,9 @@ if (isDevelopment || process.env.NODE_ENV === 'test') {
             image: null,
           }
         }
-        // Second dev/test identity (#613): an admin for the /admin smoke spec,
-        // present only when TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD are both set.
-        return resolveTestAdmin(
+        // The other dev/test identities: the admin for the /admin smoke spec (#613)
+        // and the isolated e2e users (#743). Each exists only when its variables are set.
+        return resolveExtraTestIdentity(
           typeof credentials?.email === 'string' ? credentials.email : undefined,
           typeof credentials?.password === 'string' ? credentials.password : undefined,
         )

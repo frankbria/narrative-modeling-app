@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures';
 import { apiAuthHeaders } from '../helpers/apiAuth';
+import { isolatedState } from '../isolatedUsers';
 
 /**
  * #470 — the onboarding flow every first-time user is forced into must talk to the
@@ -11,7 +12,11 @@ import { apiAuthHeaders } from '../helpers/apiAuth';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
-// Both tests reset the one shared user's onboarding progress, so they must not interleave.
+// This spec resets its user's onboarding progress, so it is its own user (#743): as the
+// shared one, every other spec's dashboard visit bounced to /onboarding while it ran.
+test.use({ storageState: isolatedState('onboarding') });
+
+// Both tests reset that one user's progress, so they must not interleave.
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Onboarding talks to the backend (#470)', () => {

@@ -1,3 +1,24 @@
+# Issue #743: specs that change account state get their own e2e user
+
+## Plan
+- [x] RED (jest): an isolated identity resolves only with `TEST_ISOLATED_USERS=1`, only for a
+      plus-addressed form of `TEST_USER_EMAIL` with a safe slug and the test password, and
+      its id cannot collide with the shared user's or the admin's. The provider's
+      `authorize` is exercised through the mocked provider factory.
+- [x] `lib/test-credentials.ts::resolveIsolatedTestUser` + `resolveExtraTestIdentity` (admin,
+      then isolated); `auth.ts` calls the latter. Dev/test builds only, like the provider.
+- [x] `e2e/isolatedUsers.ts` names the users (`onboarding`, `erasure`); global setup signs
+      each in and saves its session; a spec opts in with `test.use({ storageState })`, so
+      every fixture (`page`, `request`, `authenticatedPage`, `trainModel`) is that user.
+- [x] `onboarding.spec` runs as `onboarding` and rejoins the main projects: the two
+      `-onboarding` projects and their `dependencies` go.
+- [x] `account-erasure.spec` gains the account-level erase, as `erasure` (AC2).
+- [x] AC1 proof on the real stack: on main the spec's reset turns the shared user's
+      finished onboarding back to first-time and its dashboard bounces; on the branch the
+      reset lands on `test-isolated-onboarding` and the shared user stays where it was.
+      The whole smoke project (40 tests) passes with the onboarding spec in parallel.
+- [x] Fixture diagnostic stays (AC3), its comment says what can still cause a bounce.
+
 # Issue #999: 72 e2e tests drove a legacy Prepare page no user can reach
 
 ## Plan

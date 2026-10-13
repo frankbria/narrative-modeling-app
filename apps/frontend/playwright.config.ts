@@ -33,7 +33,8 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: process.env.BASE_URL || `http://localhost:${process.env.PORT || '3010'}`,
 
-    /* Use the authenticated session state from global setup */
+    /* The shared test user's session from global setup. A spec that changes
+       account-scoped state runs as its own user instead (e2e/isolatedUsers.ts, #743). */
     storageState: './e2e/.auth/user.json',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
@@ -60,18 +61,6 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       grep: /@smoke/,
       testMatch: /.*\.spec\.ts/,
-      // onboarding.spec resets the shared test user's onboarding progress and
-      // walks it back to complete; while it runs, the dashboard redirects every
-      // other test's authenticatedPage to /onboarding (#152 AC1). It gets its
-      // own project below, run after this one, instead of a parallel worker.
-      testIgnore: /onboarding\.spec\.ts/,
-    },
-    {
-      name: 'chromium-smoke-onboarding',
-      use: { ...devices['Desktop Chrome'] },
-      grep: /@smoke/,
-      testMatch: /onboarding\.spec\.ts/,
-      dependencies: ['chromium-smoke'],
     },
 
     // Full suite: All tests on Chromium (default for CI)
@@ -79,13 +68,6 @@ export default defineConfig({
       name: 'chromium-full',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /.*\.spec\.ts/,
-      testIgnore: /onboarding\.spec\.ts/, // same isolation as the smoke project
-    },
-    {
-      name: 'chromium-full-onboarding',
-      use: { ...devices['Desktop Chrome'] },
-      testMatch: /onboarding\.spec\.ts/,
-      dependencies: ['chromium-full'],
     },
 
     // Full suite: Firefox (optional, run on demand)
@@ -93,8 +75,7 @@ export default defineConfig({
       name: 'firefox-full',
       use: { ...devices['Desktop Firefox'] },
       testMatch: /.*\.spec\.ts/,
-      // onboarding.spec is a backend walk, not a browser-compat test; it runs
-      // once, isolated, in the chromium-*-onboarding projects (see chromium-smoke).
+      // onboarding.spec is a backend walk, not a browser-compat test.
       testIgnore: /onboarding\.spec\.ts/,
     },
 
@@ -103,8 +84,7 @@ export default defineConfig({
       name: 'webkit-full',
       use: { ...devices['Desktop Safari'] },
       testMatch: /.*\.spec\.ts/,
-      // onboarding.spec is a backend walk, not a browser-compat test; it runs
-      // once, isolated, in the chromium-*-onboarding projects (see chromium-smoke).
+      // onboarding.spec is a backend walk, not a browser-compat test.
       testIgnore: /onboarding\.spec\.ts/,
     },
 

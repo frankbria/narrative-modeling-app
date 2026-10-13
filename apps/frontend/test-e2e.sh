@@ -114,6 +114,10 @@ export TEST_USER_PASSWORD=${TEST_USER_PASSWORD:-test-password-123}
 export TEST_ADMIN_EMAIL=${TEST_ADMIN_EMAIL:-admin-e2e@narrativeml.com}
 export TEST_ADMIN_PASSWORD=${TEST_ADMIN_PASSWORD:-admin-password-123}
 export ADMIN_EMAILS="$TEST_ADMIN_EMAIL"
+# Isolated e2e users (#743): the dev-credentials provider also accepts
+# local+<name>@domain of TEST_USER_EMAIL, each its own account, for the specs that
+# change account-scoped state. global-setup signs in e2e/isolatedUsers.ts's list.
+export TEST_ISOLATED_USERS=1
 if [ "$TEST_ADMIN_EMAIL" = "$TEST_USER_EMAIL" ]; then
   echo "TEST_ADMIN_EMAIL must differ from TEST_USER_EMAIL: the credentials provider" >&2
   echo "checks the ordinary user first, so an equal admin identity would silently be a non-admin." >&2
