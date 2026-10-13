@@ -7,6 +7,7 @@ import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import type { TrainingMode } from '@/lib/services/model';
 import { TrainingNotices, TrainingSetup } from '@/components/model-training/TrainingSetup';
+import { LeftOutColumns } from '@/components/model-training/LeftOutColumns';
 import { StartingRun, TrainingRunView } from '@/components/model-training/TrainingRunView';
 import { chosenMode, useTrainingOptions } from '@/components/model-training/useTrainingOptions';
 import { useTrainingRun, type TrainingRun } from '@/components/model-training/useTrainingRun';
@@ -64,16 +65,22 @@ export default function ModelPage() {
         <TrainingBody
           run={run}
           setup={
-            <TrainingSetup
-              columns={options.columns}
-              targetColumn={targetColumn}
-              onTargetChange={setTargetColumn}
-              mode={mode}
-              onModeChange={setModeChoice}
-              recommendedMode={options.recommendedMode}
-              reason={options.reason}
-              onStart={start}
-            />
+            <>
+              <LeftOutColumns
+                stageData={state.stageData[WorkflowStage.FEATURE_ENGINEERING]}
+                targetColumn={targetColumn}
+              />
+              <TrainingSetup
+                columns={options.columns}
+                targetColumn={targetColumn}
+                onTargetChange={setTargetColumn}
+                mode={mode}
+                onModeChange={setModeChoice}
+                recommendedMode={options.recommendedMode}
+                reason={options.reason}
+                onStart={start}
+              />
+            </>
           }
         />
 

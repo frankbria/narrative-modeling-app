@@ -223,19 +223,7 @@ async function mockBackend(
       });
     }
 
-    // Feature engineering
-    if (url.includes('/features/suggestions')) {
-      return json(route, { summary: 'Looks good.', recommendations: [] });
-    }
-    if (url.includes('/features/generate')) return json(route, { newFeatures: [] });
-    if (url.match(/\/datasets\/[^/]+\/features/)) {
-      return json(route, {
-        features: [
-          { name: 'feature_a', type: 'numeric' },
-          { name: 'feature_b', type: 'numeric' },
-        ],
-      });
-    }
+    // Feature engineering reads its columns from the dataset record above.
 
     // ML pipeline (mocked)
     if (url.includes('/ml/train')) {
@@ -327,7 +315,7 @@ test.describe.serial('Beta launch readiness — full journey (#152)', () => {
     await expect(page).toHaveURL(/\/features$/, { timeout: 15000 });
 
     // Criterion 4: Get AI-powered feature suggestions and apply them.
-    await page.getByTestId('generate-features-button').click();
+    await page.getByTestId('use-columns-button').click();
     const featuresContinue = page.getByTestId('continue-button');
     await expect(featuresContinue).toBeEnabled({ timeout: 15000 });
     await featuresContinue.click();

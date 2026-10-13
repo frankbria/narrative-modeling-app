@@ -118,3 +118,20 @@ export async function seedTrainingWorkflow(
     'feature_engineering',
   ]);
 }
+
+/**
+ * Seed the workflow at FEATURE_ENGINEERING with the earlier stages complete, so
+ * the stage-gated `/features` page is reachable for a dataset that was only
+ * uploaded (#969). The stage itself is left for the page to complete.
+ */
+export async function seedFeaturesWorkflow(
+  page: Page,
+  request: APIRequestContext,
+  datasetId: string
+): Promise<void> {
+  await seedWorkflow(page, request, datasetId, null, 'feature_engineering', [
+    'data_loading',
+    'data_profiling',
+    'data_preparation',
+  ]);
+}

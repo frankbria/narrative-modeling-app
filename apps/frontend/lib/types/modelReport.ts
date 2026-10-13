@@ -39,6 +39,8 @@ export interface ModelReport {
     excluded_date_columns?: string[];
     /** Columns with no values, left out of the features (#911). Absent on older responses. */
     excluded_empty_columns?: string[];
+    /** Left unselected in the Feature Engineering stage (#969). */
+    excluded_user_columns?: string[];
   };
   leaderboard: ReportSection & { rows: LeaderboardRow[] };
   winner: ReportSection & {

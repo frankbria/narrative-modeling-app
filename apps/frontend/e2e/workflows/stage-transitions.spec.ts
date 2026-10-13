@@ -162,21 +162,7 @@ async function mockBackend(page: Page) {
       });
     }
 
-    // Feature engineering (order: most specific first)
-    if (url.includes('/features/suggestions')) {
-      return json(route, { summary: 'Looks good.', recommendations: [] });
-    }
-    if (url.includes('/features/generate')) {
-      return json(route, { newFeatures: [] });
-    }
-    if (url.match(/\/datasets\/[^/]+\/features/)) {
-      return json(route, {
-        features: [
-          { name: 'feature_a', type: 'numeric' },
-          { name: 'feature_b', type: 'numeric' },
-        ],
-      });
-    }
+    // Feature engineering reads its columns from the dataset record above.
 
     // ML pipeline (mocked training)
     if (url.includes('/ml/train')) {
@@ -254,7 +240,7 @@ test.describe.serial('Seamless stage transitions (#88)', () => {
     await expect(page).toHaveURL(/\/features$/, { timeout: 15000 });
 
     // --- Stage 4: Feature engineering ---
-    await page.getByTestId('generate-features-button').click();
+    await page.getByTestId('use-columns-button').click();
     const featuresContinue = page.getByTestId('continue-button');
     await expect(featuresContinue).toBeEnabled({ timeout: 15000 });
     await featuresContinue.click();
