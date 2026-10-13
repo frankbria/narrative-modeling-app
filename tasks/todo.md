@@ -1,35 +1,23 @@
-# Issue #969: the Feature Engineering stage calls three routes that do not answer
+# Issue #648: a model's name reaches the export download header unescaped
 
 ## Problem
-`app/features/page.tsx` fetches `GET /datasets/{id}/features` (404 for a UI upload's id, and
-it is the feature-definition list, not the dataset's columns), `GET …/features/suggestions`
-(no such route) and `POST …/features/generate` (no such route, and the only thing that
-completes the stage). `MODEL_TRAINING` requires the stage, so the guided workflow stops here.
-Nothing consumes the stage's `selectedFeatures` either: training uses every column.
-
-## Decision
-The page calls routes that exist; no "generate" route is added. The stage becomes what its
-selection says: choose the columns the model may learn from. That choice reaches training
-as a new `feature_config.exclude_columns`. The suggestions panel and the three generation
-checkboxes had nothing behind them and go.
+Eight routes in `model_export.py` (four GET, four through `POST …/export/{format}`) build
+`Content-Disposition: attachment; filename={filename}` from the model's name. Quotes and
+CR/LF pass through, and a name outside latin-1 cannot be encoded as a header at all, so
+that model cannot be exported (the encode error is a `ValueError`, answered 400).
+`batch_prediction.py` builds the same header from the job's `output_format`.
 
 ## Plan
-Backend
-- [x] RED: `FeatureEngineer(exclude_columns=[…])` leaves those columns out at fit, at serving
-      and in the export, and reports them apart from identifiers, dates and empties.
-- [x] `FeatureEngineeringConfig.exclude_columns`, `FeatureConfigRequest.exclude_columns`
-      (the request dumps straight onto the config).
-- [x] `training_config["excluded_user_columns"]`, the model report ("Left out by you").
-- [x] Everything left out: a failure reason that says so.
-Frontend
-- [x] `lib/services/datasetColumns.ts`: the column loader the Model page already uses
-      (both id-spaces), shared.
-- [x] `/features`: the dataset's columns, at least two selected, a failed load shown with a
-      retry, "Continue" completes the stage with `selectedFeatures`.
-- [x] Model page: columns not selected (other than the target) go out as `exclude_columns`;
-      the form says how many columns the model will see. The report lists them.
-- [x] Contract: the train request the page builds is checked against `TrainModelRequest`'s
-      schema, captured the way the Prepare stage's are (#855).
-E2E
-- [x] A spec walks upload → features → model on the real stack with no mocks for this page.
-- [x] `beta-journey` and `stage-transitions` stop mocking the two routes that never existed.
+- [x] RED: a hostile name on every export route; a Cyrillic name; the builder itself.
+- [x] `attachment_disposition(name)` in `app/utils/filenames.py`: normalise, then both
+      RFC 6266 forms. The report route already did this inline; it moves there.
+- [x] `model_export.py`: `_download` for the header, `_export` for the format dispatch
+      (`export_model_custom` was at cc 11).
+- [x] `batch_prediction.download_results` uses it too (cc 6: the media-type chain becomes
+      a lookup).
+- [x] A guard: no `attachment; filename` literal in `app/` outside the builder. It found a
+      fourth site on its first run: the presigned export URL's `ResponseContentDisposition`
+      in `s3_service.py` (already escaped, by its own rule). It uses the builder now.
+- [x] `MLModel.name` is not given a filename validator: it is a display name ("v2 / churn",
+      a trailing dot, any script), and changing what users typed to make one header safe
+      is the wrong end to fix.

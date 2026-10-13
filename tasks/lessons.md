@@ -2090,3 +2090,7 @@ checked, and the fix is always the same: the claim is a query, so run it.
 ## A captured schema can hold a fact about the machine that captured it (#969)
 - **What happened:** `test_train_request_schema_fixture.py` captured `TrainModelRequest`'s JSON schema into a frontend fixture. `TuningConfigRequest.n_jobs` is `le=os.cpu_count()`, so the fixture said `maximum: 8` on this machine and CI's 4-core runner failed the comparison. The full local gate had passed.
 - **Rule:** before committing a captured fixture (schema, response body), grep the model for values computed at import (`os.cpu_count()`, `os.getenv`, the clock) and drop them from the capture in the test that writes it, naming why. A fixture test that passes locally proves nothing about a value only the local machine produces.
+
+## Read the exit code of the test you just wrote before committing (#648)
+- **What happened:** a new guard test (`test_no_download_header_is_built_by_hand`) was added and run in the same command as the commit; the run printed `exit 1`, the command went on to commit and the next command pushed. The guard had found a real fourth site (`s3_service.py`), so the branch was red for one push.
+- **Rule:** a command that runs a new test must stop on failure (`&&` before `git commit`), never `;`. A guard test's first run is the one most likely to fail, because it is looking for what was missed.

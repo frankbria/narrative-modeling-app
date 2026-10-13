@@ -29,9 +29,12 @@ from app.services.batch_prediction import (
     BatchConcurrencyLimitError,
     BatchPredictionService,
 )
+from app.utils.filenames import attachment_disposition
 from app.utils.upload_limits import read_upload_capped
 
 router = APIRouter(prefix="/batch", tags=["batch-prediction"])
+
+_RESULT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 # Initialize service
 batch_service = BatchPredictionService()
@@ -504,21 +507,14 @@ async def download_results(
     config = job.config
     output_format = config.get("output_format", "csv")
 
-    if output_format == "csv":
-        media_type = "text/csv"
-        filename = f"batch_results_{job_id}.csv"
-    elif output_format == "json":
-        media_type = "application/json"
-        filename = f"batch_results_{job_id}.json"
-    else:
-        media_type = "application/octet-stream"
-        filename = f"batch_results_{job_id}.{output_format}"
+    media_type = _RESULT_MEDIA_TYPES.get(output_format, "application/octet-stream")
+    filename = f"batch_results_{job_id}.{output_format}"
 
     # Return file stream
     return StreamingResponse(
         io.BytesIO(content),
         media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": attachment_disposition(filename)},
     )
 
 
