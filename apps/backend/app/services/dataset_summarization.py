@@ -16,9 +16,13 @@ from app.middleware.error_handlers import internal_error_message
 from app.models.user_data import AISummary
 from app.utils.circuit_breaker import CircuitBreakerOpen, with_circuit_breaker
 from app.utils.datetime import utcnow
+from app.utils.field_shadows import expect_field_shadow
 from app.utils.openai_client import build_openai_client, openai_model
 
 logger = logging.getLogger(__name__)
+
+
+expect_field_shadow("schema", "DatasetSummaryRequest")
 
 
 class DatasetSummaryRequest(BaseModel):

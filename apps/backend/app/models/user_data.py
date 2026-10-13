@@ -14,6 +14,7 @@ from beanie import (
 )
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
+from app.utils.field_shadows import expect_field_shadow
 from app.utils.filenames import SafeFilename, excel_under_its_extension
 
 
@@ -42,6 +43,9 @@ class AISummary(BaseModel):
     suggestions: list[str]
     rawMarkdown: str
     createdAt: datetime = Field(default_factory=get_current_time)
+
+
+expect_field_shadow("schema", "UserData")
 
 
 class UserData(Document):
