@@ -1,3 +1,20 @@
+# Issue #778: the upload page has no jest suite that renders it
+
+## Plan
+- [x] A suite that renders `UploadPage`, selects a small CSV through `file-input` and clicks
+      `upload-button`, with `fetch` answering as the backend does. Tests only: the page
+      itself does not change.
+- [x] `/upload/secure`: success (preview, file id, the stage completed, Next goes to
+      `/explore/{id}`); a 402 `quota_exceeded` puts the error in the `planLimit` store and
+      shows the backend's sentence; another failure shows its own detail or the fallback
+      and opens no dialog; a 200 of an unknown shape is an error.
+- [x] `/upload/confirm-pii-upload`: the warning, both choices (`mask_pii` true and false),
+      then the same three outcomes.
+- [x] Mutation check: each `apiError` line reverted to a plain `Error`; its tests must fail.
+- [x] Mutation result: with `/upload/secure`'s `apiError` replaced by a plain `Error`, its
+      plan-limit and backend-detail tests fail (2 of 11); the same for the PII confirmation.
+
+
 # Issue #810: a URL assertion passes at push time, before the stage guard bounces
 
 ## Plan
