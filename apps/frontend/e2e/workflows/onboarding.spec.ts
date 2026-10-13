@@ -2,6 +2,7 @@ import { test, expect } from '../fixtures';
 import { apiAuthHeaders } from '../helpers/apiAuth';
 import { isolatedState } from '../isolatedUsers';
 import { textLayoutProblems } from '../helpers/layoutProblems';
+import { expectLandedOnStage } from '../helpers/landing';
 
 /**
  * #470 — the onboarding flow every first-time user is forced into must talk to the
@@ -94,8 +95,12 @@ test.describe('Onboarding sample trains (#770)', () => {
     await expect(page.getByText('2,000', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: /^use this$/i }).first().click();
 
-    // Loading creates the user's own dataset and moves them to it.
-    await page.waitForURL(/\/explore\/[0-9a-f]{24}/, { timeout: 30000 });
+    // Loading creates the user's own dataset and moves them to it, and they stay there:
+    // the address alone matched for an instant before the stage guard sent a user whose
+    // load had not completed Data Loading back to /upload (#810).
+    await expectLandedOnStage(page, /\/explore\/[0-9a-f]{24}/, 'Data Profiling');
+    // ...with the sample's own rows on the page (the Overview tab's preview table).
+    await expect(page.locator('th', { hasText: 'monthly_charges' }).first()).toBeVisible({ timeout: 30000 });
     const datasetId = page.url().match(/\/explore\/([0-9a-f]{24})/)![1];
 
     // Step 4's work, on the real backend: a quick-mode AutoML run.
