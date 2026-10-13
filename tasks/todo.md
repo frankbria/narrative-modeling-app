@@ -1,20 +1,17 @@
-# Issue #981: the AI summary fails for a dataset with fewer than two numeric columns
+# Issue #751: the dataset routes confirm that a foreign id exists
 
 ## Problem
-`POST /ai/summarize/{id}` on a really processed dataset whose statistics hold
-`correlation_matrix: null` answers 200 with "Failed to generate dataset summary", the
-exception's text in `issues`, and saves that as the dataset's `aiSummary`. Found while
-auditing the mocked tests for #683: the route's tests used a `MagicMock` dataset.
+Seven routes in `datasets.py` look a dataset up and then answer 403 "Access denied" when
+it is another tenant's. Every other owned surface answers 404 for unknown and foreign
+alike, so that no response says which ids are real.
 
 ## Plan
-- [x] RED: a real document carrying the captured `/data/process` result; each nullable key
-      as null; a forced failure; a write landing while the summary is made.
-- [x] `_stored(source, key, default)`: a stored null reads like a missing key. Every read
-      of schema, statistics and quality report uses it. `_extract_statistical_highlights`
-      (cc 9) and `_prepare_context` (cc 8) are split on the way.
-- [x] The request takes each part as a dict or nothing; the model-instance branches had
-      no caller.
-- [x] A failed summary: `internal_error_message`, exception to the log.
-- [x] The route (cc 8): `_summary_request`, `_settle`. A failed summary is returned, not
-      stored; the write sets only `aiSummary`.
-- [x] The three mocked summarize tests go; the lookup test asserts 200, not "not 404".
+- [x] RED: real documents; each of the seven routes answers a foreign id exactly like an
+      unknown one.
+- [x] `_callers_dataset(dataset_id, user_id)`: the lookup and the one 404, used by all seven.
+- [x] The handlers were at cc 6 to 13. With the lookup out they are 4 or less;
+      `get_dataset` and `update_dataset` share `_detail` for the response they both built.
+- [x] The e2e isolation spec asserts 404 on every read surface.
+- [ ] The same lookup-then-403 in `transformations.py` (12), `feature_store.py` (9),
+      `features.py` (8), `plot.py` (3), `analytics_result.py` (3), `models.py` (1) and
+      `feature_engineering.py` (1): filed separately.
