@@ -53,30 +53,14 @@ class TestAiAnalysisObjectIdLookup:
         """The panel sends the id as a path string; it must still resolve."""
         doc = await _seed_user_data()
 
-        async def _fake_summary(*_args, **_kwargs):
-            return {
-                "summary": "Two columns, mostly numeric.",
-                "key_insights": ["age skews young"],
-                "recommendations": ["collect more rows"],
-                "data_quality_assessment": {"score": 0.9},
-            }
-
-        monkeypatch.setattr(
-            "app.services.dataset_summarization.dataset_summarization_service."
-            "generate_comprehensive_summary",
-            _fake_summary,
-        )
-
         response = await async_authorized_client.post(
             f"/api/v1/ai/summarize/{doc.id}"
         )
 
-        # Scoped to the lookup, deliberately. Pre-fix this was 404 "File not found"
-        # for a document that plainly exists; anything past the lookup belongs to
-        # the summarization service and its own suite. Asserting 200 here would
-        # couple this file to that service's internals for no extra signal.
-        assert response.json().get("detail") != "File not found", response.json()
-        assert response.status_code != 404, response.json()
+        # Pre-fix this was 404 "File not found" for a document that plainly exists.
+        # No model key is set, so the summary is the real rule-based one (#981).
+        assert response.status_code == 200, response.json()
+        assert response.json()["model_used"] == "fallback"
 
     async def test_analyze_finds_a_document_by_its_string_id(
         self, async_authorized_client, setup_database, monkeypatch

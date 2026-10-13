@@ -1,5 +1,8 @@
 """
 Tests for AI analysis API endpoints
+
+The summarize route is tested against real documents in
+`test_ai_summarize_real_document.py` (#981).
 """
 
 from unittest.mock import AsyncMock, patch
@@ -39,25 +42,6 @@ def mock_user_data_with_analysis(mock_user_data):
         ]
     }
     return mock_user_data
-
-
-@pytest.fixture
-def mock_ai_summary():
-    """Mock AI summary response"""
-    return {
-        "summary": "This dataset contains 100 rows and 5 columns with transaction data.",
-        "key_insights": [
-            "The average transaction value is $50",
-            "There are 3 distinct categories",
-            "20% of records have missing category values"
-        ],
-        "recommendations": [
-            "Fill missing category values",
-            "Consider normalizing the value column",
-            "Add date/time information for trend analysis"
-        ],
-        "data_quality_assessment": "Good overall quality with minor missing data issues"
-    }
 
 
 class TestAIAnalysisAPI:
@@ -109,38 +93,6 @@ class TestAIAnalysisAPI:
             assert response.status_code == 400
             assert "File must be processed" in response.json()["detail"]
     
-    @pytest.mark.asyncio
-    async def test_summarize_dataset_success(self, authorized_client, mock_user_data_with_analysis, mock_ai_summary):
-        """Test AI dataset summarization"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data_with_analysis
-            
-            with patch('app.services.dataset_summarization.dataset_summarization_service.generate_comprehensive_summary', new_callable=AsyncMock) as mock_summarize:
-                mock_summarize.return_value = mock_ai_summary
-                
-                # Mock the save method
-                mock_user_data_with_analysis.save = AsyncMock()
-                
-                response = authorized_client.post("/api/v1/ai/summarize/test-file-123")
-                
-                assert response.status_code == 200
-                data = response.json()
-                assert data["summary"] == mock_ai_summary["summary"]
-                assert len(data["key_insights"]) == 3
-                assert len(data["recommendations"]) == 3
-                assert "data_quality_assessment" in data
-    
-    @pytest.mark.asyncio
-    async def test_summarize_dataset_not_found(self, authorized_client):
-        """Test summarizing non-existent dataset"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = None
-
-            response = authorized_client.post("/api/v1/ai/summarize/non-existent-123")
-
-            assert response.status_code == 404
-            assert "File not found" in response.json()["detail"]
-
     @pytest.mark.asyncio
     async def test_chat_not_implemented(self, authorized_client):
         """Chat is a stub — it must reject with 501, not a fake 'coming soon' 200 (#274).
@@ -243,27 +195,3 @@ class TestAIAnalysisAPI:
         # Real computed content, not invented AI insights
         assert any(i["type"] == "data_overview" for i in body["insights"])
         assert not any(i.get("type") == "fabricated" for i in body["insights"])
-
-
-    @pytest.mark.asyncio
-    async def test_summarize_with_cache(self, authorized_client, mock_user_data_with_analysis, mock_ai_summary):
-        """Test that summarization uses cache when available"""
-        with patch('app.models.user_data.UserData.find_one', new_callable=AsyncMock) as mock_find:
-            mock_find.return_value = mock_user_data_with_analysis
-            
-            with patch('app.services.dataset_summarization.dataset_summarization_service.generate_comprehensive_summary', new_callable=AsyncMock) as mock_summarize:
-                mock_summarize.return_value = mock_ai_summary
-                
-                # Mock the save method
-                mock_user_data_with_analysis.save = AsyncMock()
-                
-                # First call
-                response1 = authorized_client.post("/api/v1/ai/summarize/test-file-123")
-                assert response1.status_code == 200
-                
-                # Second call should use cache (mock should only be called once)
-                response2 = authorized_client.post("/api/v1/ai/summarize/test-file-123")
-                assert response2.status_code == 200
-                
-                # Verify summarize was called twice (no caching implemented yet)
-                assert mock_summarize.call_count == 2
