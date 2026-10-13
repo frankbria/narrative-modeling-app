@@ -111,6 +111,9 @@ jobs:
           ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
             "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh \
             >> /tmp/probe.txt 2>> /tmp/probe.err || frontend=$?
+          # A verdict line or it did not run: its first deploy exited 0 having printed
+          # nothing, because the exec inside it had eaten the script from stdin.
+          grep -q '^frontend: ' /tmp/probe.txt || { echo "frontend: unhealthy (the probe printed no verdict)" >> /tmp/probe.txt; frontend=1; }
           if [ "$status" -eq 0 ]; then status=$frontend; fi
           echo "$status" > /tmp/probe.status
           echo "probe exit status: $status"

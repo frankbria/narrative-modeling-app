@@ -16,7 +16,10 @@ set -u
 cd "${DEPLOY_PATH:-/opt/narrative-modeling-app/staging}" 2>/dev/null || { echo "frontend: unhealthy (no deploy directory)"; exit 1; }
 compose() { docker compose -f docker-compose.staging.yml --env-file .env.staging "$@"; }
 
-answer=$(compose exec -T frontend curl -sS -m 30 -w '\n%{http_code}' http://localhost:3000/api/health/ready 2>/dev/null) || {
+# </dev/null: this script arrives on bash's stdin, and `docker compose exec` reads its
+# own stdin to the end. Without it the exec swallows every line below, bash meets end
+# of file and exits 0 having printed nothing: a probe that always passes (#756).
+answer=$(compose exec -T frontend curl -sS -m 30 -w '\n%{http_code}' http://localhost:3000/api/health/ready 2>/dev/null </dev/null) || {
   echo "frontend: unhealthy (the frontend container did not answer)"
   exit 1
 }

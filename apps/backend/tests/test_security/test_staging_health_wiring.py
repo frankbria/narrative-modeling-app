@@ -246,14 +246,20 @@ def test_both_workflows_probe_the_frontend_container_in_the_same_run():
 
 
 def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
+    """Run the script the way both workflows do: fed to ``bash -s`` on stdin.
+
+    The fake ``docker`` drains its stdin first, as ``docker compose exec`` does. Run as
+    a file, with a ``docker`` that ignored stdin, these tests passed while the real
+    thing printed nothing and exited 0: the exec ate the rest of the script (#756)."""
     assert FRONTEND_PROBE.stat().st_mode & stat.S_IXUSR
     with tempfile.TemporaryDirectory() as tmp:
         fake = Path(tmp) / "bin" / "docker"
         fake.parent.mkdir()
-        fake.write_text("#!/usr/bin/env bash\n" + docker_script)
+        fake.write_text("#!/usr/bin/env bash\ncat > /dev/null\n" + docker_script)
         fake.chmod(0o755)
         return subprocess.run(
-            ["bash", str(FRONTEND_PROBE)],
+            ["bash", "-s"],
+            stdin=FRONTEND_PROBE.open(),
             env={
                 **os.environ,
                 "PATH": f"{fake.parent}:{os.environ['PATH']}",
@@ -264,6 +270,18 @@ def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
             timeout=30,
             check=False,
         )
+
+
+def test_frontend_probe_is_fed_to_bash_on_stdin_by_both_workflows():
+    """Pins what `_frontend_probe` imitates. If a workflow starts running the script
+    another way, the harness above stops being the real thing."""
+    for wf in (HEALTH_WORKFLOW, DEPLOY_WORKFLOW):
+        run = _run_blocks(wf)
+        assert re.search(r"bash -s\"\s*<\s*scripts/deploy/frontend_probe\.sh", run), wf.name
+        # And neither takes silence for a pass: no verdict line fails the step.
+        assert "grep -q '^frontend: '" in run, wf.name
+        # Nor loses the exit code in a pipe (the run shell has no pipefail).
+        assert not re.search(r"frontend_probe\.sh[^\n]*\|", run), wf.name
 
 
 def _answering(body: str, code: int) -> str:
