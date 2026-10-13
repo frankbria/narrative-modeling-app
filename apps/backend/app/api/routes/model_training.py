@@ -182,6 +182,9 @@ class FeatureConfigRequest(BaseModel):
     # Columns never excluded as per-row identifiers (#806) or as dates (#840),
     # for when the heuristic drops a real feature.
     keep_columns: list[str] | None = Field(None, max_length=1000)
+    # Columns the caller chose not to learn from: what the Feature Engineering
+    # stage left unselected (#969). A name the dataset does not have is ignored.
+    exclude_columns: list[str] | None = Field(None, max_length=1000)
 
 
 class TuningConfigRequest(BaseModel):
@@ -609,14 +612,15 @@ async def _load_training_frame(user_data: UserData, log_event) -> tuple[pd.DataF
 
 def _recorded_exclusions(metadata: dict[str, Any]) -> dict[str, list[str]]:
     """What ``training_config`` keeps of the columns left out of the features, which
-    the model report reads: per-row identifiers (#806), dates (#840) and columns
-    with no values (#911). The engineer's own ``excluded_features`` key is the
-    identifiers."""
+    the model report reads: per-row identifiers (#806), dates (#840), columns with
+    no values (#911) and the caller's own choice (#969). The engineer's own
+    ``excluded_features`` key is the identifiers."""
     engineering = metadata.get("feature_engineering", {})
     return {
         "excluded_identifier_columns": engineering.get("excluded_features", []),
         "excluded_date_columns": engineering.get("excluded_date_columns", []),
         "excluded_empty_columns": engineering.get("excluded_empty_columns", []),
+        "excluded_user_columns": engineering.get("excluded_user_columns", []),
     }
 
 

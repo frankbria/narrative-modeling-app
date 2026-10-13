@@ -116,6 +116,48 @@ describe('ModelPage training wiring', () => {
     mockGetModelReport.mockResolvedValue({ dataset: { excluded_columns: [] } });
   });
 
+  describe('columns left out in Feature Engineering (#969)', () => {
+    afterEach(() => {
+      mockWorkflowContext.state.stageData = {} as Record<WorkflowStage, unknown>;
+    });
+
+    it('are named before the run and sent as feature_config.exclude_columns, never the target', async () => {
+      mockWorkflowContext.state.stageData = {
+        [WorkflowStage.FEATURE_ENGINEERING]: {
+          selectedFeatures: ['x1'],
+          excludedFeatures: ['region', 'target'],
+        },
+      } as Record<WorkflowStage, unknown>;
+      mockTrainModel.mockResolvedValue({ model_id: 'model_1', status: 'training', message: 'ok' });
+      mockGetTrainingStatus.mockResolvedValue({ model_id: 'model_1', status: 'training', progress: 0.1 });
+      render(<ModelPage />);
+
+      expect(await screen.findByTestId('left-out-columns')).toHaveTextContent('region, target');
+      await startTraining();
+
+      expect(mockTrainModel).toHaveBeenCalledWith({
+        dataset_id: 'ds-1',
+        target_column: 'target',
+        training_config: { training_mode: 'comprehensive' },
+        feature_config: { exclude_columns: ['region'] },
+      });
+    });
+
+    it('says nothing and sends nothing when no column was left out', async () => {
+      mockTrainModel.mockResolvedValue({ model_id: 'model_1', status: 'training', message: 'ok' });
+      mockGetTrainingStatus.mockResolvedValue({ model_id: 'model_1', status: 'training', progress: 0.1 });
+      render(<ModelPage />);
+      await startTraining();
+
+      expect(screen.queryByTestId('left-out-columns')).not.toBeInTheDocument();
+      expect(mockTrainModel).toHaveBeenCalledWith({
+        dataset_id: 'ds-1',
+        target_column: 'target',
+        training_config: { training_mode: 'comprehensive' },
+      });
+    });
+  });
+
   it('starts real training and shows the comparison on completion', async () => {
     mockTrainModel.mockResolvedValue({ model_id: 'model_1', status: 'training', message: 'ok' });
     mockGetTrainingStatus.mockResolvedValue({

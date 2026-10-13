@@ -27,6 +27,12 @@ def _has(low: str, *needles: str) -> bool:
     return any(n in low for n in needles)
 
 
+def _is_nothing_selected(exc: BaseException, low: str) -> bool:
+    # Ahead of the identifier rule: the engineer's sentence for a run whose own
+    # column choice (#969) left nothing to learn from.
+    return _has(low, "every feature column was left out")
+
+
 def _is_identifier_only(exc: BaseException, low: str) -> bool:
     # First of the substring buckets, which could otherwise match a column name.
     return _has(low, "per-row identifier")
@@ -95,6 +101,12 @@ def _is_undetermined_task(exc: BaseException, low: str) -> bool:
 
 # First match wins, so order matters.
 _RULES: tuple[tuple[Callable[[BaseException, str], bool], str], ...] = (
+    (
+        _is_nothing_selected,
+        "None of the columns selected in Feature Engineering can be learned from: "
+        "each is a per-row identifier, a date or has no values. Select more columns "
+        "and try again.",
+    ),
     (
         _is_identifier_only,
         "Every column other than the target is a per-row identifier (such as a "

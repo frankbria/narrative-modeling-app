@@ -1,160 +1,240 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
-import { useRouter } from 'next/navigation';
-import { API_URL } from '@/lib/constants';
-import { getAuthToken } from '@/lib/auth-helpers';
-import { Sparkles, Brain, TrendingUp, AlertCircle } from 'lucide-react';
+import { loadColumns } from '@/lib/services/datasetColumns';
+import {
+  choiceOf,
+  recordedChoice,
+  sameChoice,
+  startingSelection,
+  type ColumnChoice,
+} from '@/lib/features/columnChoice';
 
-interface Feature {
-  name: string;
-  type: string;
-  importance?: number;
+/** The stage validation's own minimum (`validateStageCompletion`). */
+const MIN_COLUMNS = 2;
+
+interface NoDatasetProps {
+  onUpload: VoidFunction;
 }
 
-interface AiSuggestions {
-  summary?: string;
-  recommendations?: string[];
+function NoDataset(props: NoDatasetProps) {
+  const { onUpload } = props;
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold mb-2">No Dataset Selected</h2>
+        <p className="text-muted-foreground mb-4">Please complete the previous steps first.</p>
+        <button
+          onClick={onUpload}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+        >
+          Go to Data Loading
+        </button>
+      </div>
+    </div>
+  );
 }
 
+interface ColumnsUnavailableProps {
+  onRetry: VoidFunction;
+}
+
+function ColumnsUnavailable(props: ColumnsUnavailableProps) {
+  const { onRetry } = props;
+  return (
+    <div role="alert" className="p-4 rounded-lg border border-destructive/40 bg-destructive/10">
+      <p className="font-semibold flex items-center gap-2">
+        <AlertCircle className="w-5 h-5 text-destructive" />
+        We could not read this dataset&apos;s columns.
+      </p>
+      <p className="text-sm text-muted-foreground mt-1">
+        Nothing has been changed. If it keeps happening, open the dataset in Data Exploration
+        first, so that it is processed.
+      </p>
+      <button
+        onClick={onRetry}
+        className="mt-3 px-4 py-2 rounded-lg border border-border bg-card hover:bg-muted text-sm font-medium"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+interface ColumnBoxProps {
+  column: string;
+  checked: boolean;
+  onToggle(column: string): void;
+}
+
+function ColumnBox(props: ColumnBoxProps) {
+  const { column, checked, onToggle } = props;
+  const toggle = () => onToggle(column);
+  return (
+    <label className="flex items-center gap-2 p-3 border border-border rounded-lg hover:bg-muted cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={toggle} aria-label={column} className="w-4 h-4" />
+      <span className="font-medium font-mono text-sm break-all">{column}</span>
+    </label>
+  );
+}
+
+interface ShownProps {
+  show: boolean;
+}
+
+function TooFew(props: ShownProps) {
+  const { show } = props;
+  if (!show) return null;
+  return (
+    <p className="text-sm text-destructive flex items-center gap-2">
+      <AlertCircle className="w-4 h-4" />
+      Select at least {MIN_COLUMNS} columns.
+    </p>
+  );
+}
+
+function Recorded(props: ShownProps) {
+  const { show } = props;
+  if (!show) return null;
+  return (
+    <p data-testid="choice-recorded" className="text-sm flex items-center gap-2">
+      <CheckCircle2 className="w-4 h-4 text-green-600" />
+      This choice is recorded. Continue to Model Training below.
+    </p>
+  );
+}
+
+interface ColumnChoiceFormProps {
+  columns: string[];
+  selected: string[];
+  recorded: boolean;
+  onToggle(column: string): void;
+  onRecord: VoidFunction;
+}
+
+function ColumnChoiceForm(props: ColumnChoiceFormProps) {
+  const { columns, selected, recorded, onToggle, onRecord } = props;
+  const enough = selected.length >= MIN_COLUMNS;
+  const summary = `${selected.length} of ${columns.length} columns selected`;
+  const action = `Use these ${selected.length} columns`;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Choose the columns the model may learn from. A column you leave out is never shown to
+        the model. You pick the column to predict in the next step, and it is never used as a
+        feature, whatever you choose here. Identifiers, dates and empty columns are set aside
+        automatically at training.
+      </p>
+      <p className="text-sm font-medium">{summary}</p>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {columns.map((column) => (
+          <ColumnBox key={column} column={column} checked={selected.includes(column)} onToggle={onToggle} />
+        ))}
+      </div>
+      <TooFew show={!enough} />
+      <Recorded show={recorded} />
+      <div className="flex justify-end">
+        <button
+          onClick={onRecord}
+          disabled={!enough || recorded}
+          data-testid="use-columns-button"
+          className="px-6 py-2 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+        >
+          {action}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** What completing the stage stores: the choice, and when it was made. */
+function stageRecord(columns: string[], selected: string[]) {
+  const choice = choiceOf(columns, selected);
+  return { ...choice, timestamp: new Date().toISOString() };
+}
+
+interface Edited {
+  datasetId: string | undefined;
+  names: string[];
+}
+
+interface Selection {
+  selected: string[];
+  toggle(column: string): void;
+}
+
+/** The user's edits on top of where the stage starts; they reset with the dataset. */
+function useSelection(datasetId: string | undefined, columns: string[], recorded: ColumnChoice | null): Selection {
+  const [edited, setEdited] = useState<Edited | null>(null);
+  const mine = edited !== null && edited.datasetId === datasetId;
+  const current = mine ? edited.names : startingSelection(columns, recorded);
+  const toggle = (column: string) => {
+    const names = current.includes(column) ? current.filter((name) => name !== column) : [...current, column];
+    setEdited({ datasetId, names });
+  };
+  return { selected: columns.filter((column) => current.includes(column)), toggle };
+}
+
+interface ChoiceBodyProps {
+  loading: boolean;
+  columns: string[];
+  selection: Selection;
+  recorded: boolean;
+  onRecord: VoidFunction;
+  onRetry: VoidFunction;
+}
+
+function ChoiceBody(props: ChoiceBodyProps) {
+  const { loading, columns, selection } = props;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+      </div>
+    );
+  }
+  if (columns.length === 0) return <ColumnsUnavailable onRetry={props.onRetry} />;
+  return (
+    <ColumnChoiceForm
+      columns={columns}
+      selected={selection.selected}
+      recorded={props.recorded}
+      onToggle={selection.toggle}
+      onRecord={props.onRecord}
+    />
+  );
+}
+
+/**
+ * Feature Engineering stage: which of the dataset's columns the model may learn from.
+ *
+ * The columns come from the dataset record itself, the same read the Model
+ * Training stage uses. Recording the choice completes the stage; training then
+ * leaves the unselected columns out (`feature_config.exclude_columns`, #969).
+ */
 export default function FeaturesPage() {
   const { state, completeStage } = useWorkflow();
   const router = useRouter();
-
-  // Guard: redirect (with a message) if this stage is not accessible yet.
   const { ready } = useStageGuard(WorkflowStage.FEATURE_ENGINEERING);
+  const datasetId = state.datasetId;
+  const load = useAsyncData(() => loadColumns(datasetId as string), [datasetId], {
+    enabled: ready && Boolean(datasetId),
+  });
+  const columns = load.data ?? [];
+  const recorded = recordedChoice(state.stageData[WorkflowStage.FEATURE_ENGINEERING]);
+  const selection = useSelection(datasetId, columns, recorded);
+  const isRecorded = sameChoice(recorded, selection.selected);
+  const goToUpload = () => router.push('/upload');
+  const record = () => completeStage(WorkflowStage.FEATURE_ENGINEERING, stageRecord(columns, selection.selected));
 
-  const { data: featureData, loading: isLoadingFeatures } = useAsyncData(
-    async () => {
-      const token = await getAuthToken();
-      const response = await fetch(`${API_URL}/datasets/${state.datasetId}/features`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error('Failed to load features');
-      const data = await response.json();
-
-      // Suggestions are best-effort: a failure here left the page usable before.
-      let suggestions: AiSuggestions | null = null;
-      try {
-        const suggestionsResponse = await fetch(
-          `${API_URL}/datasets/${state.datasetId}/features/suggestions`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        if (suggestionsResponse.ok) suggestions = await suggestionsResponse.json();
-      } catch {
-        /* leave suggestions null */
-      }
-
-      return { features: data.features as Feature[], suggestions };
-    },
-    [state.datasetId],
-    // Wait for the stage AND a hydrated dataset id — on a direct /features load
-    // the provider sets datasetId after this page mounts, so firing early would
-    // fetch /datasets/undefined/features once and never retry.
-    { enabled: ready && !!state.datasetId },
-  );
-
-  // Generating features is a user action with its own spinner; the view shows one
-  // busy state, but the two no longer share a setter.
-  const [generating, setGenerating] = useState(false);
-  const loading = isLoadingFeatures || generating;
-
-  const features = featureData?.features ?? [];
-  const aiSuggestions = featureData?.suggestions ?? null;
-
-  // Everything is selected by default once features load, but the user then
-  // edits that set — so the selection is an override on top of the derived
-  // default, tagged with the dataset it belongs to so it resets on change.
-  const [selectionOverride, setSelectionOverride] = useState<{
-    datasetId: string;
-    names: string[];
-  } | null>(null);
-  const defaultSelection = features.map((f) => f.name);
-  const selectedFeatures =
-    selectionOverride && selectionOverride.datasetId === state.datasetId
-      ? selectionOverride.names
-      : defaultSelection;
-  const setSelectedFeatures = (
-    update: string[] | ((prev: string[]) => string[]),
-  ) =>
-    setSelectionOverride({
-      datasetId: state.datasetId ?? '',
-      names: typeof update === 'function' ? update(selectedFeatures) : update,
-    });
-
-  const handleFeatureToggle = (featureName: string) => {
-    setSelectedFeatures(prev => 
-      prev.includes(featureName) 
-        ? prev.filter(f => f !== featureName)
-        : [...prev, featureName]
-    );
-  };
-
-  const handleGenerateFeatures = async () => {
-    setGenerating(true);
-    try {
-      const token = await getAuthToken();
-      const response = await fetch(
-        `${API_URL}/datasets/${state.datasetId}/features/generate`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            selectedFeatures,
-            generateInteractions: true,
-            generatePolynomials: false,
-            generateDateFeatures: true
-          })
-        }
-      );
-
-      if (response.ok) {
-        const result = await response.json();
-        completeStage(WorkflowStage.FEATURE_ENGINEERING, {
-          selectedFeatures,
-          generatedFeatures: result.newFeatures,
-          timestamp: new Date().toISOString()
-        });
-      }
-    } catch (error) {
-      console.error('Failed to generate features:', error);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  if (!state.datasetId) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-2">No Dataset Selected</h2>
-          <p className="text-muted-foreground mb-4">Please complete the previous steps first.</p>
-          <button
-            onClick={() => router.push('/upload')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Go to Data Loading
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  if (!datasetId) return <NoDataset onUpload={goToUpload} />;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -163,109 +243,19 @@ export default function FeaturesPage() {
           <Sparkles className="w-6 h-6 text-yellow-500" />
           Feature Engineering
         </h1>
-
-        {/* AI Suggestions */}
-        {aiSuggestions && (
-          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-900">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <Brain className="w-5 h-5 text-blue-600" />
-              AI Recommendations
-            </h3>
-            <p className="text-sm text-foreground mb-3">{aiSuggestions.summary}</p>
-            <div className="flex flex-wrap gap-2">
-              {aiSuggestions.recommendations?.map((rec: string, idx: number) => (
-                <span
-                  key={idx}
-                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full text-sm"
-                >
-                  {rec}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Feature Selection */}
-        <div className="space-y-4">
-          <h3 className="font-semibold text-lg">Select Features</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {features.map((feature) => (
-              <label
-                key={feature.name}
-                className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedFeatures.includes(feature.name)}
-                  onChange={() => handleFeatureToggle(feature.name)}
-                  className="w-4 h-4 text-blue-600"
-                />
-                <div className="flex-1">
-                  <span className="font-medium">{feature.name}</span>
-                  <span className="text-xs text-muted-foreground block">{feature.type}</span>
-                </div>
-                {feature.importance && (
-                  <div className="flex items-center gap-1">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-xs text-green-600">
-                      {(feature.importance * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                )}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Feature Generation Options */}
-        <div className="mt-6 p-4 bg-muted rounded-lg">
-          <h3 className="font-semibold mb-3">Feature Generation Options</h3>
-          <div className="space-y-2">
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" defaultChecked className="w-4 h-4" />
-              <span>Generate interaction features</span>
-            </label>
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" defaultChecked className="w-4 h-4" />
-              <span>Extract date/time features</span>
-            </label>
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" className="w-4 h-4" />
-              <span>Create polynomial features</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Warning */}
-        {selectedFeatures.length < 2 && (
-          <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg border border-yellow-200 dark:border-yellow-900 flex items-start gap-2">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-            <div className="text-sm text-yellow-800 dark:text-yellow-200">
-              <p className="font-semibold">Too few features selected</p>
-              <p>Select at least 2 features for effective modeling.</p>
-            </div>
-          </div>
-        )}
-
-        {/* Action: generate features. This marks the stage complete; the
-            StageNavigation footer then enables "Continue to Model Training". */}
-        <div className="mt-6 flex justify-end">
-          <button
-            onClick={handleGenerateFeatures}
-            disabled={selectedFeatures.length < 2 || loading}
-            data-testid="generate-features-button"
-            className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-              selectedFeatures.length >= 2 && !loading
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
-            }`}
-          >
-            {loading ? 'Generating...' : 'Generate Features'}
-          </button>
-        </div>
-
-        {/* Shared Back / Continue navigation. */}
-        <StageNavigation currentStage={WorkflowStage.FEATURE_ENGINEERING} loading={loading} />
+        <ChoiceBody
+          loading={load.loading}
+          columns={columns}
+          selection={selection}
+          recorded={isRecorded}
+          onRecord={record}
+          onRetry={load.reload}
+        />
+        <StageNavigation
+          currentStage={WorkflowStage.FEATURE_ENGINEERING}
+          ready={isRecorded}
+          loading={load.loading}
+        />
       </div>
     </div>
   );

@@ -112,6 +112,8 @@ class DatasetSection(Section):
     excluded_columns: list[str] = Field(default_factory=list)
     excluded_date_columns: list[str] = Field(default_factory=list)
     excluded_empty_columns: list[str] = Field(default_factory=list)
+    # Left unselected in the Feature Engineering stage (#969).
+    excluded_user_columns: list[str] = Field(default_factory=list)
 
 
 class ReproducibilitySection(Section):
@@ -386,6 +388,7 @@ def _dataset(model: MLModel) -> DatasetSection:
         excluded_columns=_listed(config, "excluded_identifier_columns"),
         excluded_date_columns=_listed(config, "excluded_date_columns"),
         excluded_empty_columns=_listed(config, "excluded_empty_columns"),
+        excluded_user_columns=_listed(config, "excluded_user_columns"),
     )
 
 
@@ -541,6 +544,7 @@ def _md_data(report: ModelReport) -> list[str]:
         ("Excluded as identifiers", data.excluded_columns),
         ("Excluded as dates", data.excluded_date_columns),
         ("Excluded as empty", data.excluded_empty_columns),
+        ("Left out by you", data.excluded_user_columns),
     ):
         if columns:
             out.append(f"- {label}: " + ", ".join(map(_code, columns)))

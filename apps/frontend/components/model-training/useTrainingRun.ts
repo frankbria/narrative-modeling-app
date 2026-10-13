@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import { modelService, type TrainingMode, type TrainingStatus } from '@/lib/services/model';
+import {
+  modelService,
+  type TrainModelRequest,
+  type TrainingMode,
+  type TrainingStatus,
+} from '@/lib/services/model';
+import { excludedFromTraining } from '@/lib/features/columnChoice';
 
 /** One training run: start it, follow it to its end, and start it again keeping columns. */
 
@@ -10,17 +16,33 @@ export interface TrainingChoice {
   mode: TrainingMode;
 }
 
-function trainRequest(datasetId: string, choice: TrainingChoice, keepColumns: string[]) {
+/** Columns named on the request: kept although a rule set them aside (#841), or left out by the user's own choice (#969). */
+export interface ColumnOverrides {
+  keep: string[];
+  exclude: string[];
+}
+
+function featureConfig(columns: ColumnOverrides): TrainModelRequest['feature_config'] {
+  const config: TrainModelRequest['feature_config'] = {};
+  if (columns.keep.length) config.keep_columns = columns.keep;
+  if (columns.exclude.length) config.exclude_columns = columns.exclude;
+  return config;
+}
+
+export function trainRequest(
+  datasetId: string,
+  choice: TrainingChoice,
+  columns: ColumnOverrides,
+): TrainModelRequest {
   // AutoML detects the problem type and compares candidate algorithms, so the
-  // dataset, the target and the mode are the whole request.
-  const request = {
+  // dataset, the target and the mode are the whole request, plus any columns named.
+  const request: TrainModelRequest = {
     dataset_id: datasetId,
     target_column: choice.targetColumn,
     training_config: { training_mode: choice.mode },
   };
-  if (keepColumns.length === 0) return request;
-  // Columns the user asked to keep although they read as identifiers or dates (#841).
-  return { ...request, feature_config: { keep_columns: keepColumns } };
+  const config = featureConfig(columns);
+  return Object.keys(config ?? {}).length ? { ...request, feature_config: config } : request;
 }
 
 function failureMessage(error: unknown): string {
@@ -50,7 +72,11 @@ export function useTrainingRun() {
     setKeepColumns(keep);
     try {
       // TrainingProgress takes over polling once the job id is known.
-      const result = await modelService.trainModel(trainRequest(state.datasetId, next, keep));
+      const exclude = excludedFromTraining(
+        state.stageData[WorkflowStage.FEATURE_ENGINEERING],
+        next.targetColumn,
+      );
+      const result = await modelService.trainModel(trainRequest(state.datasetId, next, { keep, exclude }));
       setModelId(result.model_id);
     } catch (err) {
       console.error('Failed to train model:', err);

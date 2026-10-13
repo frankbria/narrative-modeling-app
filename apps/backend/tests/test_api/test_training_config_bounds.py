@@ -297,3 +297,16 @@ def test_keep_columns_reaches_the_feature_engineer_config():
     req = FeatureConfigRequest(keep_columns=["row_number"])
 
     assert FeatureEngineeringConfig(**req.model_dump(exclude_none=True)).keep_columns == ["row_number"]
+
+
+def test_exclude_columns_reaches_the_feature_engineer_config():
+    """#969: the Feature Engineering stage's selection is a declared request field."""
+    from app.api.routes.model_training import FeatureConfigRequest, _recorded_exclusions
+    from app.services.model_training.feature_engineer import FeatureEngineeringConfig
+
+    req = FeatureConfigRequest(exclude_columns=["region"])
+
+    assert FeatureEngineeringConfig(**req.model_dump(exclude_none=True)).exclude_columns == ["region"]
+    recorded = _recorded_exclusions({"feature_engineering": {"excluded_user_columns": ["region"]}})
+    assert recorded["excluded_user_columns"] == ["region"]
+    assert _recorded_exclusions({})["excluded_user_columns"] == []

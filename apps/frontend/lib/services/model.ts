@@ -33,6 +33,8 @@ export interface TrainModelRequest {
     max_features?: number
     /** Columns never excluded as per-row identifiers (#806). */
     keep_columns?: string[]
+    /** Columns the user chose not to learn from, in Feature Engineering (#969). */
+    exclude_columns?: string[]
   }
   training_config?: {
     max_models?: number

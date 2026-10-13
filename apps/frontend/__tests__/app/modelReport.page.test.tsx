@@ -161,6 +161,18 @@ describe('ModelReportPage', () => {
     expect(screen.queryByText('Excluded as dates')).not.toBeInTheDocument();
   });
 
+  it('names the columns the user left out in Feature Engineering (#969)', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      dataset: { ...base.dataset, excluded_user_columns: ['region', 'visits'] },
+    });
+    render(<ModelReportPage />);
+
+    await waitFor(() => expect(screen.getByText('region, visits')).toBeInTheDocument());
+    expect(screen.getByText('Left out by you')).toBeInTheDocument();
+    expect(screen.queryByText('Excluded as identifiers')).not.toBeInTheDocument();
+  });
+
   it('shows no exclusion row when nothing was excluded', async () => {
     render(<ModelReportPage />);
 
@@ -168,6 +180,7 @@ describe('ModelReportPage', () => {
     expect(screen.queryByText('Excluded as identifiers')).not.toBeInTheDocument();
     expect(screen.queryByText('Excluded as dates')).not.toBeInTheDocument();
     expect(screen.queryByText('Excluded as empty')).not.toBeInTheDocument();
+    expect(screen.queryByText('Left out by you')).not.toBeInTheDocument();
   });
 
   it('surfaces caveats', async () => {

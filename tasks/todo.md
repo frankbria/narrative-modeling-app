@@ -1,24 +1,35 @@
-# Issue #728: the feature lookups charge an ai_call for a cache read
+# Issue #969: the Feature Engineering stage calls three routes that do not answer
 
 ## Problem
-`GET …/features/suggestions/{id}`, `…/features/apply` and `…/features/apply-multiple`
-carry `quota("ai_calls")` and never release it. On a warm cache they read the cached set
-and are charged a unit each. On a cold cache they regenerate the set, model call included,
-but suggestion ids are minted per generation (`uuid4` suffix), so the new set can never
-hold the id asked for: a paid call that still answers not found.
+`app/features/page.tsx` fetches `GET /datasets/{id}/features` (404 for a UI upload's id, and
+it is the feature-definition list, not the dataset's columns), `GET …/features/suggestions`
+(no such route) and `POST …/features/generate` (no such route, and the only thing that
+completes the stage). `MODEL_TRAINING` requires the stage, so the guided workflow stops here.
+Nothing consumes the stage's `selectedFeatures` either: training uses every column.
+
+## Decision
+The page calls routes that exist; no "generate" route is added. The stage becomes what its
+selection says: choose the columns the model may learn from. That choice reaches training
+as a new `feature_config.exclude_columns`. The suggestions panel and the three generation
+checkboxes had nothing behind them and go.
 
 ## Plan
-- [x] RED: three lookups on a warm cache leave `ai_calls` at 0; on a cold cache nothing is
-      generated (404, 404, and "Suggestion not found" per id).
-- [x] The lookups read `get_cached_suggestions` only, like feedback since #523, and carry no
-      quota. Registry: the three move to `_EXEMPT`.
-- [x] `suggest_features(read_cache=…)` has no caller left: remove it. The function is at
-      cc 14, so it is split (`_model_suggestions`, `_shortlist`, `_response`).
-- [x] `/suggest-more` never released its unit when no model ran. It does now, as `/suggest`
-      does. At cc 11 it is split (`_another_batch`).
-- [x] `apply_feature` (cc 9) and `apply_multiple_features` (cc 10) are split.
-
-## Found, not done here
-- `/suggest-more` filters "already shown" by id, and ids are new on every generation, so
-  it returns the same rule-based suggestions again under new ids.
-- The `/features` page fetches `GET /datasets/{id}/features/suggestions`, which no route serves.
+Backend
+- [x] RED: `FeatureEngineer(exclude_columns=[…])` leaves those columns out at fit, at serving
+      and in the export, and reports them apart from identifiers, dates and empties.
+- [x] `FeatureEngineeringConfig.exclude_columns`, `FeatureConfigRequest.exclude_columns`
+      (the request dumps straight onto the config).
+- [x] `training_config["excluded_user_columns"]`, the model report ("Left out by you").
+- [x] Everything left out: a failure reason that says so.
+Frontend
+- [x] `lib/services/datasetColumns.ts`: the column loader the Model page already uses
+      (both id-spaces), shared.
+- [x] `/features`: the dataset's columns, at least two selected, a failed load shown with a
+      retry, "Continue" completes the stage with `selectedFeatures`.
+- [x] Model page: columns not selected (other than the target) go out as `exclude_columns`;
+      the form says how many columns the model will see. The report lists them.
+- [x] Contract: the train request the page builds is checked against `TrainModelRequest`'s
+      schema, captured the way the Prepare stage's are (#855).
+E2E
+- [x] A spec walks upload → features → model on the real stack with no mocks for this page.
+- [x] `beta-journey` and `stage-transitions` stop mocking the two routes that never existed.
