@@ -1,16 +1,17 @@
-# Issue #694: the backend ignores a database named in the MONGODB_URI path
+# Issues #761 and #762: what importing the backend loads and prints
 
-## Problem
-`app/main.py` selects `client[MONGODB_DB]` and never reads the URI's path. A URI naming
-one database with `MONGODB_DB` naming another runs against the second, silently, and can
-disagree with the frontend, which has refused that since #551.
+## #761: the health probe imports the whole routes package
+Already fixed, by #530: the routes package's init is empty, so importing the probe
+loads `app.api.routes.health` and nothing heavy. What the issue still asks for is a
+guard, so it stays that way.
+- [x] A test imports `app.health_probe` in a fresh interpreter and fails if scikit-learn,
+      SHAP, pandas, numpy, scipy or optuna is loaded, or any route module but `health`.
+      Mutation-checked with an import of the training routes added to `health.py`.
 
-## Plan
-- [x] RED: the URI reading, the refusal, and the app not starting.
-- [x] `config.database_name_in_uri` (text, no driver: an srv URI means DNS) and
-      `config.resolve_database_name`, which also keeps "MONGODB_DB unset" an error. The
-      message names the two databases, never the URI.
-- [x] The lifespan calls it. The lifespan was one function at cc 11, so it is now named
-      steps (`_announce_configuration`, `_connect_database`, `_verify_storage`,
-      `_reap_stale_jobs_once`, `_reaper_loop`, `_stop_reaper`, `_close_rate_limit_store`),
-      in the same order, with tests for the two that had none.
+## #762: five field-shadow warnings at every import
+`UserData.schema`, `ColumnStats.count`, `UserDataResponse.schema`, and two the issue did
+not list: `DatasetSummaryRequest.schema`, `DatasetSchemaResponse.schema`.
+- [x] The names are the stored key or a public response key, so they stay. An alias would
+      rename the attribute for every reader with no change in behaviour.
+- [x] `expect_field_shadow(field, model)` declares each one above its class.
+- [x] A test imports `app.main` in a fresh interpreter with UserWarning as an error.

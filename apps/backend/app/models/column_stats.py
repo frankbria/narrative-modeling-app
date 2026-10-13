@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pymongo import IndexModel
 
 from app.models.user_data import UserData
+from app.utils.field_shadows import expect_field_shadow
 
 
 def get_current_time() -> datetime:
@@ -29,6 +30,9 @@ class CategoricalValueCounts(BaseModel):
     values: list[str]
     counts: list[int]
     top_n: int = 10  # Number of top values to store
+
+
+expect_field_shadow("count", "ColumnStats")
 
 
 class ColumnStats(Document):
