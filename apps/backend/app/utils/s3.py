@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlparse
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from app.config import resolve_aws_region, resolve_configured_bucket
 
@@ -429,7 +429,9 @@ def object_size(s3_url: str) -> int | None:
     try:
         bucket, key = resolve_validated_object(s3_url)
         return int(client.head_object(Bucket=bucket, Key=key)["ContentLength"])
-    except (ClientError, ValueError) as e:
+    except (ClientError, BotoCoreError, ValueError) as e:
+        # BotoCoreError too: an endpoint that cannot be reached, a read that times out or
+        # credentials that are missing are not ClientErrors, and would fail the move.
         logger.warning("Could not read the size of a stored object (%s)", type(e).__name__)
         return None
 

@@ -1,7 +1,7 @@
 """#781: the size of a stored object, for bookkeeping. It never raises: a move that
 cannot learn the new file's size still happens, and keeps the size it had."""
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from app.utils import s3
 
@@ -41,6 +41,14 @@ def test_with_no_storage_configured_there_is_no_size(monkeypatch):
 def test_an_object_that_cannot_be_read_has_no_size(monkeypatch):
     missing = ClientError({"Error": {"Code": "404"}}, "HeadObject")
     _with(monkeypatch, _Client(missing))
+    assert s3.object_size(URL) is None
+
+
+def test_storage_that_cannot_be_reached_has_no_size_either(monkeypatch):
+    """Not a ClientError: botocore raises its own family for a dead endpoint, a timeout
+    or missing credentials, and a move must survive those too."""
+    unreachable = EndpointConnectionError(endpoint_url="http://localhost:1")
+    _with(monkeypatch, _Client(unreachable))
     assert s3.object_size(URL) is None
 
 
