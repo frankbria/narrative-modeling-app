@@ -321,3 +321,33 @@ async def test_more_suggestions_from_the_model_cost_one(setup_database, async_au
 
     assert more.status_code == 200, more.text
     assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+
+
+@pytest.mark.asyncio
+async def test_suggestions_need_no_request_body(setup_database, async_authorized_client, hermetic):
+    resp = await async_authorized_client.post(f"/api/v1/datasets/{DATASET}/features/suggest")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["suggestions"]
+
+
+@pytest.mark.asyncio
+async def test_a_generation_that_fails_is_a_sanitised_500_and_costs_nothing(
+    setup_database, async_authorized_client, hermetic, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from app.billing import metering
+
+    monkeypatch.setattr(
+        fe_service.feature_engineering_service, "suggest_features",
+        AsyncMock(side_effect=RuntimeError("s3://bucket/datasets/secret.csv unreadable")),
+    )
+    for path in ("suggest", "suggest-more"):
+        resp = await async_authorized_client.post(
+            f"/api/v1/datasets/{DATASET}/features/{path}", json={"count": 2} if path == "suggest-more" else {}
+        )
+        assert resp.status_code == 500
+        assert "secret.csv" not in resp.text
+
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
