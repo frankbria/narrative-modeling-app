@@ -49,8 +49,44 @@ class AnalysisRequest(BaseModel):
     custom_prompts: list[str] | None = Field(default=None, description="Custom analysis prompts")
 
 
+async def _processed_upload(file_id: str, user_id: str, unprocessed: str) -> UserData:
+    """The caller's dataset, once it has been processed.
+
+    404 when it is not theirs or does not exist (the two answer alike); 400 with
+    ``unprocessed`` when processing has not run, since both routes read its results.
+    """
+    user_data = await UserData.find_one(
+        UserData.id == _as_object_id(file_id),
+        UserData.user_id == user_id
+    )
+    if not user_data:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not user_data.is_processed:
+        raise HTTPException(status_code=400, detail=unprocessed)
+    return user_data
+
+
+async def _analysis(user_data: UserData, analysis_type: str) -> MCPAnalysisResponse:
+    """Ask the analysis service about the dataset.
+
+    The MCP tool reads the dataset server-side from (dataset_id, user_id) and
+    authorizes ownership itself (#506); the stored schema, statistics and sample
+    enrich the summary and the fallback only.
+    """
+    return await mcp_service.analyze_dataset(
+        dataset_id=str(user_data.id),
+        user_id=user_data.user_id,
+        schema=user_data.schema or {},
+        statistics=user_data.statistics or {},
+        quality_report=user_data.quality_report or {},
+        sample_data=(user_data.data_preview or [])[:50],
+        analysis_type=analysis_type,
+    )
+
+
 @router.post("/analyze/{file_id}", response_model=MCPAnalysisResponse, dependencies=[Depends(quota("ai_calls"))])
 async def analyze_with_ai(
+    http_request: Request,
     file_id: str = Path(..., description="File ID"),
     request: AnalysisRequest | None = None,
     current_user_id: str = Depends(get_current_user_id)
@@ -59,46 +95,22 @@ async def analyze_with_ai(
     Perform AI-powered analysis on processed data using MCP tools
     """
     # Use path parameter if request body not provided
-    if request is None:
-        request = AnalysisRequest(file_id=file_id)
-    
+    request = request or AnalysisRequest(file_id=file_id)
+
     try:
-        # Get file metadata from database
-        user_data = await UserData.find_one(
-            UserData.id == _as_object_id(file_id),
-            UserData.user_id == current_user_id
+        user_data = await _processed_upload(
+            file_id, current_user_id,
+            "File must be processed before AI analysis. Please process the file first.",
         )
-        
-        if not user_data:
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        if not user_data.is_processed:
-            raise HTTPException(
-                status_code=400, 
-                detail="File must be processed before AI analysis. Please process the file first."
-            )
-        
-        # Prepare data for MCP analysis
-        sample_data = user_data.data_preview[:50] if user_data.data_preview else []
-        
-        # Perform AI analysis. The MCP tool reads the dataset server-side from
-        # (dataset_id, user_id) and authorizes ownership itself (#506); the local
-        # schema/statistics enrich the summary + fallback only.
-        analysis_result = await mcp_service.analyze_dataset(
-            dataset_id=str(user_data.id),
-            user_id=current_user_id,
-            schema=user_data.schema or {},
-            statistics=user_data.statistics or {},
-            quality_report=user_data.quality_report or {},
-            sample_data=sample_data,
-            analysis_type=request.analysis_type
-        )
-        
-        # Store analysis results (optional - could cache in DB)
-        # For now, just return the results
-        
+
+        analysis_result = await _analysis(user_data, request.analysis_type)
+        if analysis_result.metadata.get("fallback_mode"):
+            # The analysis service did not answer, so this is the rule-based summary
+            # computed here: nothing was bought, the reserved unit goes back (#461).
+            await enforcement.release(http_request)
+
         return analysis_result
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -209,20 +221,9 @@ async def generate_ai_summary(
     Generate an AI-powered summary of the dataset
     """
     try:
-        # Get file metadata from database
-        user_data = await UserData.find_one(
-            UserData.id == _as_object_id(file_id),
-            UserData.user_id == current_user_id
+        user_data = await _processed_upload(
+            file_id, current_user_id, "File must be processed before generating summary"
         )
-
-        if not user_data:
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        if not user_data.is_processed:
-            raise HTTPException(
-                status_code=400, 
-                detail="File must be processed before generating summary"
-            )
 
         summary = await dataset_summarization_service.generate_comprehensive_summary(
             _summary_request(user_data, focus_areas)
