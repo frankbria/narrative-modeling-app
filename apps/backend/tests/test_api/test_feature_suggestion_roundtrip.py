@@ -54,6 +54,9 @@ def hermetic(monkeypatch):
 
 
 DATASET = "ds-522"
+#: Patched on the class: the service is one shared object, and restoring a patched
+#: instance attribute leaves one behind that bypasses later patches of the class.
+SUGGESTER = type(fe_service.feature_engineering_service)
 
 
 async def _suggest_with_target(client) -> list[dict]:
@@ -234,7 +237,7 @@ async def test_an_expired_set_is_not_recomputed(setup_database, async_authorized
     sid = (await _suggest_with_target(async_authorized_client))[0]["id"]
     hermetic.store.clear()  # the hour passed
     recompute = AsyncMock(side_effect=AssertionError("a lookup must not generate suggestions"))
-    monkeypatch.setattr(fe_service.feature_engineering_service, "suggest_features", recompute)
+    monkeypatch.setattr(SUGGESTER, "suggest_features", recompute)
 
     explain, apply, apply_many = [
         await async_authorized_client.request(method, url, json=body) for method, url, body in _lookups(sid)
@@ -316,7 +319,7 @@ async def test_more_suggestions_from_the_model_cost_one(setup_database, async_au
     from app.billing import metering
 
     monkeypatch.setattr(
-        fe_service.feature_engineering_service, "_model_suggestions", AsyncMock(return_value=([], True))
+        SUGGESTER, "_model_suggestions", AsyncMock(return_value=([], True))
     )
     more = await async_authorized_client.post(
         f"/api/v1/datasets/{DATASET}/features/suggest-more", json={"count": 2}
@@ -343,7 +346,7 @@ async def test_a_generation_that_fails_is_a_sanitised_500_and_costs_nothing(
     from app.billing import metering
 
     monkeypatch.setattr(
-        fe_service.feature_engineering_service, "suggest_features",
+        SUGGESTER, "suggest_features",
         AsyncMock(side_effect=RuntimeError("s3://bucket/datasets/secret.csv unreadable")),
     )
     for path in ("suggest", "suggest-more"):
