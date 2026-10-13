@@ -18,9 +18,11 @@ BACKEND = Path(__file__).resolve().parents[2]
 
 
 def test_the_app_imports_with_no_warning_from_its_own_models():
-    """A fresh interpreter that turns every UserWarning into an error."""
+    """A fresh interpreter in which a field-shadow notice is an error. Only those:
+    `-W error:Field name` matches messages that start that way, so a warning from
+    some dependency cannot fail this."""
     result = subprocess.run(
-        [sys.executable, "-W", "error::UserWarning", "-c", "import app.main"],
+        [sys.executable, "-W", "error:Field name:UserWarning", "-c", "import app.main"],
         cwd=BACKEND,
         env={**os.environ, "PYTHONPATH": "."},
         capture_output=True,
