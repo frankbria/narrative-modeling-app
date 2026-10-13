@@ -15,9 +15,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
-RETIRED = re.compile(
-    r"narrative modeling|modeling app\b|(?-i:NarrativeML)|vnd\\?\.narrativeml", re.IGNORECASE
-)
+# The last branch is the old brand in any spelling, the media type included. It
+# leaves the test-user address's domain alone, which noDeadDomains.test.ts confines.
+RETIRED = re.compile(r"narrative modeling|modeling app\b|narrativeml(?!\\?\.com)", re.IGNORECASE)
 
 # The historical record keeps the name things had when they were written.
 _HISTORY = (
@@ -80,6 +80,7 @@ def test_the_pattern_matches_each_retired_variant_and_no_identifier() -> None:
         "Welcome to Narrative Modeling",
         "<h1>Modeling App</h1>",
         "NarrativeML",
+        "the narrativeML team",
         "application/vnd.narrativeml.v1+json",
         r"application/vnd\.narrativeml\.v(\d+)",
     ):
@@ -89,6 +90,7 @@ def test_the_pattern_matches_each_retired_variant_and_no_identifier() -> None:
         "narrative_modeling_test",
         "narrative-modeling-dev",
         "test@narrativeml.com",
+        r"/narrativeml\.com|narrativemodeling\.ai/",
         "the modeling approach",
         "SheetPredict",
     ):
