@@ -223,6 +223,10 @@ async function mockBackend(
       });
     }
 
+    // Data preparation: the sidebar lists the registry, which is an array. The
+    // journey passes through this stage without adding a step.
+    if (url.includes('/transformations/available')) return json(route, []);
+
     // Feature engineering reads its columns from the dataset record above.
 
     // ML pipeline (mocked)
@@ -337,8 +341,8 @@ test.describe.serial('Beta launch readiness — full journey (#152)', () => {
     await expect(page).toHaveURL(new RegExp(`/predict/${DATASET_ID}`), { timeout: 15000 });
 
     // Criterion 9 + 10: Make predictions on new data + trust them (confidence).
-    await page.locator('#field-feature_a').fill('1');
-    await page.locator('#field-feature_b').fill('2');
+    await page.getByRole('spinbutton', { name: 'feature_a' }).fill('1');
+    await page.getByRole('spinbutton', { name: 'feature_b' }).fill('2');
     await page.getByTestId('make-prediction').click();
     await expect(page.getByTestId('prediction-result')).toBeVisible({ timeout: 15000 });
   });
