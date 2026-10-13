@@ -269,8 +269,11 @@ async def test_a_feature_that_cannot_be_previewed_is_reported_not_raised(
     _, apply, apply_many = [
         await async_authorized_client.request(method, url, json=body) for method, url, body in _lookups(sid)
     ]
-    assert apply.json()["failed_features"] == [{"name": name, "error": "no such column"}]
-    assert apply_many.json()["failed_features"] == [{"name": name, "error": "no such column"}]
+    for resp in (apply, apply_many):
+        (failure,) = resp.json()["failed_features"]
+        assert failure["name"] == name
+        assert failure["error"].startswith("Feature preview failed because of an internal error (reference ")
+        assert "no such column" not in resp.text
 
 
 @pytest.mark.asyncio

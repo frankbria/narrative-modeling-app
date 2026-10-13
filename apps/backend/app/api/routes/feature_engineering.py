@@ -26,6 +26,7 @@ from fastapi import (
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import enforcement
 from app.billing.enforcement import quota
+from app.middleware.error_handlers import internal_error_message
 from app.schemas.feature_engineering import (
     ApplyFeatureRequest,
     ApplyFeatureResponse,
@@ -446,8 +447,10 @@ async def _why_not_applied(
     """None once the suggestion's column is on `df`, otherwise the reason it is not."""
     try:
         new_col = await _apply_single_feature(df, suggestion, parameters)
-    except Exception as e:
-        return str(e)
+    except Exception:
+        # a 200 body is not sanitised on the way out, so the exception stays in the log (#637)
+        logger.exception("Previewing feature %s failed", suggestion.id)
+        return internal_error_message("Feature preview")
     return None if new_col is not None else unsupported
 
 
