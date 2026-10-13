@@ -77,10 +77,11 @@ class TestAiAnalysisObjectIdLookup:
                 recommendations=[],
             )
 
-        monkeypatch.setattr(
-            "app.services.mcp_integration.mcp_service.analyze_dataset",
-            _fake_analysis,
-        )
+        # On the instance's dict, so it is removed afterwards (a setattr on the shared
+        # service would leave the original behind as an instance attribute).
+        from app.services.mcp_integration import mcp_service
+
+        monkeypatch.setitem(vars(mcp_service), "analyze_dataset", _fake_analysis)
 
         response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
 

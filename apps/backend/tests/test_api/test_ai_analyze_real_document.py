@@ -19,8 +19,11 @@ TEST_USER = "test_user_123"
 PROCESSED = json.loads(
     (Path(__file__).resolve().parents[4] / "apps/frontend/__tests__/fixtures/dataProcessResponse.json").read_text()
 )
-#: Patched on the class: the service is one shared object (see tasks/lessons.md, #983).
-MCP = type(mcp_service)
+#: Patched through the instance's own dict: the service is one object shared by the
+#: whole suite. `monkeypatch.setattr(service, ...)` restores by setting the original
+#: bound method back as an instance attribute, which then outlives the test and
+#: bypasses any later patch of the class; `setitem` on `vars(service)` is deleted on undo.
+MCP = vars(mcp_service)
 
 
 async def _dataset(user_id: str = TEST_USER, **fields) -> UserData:
@@ -45,7 +48,7 @@ async def _dataset(user_id: str = TEST_USER, **fields) -> UserData:
 
 
 def _from_mcp(seen: dict):
-    async def analyze_dataset(_service, **kwargs):
+    async def analyze_dataset(**kwargs):
         seen.update(kwargs)
         return MCPAnalysisResponse(
             file_id=kwargs["dataset_id"], analysis_type=kwargs["analysis_type"], summary="Five rows, three columns.",
@@ -77,7 +80,7 @@ async def test_an_analysis_from_the_service_is_passed_on_and_charged(
 ):
     doc = await _dataset()
     seen: dict = {}
-    monkeypatch.setattr(MCP, "analyze_dataset", _from_mcp(seen))
+    monkeypatch.setitem(MCP, "analyze_dataset", _from_mcp(seen))
 
     response = await async_authorized_client.post(
         f"/api/v1/ai/analyze/{doc.id}", json={"file_id": str(doc.id), "analysis_type": "quality"}
@@ -118,10 +121,10 @@ async def test_a_failing_analysis_service_is_a_sanitised_500_and_not_charged(
 ):
     doc = await _dataset()
 
-    async def broken(_service, **_kwargs):
+    async def broken(**_kwargs):
         raise RuntimeError("MCP service unavailable at mcp.internal:8765")
 
-    monkeypatch.setattr(MCP, "analyze_dataset", broken)
+    monkeypatch.setitem(MCP, "analyze_dataset", broken)
 
     response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
 

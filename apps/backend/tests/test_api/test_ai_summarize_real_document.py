@@ -23,9 +23,11 @@ PROCESSED = json.loads(
     (Path(__file__).resolve().parents[4] / "apps/frontend/__tests__/fixtures/dataProcessResponse.json").read_text()
 )
 PARTS = ("schema", "statistics", "quality_report")
-#: Patched on the class: the service is one shared object, and restoring a patched
-#: instance attribute leaves one behind that bypasses later patches of the class.
-SUMMARIZER = type(dataset_summarization_service)
+#: Patched through the instance's own dict: the service is one object shared by the
+#: whole suite. `monkeypatch.setattr(service, ...)` restores by setting the original
+#: bound method back as an instance attribute, which then outlives the test and
+#: bypasses any later patch of the class; `setitem` on `vars(service)` is deleted on undo.
+SUMMARIZER = vars(dataset_summarization_service)
 
 
 async def _dataset(**fields) -> UserData:
@@ -104,10 +106,10 @@ async def test_a_failed_summary_says_so_without_the_exception_and_is_not_saved(
     earlier = AISummary(overview="Written at upload.", issues=[], relationships=[], suggestions=[], rawMarkdown="# ok")
     doc = await _dataset(aiSummary=earlier)
 
-    def exploding(_service, _context):
+    def exploding(_context):
         raise RuntimeError("s3://narrative-prod/datasets/u/secret.csv unreadable")
 
-    monkeypatch.setattr(SUMMARIZER, "_generate_fallback_summary", exploding)
+    monkeypatch.setitem(SUMMARIZER, "_generate_fallback_summary", exploding)
 
     response = await async_authorized_client.post(f"/api/v1/ai/summarize/{doc.id}")
 
@@ -128,11 +130,11 @@ async def test_saving_the_summary_keeps_what_was_written_while_it_was_made(
     doc = await _dataset()
     real = dataset_summarization_service.generate_comprehensive_summary
 
-    async def slow(_service, request):
+    async def slow(request):
         await UserData.get_motor_collection().update_one({"_id": doc.id}, {"$set": {"num_rows": 999}})
         return await real(request)
 
-    monkeypatch.setattr(SUMMARIZER, "generate_comprehensive_summary", slow)
+    monkeypatch.setitem(SUMMARIZER, "generate_comprehensive_summary", slow)
 
     response = await async_authorized_client.post(f"/api/v1/ai/summarize/{doc.id}")
 
