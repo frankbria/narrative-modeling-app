@@ -57,3 +57,11 @@ def test_glm_review_keeps_its_two_invariants_and_has_no_size_gate():
     assert "concurrency" not in caller, "a caller-level group makes the called workflow cancel its parent"
     assert job["permissions"] == {"contents": "read", "pull-requests": "write"}
     assert "changed_files" not in job["if"] and "additions" not in job["if"], "the size gate (#576)"
+
+
+def test_claude_review_runs_only_where_its_token_exists():
+    # A Dependabot-triggered run gets Dependabot's secrets, not the repository's, so the
+    # review started with an empty token and failed on every dependency PR (#555).
+    job = _workflow("claude-code-review.yml")["jobs"]["claude-review"]
+
+    assert job["if"] == "github.event.pull_request.user.type == 'User'"
