@@ -1,77 +1,34 @@
 /**
  * Model Evaluation Dashboard E2E Tests (issue #79)
  *
- * Tests the evaluation dashboard workflow:
- * - Navigating from training through to /evaluate
- * - Metric cards render for the trained model
- * - Tab switching (Overview / Confusion Matrix / Curves / Compare)
- * - Confusion-matrix cell drill-down detail panel
- * - Export buttons enabled with data
+ * A model trained through the API, the workflow seeded at MODEL_EVALUATION, and the
+ * dashboard at /evaluate/{datasetId} driven on the live stack: metric cards, tabs,
+ * the confusion-matrix drill-down, export, model comparison and the way on to
+ * /predict.
  *
- * Follows the train.spec.ts conventions: tests degrade gracefully (log and
- * return) when workflow gating redirects or training is unavailable, since
- * these run against a live stack.
+ * These tests FAIL LOUDLY (#921). The previous version trained through a form shape
+ * that no longer exists and returned early whenever that, the workflow gate or a tab
+ * was missing, so every test passed without opening the dashboard.
  */
 
 import { test, expect } from '../fixtures';
-import { TrainPage } from '../pages/TrainPage';
 import { EvaluatePage } from '../pages/EvaluatePage';
+import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
+import { expectLandedOnStage } from '../helpers/landing';
 
-/**
- * Train a model through the UI so the workflow context allows /evaluate.
- * Returns false (after logging) when any prerequisite is unavailable.
- */
-async function trainModelThroughWorkflow(
-  authenticatedPage: import('@playwright/test').Page
-): Promise<boolean> {
-  const trainPage = new TrainPage(authenticatedPage);
-  await trainPage.goto('/model');
-
-  if (authenticatedPage.url().includes('/upload')) {
-    console.log('[evaluate] Redirected to /upload due to workflow gating.');
-    return false;
-  }
-
-  try {
-    await trainPage.selectTargetColumn('purchased');
-  } catch {
-    console.log('[evaluate] Could not select target column.');
-    return false;
-  }
-
-  try {
-    await trainPage.selectAlgorithm('Decision Tree'); // fast algorithm
-  } catch {
-    try {
-      await trainPage.selectAlgorithm('Logistic Regression');
-    } catch {
-      console.log('[evaluate] Could not select algorithm.');
-      return false;
-    }
-  }
-
-  await trainPage.startTraining();
-
-  try {
-    await trainPage.waitForTrainingComplete(120000);
-  } catch {
-    console.log('[evaluate] Training did not complete in time.');
-    return false;
-  }
-
-  return true;
-}
+const TRAINABLE_DATASET = 'ai-test-datasets/binary-classification-small.csv';
+const TARGET_COLUMN = 'churned';
 
 test.describe('Model Evaluation Dashboard', () => {
   let datasetId: string;
+  let modelId: string;
 
-  test.beforeEach(async ({ uploadTestDataset }) => {
-    // #157: train-then-evaluate is heavy; on 2-core CI the upload + training can
-    // exceed the 30s test budget (hook/fixture setup counts against it) when a
-    // parallel worker is also training. test.slow() triples the budget so 2-core
-    // contention no longer flakes these @smoke tests.
-    test.slow();
-    datasetId = await uploadTestDataset();
+  test.beforeEach(async ({ page, request, uploadTestDataset, trainModel }) => {
+    // Real AutoML training + artifact-save poll is slow on 2-core CI runners.
+    test.setTimeout(180000);
+    datasetId = await uploadTestDataset(TRAINABLE_DATASET);
+    modelId = await trainModel(datasetId, TARGET_COLUMN);
+    await seedEvaluationWorkflow(page, request, datasetId, modelId);
   });
 
   test.afterEach(async ({ cleanupDataset }) => {
@@ -80,180 +37,71 @@ test.describe('Model Evaluation Dashboard', () => {
     }
   });
 
-  test('should render metric cards after training @smoke', async ({ authenticatedPage }) => {
-    if (!(await trainModelThroughWorkflow(authenticatedPage))) return;
-
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await evaluatePage.gotoEvaluate();
-
-    if (evaluatePage.wasRedirected()) {
-      console.log('[evaluate] Redirected away from /evaluate by workflow gating.');
-      return;
-    }
-
+  async function openDashboard(page: import('@playwright/test').Page): Promise<EvaluatePage> {
+    await page.goto(`/evaluate/${datasetId}`);
+    await expectLandedOnStage(page, new RegExp(`/evaluate/${datasetId}`), 'Model Evaluation');
+    const evaluatePage = new EvaluatePage(page);
     await evaluatePage.waitForDashboard();
+    return evaluatePage;
+  }
 
-    // At least one classification or regression metric card should render.
-    const metrics = ['Accuracy', 'F1', 'ROC AUC', 'MAE', 'RMSE', 'R²'];
-    let metricsFound = false;
-    for (const metric of metrics) {
-      if (await evaluatePage.hasMetric(metric)) {
-        metricsFound = true;
-        break;
-      }
-    }
-    expect(metricsFound).toBeTruthy();
-  });
+  test('renders the metric cards and every tab of a classification model @smoke', async ({
+    authenticatedPage,
+  }) => {
+    const evaluatePage = await openDashboard(authenticatedPage);
 
-  test('should switch between dashboard tabs @smoke', async ({ authenticatedPage }) => {
-    if (!(await trainModelThroughWorkflow(authenticatedPage))) return;
-
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await evaluatePage.gotoEvaluate();
-
-    if (evaluatePage.wasRedirected()) {
-      console.log('[evaluate] Redirected away from /evaluate by workflow gating.');
-      return;
-    }
-
-    await evaluatePage.waitForDashboard();
-
-    // Overview is the default tab.
+    await expect(authenticatedPage.getByText('Accuracy', { exact: true }).first()).toBeVisible();
     await expect(evaluatePage.tab(/overview/i)).toBeVisible();
 
-    // Compare is always offered.
-    await evaluatePage.switchToTab(/compare/i);
+    await evaluatePage.switchToTab(/confusion matrix/i);
+    await expect(authenticatedPage.locator('svg[aria-label="Confusion matrix"]')).toBeVisible({
+      timeout: 10000,
+    });
+
+    await evaluatePage.switchToTab(/curves/i);
     await expect(
-      authenticatedPage.locator('text=/Select models to compare/i')
+      authenticatedPage.locator('text=/ROC Curve|Precision-Recall Curve/i').first()
     ).toBeVisible({ timeout: 10000 });
 
-    // Classification-only tabs when present.
-    if (await evaluatePage.tab(/confusion matrix/i).isVisible({ timeout: 2000 })) {
-      await evaluatePage.switchToTab(/confusion matrix/i);
-      await expect(
-        authenticatedPage.locator('svg[aria-label="Confusion matrix"]')
-      ).toBeVisible({ timeout: 10000 });
-    }
-
-    if (await evaluatePage.tab(/curves/i).isVisible({ timeout: 2000 })) {
-      await evaluatePage.switchToTab(/curves/i);
-      await expect(
-        authenticatedPage.locator('text=/ROC Curve|Precision-Recall Curve/i').first()
-      ).toBeVisible({ timeout: 10000 });
-    }
+    await evaluatePage.switchToTab(/compare/i);
+    await expect(authenticatedPage.locator('text=/Select models to compare/i')).toBeVisible({
+      timeout: 10000,
+    });
   });
 
-  test('should show a detail panel when a confusion matrix cell is clicked', async ({
+  test('drills into a confusion-matrix cell, exports, and proceeds to prediction', async ({
     authenticatedPage,
   }) => {
-    if (!(await trainModelThroughWorkflow(authenticatedPage))) return;
-
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await evaluatePage.gotoEvaluate();
-
-    if (evaluatePage.wasRedirected()) {
-      console.log('[evaluate] Redirected away from /evaluate by workflow gating.');
-      return;
-    }
-
-    await evaluatePage.waitForDashboard();
-
-    const confusionTab = evaluatePage.tab(/confusion matrix/i);
-    if (!(await confusionTab.isVisible({ timeout: 2000 }))) {
-      console.log('[evaluate] No confusion matrix tab (regression model or partial data).');
-      return;
-    }
+    const evaluatePage = await openDashboard(authenticatedPage);
 
     await evaluatePage.switchToTab(/confusion matrix/i);
-
-    // Click the first matrix cell and verify the drill-down panel appears.
-    const firstCell = authenticatedPage.getByRole('button', { name: /^Actual /i }).first();
-    await firstCell.click();
-
+    await authenticatedPage.getByRole('button', { name: /^Actual /i }).first().click();
     await expect(evaluatePage.confusionCellDetail()).toBeVisible({ timeout: 5000 });
     await expect(evaluatePage.confusionCellDetail()).toContainText(/Count/i);
-  });
 
-  test('should enable export buttons when evaluation data is loaded', async ({
-    authenticatedPage,
-  }) => {
-    if (!(await trainModelThroughWorkflow(authenticatedPage))) return;
-
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await evaluatePage.gotoEvaluate();
-
-    if (evaluatePage.wasRedirected()) {
-      console.log('[evaluate] Redirected away from /evaluate by workflow gating.');
-      return;
-    }
-
-    await evaluatePage.waitForDashboard();
-
-    await expect(evaluatePage.exportCSVButton()).toBeEnabled();
     await expect(evaluatePage.exportPDFButton()).toBeEnabled();
+    const download = await evaluatePage.exportCSV();
+    expect(download.suggestedFilename()).toBe(`evaluation-${modelId}.csv`);
 
-    // CSV export triggers a browser download named evaluation-{model_id}.csv.
-    try {
-      const download = await evaluatePage.exportCSV();
-      expect(download.suggestedFilename()).toMatch(/^evaluation-.+\.csv$/);
-    } catch {
-      console.log('[evaluate] Download event not captured (browser config dependent).');
-    }
+    await expect(evaluatePage.backToTrainingButton()).toBeVisible();
+    await evaluatePage.proceedButton().click();
+    await expect(authenticatedPage).toHaveURL(/\/predict/, { timeout: 15000 });
   });
 
-  test('should compare models in the Compare tab', async ({ authenticatedPage }) => {
-    if (!(await trainModelThroughWorkflow(authenticatedPage))) return;
+  test('compares two models trained on the dataset', async ({ authenticatedPage, trainModel }) => {
+    test.setTimeout(300000); // a second real training on top of beforeEach's
+    await trainModel(datasetId, TARGET_COLUMN);
+    const evaluatePage = await openDashboard(authenticatedPage);
 
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await evaluatePage.gotoEvaluate();
-
-    if (evaluatePage.wasRedirected()) {
-      console.log('[evaluate] Redirected away from /evaluate by workflow gating.');
-      return;
-    }
-
-    await evaluatePage.waitForDashboard();
     await evaluatePage.switchToTab(/compare/i);
-
     const checkboxes = authenticatedPage.getByRole('checkbox');
-    const count = await checkboxes.count();
-    if (count < 2) {
-      console.log('[evaluate] Fewer than two trained models; skipping comparison.');
-      return;
-    }
-
+    await expect(checkboxes).toHaveCount(2, { timeout: 15000 });
     await checkboxes.nth(0).click();
     await checkboxes.nth(1).click();
 
     await expect(evaluatePage.compareButton()).toBeEnabled();
     await evaluatePage.runComparison();
-
-    // Comparison table renders metrics as rows with a Best badge.
-    await expect(
-      authenticatedPage.locator('text=/Comparison results/i')
-    ).toBeVisible({ timeout: 15000 });
+    await expect(authenticatedPage.locator('text=/Comparison results/i')).toBeVisible({ timeout: 15000 });
     await expect(authenticatedPage.locator('text=Best').first()).toBeVisible();
-  });
-
-  test('should preserve workflow navigation actions', async ({ authenticatedPage }) => {
-    if (!(await trainModelThroughWorkflow(authenticatedPage))) return;
-
-    const evaluatePage = new EvaluatePage(authenticatedPage);
-    await evaluatePage.gotoEvaluate();
-
-    if (evaluatePage.wasRedirected()) {
-      console.log('[evaluate] Redirected away from /evaluate by workflow gating.');
-      return;
-    }
-
-    await evaluatePage.waitForDashboard();
-
-    await expect(evaluatePage.backToTrainingButton()).toBeVisible();
-    await expect(evaluatePage.proceedButton()).toBeVisible();
-
-    await evaluatePage.proceedButton().click();
-    await authenticatedPage.waitForURL(/\/predict/, { timeout: 10000 }).catch(() => {
-      console.log('[evaluate] Proceed did not navigate to /predict (stage routing).');
-    });
   });
 });

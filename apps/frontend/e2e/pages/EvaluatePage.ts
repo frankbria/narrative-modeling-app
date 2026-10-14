@@ -14,19 +14,10 @@ export class EvaluatePage extends BasePage {
     super(page);
   }
 
-  async gotoEvaluate() {
-    await this.goto('/evaluate');
-  }
-
-  /** True once the dashboard header (not the loading spinner) is visible. */
-  async waitForDashboard(timeout: number = 30000) {
-    await this.page.waitForSelector('text=/Model Evaluation/i', { timeout });
-  }
-
-  /** Whether the workflow gating redirected away from /evaluate. */
-  wasRedirected(): boolean {
-    const url = this.page.url();
-    return url.includes('/upload') || url.includes('/model');
+  /** Resolves once the dashboard's tabs replace the loading spinner. It waited for the
+   *  text "Model Evaluation", which the stage bar shows from the start (#921). */
+  async waitForDashboard(timeout: number = 60000) {
+    await this.tab(/overview/i).waitFor({ state: 'visible', timeout });
   }
 
   tab(name: string | RegExp): Locator {
@@ -89,10 +80,10 @@ export class EvaluatePage extends BasePage {
   }
 
   proceedButton(): Locator {
-    return this.page.getByRole('button', { name: /proceed to prediction/i });
+    return this.page.getByRole('button', { name: /continue to prediction/i });
   }
 
   backToTrainingButton(): Locator {
-    return this.page.getByRole('button', { name: /back to training/i });
+    return this.page.getByRole('button', { name: 'Back', exact: true });
   }
 }
