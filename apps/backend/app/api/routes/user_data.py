@@ -12,6 +12,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData, get_current_time
 from app.schemas.user_data import UserDataResponse, UserDataUpdate
 from app.services.eda_summary import generate_eda_summary
+from app.services.erasure_service import dataset_erasure_service
 from app.utils.s3 import get_file_from_s3, parse_s3_url
 
 # Set up logging
@@ -283,10 +284,20 @@ async def update_user_data(
 async def delete_user_data(
     id: PydanticObjectId, user_id: str = Depends(get_current_user_id)
 ) -> dict[str, bool]:
+    """Delete the dataset and everything derived from it, through the erasure cascade (#864).
+
+    It used to delete the row alone, and the upload's S3 object, its metadata twin,
+    its versions and its history stayed where nothing would find them again. Something
+    the cascade could not remove is a retryable 502, not a success.
+    """
     doc = await UserData.get(id)
     if not doc or doc.user_id != user_id:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    await doc.delete()
+    manifest = await dataset_erasure_service.erase_dataset(str(id), user_id, actor_id=user_id)
+    if manifest.failures:
+        raise HTTPException(
+            status_code=502, detail="Part of the dataset could not be deleted. Try again."
+        )
     return {"success": True}
 
 

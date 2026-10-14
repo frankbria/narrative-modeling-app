@@ -1,3 +1,20 @@
+# Issue #864: DELETE /user_data/{id} deletes only the row, and the e2e cleanup relies on it
+
+## Plan
+- [x] RED (LocalStack, through the routes): upload, transform once, `DELETE /user_data/{id}`.
+      Nothing of the dataset is left: the row, its metadata twin, its versions, its history,
+      and every object under the user's prefixes.
+- [x] Decision (AC2): the route stays and goes through the erasure cascade, the one path that
+      reaches both id spaces. Nothing in the product calls it, but `DELETE /datasets/{id}`
+      already cascades, so a delete that does not would be the odd one out.
+- [x] A foreign or unknown id is still the same 404; a cascade that leaves something behind
+      is not reported as a success.
+- [x] `predict.spec.ts`'s batch job needs no code of its own: erasing the dataset erases its
+      model, and the model's batch jobs with it (#661). On the real stack a run of
+      `predict.spec.ts` and `prepare-pipeline.spec.ts` now leaves every collection's count
+      for the shared e2e user where it was.
+
+
 # Issue #863: after Apply, the Prepare preview still shows the pre-apply rows as Before
 
 ## Plan
