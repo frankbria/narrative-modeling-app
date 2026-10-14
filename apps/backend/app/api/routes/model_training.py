@@ -101,6 +101,7 @@ from app.services.model_training import (
     TuningConfig,
 )
 from app.services.model_training.algorithm_selector import AlgorithmSelector
+from app.services.model_training.automl_engine import AutoMLResult
 from app.services.model_training.comparison import (
     build_best_model_explanation,
     build_data_profile,
@@ -633,7 +634,7 @@ class _TrainingRun:
 
     engine: AutoMLEngine
     df: pd.DataFrame
-    result: Any
+    result: AutoMLResult
     dataset_version_id: str | None
     training_config: dict[str, Any]
 
@@ -824,7 +825,7 @@ async def _fit_within(
     feature_config: FeatureEngineeringConfig | None,
     reporter: _JobReporter,
     wall_clock_seconds: float,
-) -> Any:
+) -> AutoMLResult:
     """Run AutoML under the plan's hard wall clock (#500).
 
     The engine's own time_limit is soft (checked between candidates, after
@@ -852,7 +853,7 @@ async def _fit_within(
         ) from exc
 
 
-def _record_outcome(training_config: dict[str, Any], result: Any, engine: AutoMLEngine) -> None:
+def _record_outcome(training_config: dict[str, Any], result: AutoMLResult, engine: AutoMLEngine) -> None:
     """Write what the run did into ``training_config``, which persists on the MLModel."""
     # The training-mode outcome (issue #101), alongside the requested mode.
     training_config["early_stopped"] = result.early_stopped
@@ -918,7 +919,7 @@ async def _run_training(
     return _TrainingRun(engine, df, result, dataset_version_id, training_config)
 
 
-def _metrics(result: Any) -> dict[str, Any]:
+def _metrics(result: AutoMLResult) -> dict[str, Any]:
     return {
         "cv_score": result.best_model.cv_score,
         "test_score": result.best_model.test_score,
@@ -926,7 +927,7 @@ def _metrics(result: Any) -> dict[str, Any]:
     }
 
 
-def _tuning_time(result: Any) -> float | None:
+def _tuning_time(result: AutoMLResult) -> float | None:
     """The sum of the per-algorithm search durations, NOT the full AutoML wall time
     (``result.training_time``). None when tuning was off."""
     if not result.tuning_results:
@@ -966,7 +967,7 @@ def _model_metadata(run: _TrainingRun, user_data: UserData, request: TrainModelR
     }
 
 
-def _evaluation_payload(result: Any, model_id: str) -> Any:
+def _evaluation_payload(result: AutoMLResult, model_id: str) -> Any:
     """Held-out evaluation artifacts for the dashboard (issue #79).
 
     Built best-effort: a payload problem must never fail training.
@@ -988,7 +989,7 @@ def _evaluation_payload(result: Any, model_id: str) -> Any:
         return None
 
 
-def _shap_payload(result: Any, model_id: str) -> Any:
+def _shap_payload(result: AutoMLResult, model_id: str) -> Any:
     """Global SHAP summary for the interpretability dashboard (issue #80).
 
     Built best-effort; ``None`` for unsupported model types.
