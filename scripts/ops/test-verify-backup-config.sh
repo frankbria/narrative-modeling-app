@@ -45,7 +45,8 @@ emit_versioning() {
 
 emit_lifecycle() {
   case "$1" in
-    ok)      echo "echo '{\"Rules\":[{\"ID\":\"expire-noncurrent\",\"Status\":\"Enabled\",\"AbortIncompleteMultipartUpload\":{\"DaysAfterInitiation\":7}}]}'" ;;
+    ok)      echo "echo '{\"Rules\":[{\"ID\":\"expire-noncurrent\",\"Status\":\"Enabled\",\"Expiration\":{\"ExpiredObjectDeleteMarker\":true},\"AbortIncompleteMultipartUpload\":{\"DaysAfterInitiation\":7}}]}'" ;;
+    nomarkers) echo "echo '{\"Rules\":[{\"ID\":\"expire-noncurrent\",\"Status\":\"Enabled\",\"AbortIncompleteMultipartUpload\":{\"DaysAfterInitiation\":7}}]}'" ;;
     norule)  echo "echo '{\"Rules\":[{\"ID\":\"something-else\",\"Status\":\"Enabled\"}]}'" ;;
     none)    echo "echo 'An error occurred (NoSuchLifecycleConfiguration) ...' >&2; exit 254" ;;
     denied)  echo "echo 'An error occurred (AccessDenied) ... not authorized to perform: s3:GetLifecycleConfiguration' >&2; exit 254" ;;
@@ -118,6 +119,8 @@ expect_out "versioning genuinely off is reported off" \
   absent ok "versioning is 'None'"
 expect_out "lifecycle without our rule is reported" \
   enabled norule "no 'expire-noncurrent' rule"
+expect_out "a rule that leaves delete markers behind is reported (#529)" \
+  enabled nomarkers "delete markers are never removed"
 
 echo
 echo "=== the fully-configured case still passes ==="

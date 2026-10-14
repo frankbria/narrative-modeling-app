@@ -129,6 +129,13 @@ if grep -q "expire-noncurrent" <<<"$payload" && grep -q "AbortIncompleteMultipar
 else
   fail "empty-bucket path did not apply the expected rules"
 fi
+# #529: expiring a noncurrent version leaves its delete marker behind for ever
+# unless the rule also removes markers that have nothing left under them.
+if grep -q '"ExpiredObjectDeleteMarker": *true' <<<"$payload"; then
+  pass "the rule removes expired delete markers"
+else
+  fail "the rule leaves expired delete markers in the bucket"
+fi
 rm -rf "$d"
 
 echo

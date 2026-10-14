@@ -110,6 +110,8 @@ if ours is None:
     print("missing")
 elif "AbortIncompleteMultipartUpload" not in ours:
     print("no-abort")
+elif not ours.get("Expiration", {}).get("ExpiredObjectDeleteMarker"):
+    print("no-markers")
 else:
     print("ok")
 ' "$S3_OUT")"
@@ -117,10 +119,15 @@ else:
       ok)
         pass "lifecycle rule 'expire-noncurrent' present"
         pass "incomplete multipart uploads are aborted (on the expire-noncurrent rule)"
+        pass "expired delete markers are removed (on the expire-noncurrent rule)"
         ;;
       no-abort)
         pass "lifecycle rule 'expire-noncurrent' present"
         fail "the expire-noncurrent rule has no AbortIncompleteMultipartUpload — failed uploads bill forever"
+        ;;
+      no-markers)
+        pass "lifecycle rule 'expire-noncurrent' present"
+        fail "the expire-noncurrent rule keeps expired delete markers — delete markers are never removed (re-run configure-s3-backup.sh)"
         ;;
       missing)
         fail "lifecycle exists but has no 'expire-noncurrent' rule — versioning will grow unbounded"
