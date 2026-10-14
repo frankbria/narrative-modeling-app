@@ -44,6 +44,7 @@ from app.middleware.metrics import MetricsMiddleware, get_metrics
 from app.billing import stripe_client
 from app.billing.enforcement import QuotaRefundMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.relative_redirects import RelativeRedirectMiddleware
 from app.middleware.upload_cleanup import UnownedUploadCleanupMiddleware
 from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
@@ -276,6 +277,10 @@ app.add_middleware(APIVersionMiddleware)
 
 # ✅ Apply Prometheus metrics middleware
 app.add_middleware(MetricsMiddleware)
+
+# A redirect to this app's own host is a path, so the client keeps its https behind
+# the TLS proxy, without trusting forwarded headers (#942).
+app.add_middleware(RelativeRedirectMiddleware)
 
 # ✅ Request-id stamping (#269). Added last ⇒ outermost, so every request gets
 # an id before any inner middleware/handler runs and it can be echoed on every
