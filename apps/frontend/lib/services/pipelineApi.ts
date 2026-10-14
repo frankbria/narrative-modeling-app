@@ -118,14 +118,35 @@ const RECIPE_LISTS: Record<RecipeFilter, string> = {
 };
 
 /** The route a filter reads. The browser used to ask `GET /recipes?filter=…`, which is
- * no route, so it was always empty (#859); recipeLists.json pins these to the API. */
-export function recipeListPath(filter: RecipeFilter): string {
-  return RECIPE_LISTS[filter];
+ * no route, so it was always empty (#859); recipeLists.json pins these to the API. A page
+ * after the first names itself; the first is the route's default. */
+export function recipeListPath(filter: RecipeFilter, page = 1): string {
+  const path = RECIPE_LISTS[filter];
+  if (page === 1) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}page=${page}`;
+}
+
+/** Some of a recipe list, and how many recipes the list holds in all. */
+export interface RecipePage {
+  recipes: SavedRecipe[];
+  total: number;
 }
 
 export async function fetchRecipes(filter: RecipeFilter): Promise<SavedRecipe[]> {
-  const body = await get<{ recipes: SavedRecipe[] }>(recipeListPath(filter), 'the request failed');
-  return body.recipes;
+  return (await fetchRecipePages(filter, 1)).recipes;
+}
+
+/** The first `pages` pages of a list (#929): the browser showed page one only, so a
+ * 21st recipe could not be reached. Popular is a top list, not paged. */
+export async function fetchRecipePages(filter: RecipeFilter, pages: number): Promise<RecipePage> {
+  const shown: RecipePage = { recipes: [], total: 0 };
+  const last = filter === 'popular' ? 1 : pages;
+  for (let page = 1; page <= last; page++) {
+    const body = await get<RecipePage>(recipeListPath(filter, page), 'the request failed');
+    shown.recipes.push(...body.recipes);
+    shown.total = body.total;
+  }
+  return shown;
 }
 
 /** The pipeline a saved recipe describes. The API sends `steps`, each with a `type`. */

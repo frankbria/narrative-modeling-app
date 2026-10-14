@@ -30,3 +30,15 @@ export function chainEdges(nodes: { id: string }[]): Edge[] {
     markerEnd: { type: MarkerType.ArrowClosed },
   }));
 }
+
+/** Why a recipe cannot be loaded, naming each step whose type the engine does not run
+ * (#929): a recipe saved before #499 can hold one, and its preview then failed with a
+ * message that named nothing. Null when every step runs, or when the types are unknown. */
+export function unrunnableSteps(steps: PipelineStep[], types: { type: string }[] | null): string | null {
+  if (!types?.length) return null;
+  const runs = new Set(types.map((t) => t.type));
+  const stale = steps.flatMap((step, index) => (runs.has(step.type) ? [] : [`step ${index + 1} (${label(step.type)})`]));
+  if (!stale.length) return null;
+  const one = stale.length === 1;
+  return `This recipe cannot be loaded: ${stale.join(', ')} ${one ? 'is' : 'are'} no longer ${one ? 'a transformation' : 'transformations'} the pipeline runs. Remove ${one ? 'it' : 'them'} from the recipe and save it again.`;
+}
