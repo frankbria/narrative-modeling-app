@@ -13,7 +13,6 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.dataset import DatasetMetadata
 from app.models.version import DatasetVersion
 from app.schemas.version import (
-    DatasetVersionCreate,
     DatasetVersionResponse,
     LineageResponse,
     QualityTrendPoint,
@@ -164,80 +163,6 @@ async def get_quality_trend(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error building quality trend: {str(e)}"
-        )
-
-
-@router.post("/datasets/{dataset_id}/versions", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def create_dataset_version(
-    dataset_id: str,
-    version_data: DatasetVersionCreate,
-    current_user_id: str = Depends(get_current_user_id)
-):
-    """
-    Create a new version for a dataset.
-
-    This endpoint requires the transformed dataset content to be uploaded
-    separately and referenced via file_path or s3_url.
-    """
-    # Ownership check before ANY read of the dataset's content: this handler
-    # copies the parent version's bytes into a new version owned by the caller,
-    # so an unscoped read here exfiltrates the victim's data (issue #447).
-    dataset_metadata = await require_owned_dataset(dataset_id, current_user_id)
-
-    try:
-        logger.info(f"Creating new version for dataset {dataset_id}")
-
-        # Get the latest version to use as parent, scoped to the caller — a
-        # second unscoped read of the same victim data otherwise.
-        latest_version = await DatasetVersion.find({
-            "dataset_id": dataset_id,
-            "user_id": current_user_id,
-        }).sort("-version_number").first_or_none()
-
-        if not latest_version:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No base version exists for this dataset. Upload dataset first."
-            )
-
-        # For now, we'll create a version by copying the latest version's content
-        # In a real implementation, you'd get the actual transformed content
-        version_content = await versioning_service.get_version_content(latest_version.version_id)
-
-        # Create transformation version
-        new_version, lineage = await versioning_service.create_transformation_version(
-            parent_version_id=latest_version.version_id,
-            transformed_content=version_content,
-            transformation_steps=version_data.transformation_steps,
-            dataset_metadata=dataset_metadata,
-            user_id=current_user_id,
-            description=version_data.description,
-            transformation_config_id=version_data.transformation_config_id
-        )
-
-        # Update tags if provided
-        if version_data.tags:
-            new_version.tags = version_data.tags
-            await new_version.save()
-
-        # Convert to response models
-        version_response = DatasetVersionResponse.model_validate(new_version)
-        lineage_response = LineageResponse.model_validate(lineage)
-
-        logger.info(f"Created version {new_version.version_id} for dataset {dataset_id}")
-
-        return {
-            "version": version_response.model_dump(),
-            "lineage": lineage_response.model_dump()
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating version for dataset {dataset_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating version: {str(e)}"
         )
 
 
