@@ -391,3 +391,53 @@ class TestParallelExecution:
                 assert response.status_code == 200
         finally:
             app.dependency_overrides.pop(get_current_user_id, None)
+
+
+@pytest.mark.asyncio
+class TestOpenAICheckAsksAgainOnce:
+    """#973: one slow answer from OpenAI opened a P1 staging alert. A transient failure
+    is asked again once; a refused key is reported at once."""
+
+    async def _check(self, monkeypatch, *answers):
+        import httpx
+
+        from app.api.routes import health
+
+        calls = []
+
+        async def get(*_args, **_kwargs):
+            calls.append(1)
+            answer = answers[len(calls) - 1]
+            if isinstance(answer, Exception):
+                raise answer
+            return MagicMock(status_code=answer)
+
+        monkeypatch.setattr(health, "OPENAI_RETRY_PAUSE_SECONDS", 0)
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}), patch("httpx.AsyncClient") as client:
+            client.return_value.__aenter__.return_value.get = get
+            result = await health.check_openai_api()
+        return result, len(calls), httpx
+
+    async def test_a_timeout_then_an_answer_is_healthy(self, monkeypatch):
+        import httpx
+
+        result, calls, _ = await self._check(monkeypatch, httpx.ReadTimeout(""), 200)
+
+        assert (result["status"], calls) == ("healthy", 2)
+
+    async def test_two_timeouts_are_unhealthy_and_say_what_failed(self, monkeypatch):
+        import httpx
+
+        result, calls, _ = await self._check(monkeypatch, httpx.ReadTimeout(""), httpx.ReadTimeout(""))
+
+        assert (result["status"], result["error"], calls) == ("unhealthy", "ReadTimeout", 2)
+
+    async def test_a_refused_key_is_unhealthy_at_once(self, monkeypatch):
+        result, calls, _ = await self._check(monkeypatch, 401)
+
+        assert (result["status"], result["error"], calls) == ("unhealthy", "http 401", 1)
+
+    async def test_a_server_error_is_asked_again(self, monkeypatch):
+        result, calls, _ = await self._check(monkeypatch, 503, 200)
+
+        assert (result["status"], calls) == ("healthy", 2)

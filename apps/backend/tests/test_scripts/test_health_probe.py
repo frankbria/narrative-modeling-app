@@ -261,3 +261,13 @@ def test_the_probe_loads_none_of_the_app_it_does_not_use():
     routes = [name for name in loaded if name.startswith("app.api.routes.")]
     assert heavy == set()
     assert routes == ["app.api.routes.health"]
+
+
+def test_a_failing_check_prints_what_kind_of_failure_it_was():
+    """#973: the alert read `openai: unhealthy`, and its cause was a 3-second timeout."""
+    from app.health_probe import _is_healthy, _reported
+
+    assert _reported({"status": "unhealthy", "error": "ReadTimeout"}) == "unhealthy (ReadTimeout)"
+    assert _reported({"status": "unhealthy", "error": "http 401"}) == "unhealthy (http 401)"
+    assert _reported({"status": "healthy", "latency_ms": 3}) == "healthy"
+    assert not _is_healthy(_reported({"status": "unhealthy", "error": "ReadTimeout"}))

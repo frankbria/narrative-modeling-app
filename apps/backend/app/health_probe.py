@@ -125,10 +125,18 @@ async def probe(
     )
     for name, check_fn in fresh:
         try:
-            statuses[name] = str((await check_fn()).get("status"))
+            statuses[name] = _reported(await check_fn())
         except Exception as exc:
             statuses[name] = f"unreachable ({type(exc).__name__})"
     return statuses
+
+
+def _reported(check: dict) -> str:
+    """The status, and for a failure the kind the check names (#973): a class name or an
+    HTTP status, never an error message, since this output reaches a public issue."""
+    status = str(check.get("status"))
+    kind = check.get("error")
+    return f"{status} ({kind})" if kind and status != "healthy" else status
 
 
 def main(transport: httpx.AsyncBaseTransport | None = None) -> int:
