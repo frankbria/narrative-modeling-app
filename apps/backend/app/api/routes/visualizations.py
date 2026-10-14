@@ -44,32 +44,71 @@ async def _load_dataframe(s3_url: str, columns: set[str]) -> pd.DataFrame:
     )
 
 
-def _columns_needed(chart_columns: list[str], filters: str | None) -> set[str]:
-    """What a chart reads: the columns it draws and the ones its filters test. The
-    filter list is parsed here, before anything is downloaded, so a malformed one is
-    refused first (json.JSONDecodeError, which the handlers map to 400)."""
-    filtered = [f["column"] for f in json.loads(filters)] if filters else []
-    return {*chart_columns, *filtered}
+_FILTER_OPERATORS = {"equals", "greater_than", "less_than", "contains", "between"}
 
 
-def _apply_filters(df: pd.DataFrame, filters: str | None) -> pd.DataFrame:
-    """Apply the optional JSON filter list (raises json.JSONDecodeError on bad JSON,
-    which the handlers map to 400)."""
+def _bad_filter(position: int, problem: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=f"Filter {position + 1}: {problem}")
+
+
+def _parse_filters(filters: str | None, known_columns: list[str] | None) -> list[dict[str, Any]]:
+    """The filter list, checked once and before anything is downloaded (#996): a list
+    of ``{column, operator, value}`` with a known operator and, when the dataset's
+    columns are recorded, a column it has. Anything else is the caller's 400 naming the
+    entry, never a 500, and an unknown operator is never skipped silently."""
     if not filters:
-        return df
-    for f in json.loads(filters):
-        col, op, val = f["column"], f["operator"], f["value"]
-        if op == "equals":
-            df = df[df[col] == val]
-        elif op == "greater_than":
-            df = df[df[col] > val]
-        elif op == "less_than":
-            df = df[df[col] < val]
-        elif op == "contains":
-            df = df[df[col].str.contains(str(val), na=False)]
-        elif op == "between" and isinstance(val, list):
-            df = df[(df[col] >= val[0]) & (df[col] <= val[1])]
+        return []
+    try:
+        parsed = json.loads(filters)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid filter format")
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=400, detail="Invalid filter format: expected a list of filters")
+    for position, entry in enumerate(parsed):
+        _check_filter(position, entry, known_columns)
+    return parsed
+
+
+def _check_filter(position: int, entry: Any, known_columns: list[str] | None) -> None:
+    if not isinstance(entry, dict) or not {"column", "operator", "value"} <= entry.keys():
+        raise _bad_filter(position, "each filter needs a column, an operator and a value")
+    if entry["operator"] not in _FILTER_OPERATORS:
+        raise _bad_filter(position, f"unknown operator {entry['operator']!r}")
+    if entry["operator"] == "between" and not (isinstance(entry["value"], list) and len(entry["value"]) == 2):
+        raise _bad_filter(position, "between takes a list of two values")
+    if known_columns and entry["column"] not in known_columns:
+        raise _bad_filter(position, f"the dataset has no column {entry['column']!r}")
+
+
+def _columns_needed(chart_columns: list[str], filters: list[dict[str, Any]]) -> set[str]:
+    """What a chart reads: the columns it draws and the ones its filters test."""
+    return {*chart_columns, *(f["column"] for f in filters)}
+
+
+def _apply_filters(df: pd.DataFrame, filters: list[dict[str, Any]]) -> pd.DataFrame:
+    """Apply the parsed filter list. A column the file lacks, or an operator that does
+    not apply to the column's values (``contains`` on numbers, ``greater_than`` text
+    against numbers), is the caller's 400."""
+    for position, f in enumerate(filters):
+        if f["column"] not in df.columns:
+            raise _bad_filter(position, f"the dataset has no column {f['column']!r}")
+        try:
+            df = df[_filter_mask(df[f["column"]], f["operator"], f["value"])]
+        except (TypeError, AttributeError, ValueError):
+            raise _bad_filter(position, f"{f['operator']} does not apply to the values of {f['column']!r}")
     return df
+
+
+def _filter_mask(column: pd.Series, operator: str, value: Any) -> pd.Series:
+    if operator == "equals":
+        return column == value
+    if operator == "greater_than":
+        return column > value
+    if operator == "less_than":
+        return column < value
+    if operator == "contains":
+        return column.str.contains(str(value), na=False)
+    return (column >= value[0]) & (column <= value[1])
 
 
 def _downsample(df: pd.DataFrame, *, ordered: bool) -> tuple[pd.DataFrame, bool, float]:
@@ -188,8 +227,9 @@ async def _chart(
     if cached is not None:
         return cached
 
-    df = await _load_dataframe(dataset.s3_url, _columns_needed(columns, filters))
-    payload = build(_apply_filters(df, filters))
+    parsed = _parse_filters(filters, dataset.columns)
+    df = await _load_dataframe(dataset.s3_url, _columns_needed(columns, parsed))
+    payload = build(_apply_filters(df, parsed))
     await cache_service.set(cache_key, payload, ttl=_CHART_CACHE_TTL)
     return payload
 
@@ -238,8 +278,6 @@ async def get_scatter_plot(
         )
     except HTTPException:
         raise
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid filter format")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating scatter plot: {str(e)}"
@@ -301,8 +339,6 @@ async def get_line_chart(
         )
     except HTTPException:
         raise
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid filter format")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating line chart: {str(e)}"
@@ -342,8 +378,6 @@ async def get_time_series(
         )
     except HTTPException:
         raise
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid filter format")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error generating time series: {str(e)}"
