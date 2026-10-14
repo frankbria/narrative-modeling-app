@@ -105,6 +105,26 @@ describe('TransformationPipeline actions (#855)', () => {
     expect(screen.queryByText('bob')).not.toBeInTheDocument();
   });
 
+  it('keeps Preview disabled until the rows are read again, so it never previews without them', async () => {
+    respond('/transformations/apply', { success: true });
+    const user = await addTrimWhitespace();
+    expect(await screen.findByText('bob')).toBeInTheDocument();
+
+    let rowsArrive: (rows: unknown) => void = () => {};
+    const beforeApply = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      /\/data\/[^/]+\/preview$/.test(String(url))
+        ? { ok: true, json: () => new Promise((resolve) => (rowsArrive = resolve)) }
+        : beforeApply(url, init),
+    );
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^preview$/i })).toBeDisabled());
+    rowsArrive({ columns: ['name', 'score'], data: [{ name: 'carol', score: 30 }] });
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^preview$/i })).toBeEnabled();
+  });
+
   it('drops the steps a failed apply already applied, so a retry sends only the rest', async () => {
     let applies = 0;
     const mountTime = fetchMock().getMockImplementation()!;

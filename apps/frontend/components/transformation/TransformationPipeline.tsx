@@ -108,21 +108,32 @@ function currentPreview(
 type PreviewOverride = { datasetId: string; data: PipelinePreview };
 type PipelineSnapshot = { nodes: TransformationFlowNode[]; edges: Edge[] };
 
+type RereadRows = { datasetId: string; rows: PreviewTable | null };
+
+/** The rows read again after an apply, when they are this dataset's; else the ones loaded on mount. */
+function rowsNow(reread: RereadRows | null, datasetId: string, loaded: PreviewTable | null) {
+  return reread?.datasetId === datasetId ? reread.rows : loaded;
+}
+
 /** The dataset's rows and the transformation types, and what the preview panel shows. */
 function usePipelineData(datasetId: string) {
-  const { data: metadata, reload } = useAsyncData(() => loadMetadata(datasetId), [datasetId], {
+  const { data: metadata } = useAsyncData(() => loadMetadata(datasetId), [datasetId], {
     enabled: !!datasetId,
   });
   const view = metadataView(metadata);
   // An action's preview replaces the dataset's own rows until the dataset changes.
   const [override, setOverride] = useState<PreviewOverride | null>(null);
+  const [reread, setReread] = useState<RereadRows | null>(null);
+  const rows = rowsNow(reread, datasetId, view.rows);
   const showPreview = (data: PipelinePreview) => setOverride({ datasetId, data });
-  // After an apply the dataset is on a new file: Before is read again (#863).
-  const refresh = () => {
+  // After an apply the dataset is on a new file, so Before is read again (#863). The
+  // apply awaits this, so Preview stays disabled until the new rows are in.
+  const refresh = async () => {
+    setReread({ datasetId, rows: await fetchDatasetRows(datasetId).catch(() => null) });
     setOverride(null);
-    reload();
   };
-  return { ...view, preview: currentPreview(override, datasetId, view.rows), showPreview, refresh };
+  const preview = currentPreview(override, datasetId, rows);
+  return { ...metadataView({ types: view.types, rows }), preview, showPreview, refresh };
 }
 
 /** The node ids an apply that stopped part-way already applied: the first `applied`
@@ -466,7 +477,7 @@ export default function TransformationPipeline(props: TransformationPipelineProp
         throw err;
       });
       setHasUnsavedChanges(false);
-      refresh();
+      await refresh();
       // Transformations move the same dataset to a new file; there is no new id.
       onComplete?.(datasetId);
       return `Applied ${steps.length} transformation${steps.length === 1 ? '' : 's'}`;
