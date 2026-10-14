@@ -327,7 +327,7 @@ async def apply_feature(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    Validate a feature against a dataset and record it as applicable (#959).
+    Validate a feature against a dataset and record it as applicable.
 
     Checks compatibility, computes the feature on the dataset to prove it applies, and
     records the dataset on the feature. Nothing is written to the dataset: no column is

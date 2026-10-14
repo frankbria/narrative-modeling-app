@@ -393,7 +393,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
         user_id: str
     ) -> dict[str, Any]:
         """
-        Apply feature to a dataset.
+        Validate a feature against a dataset and record it as applicable.
+
+        The feature is computed on the dataset to prove it applies, and the dataset is
+        recorded on the feature. Nothing is written to the dataset: no column is added.
 
         Args:
             feature_id: Feature identifier
@@ -401,7 +404,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
             user_id: User applying feature
 
         Returns:
-            Result dictionary with new column data
+            What was done: the feature, the dataset, the column it would add and a message
         """
         feature = await self.get_feature(feature_id, user_id)
 
