@@ -495,16 +495,16 @@ class BulkTransformationService:
         uploads = record_request_uploads()
 
         try:
-            job.mark_started()
-            await job.save()
+            if not await self._claim_running(job):
+                logger.info(f"Bulk transformation job {job.job_id} is no longer pending; not run")
+                return
             try:
                 # The dataset's lease, taken in the job because it runs after its
                 # request has answered (#1022): an apply or an undo meanwhile waits.
                 async with holding_the_dataset(job.dataset_id, job.user_id):
                     await self._transform_the_dataset(job, start_time)
             except LeaseBusy:
-                job.mark_failed(DATASET_BUSY)
-                await job.save()
+                await self._fail(job, DATASET_BUSY)
 
         except Exception:
             logger.exception(f"Bulk transformation job {job.job_id} failed")
@@ -513,8 +513,35 @@ class BulkTransformationService:
             # that sees "failed" does not also find the file still in the bucket.
             await discard_unowned_uploads(uploads)
             # error_message is read back verbatim by the job-status route (#637).
-            job.mark_failed(internal_error_message("Bulk transformation job"))
-            await job.save()
+            await self._fail(job, internal_error_message("Bulk transformation job"))
+
+    @staticmethod
+    async def _claim_running(job: BulkTransformationJob) -> bool:
+        """PENDING to RUNNING in one conditional write (#925). A whole-document save here
+        wrote RUNNING over a cancel that landed before the task started, and the job then
+        ran and moved the dataset. False when the job is no longer PENDING."""
+        job.mark_started()
+        claimed = await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": job.job_id, "status": BulkJobStatus.PENDING.value},
+            {"$set": {"status": job.status.value, "started_at": job.started_at, "updated_at": job.updated_at}},
+        )
+        return claimed.modified_count == 1
+
+    @staticmethod
+    async def _write_if_running(job: BulkTransformationJob, *fields: str) -> bool:
+        """The named fields of the job, written only while it is still RUNNING, so a
+        cancel that landed meanwhile is never overwritten (#925, as #485 for batches)."""
+        values = job.model_dump(include={*fields, "updated_at"})
+        if "status" in values:
+            values["status"] = job.status.value
+        written = await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": job.job_id, "status": BulkJobStatus.RUNNING.value}, {"$set": values}
+        )
+        return written.modified_count == 1
+
+    async def _fail(self, job: BulkTransformationJob, reason: str) -> None:
+        job.mark_failed(reason)
+        await self._write_if_running(job, "status", "completed_at", "error_message", "retry_count")
 
     async def _transform_the_dataset(self, job: BulkTransformationJob, start_time: float) -> None:
         """Read the dataset, run the columns and move it to the result. The caller holds
@@ -522,8 +549,7 @@ class BulkTransformationService:
         # Either id space, like the routes that created the job (#856).
         dataset = await ensure_metadata_twin(job.dataset_id, job.user_id)
         if not dataset:
-            job.mark_failed("Dataset not found")
-            await job.save()
+            await self._fail(job, "Dataset not found")
             return
         # a raw key must not reach the URL-only downloader (#466)
         df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
@@ -550,8 +576,7 @@ class BulkTransformationService:
             )
             run.add(column, new_df, result)
             if not result.success and job.stop_on_error:
-                job.mark_failed(f"Stopped at column {column}: {result.error}")
-                await job.save()
+                await self._fail(job, f"Stopped at column {column}: {result.error}")
                 return None
             await self._record_progress(job, i, run)
         return run
@@ -580,7 +605,7 @@ class BulkTransformationService:
         # Batch database updates: save every N columns or on the last column
         is_last_column = index == len(job.selected_columns) - 1
         if (index + 1) % PROGRESS_UPDATE_FREQUENCY == 0 or is_last_column:
-            await job.save()
+            await self._write_if_running(job, "progress")
 
     async def _finish_job(
         self, job: BulkTransformationJob, dataset: DatasetMetadata, run: _ColumnRun, start_time: float
@@ -593,13 +618,20 @@ class BulkTransformationService:
             total_time_ms=int((time.time() - start_time) * 1000),
             total_rows_affected=sum(r.affected_rows for r in run.results if r.success),
         )
+        if not await self._still_running(job):
+            return  # cancelled after its last column: the dataset is not moved
         if run.succeeded:
             job.output_file_path = await self._move_dataset(job, dataset, run.df)
         if run.failed:
             job.mark_partially_completed(result)
         else:
             job.mark_completed(result)
-        await job.save()
+        await self._write_if_running(job, "status", "completed_at", "result", "output_file_path")
+
+    @staticmethod
+    async def _still_running(job: BulkTransformationJob) -> bool:
+        stored = await BulkTransformationJob.find_one({"job_id": job.job_id})
+        return stored is not None and stored.status == BulkJobStatus.RUNNING
 
     async def _move_dataset(self, job: BulkTransformationJob, dataset: DatasetMetadata, df: pd.DataFrame) -> str:
         """Upload the transformed frame and point the dataset at it; the new file's URL."""
@@ -785,10 +817,14 @@ class BulkTransformationService:
                 if job_id in self._active_tasks:
                     del self._active_tasks[job_id]
 
+        # Conditional: a whole-document save could put CANCELLED over a run that
+        # finished meanwhile, or write back progress the run had moved on from (#925).
         job.mark_cancelled()
-        await job.save()
-
-        return True
+        cancelled = await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": job_id, "status": {"$in": [BulkJobStatus.PENDING.value, BulkJobStatus.RUNNING.value]}},
+            {"$set": {"status": job.status.value, "completed_at": job.completed_at, "updated_at": job.updated_at}},
+        )
+        return cancelled.modified_count == 1
 
     async def retry_job(
         self,

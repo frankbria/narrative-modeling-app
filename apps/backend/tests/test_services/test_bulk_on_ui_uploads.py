@@ -206,3 +206,48 @@ class TestABulkJobsOtherEndings:
             await BulkTransformationService().preview_bulk_transformation(
                 USER, str(upload.id), ["no_such_column"], "fill_missing", {}
             )
+
+
+class TestACancelIsNotOverwritten:
+    """#925: the job opened with a whole-document save, which wrote RUNNING over a cancel
+    that landed before the task started; the job then ran and moved the dataset."""
+
+    async def test_a_job_cancelled_before_it_starts_does_not_run(self, setup_database, storage):
+        upload = await _upload()
+        job = await BulkTransformationJob(
+            job_id="bulk_925", user_id=USER, dataset_id=str(upload.id), selected_columns=["age"],
+            transformation_type="fill_missing", global_parameters={"method": "mode"},
+            status=BulkJobStatus.PENDING,
+        ).insert()
+        await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": "bulk_925"}, {"$set": {"status": BulkJobStatus.CANCELLED.value}}
+        )
+
+        await BulkTransformationService()._process_bulk_job(job)  # the copy the task was handed
+
+        stored = await BulkTransformationJob.find_one({"job_id": "bulk_925"})
+        assert stored.status == BulkJobStatus.CANCELLED
+        storage.assert_not_awaited()
+        assert (await UserData.get(upload.id)).s3_url == upload.s3_url, "the dataset did not move"
+
+    async def test_a_cancel_after_the_last_column_stops_the_move(self, setup_database, storage):
+        upload = await _upload()
+        service = BulkTransformationService()
+        transform = service._apply_column_transformation
+
+        async def then_cancelled(*args, **kwargs):
+            done = await transform(*args, **kwargs)
+            await BulkTransformationJob.get_motor_collection().update_one(
+                {"job_id": job.job_id}, {"$set": {"status": BulkJobStatus.CANCELLED.value}}
+            )
+            return done
+
+        service._apply_column_transformation = then_cancelled
+        job = await service.apply_bulk_transformation(
+            USER, str(upload.id), ["age"], "fill_missing", {"method": "mode"}
+        )
+        done = await _finished(service, job)
+
+        assert done.status == BulkJobStatus.CANCELLED
+        storage.assert_not_awaited()
+        assert (await UserData.get(upload.id)).s3_url == upload.s3_url, "the dataset did not move"

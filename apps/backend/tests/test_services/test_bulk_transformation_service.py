@@ -776,7 +776,7 @@ async def test_bulk_job_downloads_through_a_url_not_a_raw_key(bulk_service):
     downloader a URL. The download is stubbed to stop the job right after the call."""
     from app.models.bulk_transformation import BulkTransformationJob
 
-    job = BulkTransformationJob(job_id="bj-466", user_id="u1", dataset_id="d1", transformation_type="fill_missing")
+    job = await BulkTransformationJob(job_id="bj-466", user_id="u1", dataset_id="d1", transformation_type="fill_missing", selected_columns=["a"]).insert()
     dataset = MagicMock(file_path="datasets/u1/d1_f.csv", s3_url="s3://test-bucket/datasets/u1/d1_f.csv")
     seen: list[str] = []
 
@@ -784,8 +784,7 @@ async def test_bulk_job_downloads_through_a_url_not_a_raw_key(bulk_service):
         seen.append(url)
         raise RuntimeError("stop here")
 
-    with patch.object(BulkTransformationJob, "save", new_callable=AsyncMock), \
-         patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
+    with patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=stop), \
          patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
         await bulk_service._process_bulk_job(job)
@@ -800,9 +799,9 @@ async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk
     both twins through `record_new_file` with the uploaded URL."""
     from app.models.bulk_transformation import BulkTransformationJob
 
-    job = BulkTransformationJob(job_id="bj-467", user_id="u1", dataset_id="d1",
-                                transformation_type="fill_missing", selected_columns=["age"],
-                                global_parameters={"method": "mean"})
+    job = await BulkTransformationJob(job_id="bj-467", user_id="u1", dataset_id="d1",
+                                      transformation_type="fill_missing", selected_columns=["age"],
+                                      global_parameters={"method": "mean"}).insert()
     dataset = MagicMock(file_path="datasets/u1/d1_f.csv", s3_url="s3://test-bucket/datasets/u1/d1_f.csv")
     frame = pd.DataFrame({"age": [1.0, None, 3.0], "name": ["a", "b", "c"]})
     new_url = "s3://test-bucket/transformed/u1/d1_bulk.parquet"
@@ -810,9 +809,7 @@ async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk
     async def get_df(url, *a, **k):
         return frame
 
-    with patch.object(BulkTransformationJob, "save", new_callable=AsyncMock), \
-         patch.object(BulkTransformationJob, "find_one", new_callable=AsyncMock, return_value=job), \
-         patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
+    with patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=get_df), \
          patch("app.services.bulk_transformation_service.upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
          patch("app.services.bulk_transformation_service.record_new_file", new_callable=AsyncMock) as move, \
