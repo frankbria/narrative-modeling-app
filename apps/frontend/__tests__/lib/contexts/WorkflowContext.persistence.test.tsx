@@ -233,6 +233,30 @@ describe('saveWorkflow', () => {
     });
   });
 
+  it('logs a save the backend refuses for a dataset that is gone, and creates nothing (#847)', async () => {
+    // The dataset was erased in another tab. The backend answers 404 to the create
+    // (and to the update before it): the save is reported like any other failure,
+    // and the next boundary still tries to create, because nothing exists.
+    (global.fetch as jest.Mock).mockResolvedValue(mockFetchResponse(404, { detail: 'Dataset not found' }));
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => useWorkflow(), { wrapper });
+
+    await act(async () => {
+      result.current.completeStage(WorkflowStage.DATA_LOADING, { datasetId: DATASET_ID });
+    });
+    await waitFor(() =>
+      expect(logged).toHaveBeenCalledWith('Failed to save workflow (HTTP 404); state kept in localStorage'),
+    );
+    expect(workflowCalls().map(([, init]) => init.method)).toEqual(['POST']);
+
+    await act(async () => {
+      result.current.completeStage(WorkflowStage.DATA_PROFILING);
+    });
+    await waitFor(() => expect(workflowCalls().length).toBe(2));
+    expect(workflowCalls()[1][1].method).toBe('POST');
+    logged.mockRestore();
+  });
+
   it('keeps state in localStorage when the backend save fails', async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error('network down'));
 

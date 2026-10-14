@@ -136,6 +136,16 @@ test.describe('tenant isolation (#493)', () => {
         expect(workflow.status()).toBe(200);
         expect((await workflow.json()).current_stage, "A's workflow survives B's put").toBe('model_evaluation');
 
+        // Nor can B create a workflow of its own for A's dataset, in either id space,
+        // or for one that does not exist (#847): the row would outlive any erasure.
+        for (const id of [fileId, datasetId, '66f0c0ffee0000000000dead']) {
+          const made = await bContext.request.post(`${API_BASE}/workflows/${id}`, {
+            headers: { ...b, 'Content-Type': 'application/json' },
+            data: { current_stage: 'data_loading', completed_stages: [], stage_data: {} },
+          });
+          expect(made.status(), `B must not create a workflow for ${id}`).toBe(404);
+        }
+
         // The batch job's write paths, and its results (#753).
         for (const [what, call] of [
           ['cancel', () => bContext.request.post(`${API_BASE}/batch/jobs/${jobId}/cancel`, { headers: b })],

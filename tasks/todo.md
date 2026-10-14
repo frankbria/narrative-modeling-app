@@ -1,3 +1,17 @@
+# Issue #847: POST /workflows/{dataset_id} creates a workflow for a dataset that does not exist
+
+## Plan
+- [x] RED: with a real `UserData` and a real `DatasetMetadata` seeded, the owner gets 201 for
+      either id; another tenant's id and an unknown id both get 404, with the same body,
+      and no `WorkflowState` row is written.
+- [x] `dataset_link.owns_dataset(dataset_id, user_id)`: read-only, either id space. The
+      route asks it before creating.
+- [x] The existing workflow tests create workflows for an id nothing owns; they seed a
+      dataset first.
+- [x] Frontend (AC3): a 404 on the PUT then on the POST is logged like any failed save and
+      the workflow is not marked as existing. The code already does this; a test pins it.
+
+
 # Issue #842: split `train_model_task` (cc 35) and `AutoMLEngine.run` (cc 32) under the CRAP ceiling
 
 Behaviour unchanged: the existing training, cancellation, wall-clock, quota-refund and
