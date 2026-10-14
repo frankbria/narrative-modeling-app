@@ -70,16 +70,36 @@ def _parse_filters(filters: str | None, known_columns: list[str] | None) -> list
 
 
 def _check_filter(position: int, entry: Any, known_columns: list[str] | None) -> None:
+    problem = _shape_problem(entry) or _operator_problem(entry) or _column_problem(entry, known_columns)
+    if problem:
+        raise _bad_filter(position, problem)
+
+
+def _shape_problem(entry: Any) -> str | None:
     if not isinstance(entry, dict) or not {"column", "operator", "value"} <= entry.keys():
-        raise _bad_filter(position, "each filter needs a column, an operator and a value")
+        return "each filter needs a column, an operator and a value"
     if not isinstance(entry["column"], str) or not isinstance(entry["operator"], str):
-        raise _bad_filter(position, "the column and the operator are names")
+        return "the column and the operator are names"
+    return None
+
+
+def _operator_problem(entry: dict[str, Any]) -> str | None:
     if entry["operator"] not in _FILTER_OPERATORS:
-        raise _bad_filter(position, f"unknown operator {entry['operator']!r}")
-    if entry["operator"] == "between" and not (isinstance(entry["value"], list) and len(entry["value"]) == 2):
-        raise _bad_filter(position, "between takes a list of two values")
+        return f"unknown operator {entry['operator']!r}"
+    if entry["operator"] == "between" and not _is_pair(entry["value"]):
+        return "between takes a list of two values"
+    return None
+
+
+def _is_pair(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 2
+
+
+def _column_problem(entry: dict[str, Any], known_columns: list[str] | None) -> str | None:
+    """A column the dataset records it lacks; nothing is known when none are recorded."""
     if known_columns and entry["column"] not in known_columns:
-        raise _bad_filter(position, f"the dataset has no column {entry['column']!r}")
+        return f"the dataset has no column {entry['column']!r}"
+    return None
 
 
 def _columns_needed(chart_columns: list[str], filters: list[dict[str, Any]]) -> set[str]:
