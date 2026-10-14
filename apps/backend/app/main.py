@@ -84,6 +84,7 @@ from app.services.api_documentation import published_spec
 from app.auth.nextauth_auth import SKIP_AUTH, require_admin
 from app.config import (
     current_signup_mode,
+    parse_invite_allowlist,
     get_environment,
     is_production_like,
     resolve_database_name,
@@ -94,6 +95,18 @@ from app.utils.ai_summary import initialize_openai_client
 from app.services.redis_cache import init_cache, cleanup_cache
 
 
+def _announce_signup_mode() -> None:
+    """Say how signup is configured. Two values are said out loud: "open" is deliberate
+    (#768), and invite mode with nobody on the list admits nobody (#880), which a hand-run
+    compose up reaches without the deploy preflight that refuses it. Never names anyone."""
+    if current_signup_mode() == "open":
+        logger.warning("Signup mode: OPEN — any OAuth account may sign up (SIGNUP_MODE=open)")
+    elif not parse_invite_allowlist(os.getenv("INVITE_ALLOWLIST")):
+        logger.warning("Signup mode: invite, and INVITE_ALLOWLIST is empty: nobody can sign in")
+    else:
+        logger.info("Signup mode: invite (INVITE_ALLOWLIST only)")
+
+
 def _announce_configuration() -> None:
     """Say at startup how this process is configured, where a wrong value is silent."""
     # The auth mode, unambiguously (issue #149)
@@ -102,11 +115,7 @@ def _announce_configuration() -> None:
         "BYPASSED via SKIP_AUTH" if SKIP_AUTH else "ENFORCED (NextAuth JWT)",
         get_environment(),
     )
-    # Signup mode (#768): "open" is a deliberate value, so it is said out loud.
-    if current_signup_mode() == "open":
-        logger.warning("Signup mode: OPEN — any OAuth account may sign up (SIGNUP_MODE=open)")
-    else:
-        logger.info("Signup mode: invite (INVITE_ALLOWLIST only)")
+    _announce_signup_mode()
 
     # Billing configuration, stated the same way (issue #457). Running with no
     # Stripe keys is supported (ADR-002) and silent, which is how staging shipped

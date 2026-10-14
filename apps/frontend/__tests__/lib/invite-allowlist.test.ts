@@ -5,7 +5,7 @@
  * mode wins, unset fails CLOSED in production, dev keeps the legacy default.
  */
 
-import { parseAllowlist, resolveSignupMode, isSignInAllowed } from '@/lib/invite-allowlist';
+import { parseAllowlist, resolveSignupMode, isSignInAllowed, signupModeWarning } from '@/lib/invite-allowlist';
 
 describe('parseAllowlist', () => {
   it('returns an empty set for unset/empty input', () => {
@@ -97,3 +97,28 @@ describe('isSignInAllowed', () => {
     }
   });
 });
+
+// #880: invite mode with nobody on the list admits nobody, and the startup log says so.
+describe('signupModeWarning', () => {
+  const production = { NODE_ENV: 'production' } as const;
+
+  it('says nobody can sign in when invite mode has an empty list', () => {
+    expect(signupModeWarning({ ...production, SIGNUP_MODE: 'invite', INVITE_ALLOWLIST: '' })).toMatch(
+      /INVITE_ALLOWLIST is empty: nobody can sign in/,
+    );
+  });
+
+  it('says nothing for invite mode with a list, and never names anyone', () => {
+    const env = { ...production, SIGNUP_MODE: 'invite', INVITE_ALLOWLIST: 'alice@example.com' };
+    expect(signupModeWarning(env)).toBeNull();
+  });
+
+  it('keeps the open-mode warning', () => {
+    expect(signupModeWarning({ ...production, SIGNUP_MODE: 'open' })).toMatch(/Signup mode: OPEN/);
+  });
+
+  it('says nothing outside production, where the defaults are deliberate', () => {
+    expect(signupModeWarning({ NODE_ENV: 'development', SIGNUP_MODE: 'invite', INVITE_ALLOWLIST: '' })).toBeNull();
+  });
+});
+

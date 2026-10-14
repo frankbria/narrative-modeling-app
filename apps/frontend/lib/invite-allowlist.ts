@@ -53,6 +53,22 @@ export function signupMode(env: SignupEnv = process.env): SignupMode {
 }
 
 /**
+ * What to say at startup about the signup mode in production, or null (#768, #880).
+ * "open" is deliberate, and invite mode with nobody on the list admits nobody, which a
+ * hand-run compose up reaches without the deploy preflight. Never names anyone.
+ */
+export function signupModeWarning(env: SignupEnv = process.env): string | null {
+  if (env.NODE_ENV !== 'production') return null;
+  if (signupMode(env) === 'open') {
+    return '[auth] Signup mode: OPEN — any Google/GitHub account may sign up (SIGNUP_MODE=open)';
+  }
+  if (parseAllowlist(env.INVITE_ALLOWLIST).size === 0) {
+    return '[auth] Signup mode: invite, and INVITE_ALLOWLIST is empty: nobody can sign in';
+  }
+  return null;
+}
+
+/**
  * Decide whether a sign-in attempt passes the signup gate.
  *
  * Open mode admits everyone. Invite mode admits a federated OAuth sign-in whose
