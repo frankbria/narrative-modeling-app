@@ -2183,3 +2183,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
   testing the bug. For anything about versions or lineage, assert first that the versions
   are distinct.
 
+## 2026-10-14: a LocalStack test that passes alone can fail in the full run (#864)
+- The new route test passed on its own and failed in CI: the route's erasure service is a
+  module-level instance whose `S3Service` is built at import, and in the full integration
+  run an earlier test had imported it with the suite's blanked credentials (mock mode),
+  where every S3 delete is skipped. The Mongo half of the cascade still ran, so only the
+  S3 assertion failed. CI also shares one bucket across suites and test users, which hid
+  the cause behind a first, unrelated failure.
+- **Rule:** a LocalStack test through a route that uses a module-level service built with
+  S3 settings replaces that service with one built inside the test (the existing erasure
+  tests do). Reproduce a CI-only failure locally by running an earlier importer first
+  (`pytest tests/test_api/<file> tests/test_integration/<file>`). Count only the objects
+  the test itself wrote.
+
