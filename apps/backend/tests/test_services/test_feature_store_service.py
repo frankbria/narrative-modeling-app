@@ -420,6 +420,31 @@ class TestFeatureStoreServiceApplication:
             assert key == stored  # a key is passed through as is
 
     @pytest.mark.asyncio
+    async def test_apply_feature_says_no_column_was_added(self):
+        """#959: the answer read "Created column: …" while nothing was written. It says
+        what happened: validated and recorded, no column added, no file changed."""
+        mock_feature = MagicMock(feature_id="f1", user_id="u1", output_column_name="ratio",
+                                 applied_to_datasets=[], increment_usage=MagicMock(), save=AsyncMock())
+        dataset = MagicMock(file_path="datasets/u1/file.csv", s3_url="s3://test-bucket/datasets/u1/file.csv",
+                            file_type="csv", save=AsyncMock())
+        with patch.object(self.service, 'get_feature', new_callable=AsyncMock, return_value=mock_feature), \
+             patch.object(self.service, 'check_compatibility', new_callable=AsyncMock,
+                          return_value={"is_compatible": True}), \
+             patch('app.services.feature_store_service.DatasetMetadata') as MockDataset, \
+             patch('app.services.feature_store_service.FeatureEngineer') as MockEngineer, \
+             patch('app.services.s3_service.S3Service.download_file_bytes', new_callable=AsyncMock, return_value=b"x"), \
+             patch('app.services.feature_store_service.pd'), \
+             patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+            MockDataset.find_one = AsyncMock(return_value=dataset)
+            MockEngineer.return_value = MagicMock(apply_stored_feature=AsyncMock(return_value=MagicMock()))
+
+            result = await self.service.apply_feature("f1", "d1", "u1")
+
+        assert result["success"] is True and result["output_column"] == "ratio"
+        assert "no column was added" in result["message"] and "Created column" not in result["message"]
+        dataset.save.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_apply_feature_increments_usage(self):
         """🔴 RED: Test applying feature increments usage count."""
         # ARRANGE
