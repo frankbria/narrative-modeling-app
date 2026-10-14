@@ -87,11 +87,11 @@ class TestReadersOfARowStoredAsExcel:
         return await UserData.get(doc.id)
 
     async def test_training(self, setup_database):
-        from app.api.routes.model_training import _parse_dataset
+        from app.api.routes.model_training import _parse_and_hash
 
         row = await self._stored_as_excel()
 
-        assert list(_parse_dataset(_workbook(), row.file_type).columns) == ["id", "color"]
+        assert list(_parse_and_hash(_workbook(), row.file_type)[0].columns) == ["id", "color"]
 
     async def test_the_shared_loader(self, setup_database, tmp_path):
         """feature selection and feature engineering read through it."""

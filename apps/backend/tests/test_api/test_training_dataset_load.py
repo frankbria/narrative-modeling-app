@@ -182,6 +182,7 @@ async def test_a_download_timeout_is_not_reported_as_the_wall_clock(setup_databa
     ("parquet", lambda f: f.to_parquet(index=False)),
     ("xlsx", lambda f: _xlsx(f)),
     ("excel", lambda f: _xlsx(f)),  # the value /upload/secure stores; training refused it
+    (None, lambda f: f.to_parquet(index=False)),  # no type stored (#937): read by its bytes
 ])
 async def test_each_stored_type_reaches_the_engine_as_the_same_frame(setup_database, file_type, encode):
     frame = pd.DataFrame({"a": [1, 2, 3], "target": [0, 1, 0]})
@@ -206,3 +207,29 @@ async def test_an_unsupported_type_fails_the_job_and_names_nothing_internal(setu
 
     assert seen == [] and refreshed.status == JobStatus.FAILED
     assert refreshed.error and "Unsupported file type" not in refreshed.error
+
+
+@pytest.mark.parametrize("stamped, encode", [
+    ("csv", lambda f: f.to_parquet(index=False)),  # a transformed file under the upload's type
+    ("parquet", lambda f: f.to_csv(index=False).encode()),
+], ids=["csv over parquet", "parquet over csv"])
+async def test_a_type_the_bytes_contradict_fails_the_job_with_that_reason(setup_database, stamped, encode):
+    """#1019: training parsed by the stored type alone, so a mismatch failed with a bare
+    decode or parse error and the job said only "quote your job id"."""
+    from app.services.s3_service import FormatMismatchError
+    from app.utils.job_failures import user_safe_failure_reason
+
+    frame = pd.DataFrame({"a": [1, 2, 3], "target": [0, 1, 0]})
+    model_id = f"model_1019_{stamped}"
+    job = await _job(model_id)
+    seen: list = []
+    try:
+        await _run(_dataset(stamped), model_id, AsyncMock(return_value=encode(frame)), seen)
+        refreshed = await TrainingJob.find_one(TrainingJob.model_id == model_id)
+    finally:
+        await job.delete()
+
+    assert seen == [] and refreshed.status == JobStatus.FAILED
+    assert refreshed.error == user_safe_failure_reason(FormatMismatchError("x"))
+    assert "does not match its file" in refreshed.error
+    assert "s3://" not in refreshed.error and "#524" not in refreshed.error

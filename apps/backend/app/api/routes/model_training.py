@@ -4,11 +4,9 @@ API routes for model training and management
 
 import asyncio
 import contextlib
-import io
 import logging
 import math
 import os
-import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
@@ -112,7 +110,7 @@ from app.services.model_training.training_mode import (
 )
 from app.services.model_versioning_service import model_versioning_service
 from app.services.prediction_enrichment import PredictionEnricher
-from app.services.s3_service import _read_dataframe, s3_service
+from app.services.s3_service import read_dataframe_from_bytes, s3_service
 from app.services.sdk_generator import SUPPORTED_LANGUAGES, SDKGenerator
 from app.services.training_admission import (
     TrainingConcurrencyLimitError,
@@ -522,27 +520,13 @@ async def train_model(
     )
 
 
-def _parse_dataset(file_bytes: bytes, file_type: str | None) -> pd.DataFrame:
-    """The stored file as a frame, by its `file_type`. Blocking: call it off the loop."""
-    if not file_type:
-        # /upload/confirm-pii-upload stored no type before #937: go by the bytes.
-        with tempfile.NamedTemporaryFile() as fh:
-            fh.write(file_bytes)
-            fh.flush()
-            return _read_dataframe(fh.name, None, None)
-    if file_type == "csv":
-        return pd.read_csv(io.StringIO(file_bytes.decode("utf-8")))
-    # "excel" is what the secure upload routes stored before #902.
-    if file_type in ("xls", "xlsx", "excel"):
-        return pd.read_excel(io.BytesIO(file_bytes))
-    if file_type == "parquet":
-        return pd.read_parquet(io.BytesIO(file_bytes))
-    raise ValueError(f"Unsupported file type: {file_type}")
-
-
 def _parse_and_hash(file_bytes: bytes, file_type: str | None) -> tuple[pd.DataFrame, str]:
-    """The frame, and the content hash a `DatasetVersion` of these bytes carries."""
-    return _parse_dataset(file_bytes, file_type), DatasetVersion.compute_content_hash(file_bytes)
+    """The frame, and the content hash a `DatasetVersion` of these bytes carries.
+
+    Read by the typed reader every other reader of a dataset uses (#1019): a stored
+    type the bytes contradict is a `FormatMismatchError`, which the job reports as
+    such, and a row with no type is read by what its bytes are (#937)."""
+    return read_dataframe_from_bytes(file_bytes, file_type), DatasetVersion.compute_content_hash(file_bytes)
 
 
 async def _trained_version_id(user_id: str, s3_url: str, content_hash: str) -> str | None:
