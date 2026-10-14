@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { BookOpen, Clock, Star, Users } from 'lucide-react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
-import { fetchRecipes, type RecipeFilter, type SavedRecipe } from '@/lib/services/pipelineApi';
+import { fetchRecipePages, type RecipeFilter, type RecipePage, type SavedRecipe } from '@/lib/services/pipelineApi';
 
 /**
  * The saved recipes a pipeline can be loaded from (#859).
@@ -94,12 +94,14 @@ const NOTHING_FOUND = (
 interface RecipeListProps {
   loading: boolean;
   error: string | null;
-  recipes: SavedRecipe[] | undefined;
+  list: RecipePage | undefined;
   onLoad(recipe: SavedRecipe): void;
+  onMore: VoidFunction;
 }
 
 function RecipeList(props: RecipeListProps) {
-  const { loading, error, recipes, onLoad } = props;
+  const { loading, error, list, onLoad, onMore } = props;
+  const recipes = list?.recipes;
   if (loading) return SPINNER;
   if (error) {
     return (
@@ -109,11 +111,18 @@ function RecipeList(props: RecipeListProps) {
     );
   }
   if (!recipes?.length) return NOTHING_FOUND;
+  // More than one page: the list route pages, and the browser showed the first only (#929).
+  const more = recipes.length < (list?.total ?? 0);
   return (
     <div className="space-y-3">
       {recipes.map((recipe) => (
         <RecipeCard key={recipe.id} recipe={recipe} onLoad={onLoad} />
       ))}
+      {more && (
+        <button type="button" onClick={onMore} className="w-full py-2 text-sm text-blue-600 hover:underline">
+          Show more recipes ({recipes.length} of {list?.total})
+        </button>
+      )}
     </div>
   );
 }
@@ -124,8 +133,11 @@ interface RecipeBrowserProps {
 
 export default function RecipeBrowser(props: RecipeBrowserProps) {
   const { onLoad } = props;
-  const [filter, setFilter] = useState<RecipeFilter>('all');
-  const { data: recipes, loading, error } = useAsyncData(() => fetchRecipes(filter), [filter]);
+  const [shown, setShown] = useState<{ filter: RecipeFilter; pages: number }>({ filter: 'all', pages: 1 });
+  const { filter, pages } = shown;
+  const { data: list, loading, error } = useAsyncData(() => fetchRecipePages(filter, pages), [filter, pages]);
+  const setFilter = (chosen: RecipeFilter) => setShown({ filter: chosen, pages: 1 });
+  const showMore = () => setShown({ filter, pages: pages + 1 });
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b">
@@ -142,7 +154,7 @@ export default function RecipeBrowser(props: RecipeBrowserProps) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4">
-        <RecipeList loading={loading} error={error} recipes={recipes} onLoad={onLoad} />
+        <RecipeList loading={loading} error={error} list={list} onLoad={onLoad} onMore={showMore} />
       </div>
     </div>
   );

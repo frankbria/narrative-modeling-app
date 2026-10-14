@@ -343,6 +343,41 @@ describe('TransformationPipeline recipes (#859)', () => {
       expect(JSON.parse(saved![1].body)).toMatchObject({ name: 'Tidy', is_public: true });
     });
   });
+
+  it('reaches a recipe past the first page (#929)', async () => {
+    const [first] = mine.recipes;
+    const page = (n: number, from: number) =>
+      Array.from({ length: n }, (_, i) => ({ ...first, id: `r${from + i}`, name: `Recipe ${from + i}` }));
+    const requested = serveRecipes({
+      '/transformations/recipes': { ...mine, recipes: page(20, 1), total: 21 },
+      '/transformations/recipes?page=2': { ...mine, recipes: page(1, 21), total: 21, page: 2 },
+    });
+    const user = await openRecipes();
+    await screen.findByText('Recipe 20');
+    expect(screen.queryByText('Recipe 21')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show more recipes (20 of 21)' }));
+
+    expect(await screen.findByText('Recipe 21')).toBeInTheDocument();
+    expect(screen.getByText('Recipe 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show more recipes/i })).not.toBeInTheDocument();
+    expect(requested.slice(-2)).toEqual(['/transformations/recipes', '/transformations/recipes?page=2']);
+  });
+
+  it('refuses a recipe with a step the pipeline no longer runs, naming the step (#929)', async () => {
+    const [first] = mine.recipes;
+    const stale = { ...first, steps: [first.steps[0], { ...first.steps[1], type: 'normalize' }] };
+    serveRecipes({ '/transformations/recipes': { ...mine, recipes: [stale] } });
+    const user = await openRecipes();
+
+    await user.click(await screen.findByText('Tidy names'));
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent(
+      'This recipe cannot be loaded: step 2 (Normalize) is no longer a transformation the pipeline runs.'
+    );
+    expect(screen.queryByText('Recipe Manager')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^preview$/i })).toBeDisabled(); // no step was loaded
+  });
 });
 
 /**

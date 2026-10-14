@@ -38,7 +38,7 @@ import {
   type SavedRecipe,
   type TransformationTypeMeta,
 } from '@/lib/services/pipelineApi';
-import { chainEdges, recipeFlow } from './recipeFlow';
+import { chainEdges, recipeFlow, unrunnableSteps } from './recipeFlow';
 import { planOrder } from './runOrder';
 
 interface TransformationPipelineProps {
@@ -497,6 +497,12 @@ export default function TransformationPipeline(props: TransformationPipelineProp
   const closeRecipes = () => setShowRecipeManager(false);
 
   const handleLoadRecipe = (recipe: SavedRecipe) => {
+    const refused = unrunnableSteps(recipeSteps(recipe), transformationTypes);
+    if (refused) {
+      setError(refused);
+      closeRecipes();
+      return;
+    }
     const flow = recipeFlow(recipeSteps(recipe));
     setNodes(flow.nodes);
     setEdges(flow.edges);
