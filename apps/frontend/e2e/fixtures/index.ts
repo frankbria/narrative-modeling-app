@@ -268,6 +268,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         // DatasetMetadata id (`dataset_…`, from POST /datasets/upload) goes to
         // /datasets/{id}. Sending an ObjectId to /datasets always 404'd, so every
         // uploaded fixture used to leak (swallowed below) — see #493 review.
+        // Both routes go through the erasure cascade (#864), so the twin, versions,
+        // history, models, batch jobs and their S3 objects go with the dataset.
         const path = /^[0-9a-f]{24}$/i.test(datasetId) ? 'user_data' : 'datasets';
         await request.delete(`${API_BASE}/${path}/${datasetId}`, {
           headers: await apiAuthHeaders(request),
