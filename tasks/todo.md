@@ -1,12 +1,12 @@
 # Issue #880: say at startup when invite mode has an empty INVITE_ALLOWLIST
 
 ## Plan
-- [ ] RED, backend: the startup announcement warns that nobody can sign in when the mode is
+- [x] RED, backend: the startup announcement warns that nobody can sign in when the mode is
       `invite` and the list is empty; says invite mode at INFO when the list has entries;
       never prints an address.
-- [ ] RED, frontend: `signupModeWarning(env)` is that sentence in production, and nothing
+- [x] RED, frontend: `signupModeWarning(env)` is that sentence in production, and nothing
       for a populated list or outside production; open mode keeps its own warning.
-- [ ] `_announce_signup_mode` (backend) and `signupModeWarning` (frontend), each called where
+- [x] `_announce_signup_mode` (backend) and `signupModeWarning` (frontend), each called where
       the open-mode warning is today.
 
 
