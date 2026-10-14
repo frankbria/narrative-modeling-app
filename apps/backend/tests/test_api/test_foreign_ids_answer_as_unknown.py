@@ -201,3 +201,26 @@ async def test_the_callers_own_dataset_is_loaded(setup_database, monkeypatch):
 
     frame = await feature_engineering._load_dataset_dataframe("ds_985_own", OTHER)
     assert list(frame.columns) == ["a"]
+
+
+async def test_the_callers_dataset_of_another_type_or_unreadable_is_refused(setup_database, monkeypatch):
+    from fastapi import HTTPException
+
+    from app.api.routes import feature_engineering
+    from app.models.dataset import DatasetMetadata
+
+    for dataset_id, file_type in (("ds_985_json", "json"), ("ds_985_bad", "csv")):
+        await DatasetMetadata(
+            user_id=OTHER, dataset_id=dataset_id, filename="d", original_filename="d", file_type=file_type,
+            file_path=f"datasets/{OTHER}/d", s3_url=f"s3://b/datasets/{OTHER}/d", num_rows=1, num_columns=1,
+        ).insert()
+
+    def unreadable(url, kind):
+        raise OSError("gone")
+
+    monkeypatch.setattr(feature_engineering, "load_dataframe_from_s3", unreadable)
+    monkeypatch.setattr(feature_engineering, "ALLOWED_FILE_TYPES", {"csv"})
+    for dataset_id, status in (("ds_985_json", 400), ("ds_985_bad", 500)):
+        with pytest.raises(HTTPException) as refused:
+            await feature_engineering._load_dataset_dataframe(dataset_id, OTHER)
+        assert refused.value.status_code == status

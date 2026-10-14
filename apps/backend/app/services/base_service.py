@@ -408,7 +408,9 @@ class BaseService[T: Document](ABC):
         # Use get_by_id_or_raise to make the behavior explicit
         document = await self.get_by_id_or_raise(resource_id, user_id, check_ownership=True)
 
-        self._set_fields(document, update_data, allowed_fields)
+        if allowed_fields:
+            update_data = {k: v for k, v in update_data.items() if k in allowed_fields}
+        self._set_fields(document, update_data)
 
         # Call update_timestamp if available
         if hasattr(document, 'update_timestamp'):
@@ -417,16 +419,8 @@ class BaseService[T: Document](ABC):
         await document.save()
         return document
 
-    def _set_fields(
-        self, document: T, update_data: dict[str, Any], allowed_fields: list[str] | None
-    ) -> None:
-        """Set each field of ``update_data`` the document has (only ``allowed_fields``, when given)."""
-        if allowed_fields:
-            update_data = {
-                k: v for k, v in update_data.items()
-                if k in allowed_fields
-            }
-
+    def _set_fields(self, document: T, update_data: dict[str, Any]) -> None:
+        """Set each field of ``update_data`` that the document has."""
         # Update fields
         for field, value in update_data.items():
             if hasattr(document, field):
