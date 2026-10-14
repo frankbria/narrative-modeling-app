@@ -974,69 +974,59 @@ class BatchPredictionService:
         """One result per chunk row, in order, from the chunk's predictions, and the
         rows to explain. Synchronous: it runs in a worker thread (#909)."""
         is_classification = str(model.problem_type).endswith("classification")
-        want_explanations = X_array is not None
         predictions: list[dict[str, Any]] = []
         to_explain: list[dict[str, Any]] = []
-
         for i, (index, row) in enumerate(chunk_df.iterrows()):
-            input_data = row.to_dict()
-            prediction = preds[i]
-            prediction_value = (
-                prediction.item() if hasattr(prediction, "item") else prediction
-            )
-
-            result: dict[str, Any] = {
-                "row_index": index,
-                "prediction": prediction_value,
-                "input_data": input_data,
-            }
-
-            # Probabilities drive confidence + low-confidence flags even when the
-            # caller didn't request the full vectors (#83).
-            if proba_matrix is not None:
-                proba_list = proba_matrix[i].tolist()
-                confidence = self.confidence.confidence_from_proba(proba_list)
-                if confidence is not None:
-                    result["confidence"] = confidence
-                    result["low_confidence"] = self.confidence.is_low_confidence(
-                        confidence
-                    )
-                if config.include_probabilities:
-                    result["probabilities"] = proba_list
-
-            # Regression prediction interval from the model's residual std.
-            if (
-                not is_classification
-                and getattr(model, "residual_std", None) is not None
-            ):
-                interval = self.confidence.regression_interval(
-                    prediction_value, model.residual_std
-                )
-                if interval is not None:
-                    result["prediction_interval"] = interval
-
-            # Per-prediction explanation (opt-in — issue #83/#80). Collected here
-            # and computed in one batched pass after the loop so the explainer is
-            # built once per chunk, not once per row.
-            if want_explanations and X_array is not None:
-                to_explain.append(
-                    {
-                        "result": result,
-                        "x_row": X_array[i],
-                        "prediction": prediction_value,
-                    }
-                )
-
-            if config.include_metadata:
-                result["metadata"] = {
-                    "model_id": model.model_id,
-                    "model_version": model.version,
-                    "prediction_time": datetime.now(UTC).isoformat(),
-                }
-
+            proba_row = None if proba_matrix is None else proba_matrix[i]
+            result = self._row_result(index, row.to_dict(), preds[i], proba_row, model, config, is_classification)
+            # Explanations are computed in one batched pass after the loop, so the
+            # explainer is built once per chunk, not once per row (#83/#80).
+            if X_array is not None:
+                to_explain.append({"result": result, "x_row": X_array[i], "prediction": result["prediction"]})
             predictions.append(result)
-
         return predictions, to_explain
+
+    def _row_result(
+        self,
+        index: Any,
+        input_data: dict[str, Any],
+        prediction: Any,
+        proba_row: Any,
+        model: MLModel,
+        config: BatchPredictionConfig,
+        is_classification: bool,
+    ) -> dict[str, Any]:
+        value = prediction.item() if hasattr(prediction, "item") else prediction
+        result: dict[str, Any] = {"row_index": index, "prediction": value, "input_data": input_data}
+        # Probabilities drive confidence + low-confidence flags even when the
+        # caller didn't request the full vectors (#83).
+        if proba_row is not None:
+            result.update(self._probability_fields(proba_row.tolist(), config))
+        result.update(self._interval_fields(value, model, is_classification))
+        if config.include_metadata:
+            result["metadata"] = {
+                "model_id": model.model_id,
+                "model_version": model.version,
+                "prediction_time": datetime.now(UTC).isoformat(),
+            }
+        return result
+
+    def _probability_fields(self, proba_list: list[float], config: BatchPredictionConfig) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+        confidence = self.confidence.confidence_from_proba(proba_list)
+        if confidence is not None:
+            fields["confidence"] = confidence
+            fields["low_confidence"] = self.confidence.is_low_confidence(confidence)
+        if config.include_probabilities:
+            fields["probabilities"] = proba_list
+        return fields
+
+    def _interval_fields(self, value: Any, model: MLModel, is_classification: bool) -> dict[str, Any]:
+        """A regression prediction's interval, from the model's residual std."""
+        if is_classification or getattr(model, "residual_std", None) is None:
+            return {}
+        interval = self.confidence.regression_interval(value, model.residual_std)
+        return {} if interval is None else {"prediction_interval": interval}
 
     async def _predict_chunk_vectorized(
         self,
