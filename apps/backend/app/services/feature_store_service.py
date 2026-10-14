@@ -442,14 +442,20 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
         await feature.save()
 
-        logger.info(f"Applied feature {feature_id} to dataset {dataset_id}")
+        logger.info(f"Feature {feature_id} validated against dataset {dataset_id}")
 
+        # What happened, and no more (#959): the feature computed on this dataset and is
+        # recorded as applicable to it. No column is added and no file is written; it
+        # used to answer "Created column: …".
         return {
             "success": True,
             "feature_id": feature_id,
             "dataset_id": dataset_id,
             "output_column": feature.output_column_name,
-            "message": f"Feature applied successfully. Created column: {feature.output_column_name}"
+            "message": (
+                f"Feature validated against the dataset and recorded as applicable to it; "
+                f"no column was added. It would be named {feature.output_column_name}."
+            ),
         }
 
     async def share_feature(
