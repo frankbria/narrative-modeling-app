@@ -1,3 +1,19 @@
+# Issue #852: after undo then apply, the new version's lineage parent is the undone version
+
+## Plan
+- [x] RED (LocalStack, through the routes): upload, apply, apply, undo, apply. The third
+      apply's version must derive from the first apply's version; today its parent is the
+      second's, the one that was undone.
+- [x] RED (real Mongo): which version `_parent_version` picks at a cursor, at the start of
+      a history with a known base, for the second step of a pipeline, and when nothing is
+      known.
+- [x] `_parent_version` takes the version at the history's cursor (the step at
+      `current_position`, or `base_version_id` at -1). Within one apply, each later step
+      derives from the version the step before it just wrote, since the cursor does not
+      move until every version is written. Unknown cursor or a version that was never
+      written: the latest version, as before.
+
+
 # Issue #847: POST /workflows/{dataset_id} creates a workflow for a dataset that does not exist
 
 ## Plan

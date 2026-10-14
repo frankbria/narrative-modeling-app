@@ -2172,3 +2172,14 @@ checked, and the fix is always the same: the claim is a query, so run it.
   `list_object_versions`. A test of a delete against real S3 asserts on versions and delete
   markers, on a bucket with versioning enabled.
 
+## 2026-10-14: a test that was red for another reason (#852)
+- The first failing test for "the third version's parent is the first" used data that only
+  the first step changed. Identical content is stored as one version, so the second and
+  third steps had no version of their own: the assertion failed on today's code, but for
+  the deduplication, and it went on failing with the fix in. Only printing what the code
+  saw showed that all three steps pointed at one version id.
+- **Rule:** when a test is red before the fix, read the two values in the failure and say
+  what each one is. If they are not the two things the bug is about, the test is not
+  testing the bug. For anything about versions or lineage, assert first that the versions
+  are distinct.
+

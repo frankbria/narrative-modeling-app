@@ -159,9 +159,13 @@ class TransformationService(BaseService[TransformationConfig]):
         rows_affected: int,
         execution_time_ms: int,
         config_id: str,
+        derived_from: str | None = None,
     ) -> str | None:
         """Record the transformed frame as a dataset version (lineage + quality trend);
-        the version id the history step points at, None when there is no parent version."""
+        the version id the history step points at, None when there is no parent version.
+
+        `derived_from` is the version the step before this one wrote, in the same apply.
+        """
 
         # Create dataset version for transformation BEFORE adding step
         # Get parent version (most recent version for this dataset)
@@ -169,7 +173,9 @@ class TransformationService(BaseService[TransformationConfig]):
         from app.services.versioning_service import versioning_service
         # Owner-scoped (#559): the service now refuses a foreign parent, so an
         # unscoped "latest" here would turn a stray row into a denial.
-        parent_version = await self._parent_version(DatasetVersion, dataset, user_id)
+        parent_version = await self._parent_version(
+            DatasetVersion, dataset, user_id, await self._known_parent(derived_from, config_id)
+        )
 
         version_id = None
         if parent_version:
@@ -239,12 +245,40 @@ class TransformationService(BaseService[TransformationConfig]):
             return None
         return version.version_id
 
-    async def _parent_version(self, version_model: Any, dataset: Any, user_id: str) -> Any:
-        """The latest version to derive from, or a base version made now if there is none."""
-        latest = await version_model.find(
-            {"dataset_id": dataset.dataset_id, "user_id": user_id}
-        ).sort("-version_number").first_or_none()
+    async def _parent_version(
+        self, version_model: Any, dataset: Any, user_id: str, known: str | None = None
+    ) -> Any:
+        """The version the frame being transformed is.
+
+        `known` is its id when the history says which one that is. Otherwise the latest
+        version, or a base version made now if there is none. The latest is right for a
+        dataset that has only moved forward; after an undo it is the version that was
+        undone, and the lineage then said a result came from data the user had taken
+        back (#852).
+        """
+        owned = {"dataset_id": dataset.dataset_id, "user_id": user_id}
+        if known:
+            at_cursor = await version_model.find_one({**owned, "version_id": known})
+            if at_cursor:
+                return at_cursor
+        latest = await version_model.find(owned).sort("-version_number").first_or_none()
         return latest or await self._base_version(dataset, user_id)
+
+    async def _known_parent(self, derived_from: str | None, config_id: str) -> str | None:
+        """The version this step derives from, when it is known: the one the step before
+        it wrote in the same apply, else the one at the history's cursor."""
+        return derived_from or await self._version_at_cursor(config_id)
+
+    async def _version_at_cursor(self, config_id: str) -> str | None:
+        """The version the dataset's history says it is at now: the step at the cursor,
+        or the base when every step has been undone. None when the history does not
+        know (no step yet and no base, or a step whose version was never written)."""
+        config = await self.get_by_id(config_id, check_ownership=False)
+        if config is None:
+            return None
+        if config.current_position < 0:
+            return config.base_version_id
+        return config.transformation_steps[config.current_position].version_id
 
     async def _base_version(self, dataset: Any, user_id: str) -> Any:
         """Version 1 for a dataset that has none, from its current (untransformed) file.
@@ -710,7 +744,10 @@ class TransformationService(BaseService[TransformationConfig]):
                 done["transformation_id"] = await self._history_config_id(
                     dataset_id, user_id, timestamp, dataset.s3_url
                 )
-            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, done))
+            # The cursor does not move until every version is written, so a later step
+            # of the same apply derives from the version the step before it just wrote.
+            before = recorded[-1]["version_id"] if recorded else None
+            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, done, before))
             if len(recorded) == 1:
                 await self._remember_the_start(done["transformation_id"], dataset, recorded[0]["version_id"])
             last = step.after
@@ -782,12 +819,14 @@ class TransformationService(BaseService[TransformationConfig]):
         await record_new_file(dataset, new_file_path, in_history=True)
 
     async def _versioned(
-        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", done: dict[str, Any]
+        self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", done: dict[str, Any],
+        derived_from: str | None = None,
     ) -> dict[str, Any]:
         """Write one step's version and add it to the totals; the history step to record for it."""
         version_id = await self._version_for(
             dataset, dataset_id, user_id, step.before, step.after, step.transformation_type,
             step.parameters, step.result.affected_rows, step.elapsed_ms, done["transformation_id"],
+            derived_from,
         )
         done["affected_rows"] += step.result.affected_rows
         done["affected_columns"] = sorted({*done["affected_columns"], *step.result.affected_columns})
