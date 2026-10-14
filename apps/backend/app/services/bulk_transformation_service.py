@@ -30,7 +30,13 @@ from app.models.bulk_transformation import (
     PatternType,
 )
 from app.models.dataset import DatasetMetadata, SchemaField
-from app.services.dataset_link import ensure_metadata_twin, record_new_file
+from app.services.dataset_lease import LeaseBusy
+from app.services.dataset_link import (
+    DATASET_BUSY,
+    ensure_metadata_twin,
+    holding_the_dataset,
+    record_new_file,
+)
 from app.services.exceptions import NotFoundError, OperationError, ValidationError
 from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
@@ -483,19 +489,14 @@ class BulkTransformationService:
         try:
             job.mark_started()
             await job.save()
-
-            # Either id space, like the routes that created the job (#856).
-            dataset = await ensure_metadata_twin(job.dataset_id, job.user_id)
-            if not dataset:
-                job.mark_failed("Dataset not found")
+            try:
+                # The dataset's lease, taken in the job because it runs after its
+                # request has answered (#1022): an apply or an undo meanwhile waits.
+                async with holding_the_dataset(job.dataset_id, job.user_id):
+                    await self._transform_the_dataset(job, start_time)
+            except LeaseBusy:
+                job.mark_failed(DATASET_BUSY)
                 await job.save()
-                return
-
-            # a raw key must not reach the URL-only downloader (#466)
-            df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
-            run = await self._run_columns(job, df)
-            if run is not None:
-                await self._finish_job(job, dataset, run, start_time)
 
         except Exception:
             logger.exception(f"Bulk transformation job {job.job_id} failed")
@@ -506,6 +507,21 @@ class BulkTransformationService:
             # error_message is read back verbatim by the job-status route (#637).
             job.mark_failed(internal_error_message("Bulk transformation job"))
             await job.save()
+
+    async def _transform_the_dataset(self, job: BulkTransformationJob, start_time: float) -> None:
+        """Read the dataset, run the columns and move it to the result. The caller holds
+        the dataset's lease, so this reads the file the last writer left."""
+        # Either id space, like the routes that created the job (#856).
+        dataset = await ensure_metadata_twin(job.dataset_id, job.user_id)
+        if not dataset:
+            job.mark_failed("Dataset not found")
+            await job.save()
+            return
+        # a raw key must not reach the URL-only downloader (#466)
+        df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
+        run = await self._run_columns(job, df)
+        if run is not None:
+            await self._finish_job(job, dataset, run, start_time)
 
     async def _run_columns(self, job: BulkTransformationJob, df: pd.DataFrame) -> _ColumnRun | None:
         """Transform the job's columns in order, each on the frame the one before left.

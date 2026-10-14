@@ -14,8 +14,12 @@ the join. A half-failure is logged at ERROR with both locations so the operator 
 it; `scripts/inventory_dataset_links.py` finds every pair in that state.
 """
 import asyncio
+import contextlib
+import functools
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from bson import ObjectId
 
@@ -24,7 +28,7 @@ from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.models.visualization_cache import VisualizationCache
-from app.services.dataset_lease import dataset_lease
+from app.services.dataset_lease import LeaseBusy, dataset_lease
 from app.services.exceptions import NotFoundError
 from app.services.redis_cache import cache_service
 from app.utils.s3 import object_size
@@ -304,6 +308,49 @@ async def history_key(dataset_id: str, user_id: str) -> str:
         DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
     )
     return twin.dataset_id if twin else dataset_id
+
+
+#: What a writer that could not take the dataset's lease reports, in its own shape.
+DATASET_BUSY = "Another change to this dataset is still being applied. Try again in a moment."
+
+
+@contextlib.asynccontextmanager
+async def holding_the_dataset(dataset_id: str, user_id: str) -> AsyncIterator[None]:
+    """The dataset's apply lease (#853), for every writer that moves it to a new file
+    (#1022): an apply, an undo, redo or jump, a bulk job, a data-issue fix, a feature
+    added in place. Held for the whole read-modify-write, so a writer reads the file the
+    one before it left. Keyed by `history_key`, so both id spaces take the same lease.
+
+    Raises:
+        LeaseBusy: another writer still held it when the wait ran out. The caller
+            reports `DATASET_BUSY` in its own failure shape and writes nothing.
+    """
+    async with dataset_lease(f"apply:{user_id}:{await history_key(dataset_id, user_id)}"):
+        yield
+
+
+def holds_the_dataset(
+    dataset_id_of: Callable[[dict[str, Any]], str], busy: Callable[[dict[str, Any]], Any]
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+    """For a route that moves a dataset: run the handler holding the dataset's lease
+    (#1022), so it reads the file the last writer left. `dataset_id_of(kwargs)` names the
+    dataset from the handler's arguments; `busy(kwargs)` is the route's own failure answer
+    when the lease is still held after the wait, and nothing has been written then.
+    Place it directly above the handler, under the other decorators.
+    """
+
+    def wrap(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        @functools.wraps(handler)
+        async def run(*args: Any, **kwargs: Any) -> Any:
+            try:
+                async with holding_the_dataset(dataset_id_of(kwargs), kwargs["current_user_id"]):
+                    return await handler(*args, **kwargs)
+            except LeaseBusy:
+                return busy(kwargs)
+
+        return run
+
+    return wrap
 
 
 async def _owned_upload(dataset_id: str, user_id: str) -> UserData | None:

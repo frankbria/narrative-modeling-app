@@ -42,7 +42,7 @@ from app.schemas.data_issue import (
     SuggestedFixResponse,
 )
 from app.services.data_issue_detection_service import DataIssueDetectionService
-from app.services.dataset_link import record_new_file
+from app.services.dataset_link import DATASET_BUSY, holds_the_dataset, record_new_file
 from app.services.exceptions import OperationError, ValidationError
 from app.services.fix_suggestion_engine import FixSuggestionEngine
 from app.services.transformation_engine.data_utils import (
@@ -389,6 +389,13 @@ async def preview_fix(
 
 @router.post("/apply-fix", response_model=FixApplicationResponse)
 @discards_uploads_on_reported_failure
+@holds_the_dataset(
+    lambda kw: kw["request"].dataset_id,
+    lambda kw: FixApplicationResponse(
+        success=False, dataset_id=kw["request"].dataset_id, issue_id=kw["request"].issue_id,
+        fix_id=kw["request"].fix_id or "", error=DATASET_BUSY,
+    ),
+)
 async def apply_fix(
     request: FixApplicationRequest,
     current_user_id: str = Depends(get_current_user_id)
@@ -534,6 +541,10 @@ async def apply_fix(
 
 @router.post("/batch-fix", response_model=BatchFixResponse)
 @discards_uploads_on_reported_failure
+@holds_the_dataset(
+    lambda kw: kw["request"].dataset_id,
+    lambda kw: BatchFixResponse(success=False, dataset_id=kw["request"].dataset_id, error=DATASET_BUSY),
+)
 async def batch_apply_fixes(
     request: BatchFixRequest,
     current_user_id: str = Depends(get_current_user_id)

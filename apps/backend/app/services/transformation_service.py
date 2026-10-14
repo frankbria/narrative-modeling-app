@@ -22,8 +22,13 @@ from app.models.transformation import (
 )
 from app.services.base_service import BaseService
 from app.services.data_processing.quality_assessment import QualityAssessmentService
-from app.services.dataset_lease import LeaseBusy, dataset_lease
-from app.services.dataset_link import ensure_metadata_twin, history_key, record_new_file
+from app.services.dataset_lease import LeaseBusy
+from app.services.dataset_link import (
+    DATASET_BUSY,
+    ensure_metadata_twin,
+    holding_the_dataset,
+    record_new_file,
+)
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -660,13 +665,10 @@ class TransformationService(BaseService[TransformationConfig]):
 
         started = time.time()
         try:
-            async with dataset_lease(f"apply:{user_id}:{await history_key(dataset_id, user_id)}"):
+            async with holding_the_dataset(dataset_id, user_id):
                 return await self._apply_holding_the_lease(user_id, dataset_id, steps, started)
         except LeaseBusy:
-            return _failed(
-                dataset_id, started,
-                "Another change to this dataset is still being applied. Try again in a moment.",
-            )
+            return _failed(dataset_id, started, DATASET_BUSY)
 
     async def _apply_holding_the_lease(
         self, user_id: str, dataset_id: str, steps: list[tuple[str, dict[str, Any]]], started: float

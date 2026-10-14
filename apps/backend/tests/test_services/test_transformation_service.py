@@ -70,7 +70,7 @@ def mock_parent_version():
 
 
 @contextlib.asynccontextmanager
-async def _no_lease(_name: str, **_kwargs):
+async def _no_lease(*_args, **_kwargs):
     yield
 
 
@@ -86,7 +86,7 @@ class TestApplyTransformationVersioning:
         with (
             patch.object(TransformationService, "_version_at_cursor", AsyncMock(return_value=None)),
             # No database here, so no lease either (#853; its tests are in test_dataset_lease.py).
-            patch("app.services.transformation_service.dataset_lease", _no_lease),
+            patch("app.services.transformation_service.holding_the_dataset", _no_lease),
         ):
             yield
 

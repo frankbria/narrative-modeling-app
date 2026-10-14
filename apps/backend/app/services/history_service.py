@@ -4,10 +4,19 @@ History service for undo/redo transformation operations.
 Handles navigation through transformation history, restoring previous dataset versions.
 """
 
+import contextlib
 import logging
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-from app.services.dataset_link import ensure_metadata_twin, history_key, record_new_file
+from app.services.dataset_lease import LeaseBusy
+from app.services.dataset_link import (
+    DATASET_BUSY,
+    ensure_metadata_twin,
+    history_key,
+    holding_the_dataset,
+    record_new_file,
+)
 from app.services.exceptions import (
     NotFoundError,
     ValidationError,
@@ -49,6 +58,18 @@ def _version_at(config: Any) -> str | None:
     if config.current_position < 0:
         return config.base_version_id
     return config.transformation_steps[config.current_position].version_id
+
+
+@contextlib.asynccontextmanager
+async def _holding(dataset_id: str, user_id: str) -> AsyncIterator[None]:
+    """The dataset's lease for a move through its history (#1022). Taken before the
+    history is read, so an undo that lands during an apply runs after it, on the history
+    the apply left. A lease still held when the wait runs out is the route's 400."""
+    try:
+        async with holding_the_dataset(dataset_id, user_id):
+            yield
+    except LeaseBusy:
+        raise ValidationError(message=DATASET_BUSY, details={"dataset_id": dataset_id})
 
 
 class HistoryService:
@@ -122,6 +143,11 @@ class HistoryService:
         logger.info(f"Moved dataset {dataset_id} to version url {version.s3_url}")
 
     async def undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
+        """Move back one step, holding the dataset's lease (#1022)."""
+        async with _holding(dataset_id, user_id):
+            return await self._undo(dataset_id, user_id)
+
+    async def _undo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move back one step in transformation history.
 
@@ -163,6 +189,11 @@ class HistoryService:
         }
 
     async def redo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
+        """Move forward one step, holding the dataset's lease (#1022)."""
+        async with _holding(dataset_id, user_id):
+            return await self._redo(dataset_id, user_id)
+
+    async def _redo(self, dataset_id: str, user_id: str) -> dict[str, Any]:
         """
         Move forward one step in transformation history.
 
@@ -207,6 +238,11 @@ class HistoryService:
         }
 
     async def jump_to_position(self, dataset_id: str, position: int, user_id: str) -> dict[str, Any]:
+        """Move to a step, holding the dataset's lease (#1022)."""
+        async with _holding(dataset_id, user_id):
+            return await self._jump_to_position(dataset_id, position, user_id)
+
+    async def _jump_to_position(self, dataset_id: str, position: int, user_id: str) -> dict[str, Any]:
         """
         Jump to a specific position in transformation history.
 

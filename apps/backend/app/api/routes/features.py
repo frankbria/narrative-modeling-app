@@ -47,6 +47,7 @@ from app.schemas.feature import (
     FunctionInfo,
     OperationInfo,
 )
+from app.services.dataset_link import DATASET_BUSY, holds_the_dataset
 from app.services.exceptions import (
     NotFoundError,
     PermissionDeniedError,
@@ -600,6 +601,13 @@ async def delete_feature(
     description="Compute the feature and add it as a new column to the dataset."
 )
 @discards_uploads_on_reported_failure
+@holds_the_dataset(
+    lambda kw: kw["dataset_id"],
+    lambda kw: ApplyFeatureResponse(
+        success=False, dataset_id=kw["dataset_id"], column_name=kw["request"].output_column_name or "",
+        rows_computed=0, error=DATASET_BUSY,
+    ),
+)
 async def apply_feature(
     http_request: Request,
     dataset_id: str = Path(..., description="Dataset identifier"),
