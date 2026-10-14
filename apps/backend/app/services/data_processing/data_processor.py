@@ -23,6 +23,10 @@ def _reader_type(file_type: str | None) -> str | None:
     return "excel" if file_type in ("xls", "xlsx") else file_type
 
 
+class UnreadableFileError(ValueError):
+    """The bytes could not be read as the declared type: the caller's file, not our fault."""
+
+
 class ProcessedData:
     """Container for processed data and metadata"""
     
@@ -182,8 +186,10 @@ class DataProcessor:
         # Create file-like object
         file_obj = io.BytesIO(file_bytes)
         
-        # Read into DataFrame
-        df = await self._read_file_object(file_obj, file_type, encoding, delimiter)
+        try:
+            df = await self._read_file_object(file_obj, file_type, encoding, delimiter)
+        except Exception as e:
+            raise UnreadableFileError(str(e)) from e
         
         # Create file metadata
         file_metadata = {

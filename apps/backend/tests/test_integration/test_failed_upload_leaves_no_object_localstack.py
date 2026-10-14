@@ -84,15 +84,24 @@ async def test_chunked_complete_that_fails_after_the_put_leaves_no_object(
     assert _objects(s3_client, real_s3_env) == set()
 
 
-async def test_a_dataset_upload_that_cannot_be_processed_leaves_no_object(
+async def test_a_dataset_upload_that_cannot_be_read_is_never_stored(
     client, s3_client, real_s3_env
 ):
-    """No fault injected: /datasets/upload stores the file, then parses it."""
+    """#899: /datasets/upload parses before the put, so a file it cannot read is the
+    caller's 400 and never reaches the bucket: not written and then cleaned up."""
+    from unittest.mock import MagicMock
+
+    from app.api.routes import datasets
+
     unparseable = b"\x00\xff\x00\xff" * 64
+    put = MagicMock(wraps=datasets.upload_file_to_s3)
 
-    upload = await client.post("/api/v1/datasets/upload", files=_file(unparseable))
+    with patch("app.api.routes.datasets.upload_file_to_s3", put):
+        upload = await client.post("/api/v1/datasets/upload", files=_file(unparseable))
 
-    assert upload.status_code >= 400, upload.text
+    assert upload.status_code == 400, upload.text
+    assert upload.json()["detail"].startswith("Could not read the file as .csv")
+    put.assert_not_called()
     assert _objects(s3_client, real_s3_env) == set()
 
 
