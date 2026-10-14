@@ -269,6 +269,23 @@ class FeatureStoreService(BaseService[StoredFeature]):
         if updates.get("definition_code") is not None:
             parse_feature_definition(updates["definition_code"])
 
+        await self._version_if_redefined(feature, feature_id, updates, user_id)
+
+        # Update feature fields
+        for key, value in updates.items():
+            if hasattr(feature, key) and key not in ['feature_id', 'user_id', 'created_by', 'created_at']:
+                setattr(feature, key, value)
+
+        feature.update_timestamp()
+        await feature.save()
+
+        logger.info(f"Updated feature {feature_id} to version {feature.version}")
+        return feature
+
+    async def _version_if_redefined(
+        self, feature: StoredFeature, feature_id: str, updates: dict[str, Any], user_id: str
+    ) -> None:
+        """Record a new version when ``updates`` change what the feature computes."""
         # Check if definition changed (requires new version)
         definition_changed = any(
             key in updates for key in ["definition_code", "definition_type", "input_requirements"]
@@ -297,17 +314,6 @@ class FeatureStoreService(BaseService[StoredFeature]):
             )
 
             await version.save()
-
-        # Update feature fields
-        for key, value in updates.items():
-            if hasattr(feature, key) and key not in ['feature_id', 'user_id', 'created_by', 'created_at']:
-                setattr(feature, key, value)
-
-        feature.update_timestamp()
-        await feature.save()
-
-        logger.info(f"Updated feature {feature_id} to version {feature.version}")
-        return feature
 
     async def delete_feature(
         self,
@@ -710,16 +716,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
             FeatureCollection.collection_id == collection_id
         )
 
-        if not collection:
-            raise NotFoundError(
-                message=f"Collection {collection_id} not found",
-                resource_type="FeatureCollection",
-                resource_id=collection_id
-            )
-
-        # Check permissions
-        if not (collection.user_id == user_id or collection.is_public or user_id in collection.shared_with):
-            # As an unknown id (#985).
+        # A collection the caller may not read answers as an unknown one (#985).
+        if not collection or not (
+            collection.user_id == user_id or collection.is_public or user_id in collection.shared_with
+        ):
             raise NotFoundError(
                 message=f"Collection {collection_id} not found",
                 resource_type="FeatureCollection",
