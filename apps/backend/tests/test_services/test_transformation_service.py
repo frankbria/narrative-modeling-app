@@ -72,6 +72,14 @@ def mock_parent_version():
 class TestApplyTransformationVersioning:
     """Tests for apply_transformation versioning integration."""
 
+    @pytest.fixture(autouse=True)
+    def _the_history_does_not_say(self):
+        """These tests stand in for the version lookup, not for the history. With no
+        version at the cursor the parent is the latest one, which is what they supply
+        (#852; the cursor's own tests are in test_lineage_parent.py)."""
+        with patch.object(TransformationService, "_version_at_cursor", AsyncMock(return_value=None)):
+            yield
+
     @pytest.mark.asyncio
     async def test_apply_transformation_creates_version(
         self,
