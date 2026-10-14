@@ -288,13 +288,15 @@ async def delete_user_data(
 
     It used to delete the row alone, and the upload's S3 object, its metadata twin,
     its versions and its history stayed where nothing would find them again. Something
-    the cascade could not remove is a retryable 502, not a success.
+    the cascade kept the row for (a child it could not delete) is a retryable 502. An
+    object it could not delete once the row is gone is not: a retry would find nothing
+    to start from, and the residual is on the erasure audit log for the operator.
     """
     doc = await UserData.get(id)
     if not doc or doc.user_id != user_id:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    manifest = await dataset_erasure_service.erase_dataset(str(id), user_id, actor_id=user_id)
-    if manifest.failures:
+    await dataset_erasure_service.erase_dataset(str(id), user_id, actor_id=user_id)
+    if await UserData.get(id) is not None:
         raise HTTPException(
             status_code=502, detail="Part of the dataset could not be deleted. Try again."
         )

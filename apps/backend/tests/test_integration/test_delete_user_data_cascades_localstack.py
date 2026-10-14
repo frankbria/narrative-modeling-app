@@ -64,7 +64,7 @@ async def test_another_tenants_upload_and_an_unknown_one_answer_alike(client):  
     assert await UserData.get(theirs.id) is not None
 
 
-async def test_a_cascade_that_leaves_something_behind_is_not_a_success(client, monkeypatch):  # noqa: F811
+async def test_a_cascade_that_kept_the_row_asks_for_a_retry(client, monkeypatch):  # noqa: F811
     from app.api.routes import user_data as route
     from app.schemas.erasure import DeletionManifest
 
@@ -85,3 +85,28 @@ async def test_a_cascade_that_leaves_something_behind_is_not_a_success(client, m
 
     assert refused.status_code == 502
     assert "AccessDenied" not in refused.text
+
+
+async def test_an_object_left_after_the_row_is_gone_is_not_a_retry(client, monkeypatch):  # noqa: F811
+    """A residual S3 object does not keep the row (#616), and a retry would only 404,
+    so the delete has happened as far as the caller can tell (codex review)."""
+    from app.api.routes import user_data as route
+    from app.schemas.erasure import DeletionManifest
+
+    mine = await UserData(
+        user_id=USER, filename="m.csv", original_filename="m.csv",
+        s3_url=f"s3://bucket/datasets/{USER}/m.csv", num_rows=1, num_columns=1, data_schema=[],
+    ).insert()
+
+    async def deleted_the_row_but_not_an_object(*_args, **_kwargs):
+        await mine.delete()
+        return DeletionManifest(
+            target_type="dataset", target_id=str(mine.id), subject_user_id=USER,
+            failures=["s3 delete datasets/x: AccessDenied"],
+        )
+
+    monkeypatch.setattr(route.dataset_erasure_service, "erase_dataset", deleted_the_row_but_not_an_object)
+
+    answered = await client.delete(f"/api/v1/user_data/{mine.id}")
+
+    assert (answered.status_code, answered.json()) == (200, {"success": True})
