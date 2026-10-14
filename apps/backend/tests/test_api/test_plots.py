@@ -167,8 +167,8 @@ async def test_get_plot_by_id_not_found(async_authorized_client):
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
 
-            assert response.status_code == 403
-            assert response.json()["detail"] == "Access denied"
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Plot not found"
         finally:
             # Restore the original override
             if original_override is not None:
@@ -250,8 +250,8 @@ async def test_update_plot_not_found(async_authorized_client, mock_plot, seriali
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
 
-            assert response.status_code == 403
-            assert response.json()["detail"] == "Access denied"
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Plot not found"
         finally:
             # Restore the original override
             if original_override is not None:
@@ -305,8 +305,8 @@ async def test_delete_plot_not_found(async_authorized_client):
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response body: {response.text}")
 
-            assert response.status_code == 403
-            assert response.json()["detail"] == "Access denied"
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Plot not found"
         finally:
             # Restore the original override
             if original_override is not None:
