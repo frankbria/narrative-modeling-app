@@ -49,6 +49,8 @@ async def dataset_lease(name: str, *, wait_seconds: float | None = None) -> Asyn
         yield
     finally:
         renewing.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await renewing
         await _release(name, holder)
 
 
