@@ -142,6 +142,10 @@ class TestHooks:
             ModelCandidate,
         )
 
+        from app.models.training_job import TrainingJob
+
+        # The route creates the job before the task runs; a task with none ends (#945).
+        await TrainingJob(model_id="m1", user_id=TEST_USER, dataset_id="ds", target_column="target").insert()
         df = pd.DataFrame({"a": range(20), "target": [0, 1] * 10})
         dataset = MagicMock(id="ds", user_id=TEST_USER, file_type="csv", num_rows=20,
                             data_schema=[], s3_url="s3://b/datasets/u/d.csv")
