@@ -12,7 +12,9 @@
 wait_for_server() {
     local name=$1 url=$2 pid=$3 seconds=$4 i
     for ((i = 0; i < seconds; i++)); do
-        if curl -s "$url" > /dev/null 2>&1; then
+        # -f: an error status is not ready; --max-time: a server that accepts the
+        # connection and then hangs must not stall the poll past its budget.
+        if curl -sf --max-time 2 "$url" > /dev/null 2>&1; then
             echo "✓ ${name} is ready"
             return 0
         fi
