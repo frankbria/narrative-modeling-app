@@ -51,7 +51,11 @@ from app.schemas.feature_selection import (
     SelectedFeaturesResponse,
 )
 from app.schemas.preview import PreviewRequest, PreviewResponse
-from app.services.data_processing.data_processor import DataProcessor
+from app.services.data_processing.data_processor import (
+    DataProcessor,
+    ProcessedData,
+    UnreadableFileError,
+)
 from app.services.dataset_service import DatasetService
 from app.services.erasure_service import dataset_erasure_service
 from app.services.model_training.feature_selection_service import (
@@ -135,6 +139,68 @@ async def list_datasets(
         )
 
 
+_UPLOAD_TYPES = ("csv", "xlsx", "xls", "json", "parquet")
+
+
+def _upload_extension(file: UploadFile) -> str:
+    """The upload's extension, or 400 for a missing name or an unsupported type."""
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is missing a filename."
+        )
+    extension = file.filename.split('.')[-1].lower()
+    if extension not in _UPLOAD_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: .{extension}. Supported types: {', '.join(_UPLOAD_TYPES)}"
+        )
+    return extension
+
+
+async def _processed_upload(content: bytes, filename: str, extension: str) -> ProcessedData:
+    """The parsed upload, or 400 for bytes that cannot be read as their type (#899).
+
+    Runs before the S3 put, so a file nobody can use is never stored.
+    """
+    try:
+        return await DataProcessor().process_bytes(
+            file_bytes=content, filename=filename, file_type=extension
+        )
+    except UnreadableFileError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not read the file as .{extension}: {e}"
+        ) from e
+
+
+def _stored_upload(user_id: str, filename: str, content: bytes, content_type: str | None) -> tuple[str, str]:
+    """Put the upload under a server-derived key (#496/#581); the client filename never
+    reaches the key. Returns (key, url), or 500 when the put fails."""
+    file_path = dataset_s3_key(user_id, filename)
+    success, s3_url = upload_file_to_s3(
+        file_content=content,
+        s3_filename=file_path,
+        content_type=content_type or 'application/octet-stream'
+    )
+    if not success or s3_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload file to S3"
+        )
+    return file_path, s3_url
+
+
+async def _create_base_version(dataset: DatasetMetadata, content: bytes, user_id: str) -> None:
+    """The lineage root (#276). Best-effort: versioning must never fail the upload."""
+    try:
+        await versioning_service.create_base_version(
+            dataset_metadata=dataset, file_content=content, user_id=user_id
+        )
+    except Exception as e:
+        logger.warning(f"Failed to create base version for dataset {dataset.dataset_id}: {e}")
+
+
 @router.post(
     "/datasets/upload",
     response_model=DatasetUploadResponse,
@@ -152,97 +218,35 @@ async def upload_dataset(
     """
     try:
         logger.info(f"Uploading dataset {file.filename} for user {current_user_id}")
-
-        # Validate filename is present
-        if not file.filename:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Uploaded file is missing a filename."
-            )
-
-        # Validate file type
-        file_extension = file.filename.split('.')[-1].lower()
-        supported_types = ['csv', 'xlsx', 'xls', 'json', 'parquet']
-
-        if file_extension not in supported_types:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type: .{file_extension}. Supported types: {', '.join(supported_types)}"
-            )
-
-        # Generate dataset ID
-        dataset_id = f"dataset_{uuid.uuid4().hex[:16]}"
-
-        # Read file content
+        extension = _upload_extension(file)
+        filename = str(file.filename)
         file_content = await read_upload_capped(file)
         file_size = len(file_content)
         await enforce_storage_ceiling(current_user_id, file_size)
 
-        # Server-derived key: datasets/{user}/{uuid}.{ext} (#496/#581). The client
-        # filename never reaches the key, so a space ("Q3 sales data.csv"), a "..",
-        # or a non-ASCII character cannot break the S3 URL round-trip or escape the
-        # owner prefix. The original name is preserved as metadata below.
-        file_path = dataset_s3_key(current_user_id, file.filename)
-        success, s3_url = upload_file_to_s3(
-            file_content=file_content,
-            s3_filename=file_path,
-            content_type=file.content_type or 'application/octet-stream'
-        )
+        processed_data = await _processed_upload(file_content, filename, extension)
+        file_path, s3_url = _stored_upload(current_user_id, filename, file_content, file.content_type)
 
-        if not success or s3_url is None:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload file to S3"
-            )
-
-        # Process file with DataProcessor
-        processor = DataProcessor()
-        processed_data = await processor.process_bytes(
-            file_bytes=file_content,
-            filename=file.filename,
-            file_type=file_extension
-        )
-
-        # Extract data from processed result
-        preview_data = processed_data.get_preview()
-        num_rows = len(processed_data.dataframe)
-        num_columns = len(processed_data.dataframe.columns)
-        columns = [str(col) for col in processed_data.dataframe.columns]
-
-        # Create dataset metadata
-        service = DatasetService()
-        dataset = await service.create_dataset(
+        dataset = await DatasetService().create_dataset(
             user_id=current_user_id,
-            dataset_id=dataset_id,
-            filename=file.filename,
-            original_filename=file.filename,
-            file_type=file_extension,
+            dataset_id=f"dataset_{uuid.uuid4().hex[:16]}",
+            filename=filename,
+            original_filename=filename,
+            file_type=extension,
             file_path=file_path,
             s3_url=s3_url,
             file_size=file_size,
-            num_rows=num_rows,
-            num_columns=num_columns,
-            columns=columns,
+            num_rows=len(processed_data.dataframe),
+            num_columns=len(processed_data.dataframe.columns),
+            columns=[str(col) for col in processed_data.dataframe.columns],
             data_schema=[],  # Will be populated from schema inference
-            data_preview=preview_data['data'],
+            data_preview=processed_data.get_preview()['data'],
             inferred_schema=processed_data.schema.model_dump(),
             statistics=processed_data.statistics.model_dump(),
             quality_report=processed_data.quality_report.model_dump()
         )
-
-        # Create the base version (issue #276): /datasets uploads previously had no
-        # version 1, so no lineage root existed and the first transform found no parent.
-        # Best-effort — versioning is auxiliary and must never fail the upload.
-        try:
-            await versioning_service.create_base_version(
-                dataset_metadata=dataset,
-                file_content=file_content,
-                user_id=current_user_id,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to create base version for dataset {dataset_id}: {e}")
-
-        logger.info(f"Dataset {dataset_id} uploaded successfully")
+        await _create_base_version(dataset, file_content, current_user_id)
+        logger.info(f"Dataset {dataset.dataset_id} uploaded successfully")
 
         # Build response with backward compatibility
         return DatasetUploadResponse(

@@ -242,6 +242,30 @@ class TestDatasetRoutes:
         assert "Unsupported file type" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_a_file_that_cannot_be_read_is_a_400_and_is_never_stored(
+        self, async_authorized_client, setup_database
+    ):
+        """#899: the bytes are the caller's mistake, so a 400 naming it, not a 500 asking
+        for a retry; and the file is parsed before the put, so it is never written."""
+        files = {'file': ('test.csv', io.BytesIO(b"\x00\xff\x00\xff" * 64), 'text/csv')}
+
+        with patch('app.api.routes.datasets.upload_file_to_s3') as put:
+            response = await async_authorized_client.post("/api/v1/datasets/upload", files=files)
+
+        assert response.status_code == 400
+        assert response.json()["detail"].startswith("Could not read the file as .csv: ")
+        put.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_put_is_a_500(self, async_authorized_client, setup_database):
+        files = {'file': ('test.csv', io.BytesIO(b"a,b\n1,2\n"), 'text/csv')}
+
+        with patch('app.api.routes.datasets.upload_file_to_s3', return_value=(False, None)):
+            response = await async_authorized_client.post("/api/v1/datasets/upload", files=files)
+
+        assert response.status_code == 500
+
+    @pytest.mark.asyncio
     async def test_upload_dataset_no_file(self, async_authorized_client, setup_database):
         """
         🔴 RED: Test upload without file.
