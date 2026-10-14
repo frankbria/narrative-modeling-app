@@ -1,3 +1,25 @@
+# Issue #842: split `train_model_task` (cc 35) and `AutoMLEngine.run` (cc 32) under the CRAP ceiling
+
+Behaviour unchanged: the existing training, cancellation, wall-clock, quota-refund and
+calibration tests are the check, with no edit to an assertion.
+
+## Plan
+- [x] `AutoMLEngine.run` becomes an orchestrator. The phases are methods: `_prepare_data`
+      (split, calibration carve, feature engineering), `_tuning_results`,
+      `_train_candidates` (with `_time_budget_stop`, `_train_one`, `_fit_and_score`,
+      `_target_score_stop`), `_deploy_best` (importance, SHAP, calibration, evaluation
+      arrays). `_TrainingData` and `_Deployed` carry what one phase hands the next; the
+      three callbacks travel as `_RunHooks`.
+- [ ] `train_model_task` becomes an orchestrator over: the engine's construction from the
+      request, the job's reporting callbacks, the gated run, the model's metadata and
+      payloads, the store, and one recorder per ending.
+- [ ] Tests for the task's paths the split exposes as uncovered (AC2).
+- [ ] The standing exemption in CLAUDE.md goes.
+- [ ] Not in this change: `_parse_dataset` still dispatches on the stored type itself
+      instead of going through the typed reader (the note on the issue). It is no longer
+      part of the task, and changing its failure mode is not a refactor. Filed separately.
+
+
 # Issue #529: S3 lifecycle (the part that is code: delete markers, and the startup probe's own leak)
 
 Measured on the staging bucket first (read-only): 0 current objects, 676 noncurrent
