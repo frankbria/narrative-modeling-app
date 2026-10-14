@@ -31,6 +31,8 @@ def _objects_of(s3_client, bucket: str) -> list[str]:
 
 
 async def test_deleting_a_transformed_upload_leaves_nothing_of_it(client, s3_client, real_s3_env):  # noqa: F811
+    # Other suites share this bucket and this user, so the count is this test's own.
+    already_there = set(_objects_of(s3_client, real_s3_env))
     upload = await client.post("/api/v1/upload/secure", files={"file": ("visits.csv", io.BytesIO(CSV), "text/csv")})
     dataset_id = upload.json()["file_id"]
     applied = await client.post(
@@ -39,7 +41,8 @@ async def test_deleting_a_transformed_upload_leaves_nothing_of_it(client, s3_cli
     )
     assert applied.json()["success"] is True, applied.text
     assert await DatasetMetadata.find(DatasetMetadata.user_id == USER).count() == 1, "precondition: a twin"
-    assert len(_objects_of(s3_client, real_s3_env)) >= 3, "precondition: the upload, its version, the result"
+    written = set(_objects_of(s3_client, real_s3_env)) - already_there
+    assert len(written) >= 3, "precondition: the upload, its version, the result"
 
     deleted = await client.delete(f"/api/v1/user_data/{dataset_id}")
 
@@ -48,7 +51,7 @@ async def test_deleting_a_transformed_upload_leaves_nothing_of_it(client, s3_cli
     assert await DatasetMetadata.find(DatasetMetadata.user_id == USER).count() == 0
     assert await DatasetVersion.find(DatasetVersion.user_id == USER).count() == 0
     assert await TransformationConfig.find(TransformationConfig.user_id == USER).count() == 0
-    assert _objects_of(s3_client, real_s3_env) == []
+    assert set(_objects_of(s3_client, real_s3_env)) & written == set()
 
 
 async def test_another_tenants_upload_and_an_unknown_one_answer_alike(client):  # noqa: F811
