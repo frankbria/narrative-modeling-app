@@ -168,6 +168,8 @@ async def _processed_upload(content: bytes, filename: str, extension: str) -> Pr
             file_bytes=content, filename=filename, file_type=extension
         )
     except UnreadableFileError as e:
+        # With the traceback: a reader defect would otherwise pass for a bad file.
+        logger.warning(f"Upload could not be read as .{extension}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Could not read the file as .{extension}: {e}"
