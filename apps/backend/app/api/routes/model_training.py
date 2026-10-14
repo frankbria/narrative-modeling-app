@@ -719,7 +719,7 @@ async def _tracking_job(model_id: str, user_id: str) -> TrainingJob | None:
         logger.warning(f"Could not load TrainingJob {model_id}: {exc}")
         return None
     if job is None:
-        raise TrainingNoLongerInFlight(f"TrainingJob {model_id} was removed before its task started")
+        raise TrainingNoLongerInFlight("deleted")
     return job
 
 
@@ -1001,8 +1001,8 @@ async def _store_trained_model(
     user_id: str,
     model_id: str,
 ) -> MLModel:
-    """Save the winner under the pre-generated ``model_id`` and record what follows
-    from a model existing."""
+    """Save the winner under the pre-generated ``model_id``. What follows from a model
+    existing is recorded by ``_record_what_follows``, once the job is complete."""
     result = run.result
     model_metadata = _model_metadata(run, user_data, request)
     evaluation_data = _evaluation_payload(result, model_id)
