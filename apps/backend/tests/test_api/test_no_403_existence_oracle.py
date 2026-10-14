@@ -27,11 +27,8 @@ SERVICE_RAISES = {
 def _is_403(node: ast.AST) -> bool:
     if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "HTTPException"):
         return False
-    for keyword in node.keywords:
-        if keyword.arg == "status_code":
-            value = keyword.value
-            return getattr(value, "value", None) == 403 or getattr(value, "attr", None) == "HTTP_403_FORBIDDEN"
-    return False
+    status = [k.value for k in node.keywords if k.arg == "status_code"] + node.args[:1]
+    return any(getattr(v, "value", None) == 403 or getattr(v, "attr", None) == "HTTP_403_FORBIDDEN" for v in status)
 
 
 def _sites(path: Path, matches) -> list[tuple[str, str, bool]]:

@@ -128,7 +128,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
         Raises:
             NotFoundError: If feature doesn't exist
-            PermissionDeniedError: If user doesn't have access
+            NotFoundError: If it does not exist or the user may not read it (#985)
         """
         feature = await self.get_by_id_or_raise(feature_id)
 
