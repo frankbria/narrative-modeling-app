@@ -889,21 +889,8 @@ async def duplicate_recipe(
 ):
     """Duplicate a recipe as a template"""
     try:
-        # Fetch source recipe to check authorization
-        recipe = await RecipeManager.get_recipe(recipe_id)
-
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-
-        # Check access - user must own the recipe or it must be public
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            logger.warning(
-                f"Access denied: User {current_user_id} attempted to duplicate "
-                f"recipe {recipe_id} owned by {recipe.user_id}"
-            )
-            raise HTTPException(status_code=403, detail="Access denied")
-
-        # Only proceed with duplication if authorized
+        # Only a recipe the caller may read is duplicated.
+        await _readable_recipe(recipe_id, current_user_id)
         duplicate = await RecipeManager.duplicate_recipe(
             recipe_id=recipe_id,
             user_id=current_user_id,
