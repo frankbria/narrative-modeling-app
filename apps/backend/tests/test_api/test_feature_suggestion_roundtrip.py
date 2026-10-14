@@ -359,3 +359,25 @@ async def test_a_generation_that_fails_is_a_sanitised_500_and_costs_nothing(
         assert "secret.csv" not in resp.text
 
     assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+
+
+def _computes(s: dict) -> tuple:
+    return (s["feature_type"], tuple(s["input_columns"]), repr(sorted(s["parameters"].items())))
+
+
+@pytest.mark.asyncio
+async def test_suggest_more_does_not_repeat_what_was_shown(setup_database, async_authorized_client, hermetic):
+    """#970: "already shown" was matched by id, and ids are minted per generation, so the
+    rule-based suggestions, deterministic for a dataset, came back under new ids."""
+    shown = await _suggest_with_target(async_authorized_client)
+
+    more = await async_authorized_client.post(
+        f"/api/v1/datasets/{DATASET}/features/suggest-more",
+        json={"count": 10, "target_column": "target", "excluded_suggestion_ids": [s["id"] for s in shown]},
+    )
+
+    assert more.status_code == 200, more.text
+    already = {_computes(s) for s in shown}
+    repeats = [s["name"] for s in more.json()["suggestions"] if _computes(s) in already]
+    assert repeats == []
+    assert more.json()["total_suggestions"] == len(more.json()["suggestions"])

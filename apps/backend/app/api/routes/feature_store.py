@@ -327,9 +327,11 @@ async def apply_feature(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    Apply feature to a dataset.
+    Validate a feature against a dataset and record it as applicable.
 
-    Checks compatibility first, then applies the feature transformation.
+    Checks compatibility, computes the feature on the dataset to prove it applies, and
+    records the dataset on the feature. Nothing is written to the dataset: no column is
+    added and no file changes.
     """
     service = FeatureStoreService()
     try:
