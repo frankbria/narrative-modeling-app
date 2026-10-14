@@ -1475,9 +1475,10 @@ async def test_a_failed_insert_that_is_not_a_full_tenant_is_raised_and_its_input
 
 
 @pytest.mark.asyncio
-async def test_an_insert_that_landed_and_then_raised_keeps_its_input(setup_database, monkeypatch):
-    """A write can fail after the server applied it. The job exists then, and deleting
-    its input would make every run of it fail, so the row is looked up first."""
+async def test_a_landed_row_that_is_no_longer_pending_keeps_its_input(setup_database, monkeypatch):
+    """A write can fail after the server applied it. Such a row is removed only while it
+    is PENDING (#904); one that something has moved on is a job that exists, and
+    deleting its input would make every run of it fail, so the input stays."""
     monkeypatch.setattr(
         "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
     )
@@ -1486,6 +1487,9 @@ async def test_an_insert_that_landed_and_then_raised_keeps_its_input(setup_datab
 
     async def create_then_time_out(self, *args, **kwargs):
         await real_create(self, *args, **kwargs)
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": self.job_id}, {"$set": {"status": JobStatus.RUNNING.value}}
+        )
         raise ConnectionError("the reply was lost")
 
     monkeypatch.setattr(BatchJob, "create", create_then_time_out)
