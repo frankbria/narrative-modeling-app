@@ -74,9 +74,10 @@ class PermissionDeniedError(ServiceError):
     """
     User doesn't have permission to perform the operation.
 
-    Raised when a user attempts to access or modify a resource they don't own
-    or don't have permission to access.
-    Maps to HTTP 403.
+    Raised only where the caller may already know the resource exists, such as a
+    reader of a shared feature asking to change it. A resource the caller cannot see
+    at all is a NotFoundError, the answer an unknown id gets: a 403 there tells any
+    signed-in caller which ids exist (#985). Maps to HTTP 403.
 
     Example:
         raise PermissionDeniedError(

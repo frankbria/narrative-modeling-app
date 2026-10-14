@@ -134,11 +134,8 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
         # Check permissions
         if not self._has_access(feature, user_id):
-            raise PermissionDeniedError(
-                message=f"You don't have permission to access feature {feature_id}",
-                user_id=user_id,
-                resource_id=feature_id
-            )
+            # As an unknown id (#985): a 403 told the caller the feature exists.
+            raise NotFoundError(resource_type=self.resource_name, resource_id=feature_id)
 
         # If specific version requested, reconstruct from version history
         if version is not None:
@@ -154,6 +151,20 @@ class FeatureStoreService(BaseService[StoredFeature]):
                 )
 
         return feature
+
+    def _owned_for_change(self, feature: StoredFeature, user_id: str) -> None:
+        """Only the owner changes a feature. A caller who may read it (shared with them,
+        or public) is refused with a real 403: they already know it exists. Anyone else
+        gets the answer an unknown id gets (#985)."""
+        if feature.user_id == user_id:
+            return
+        if self._has_access(feature, user_id):
+            raise PermissionDeniedError(
+                message=f"Only the owner can change feature {feature.feature_id}",
+                user_id=user_id,
+                resource_id=feature.feature_id,
+            )
+        raise NotFoundError(resource_type=self.resource_name, resource_id=feature.feature_id)
 
     def _has_access(self, feature: StoredFeature, user_id: str) -> bool:
         """Check if user has access to feature."""
@@ -252,7 +263,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
             Updated StoredFeature instance
         """
         feature = await self.get_by_id_or_raise(feature_id)
-        await self._check_ownership(feature, user_id)
+        self._owned_for_change(feature, user_id)
 
         # SECURITY (GH-132): updated definitions must be safe expression trees
         if updates.get("definition_code") is not None:
@@ -315,6 +326,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
         Returns:
             True if successful
         """
+        self._owned_for_change(await self.get_by_id_or_raise(feature_id), user_id)
         return await self.delete(feature_id, user_id, soft_delete=soft_delete)
 
     async def check_compatibility(
@@ -470,7 +482,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
             Updated StoredFeature instance
         """
         feature = await self.get_by_id_or_raise(feature_id)
-        await self._check_ownership(feature, user_id)
+        self._owned_for_change(feature, user_id)
 
         # Add users to shared_with list
         for share_user_id in share_with_user_ids:
@@ -499,7 +511,7 @@ class FeatureStoreService(BaseService[StoredFeature]):
             Updated StoredFeature instance
         """
         feature = await self.get_by_id_or_raise(feature_id)
-        await self._check_ownership(feature, user_id)
+        self._owned_for_change(feature, user_id)
 
         feature.is_public = True
         feature.update_timestamp()
@@ -698,9 +710,10 @@ class FeatureStoreService(BaseService[StoredFeature]):
 
         # Check permissions
         if not (collection.user_id == user_id or collection.is_public or user_id in collection.shared_with):
-            raise PermissionDeniedError(
-                message=f"You don't have permission to access collection {collection_id}",
-                user_id=user_id,
+            # As an unknown id (#985).
+            raise NotFoundError(
+                message=f"Collection {collection_id} not found",
+                resource_type="FeatureCollection",
                 resource_id=collection_id
             )
 

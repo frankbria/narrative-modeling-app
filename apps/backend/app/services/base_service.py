@@ -18,7 +18,6 @@ from pydantic import BaseModel
 
 from app.services.exceptions import (
     NotFoundError,
-    PermissionDeniedError,
     ValidationError,
 )
 
@@ -147,25 +146,25 @@ class BaseService[T: Document](ABC):
         Args:
             document: The document to check
             user_id: The user ID to verify
-            require_match: If True, raise PermissionDeniedError on mismatch
+            require_match: If True, raise NotFoundError on mismatch, as for an unknown id
 
         Returns:
             True if ownership matches
 
         Raises:
-            PermissionDeniedError: If require_match is True and ownership doesn't match
+            NotFoundError: If require_match is True and ownership doesn't match (#985)
         """
         user_field = self._get_user_id_field()
         doc_user_id = getattr(document, user_field, None)
 
         if doc_user_id != user_id:
             if require_match:
+                # The answer an unknown id gets (#985): a 403 here told any signed-in
+                # caller that another account's id exists.
                 id_field = self._get_id_field()
-                resource_id = getattr(document, id_field, "unknown")
-                raise PermissionDeniedError(
-                    message=f"You don't have permission to access this {self.resource_name}",
-                    user_id=user_id,
-                    resource_id=str(resource_id)
+                raise NotFoundError(
+                    resource_type=self.resource_name,
+                    resource_id=str(getattr(document, id_field, "unknown")),
                 )
             return False
         return True
@@ -188,7 +187,7 @@ class BaseService[T: Document](ABC):
             Document instance or None if not found
 
         Raises:
-            PermissionDeniedError: If user doesn't own the resource
+            NotFoundError: If the user doesn't own the resource, as for an unknown id (#985)
         """
         id_field_name = self._get_id_field()
         query = self._build_field_query(id_field_name, resource_id)
@@ -227,8 +226,7 @@ class BaseService[T: Document](ABC):
             Document instance
 
         Raises:
-            NotFoundError: If resource doesn't exist
-            PermissionDeniedError: If user doesn't own the resource
+            NotFoundError: If resource doesn't exist, or the user doesn't own it (#985)
         """
         document = await self.get_by_id(resource_id, user_id, check_ownership)
 
@@ -404,7 +402,7 @@ class BaseService[T: Document](ABC):
 
         Raises:
             NotFoundError: If resource doesn't exist
-            PermissionDeniedError: If user doesn't own the resource
+            NotFoundError: If the user doesn't own the resource (#985)
             ValidationError: If update_data contains invalid fields
         """
         # Use get_by_id_or_raise to make the behavior explicit
@@ -452,7 +450,7 @@ class BaseService[T: Document](ABC):
 
         Raises:
             NotFoundError: If resource doesn't exist
-            PermissionDeniedError: If user doesn't own the resource
+            NotFoundError: If the user doesn't own the resource (#985)
         """
         # Use get_by_id_or_raise to make the behavior explicit
         document = await self.get_by_id_or_raise(resource_id, user_id, check_ownership=True)

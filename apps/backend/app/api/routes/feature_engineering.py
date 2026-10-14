@@ -58,16 +58,11 @@ async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame
     service = DatasetService()
     dataset = await service.get_dataset(dataset_id=dataset_id)
 
-    if not dataset:
+    # Another account's dataset answers as an unknown one (#985).
+    if not dataset or dataset.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Dataset {dataset_id} not found"
-        )
-
-    if dataset.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this dataset"
         )
 
     # Explicit whitelist validation for security (before any download)
