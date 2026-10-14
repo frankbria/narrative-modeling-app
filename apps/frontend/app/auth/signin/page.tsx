@@ -85,7 +85,7 @@ export default function SignInPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
           <CardDescription>
-            Choose your preferred sign-in method to access the Narrative Modeling App
+            Choose your preferred sign-in method to access SheetPredict
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

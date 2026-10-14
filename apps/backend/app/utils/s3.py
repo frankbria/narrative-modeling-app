@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlparse
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 from app.config import resolve_aws_region, resolve_configured_bucket
 
@@ -414,6 +414,26 @@ def check_object_size(client, bucket: str, key: str) -> int:
             f"File too large: {size} bytes exceeds maximum {MAX_DOWNLOAD_BYTES} bytes (1 GB)"
         )
     return size
+
+
+def object_size(s3_url: str) -> int | None:
+    """Bytes held by the object at ``s3_url``, or None when that cannot be learned.
+
+    For bookkeeping (the storage ceiling sums ``file_size``, #781), so it never raises:
+    no storage configured, a location outside our bucket, or an object that cannot be
+    read all answer None and the caller keeps the size it had.
+    """
+    client = get_s3_client()
+    if client is None:
+        return None
+    try:
+        bucket, key = resolve_validated_object(s3_url)
+        return int(client.head_object(Bucket=bucket, Key=key)["ContentLength"])
+    except (ClientError, BotoCoreError, ValueError) as e:
+        # BotoCoreError too: an endpoint that cannot be reached, a read that times out or
+        # credentials that are missing are not ClientErrors, and would fail the move.
+        logger.warning("Could not read the size of a stored object (%s)", type(e).__name__)
+        return None
 
 
 def _allowed_bucket() -> str | None:

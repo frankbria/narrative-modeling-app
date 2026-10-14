@@ -1,6 +1,6 @@
 # Local Development Setup
 
-This guide helps you run the Narrative Modeling App locally for development.
+This guide helps you run SheetPredict locally for development.
 
 ## Prerequisites
 

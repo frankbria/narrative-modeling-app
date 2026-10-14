@@ -880,3 +880,29 @@ class TestAutoMLEngineMonitoring:
         assert result.early_stopped is False
         assert result.stop_reason is None
         assert result.algorithms_evaluated == len(result.all_models)
+
+
+class TestBestAndRanked:
+    """Choosing the winner from what trained (#842: split out of ``run``)."""
+
+    @staticmethod
+    def _candidate(name: str, cv_score: float | None) -> ModelCandidate:
+        return ModelCandidate(name=name, estimator=None, hyperparameters={}, cv_score=cv_score)
+
+    def test_no_trained_model_is_an_error_not_an_empty_result(self):
+        from app.services.model_training.automl_engine import _best_and_ranked
+
+        with pytest.raises(ValueError, match="No models were successfully trained"):
+            _best_and_ranked([])
+
+    def test_a_candidate_without_a_score_ranks_last(self):
+        from app.services.model_training.automl_engine import _best_and_ranked
+
+        unscored = self._candidate("unscored", None)
+        weak = self._candidate("weak", 0.61)
+        strong = self._candidate("strong", 0.87)
+
+        best, ranked = _best_and_ranked([unscored, weak, strong])
+
+        assert best is strong
+        assert [c.name for c in ranked] == ["strong", "weak", "unscored"]

@@ -1,3 +1,172 @@
+# Issue #842: split `train_model_task` (cc 35) and `AutoMLEngine.run` (cc 32) under the CRAP ceiling
+
+Behaviour unchanged: the existing training, cancellation, wall-clock, quota-refund and
+calibration tests are the check, with no edit to an assertion.
+
+## Plan
+- [x] `AutoMLEngine.run` becomes an orchestrator. The phases are methods: `_prepare_data`
+      (split, calibration carve, feature engineering), `_tuning_results`,
+      `_train_candidates` (with `_time_budget_stop`, `_train_one`, `_fit_and_score`,
+      `_target_score_stop`), `_deploy_best` (importance, SHAP, calibration, evaluation
+      arrays). `_TrainingData` and `_Deployed` carry what one phase hands the next; the
+      three callbacks travel as `_RunHooks`.
+- [x] `train_model_task` becomes an orchestrator over: the engine's construction from the
+      request, the job's reporting callbacks, the gated run, the model's metadata and
+      payloads, the store, and one recorder per ending.
+- [x] Tests for the task's paths the split exposes as uncovered (AC2).
+- [x] The standing exemption in CLAUDE.md goes.
+- [x] Not in this change: `_parse_dataset` still dispatches on the stored type itself
+      instead of going through the typed reader (the note on the issue). It is no longer
+      part of the task, and changing its failure mode is not a refactor. Filed separately.
+
+
+# Issue #529: S3 lifecycle (the part that is code: delete markers, and the startup probe's own leak)
+
+Measured on the staging bucket first (read-only): 0 current objects, 676 noncurrent
+versions (42.6 MB) and 676 delete markers, no lifecycle rule. 154 of each are the startup
+write-probe's, all written in the last 30 days.
+
+## Plan
+- [x] RED (LocalStack, versioned bucket): the startup probe leaves no version and no delete
+      marker. Today each boot leaves one of each, per worker.
+- [x] The probe deletes the version it wrote (`VersionId` from the put). If that delete is
+      refused (no `s3:DeleteObjectVersion`), it falls back to the plain delete it does
+      today, so a boot can never fail on this.
+- [x] RED: the scripted lifecycle rule removes expired delete markers
+      (`ExpiredObjectDeleteMarker`), and `verify-backup-config.sh` fails without it. The rule
+      expired noncurrent versions already; their markers stayed for ever.
+- [x] Runbook section 3 says so.
+- [x] Not code, on the issue: the measurements, why no prefix is safe for an age-based
+      expiry of current objects, why a storage-class transition costs more than it saves at
+      this size, and that applying the rule to a bucket is the operator's (#299).
+
+
+# Issue #502: A/B testing is removed (owner decision: hide the UI and nav entry, unmount the routes, keep the models)
+
+## Plan
+- [x] RED: no route in the published API is under `/ab-testing`; the sidebar offers no
+      "A/B Testing"; no page under `app/experiments`.
+- [x] Backend: delete `routes/ab_testing.py` and its route tests, drop the mount. Kept for a
+      return: the `ABTest` model (registry, erasure sweep, unique index and its script) and
+      `ABTestingService` with its own tests.
+- [x] Frontend: delete `app/experiments/` (three pages), `lib/services/abTesting.ts` and
+      its test, the sidebar entry.
+- [x] Docs: `SECURITY_OWNERSHIP_CHECKS.md` names two routes that no longer exist; CLAUDE.md
+      says what remains and that remounting it is a new feature.
+- [x] Found on the way: deleting the route tests changed which module starts the app
+      first, and `test_admin_funnel.py` then failed with no `MONGODB_DB`. Three files start
+      the lifespan without pointing it at the test database and had been relying on an
+      earlier module's side effect. A session fixture in `conftest.py` does it for all.
+
+
+# Issues #765 (AC1) and #770 (AC4, AC7): one product name, SheetPredict
+
+## Plan
+- [x] RED: a repo-wide guard (`test_security/test_product_name.py`) reads every tracked
+      text file and fails on a retired variant ("Narrative Modeling [App|Application|API]",
+      the sidebar's "Modeling App", "NarrativeML", the `vnd.narrativeml` media type).
+      Exempt, each with its reason: the historical record (`tasks/`, the `claudedocs/` trees,
+      `docs/archive`, `docs/deployment/archive`, `docs/sprints`) and `positioning.md`, which
+      says why the names were retired.
+- [x] RED: `/auth/new-user` shows the signed value line from `positioning.md`; the sidebar,
+      the dashboard and the onboarding welcome show the name from `COMPANY.serviceName`.
+- [x] The rename: frontend copy reads `COMPANY.serviceName` (one source), backend strings,
+      the vendor media type (`application/vnd.sheetpredict.v1+json`; nothing sends the old
+      one), LICENSE, READMEs and the live docs.
+- [x] Not renamed, on purpose: identifiers that are not the product's name to a user (the
+      repository, package names, database and bucket names, container names) and the
+      `test@narrativeml.com` fixture address, which `noDeadDomains.test.ts` already confines.
+- [x] The CRAP gate reads a JSX line in a page as the page's: `Sidebar` (cc 18) and
+      `DashboardPage` (cc 11) each hold one of the strings, so both are split under 6.
+
+
+# Issue #781: the storage ceiling does not see transformation outputs or versions
+
+## Plan
+- [x] RED: `stored_bytes` counts the tenant's `DatasetVersion.file_size` (each version is
+      its own object under `versions/`), and nobody else's.
+- [x] RED: a move records the size of the file it moved to, on both twins. Six writers call
+      `record_new_file`; it asks S3 for the new object's size itself (`utils.s3.object_size`,
+      one HEAD), so every one of them and the next is covered, undo and redo included. When
+      the size cannot be read the recorded one stays: the move is not failed for bookkeeping.
+- [x] `scripts/backfill_dataset_file_sizes.py`: `UserData` rows with no `file_size` get the
+      size of the object they point at. Dry run by default, counts only, a targeted `$set`.
+      Run against staging.
+- [x] ADR-003's storage paragraph and `storage.py` say what is counted. Not counted, and
+      said so: the superseded `transformed/` copies a dataset has moved off (their bytes are
+      the same as the version written beside them).
+- [x] Against real S3 (LocalStack), through the routes: after a transformation the recorded
+      size is the new object's own, on both twins; the sum is that file plus the two
+      versions; after an undo it is the size of the object the dataset is back on.
+- [x] Found in the demo: after an undo the dataset's current file IS a version's object, so
+      adding both counted it twice. The sum takes each stored object once (test first).
+- [ ] The backfill run against staging happens after the deploy (the script's helper ships
+      with this change); its counts go on the issue.
+
+
+# Issue #790: DEPLOY_PATH is written inside quotes in the remote command string
+
+## Plan
+- [x] `scripts/deploy/on_box.sh`: the one way a workflow runs something on the staging box.
+      The value goes into the remote environment shell-quoted (`printf %q`), never between
+      quotes in a string; the body travels on stdin, from a repo script or a QUOTED heredoc,
+      and reads `"$DEPLOY_PATH"`. The remote side saves the body to a file and runs it with
+      stdin at /dev/null, so no command in it can eat the rest of it (#756's failure, by
+      construction).
+- [x] RED (pytest, with a fake `ssh` that parses the command string the way the far shell
+      does): a `DEPLOY_PATH` holding a quote, a space and a command substitution arrives as
+      one value and runs nothing; a body that reads stdin still runs to its end; the exit
+      code comes back.
+- [x] All eight `ssh` call sites in `deploy.yml` and `staging-health.yml` go through it. A
+      wiring test fails on a raw `ssh` or a `'$DEPLOY_PATH'` in either workflow.
+- [x] Verified on staging before merging by dispatching both workflows from the branch.
+- [x] A note in the deploy guide.
+- [x] On staging, from the branch: `staging-health.yml` (run 38463929566) prints every
+      backend line and the frontend verdict; `deploy.yml` (run 38464038261) resets the
+      checkout to main, brings the stack up, passes the gate and prints the frontend verdict.
+
+
+# Issue #778: the upload page has no jest suite that renders it
+
+## Plan
+- [x] A suite that renders `UploadPage`, selects a small CSV through `file-input` and clicks
+      `upload-button`, with `fetch` answering as the backend does. Tests only: the page
+      itself does not change.
+- [x] `/upload/secure`: success (preview, file id, the stage completed, Next goes to
+      `/explore/{id}`); a 402 `quota_exceeded` puts the error in the `planLimit` store and
+      shows the backend's sentence; another failure shows its own detail or the fallback
+      and opens no dialog; a 200 of an unknown shape is an error.
+- [x] `/upload/confirm-pii-upload`: the warning, both choices (`mask_pii` true and false),
+      then the same three outcomes.
+- [x] Mutation check: each `apiError` line reverted to a plain `Error`; its tests must fail.
+- [x] Mutation result: with `/upload/secure`'s `apiError` replaced by a plain `Error`, its
+      plan-limit and backend-detail tests fail (2 of 11); the same for the PII confirmation.
+
+
+# Issue #810: a URL assertion passes at push time, before the stage guard bounces
+
+## Plan
+- [x] `e2e/helpers/landing.ts::expectLandedOnStage(page, url, stage)`: the address, then the
+      stage bar naming that stage as current (it follows the workflow state the guard
+      reads), then, once the network is quiet, no guard banner and the same address.
+- [x] The onboarding sample spec uses it after "Use This", and asserts the dataset preview.
+- [x] RED by mutation: take out the #807 fix (the sample load completing Data Loading). The
+      spec passed with it missing before; it must fail now.
+- [x] Audit of every `waitForURL` / `toHaveURL` in `e2e/`: which are followed by work on the
+      landed page (safe), which end on the address (fix), which sit in specs that cannot
+      fail anyway (#921, #991).
+- [x] Mutation result on the real stack: with the stage completion taken out of the sample
+      loader, the spec as it is on main passes; the new one fails with
+      `Received string: "http://localhost:3010/upload"`.
+- [x] Audit: 31 address assertions in `e2e/`. Safe (followed by work on the landed page):
+      the 12 in `stage-transitions` and `beta-journey` before their last step,
+      `features-stage`, `predict`, and the upload fixture (it already waits for the dataset
+      heading). Fixed: the onboarding sample spec and `stage-transitions`' last step
+      (`/deploy`). Left, in specs that cannot fail for other reasons: `train.spec:54`,
+      `evaluate.spec:255` (a `.catch`), `error-scenarios.spec:192`, both in
+      `recipes/recipe-management.spec`, and `UploadPage.waitForUploadComplete` (#921, #991).
+
+
 # Issue #756, second pass: the frontend probe printed nothing and passed
 
 ## Plan

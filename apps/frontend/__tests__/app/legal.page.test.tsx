@@ -143,7 +143,7 @@ describe('Privacy Policy', () => {
   });
 
   // Guards a source-level typo only: a dropped space around an interpolated
-  // constant reads as "Narrative Modeling Appservice" in a document customers
+  // constant reads as "SheetPredictservice" in a document customers
   // read closely. It does NOT catch the server-render variant of the same defect
   // — a space after an interpolation can vanish in the RSC output while
   // rendering correctly here — which is why both pages write {' '} explicitly

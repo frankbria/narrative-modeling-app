@@ -1,6 +1,6 @@
-# Testing Guide - Narrative Modeling App
+# Testing Guide - SheetPredict
 
-Comprehensive testing guide for the Narrative Modeling App covering unit tests, integration tests, and end-to-end (E2E) tests.
+Comprehensive testing guide for SheetPredict covering unit tests, integration tests, and end-to-end (E2E) tests.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ Comprehensive testing guide for the Narrative Modeling App covering unit tests, 
 
 ## Overview
 
-The Narrative Modeling App uses a comprehensive three-tier testing strategy:
+SheetPredict uses a comprehensive three-tier testing strategy:
 
 1. **Unit Tests**: Fast, isolated tests without external dependencies (Backend: Python/pytest, Frontend: TypeScript/Jest)
 2. **Integration Tests**: Tests with real service dependencies (MongoDB Atlas, Redis, S3, OpenAI)

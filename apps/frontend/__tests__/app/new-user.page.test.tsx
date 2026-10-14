@@ -7,7 +7,10 @@
 
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import SignUpPage from '@/app/auth/new-user/page';
+import { COMPANY } from '@/lib/legal/company';
 
 jest.mock('next-auth/react', () => ({ signIn: jest.fn() }));
 
@@ -24,9 +27,27 @@ describe('SignUpPage', () => {
     );
   });
 
-  it('still offers both OAuth providers', () => {
+  it('offers both OAuth providers, Google first', () => {
     render(<SignUpPage />);
-    expect(screen.getByRole('button', { name: /sign up with google/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /sign up with github/i })).toBeInTheDocument();
+    const providers = screen.getAllByRole('button').map((button) => button.textContent);
+    expect(providers).toEqual([
+      expect.stringMatching(/Sign up with Google$/),
+      expect.stringMatching(/Sign up with GitHub$/),
+    ]);
+  });
+
+  // #770 AC4: the page used to be two buttons under "Create an Account", with
+  // nothing saying what the account is for.
+  it('says what the product does, in the signed value line', () => {
+    render(<SignUpPage />);
+    expect(screen.getByText(COMPANY.valueLine)).toBeInTheDocument();
+  });
+
+  it('the value line is the one the positioning document signed', () => {
+    const positioning = readFileSync(
+      join(__dirname, '..', '..', '..', '..', 'docs', 'product', 'positioning.md'),
+      'utf8',
+    );
+    expect(positioning).toContain(COMPANY.valueLine);
   });
 });

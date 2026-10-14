@@ -101,6 +101,7 @@ from app.services.model_training import (
     TuningConfig,
 )
 from app.services.model_training.algorithm_selector import AlgorithmSelector
+from app.services.model_training.automl_engine import AutoMLResult
 from app.services.model_training.comparison import (
     build_best_model_explanation,
     build_data_profile,
@@ -623,6 +624,484 @@ def _recorded_exclusions(metadata: dict[str, Any]) -> dict[str, list[str]]:
     }
 
 
+_MODE_OVERRIDES = ("max_models", "time_limit", "cv_folds", "test_size", "early_stop_score")
+_LOG_LEVELS: dict[str, LogLevel] = {"warning": "warning", "error": "error"}
+
+
+@dataclass
+class _TrainingRun:
+    """What a finished engine run hands the code that stores and records it."""
+
+    engine: AutoMLEngine
+    df: pd.DataFrame
+    result: AutoMLResult
+    dataset_version_id: str | None
+    training_config: dict[str, Any]
+
+
+class _JobReporter:
+    """A run's progress, written onto its ``TrainingJob`` as partial updates.
+
+    Partial so that concurrent writes by POST /{model_id}/cancel (the cancellation
+    flag and its log entry) are never clobbered by saving the task's (stale)
+    in-memory document wholesale: scalars/embedded docs go through $set, log
+    appends through $push. Every method is a no-op without a job to write to.
+    """
+
+    def __init__(self, training_job: TrainingJob | None, model_id: str, user_id: str) -> None:
+        self.training_job = training_job
+        self.model_id = model_id
+        self.user_id = user_id
+
+    async def on_progress(self, completed: int, total: int, current: str | None) -> None:
+        """Persist per-algorithm progress."""
+        training_job = self.training_job
+        if not training_job:
+            return
+        training_job.update_progress(
+            completed_algorithms=completed,
+            total_algorithms=total,
+            current_algorithm=current,
+        )
+        await training_job.set(
+            {
+                TrainingJob.progress: training_job.progress,
+                TrainingJob.updated_at: training_job.updated_at,
+                # Persist the heartbeat, or the stale-job reaper (#484) would
+                # see only the start value and reap this live run after the
+                # timeout. update_progress() advanced it in memory.
+                TrainingJob.last_heartbeat: training_job.last_heartbeat,
+            }
+        )
+
+    async def on_event(self, event: TrainingEvent) -> None:
+        """Persist an engine log line, the pipeline stage, and the comparison row of a
+        candidate that just finished training."""
+        training_job = self.training_job
+        if not training_job:
+            return
+        entry = training_job.add_log(
+            _LOG_LEVELS.get(event.level, "info"), event.message, stage=event.stage
+        )
+        # add_log bumped updated_at; treat every persisted event as a
+        # heartbeat too so a live run isn't reaped between algorithms (#484).
+        training_job.last_heartbeat = training_job.updated_at
+        fields_to_set: dict[Any, Any] = {
+            TrainingJob.progress: training_job.progress,
+            TrainingJob.updated_at: training_job.updated_at,
+            TrainingJob.last_heartbeat: training_job.last_heartbeat,
+        }
+        if event.stage:
+            training_job.progress.current_stage = event.stage
+        if event.candidate:
+            training_job.model_comparison.append(
+                ModelComparisonEntry(**event.candidate)
+            )
+            # Only candidate events change the comparison; rewriting the
+            # array on every stage/log event is wasted write volume.
+            fields_to_set[TrainingJob.model_comparison] = (
+                training_job.model_comparison
+            )
+        await training_job.update(
+            Push({TrainingJob.logs: entry}),
+            Set(fields_to_set),
+        )
+
+    async def is_cancellation_requested(self) -> bool:
+        """Re-read the job from MongoDB so a flag set by POST /{model_id}/cancel after
+        this task loaded its copy is seen."""
+        fresh = await TrainingJob.find_one(
+            TrainingJob.model_id == self.model_id,
+            TrainingJob.user_id == self.user_id,
+        )
+        return bool(fresh and fresh.cancellation_requested)
+
+
+async def _tracking_job(model_id: str, user_id: str) -> TrainingJob | None:
+    """Best-effort lookup of the tracking job; training proceeds even if it is
+    missing or the lookup fails (e.g. DB unavailable)."""
+    try:
+        return await TrainingJob.find_one(
+            TrainingJob.model_id == model_id,
+            TrainingJob.user_id == user_id,
+        )
+    except Exception as exc:
+        logger.warning(f"Could not load TrainingJob {model_id}: {exc}")
+        return None
+
+
+async def _mark_task_started(training_job: TrainingJob | None, dataset_id: str) -> None:
+    """Mark RUNNING at task entry so the status reflects real activity during the
+    (potentially slow) S3 download and dataset parse, not just model fit."""
+    if not training_job:
+        return
+    training_job.mark_started()
+    training_job.add_log("info", f"Training task started for dataset {dataset_id}")
+    await _record(training_job)
+
+
+def _feature_config(request: TrainModelRequest) -> FeatureEngineeringConfig | None:
+    if not request.feature_config:
+        return None
+    return FeatureEngineeringConfig(**request.feature_config.model_dump(exclude_none=True))
+
+
+def _requested_training_config(request: TrainModelRequest) -> dict[str, Any]:
+    """The request's ``training_config`` as a dict of its own.
+
+    Hyperparameter tuning (issue #77) is opt-in through it. A copy, so the
+    per-request outcome written back after the run never mutates a dict a
+    caller/test might share.
+    """
+    if not request.training_config:
+        return {}
+    return request.training_config.model_dump(exclude_none=True)
+
+
+def _resolved_mode(training_config: dict[str, Any]) -> dict[str, Any]:
+    """Training mode (issue #101), resolved and written back into ``training_config``.
+
+    A "quick"/"comprehensive" mode fills engine defaults (algorithm count, time
+    budget, tuning, early-stop score); any explicit training_config value still
+    wins. An absent/unknown mode resolves to {} so behaviour is unchanged from
+    pre-#101. The resolved mode is written back so it is persisted on the MLModel
+    (no new MLModel field needed).
+    """
+    resolved = resolve_mode_config(
+        training_config.get("training_mode"),
+        overrides={key: training_config.get(key) for key in _MODE_OVERRIDES},
+    )
+    if resolved.get("training_mode"):
+        training_config["training_mode"] = resolved["training_mode"]
+    return resolved
+
+
+def _tuning_strategy(training_config: dict[str, Any], resolved: dict[str, Any]) -> Any:
+    return training_config.get("tuning_strategy") or resolved.get("tuning_strategy")
+
+
+def _tuning_config(training_config: dict[str, Any], resolved: dict[str, Any]) -> TuningConfig:
+    """The engine's tuning settings (an unknown strategy raises in ``__post_init__``,
+    surfaced as a failed job).
+
+    Start from the mode's tuning defaults (e.g. comprehensive's per-candidate time
+    budget that keeps the up-front tuning phase within the mode cap), then let an
+    explicit request override.
+    """
+    raw_tuning = dict(resolved.get("tuning_config") or {})
+    raw_tuning.update(training_config.get("tuning_config") or {})
+    strategy = _tuning_strategy(training_config, resolved)
+    if strategy:
+        raw_tuning.setdefault("strategy", strategy)
+    return TuningConfig(**raw_tuning)
+
+
+def _build_engine(training_config: dict[str, Any], resolved: dict[str, Any]) -> AutoMLEngine:
+    """The engine for this request: the mode's defaults under the request's own values."""
+    enable_tuning = bool(training_config.get("enable_tuning", resolved.get("enable_tuning")))
+    return AutoMLEngine(
+        max_models=resolved.get("max_models", training_config.get("max_models", 5)),
+        time_limit=resolved.get("time_limit", training_config.get("time_limit")),
+        cv_folds=resolved.get("cv_folds", training_config.get("cv_folds", 5)),
+        test_size=resolved.get("test_size", training_config.get("test_size", 0.2)),
+        random_state=42,
+        enable_tuning=enable_tuning,
+        tuning_config=_tuning_config(training_config, resolved) if enable_tuning else None,
+        early_stop_score=resolved.get("early_stop_score"),
+    )
+
+
+def _wall_clock(wall_clock_seconds: float | None) -> float:
+    """The run's hard limit: the caller's tier ceiling, or FREE's when none was passed."""
+    if wall_clock_seconds is None:
+        return training_ceilings_for(PlanTier.FREE).wall_clock_seconds
+    return wall_clock_seconds
+
+
+async def _fit_within(
+    engine: AutoMLEngine,
+    df: pd.DataFrame,
+    request: TrainModelRequest,
+    feature_config: FeatureEngineeringConfig | None,
+    reporter: _JobReporter,
+    wall_clock_seconds: float,
+) -> AutoMLResult:
+    """Run AutoML under the plan's hard wall clock (#500).
+
+    The engine's own time_limit is soft (checked between candidates, after
+    tuning); this is what actually ends a runaway run. A fit already inside a
+    worker thread cannot be killed and finishes on its own; its result is dropped.
+    """
+    try:
+        return await asyncio.wait_for(
+            engine.run(
+                df,
+                request.target_column,
+                feature_config,
+                progress_callback=reporter.on_progress,
+                event_callback=reporter.on_event,
+                cancel_check=reporter.is_cancellation_requested,
+            ),
+            timeout=wall_clock_seconds,
+        )
+    except TimeoutError as exc:
+        # Scoped to the engine run only: a socket timeout from the S3 download is a
+        # TimeoutError too and must keep its own message.
+        raise TrainingWallClockExceeded(
+            f"Training exceeded the {wall_clock_seconds}s wall-clock limit for "
+            "your plan and was stopped"
+        ) from exc
+
+
+def _record_outcome(training_config: dict[str, Any], result: AutoMLResult, engine: AutoMLEngine) -> None:
+    """Write what the run did into ``training_config``, which persists on the MLModel."""
+    # The training-mode outcome (issue #101), alongside the requested mode.
+    training_config["early_stopped"] = result.early_stopped
+    training_config["stop_reason"] = result.stop_reason
+    training_config["algorithms_evaluated"] = result.algorithms_evaluated
+    # The columns the engineer left out of the features, by kind.
+    training_config.update(_recorded_exclusions(result.metadata))
+    # What the model report could only call "not recorded" (#801): the seed the
+    # engine actually used, and the settings the winning candidate ran with.
+    training_config["random_seed"] = engine.random_state
+    training_config["winner_hyperparameters"] = _to_json_safe(
+        result.best_model.hyperparameters
+    )
+
+
+async def _run_training(
+    user_data: UserData,
+    request: TrainModelRequest,
+    user_id: str,
+    model_id: str,
+    wall_clock_seconds: float | None,
+    training_job: TrainingJob | None,
+) -> _TrainingRun:
+    """Build the engine from the request and run it, one of the process's slots held."""
+    feature_config = _feature_config(request)
+    training_config = _requested_training_config(request)
+    engine = _build_engine(training_config, _resolved_mode(training_config))
+    reporter = _JobReporter(training_job, model_id, user_id)
+    seconds = _wall_clock(wall_clock_seconds)
+
+    # Global concurrency cap (#498): gate the CPU-heavy engine run behind
+    # the per-process semaphore so at most MAX_CONCURRENT_TRAINING_JOBS
+    # trainings compute at once across all tenants — excess jobs wait here
+    # rather than all saturating the shared VPS. The wall clock only bounds
+    # the run itself: its timeout starts after the semaphore is acquired,
+    # so queue time is not counted against the plan's limit.
+    async with _training_slot(training_job):
+        # A job cancelled, or ended by the stale-job reaper, while it queued
+        # must not consume the slot it just acquired (#498, #901): the engine's
+        # own cancel_check only fires after preprocessing/tuning setup, so
+        # re-check here and skip the run entirely, handing the slot to the next
+        # job (a no-op when no job could be loaded at all).
+        if training_job is not None:
+            await _require_in_flight(training_job)
+        # Keep the heartbeat fresh while a slow candidate fits, so the
+        # stale-job reaper (#484) never reaps this live run between the
+        # per-candidate progress events.
+        async with heartbeat_pump(training_job):
+            # Loaded here, not at task entry (#665): a queued job then holds
+            # no frame in memory, and the load counts toward the same cap.
+            df, content_hash = await _load_training_frame(user_data, reporter.on_event)
+            dataset_version_id = await _trained_version_id(
+                user_id, user_data.s3_url, content_hash
+            )
+            result = await _fit_within(engine, df, request, feature_config, reporter, seconds)
+
+    # The fit can take minutes. A job that was erased, reaped or cancelled in that
+    # time builds and stores nothing (#936).
+    if training_job:
+        await _require_in_flight(training_job)
+
+    _record_outcome(training_config, result, engine)
+    return _TrainingRun(engine, df, result, dataset_version_id, training_config)
+
+
+def _metrics(result: AutoMLResult) -> dict[str, Any]:
+    return {
+        "cv_score": result.best_model.cv_score,
+        "test_score": result.best_model.test_score,
+        "training_time": result.training_time,
+    }
+
+
+def _tuning_time(result: AutoMLResult) -> float | None:
+    """The sum of the per-algorithm search durations, NOT the full AutoML wall time
+    (``result.training_time``). None when tuning was off."""
+    if not result.tuning_results:
+        return None
+    return sum(r.get("total_time", 0.0) for r in result.tuning_results.values())
+
+
+def _model_metadata(run: _TrainingRun, user_data: UserData, request: TrainModelRequest) -> dict[str, Any]:
+    """What is stored on the ``MLModel`` about the run that produced it."""
+    result = run.result
+    return {
+        "name": request.name or f"{result.best_model.name} on {user_data.filename}",
+        "description": request.description,
+        "problem_type": result.problem_type.value,
+        "target_column": request.target_column,
+        "feature_names": result.feature_names,
+        "n_samples_train": len(run.df),
+        "feature_importance": result.feature_importance,
+        "metrics": _metrics(result),
+        # Confidence/uncertainty metadata (issue #83).
+        "is_calibrated": result.is_calibrated,
+        "calibration_method": result.calibration_method,
+        "calibration_score": result.calibration_score,
+        # Honesty of the calibration/eval split (issue #201).
+        "calibration_score_is_insample": result.calibration_score_is_insample,
+        "evaluation_on_calibration_set": result.evaluation_on_calibration_set,
+        "residual_std": result.residual_std,
+        # SHAP interpretability (issue #80).
+        "shap_explainer_type": result.shap_explainer_type,
+        # Hyperparameter tuning (issue #77). None when tuning was off.
+        "tuning_strategy": result.tuning_strategy,
+        "tuning_time": _tuning_time(result),
+        "improvement_from_tuning": result.improvement_from_tuning,
+        "tuning_results": result.tuning_results,
+        "training_config": run.training_config,
+        "dataset_version_id": run.dataset_version_id,
+    }
+
+
+def _evaluation_payload(result: AutoMLResult, model_id: str) -> Any:
+    """Held-out evaluation artifacts for the dashboard (issue #79).
+
+    Built best-effort: a payload problem must never fail training.
+    """
+    if result.y_test is None or result.y_pred is None:
+        return None
+    try:
+        return build_evaluation_payload(
+            problem_type=result.problem_type.value,
+            y_test=result.y_test,
+            y_pred=result.y_pred,
+            y_proba=result.y_proba,
+            class_labels=result.class_labels,
+            x_test=result.x_test,
+            feature_names=result.feature_names,
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to build evaluation payload for {model_id}: {exc}")
+        return None
+
+
+def _shap_payload(result: AutoMLResult, model_id: str) -> Any:
+    """Global SHAP summary for the interpretability dashboard (issue #80).
+
+    Built best-effort; ``None`` for unsupported model types.
+    """
+    try:
+        return build_shap_payload(result.shap_global)
+    except Exception as exc:
+        logger.warning(f"Failed to build SHAP payload for {model_id}: {exc}")
+        return None
+
+
+async def _store_trained_model(
+    run: _TrainingRun,
+    user_data: UserData,
+    request: TrainModelRequest,
+    user_id: str,
+    model_id: str,
+) -> MLModel:
+    """Save the winner under the pre-generated ``model_id`` and record what follows
+    from a model existing."""
+    result = run.result
+    model_metadata = _model_metadata(run, user_data, request)
+    evaluation_data = _evaluation_payload(result, model_id)
+    shap_data = _shap_payload(result, model_id)
+
+    storage_service = ModelStorageService()
+    ml_model = await storage_service.save_model(
+        result.best_model,
+        run.engine.feature_engineer,
+        user_id,
+        request.dataset_id,
+        model_metadata,
+        model_id=model_id,
+        evaluation_data=evaluation_data,
+        shap_data=shap_data,
+    )
+    await _mark_version_trained_on(run.dataset_version_id, model_id)
+    await product_events.record(
+        user_id,
+        product_events.FIRST_MODEL_TRAINED,
+        once=product_events.FIRST_MODEL_TRAINED,
+    )
+    return ml_model
+
+
+async def _record_completion(
+    training_job: TrainingJob | None,
+    run: _TrainingRun,
+    request: TrainModelRequest,
+    ml_model: MLModel,
+) -> None:
+    """Persist comparison + recommendations + best-model explanation on the job."""
+    if not training_job:
+        return
+    result = run.result
+    comparison = [
+        ModelComparisonEntry(**row)
+        for row in result.metadata.get("model_comparison", [])
+    ]
+    recommendations = await _build_algorithm_recommendations(
+        run.df, request.target_column, result.problem_type
+    )
+    explanation = build_best_model_explanation(
+        result.best_model, result.all_models, result.problem_type
+    )
+    training_job = await _refreshed_job(training_job)
+    training_job.mark_completed(
+        best_model_id=ml_model.model_id,
+        best_algorithm=result.best_model.name,
+        best_model_explanation=explanation,
+        model_comparison=comparison,
+        algorithm_recommendations=recommendations,
+        metrics=_metrics(result),
+    )
+    training_job.add_log(
+        "info",
+        (
+            f"Training completed: best algorithm {result.best_model.name} "
+            f"(cv_score={result.best_model.cv_score:.4f})"
+        ),
+    )
+    await _record(training_job)
+
+
+async def _record_failed(training_job: TrainingJob | None, model_id: str, reason: str) -> None:
+    """Write FAILED and its reason. Guarded: a secondary error here (e.g. a transient
+    DB outage during save) must not escape the background task."""
+    if not training_job:
+        return
+    try:
+        training_job = await _refreshed_job(training_job)
+        training_job.mark_failed(reason)
+        training_job.add_log("error", reason)
+        await _record(training_job)
+    except Exception as save_exc:
+        _log_unrecorded(model_id, "FAILED", save_exc)
+
+
+async def _record_cancelled(training_job: TrainingJob | None, model_id: str) -> None:
+    """Write CANCELLED. Guarded like the failure path: persisting the cancellation
+    must never raise out of the background task."""
+    if not training_job:
+        return
+    try:
+        training_job = await _refreshed_job(training_job)
+        training_job.mark_cancelled()
+        training_job.add_log("info", "Training cancelled by user")
+        await _record(training_job)
+    except Exception as save_exc:
+        _log_unrecorded(model_id, "CANCELLED", save_exc)
+
+
 async def train_model_task(
     user_data: UserData,
     request: TrainModelRequest,
@@ -639,379 +1118,31 @@ async def train_model_task(
     Tracks lifecycle on the ``TrainingJob`` document (created by ``train_model``)
     so that ``GET /ml/{model_id}/status`` reflects real progress, the model
     comparison, the algorithm recommendations, and any failure.
+
+    Nothing is re-raised: this runs as a fire-and-forget BackgroundTask, so every
+    ending is recorded on the TrainingJob rather than raised into a context where
+    nothing can handle it.
     """
-    # Best-effort lookup of the tracking job; training proceeds even if it is
-    # missing or the lookup fails (e.g. DB unavailable).
-    try:
-        training_job = await TrainingJob.find_one(
-            TrainingJob.model_id == model_id,
-            TrainingJob.user_id == user_id,
-        )
-    except Exception as exc:
-        logger.warning(f"Could not load TrainingJob {model_id}: {exc}")
-        training_job = None
+    training_job = await _tracking_job(model_id, user_id)
 
     try:
         logger.info(f"Starting model training for dataset {request.dataset_id}")
-
-        # Mark RUNNING at task entry so the status reflects real activity during
-        # the (potentially slow) S3 download and dataset parse, not just model fit.
-        if training_job:
-            training_job.mark_started()
-            training_job.add_log(
-                "info", f"Training task started for dataset {request.dataset_id}"
-            )
-            await _record(training_job)
-
-        # Create feature engineering config
-        feature_config = None
-        if request.feature_config:
-            feature_config = FeatureEngineeringConfig(
-                **request.feature_config.model_dump(exclude_none=True)
-            )
-
-        # Create AutoML engine. Hyperparameter tuning (issue #77) is opt-in via
-        # the existing training_config dict — no request-schema change. When
-        # enable_tuning is set, the nested tuning_config keys feed TuningConfig
-        # (an unknown strategy raises in __post_init__, surfaced as a failed job).
-        # Shallow-copy so the per-request stop-outcome write-back below never
-        # mutates a dict a caller/test might share.
-        training_config: dict[str, Any] = (
-            request.training_config.model_dump(exclude_none=True)
-            if request.training_config
-            else {}
+        await _mark_task_started(training_job, request.dataset_id)
+        run = await _run_training(
+            user_data, request, user_id, model_id, wall_clock_seconds, training_job
         )
-
-        # Training mode (issue #101). A "quick"/"comprehensive" mode fills engine
-        # defaults (algorithm count, time budget, tuning, early-stop score); any
-        # explicit training_config value still wins. An absent/unknown mode
-        # resolves to {} so behaviour is unchanged from pre-#101. The resolved
-        # mode is written back into training_config so it is persisted on the
-        # MLModel (no new MLModel field needed).
-        resolved = resolve_mode_config(
-            training_config.get("training_mode"),
-            overrides={
-                key: training_config.get(key)
-                for key in (
-                    "max_models",
-                    "time_limit",
-                    "cv_folds",
-                    "test_size",
-                    "early_stop_score",
-                )
-            },
-        )
-        if resolved.get("training_mode"):
-            training_config["training_mode"] = resolved["training_mode"]
-
-        enable_tuning = bool(
-            training_config.get("enable_tuning", resolved.get("enable_tuning"))
-        )
-        tuning_strategy = training_config.get("tuning_strategy") or resolved.get(
-            "tuning_strategy"
-        )
-        tuning_engine_config = None
-        if enable_tuning:
-            # Start from the mode's tuning defaults (e.g. comprehensive's
-            # per-candidate time budget that keeps the up-front tuning phase
-            # within the mode cap), then let an explicit request override.
-            raw_tuning = dict(resolved.get("tuning_config") or {})
-            raw_tuning.update(training_config.get("tuning_config") or {})
-            if tuning_strategy:
-                raw_tuning.setdefault("strategy", tuning_strategy)
-            tuning_engine_config = TuningConfig(**raw_tuning)
-        engine = AutoMLEngine(
-            max_models=resolved.get("max_models", training_config.get("max_models", 5)),
-            time_limit=resolved.get("time_limit", training_config.get("time_limit")),
-            cv_folds=resolved.get("cv_folds", training_config.get("cv_folds", 5)),
-            test_size=resolved.get("test_size", training_config.get("test_size", 0.2)),
-            random_state=42,
-            enable_tuning=enable_tuning,
-            tuning_config=tuning_engine_config,
-            early_stop_score=resolved.get("early_stop_score"),
-        )
-
-        # Progress callback persists per-algorithm progress to the TrainingJob.
-        # Partial updates are used here and in on_event so concurrent writes by
-        # POST /{model_id}/cancel (the cancellation flag and its log entry) are
-        # never clobbered by saving this (stale) in-memory document wholesale:
-        # scalars/embedded docs go through $set, log appends through $push.
-        async def on_progress(completed: int, total: int, current: str | None):
-            if not training_job:
-                return
-            training_job.update_progress(
-                completed_algorithms=completed,
-                total_algorithms=total,
-                current_algorithm=current,
-            )
-            await training_job.set(
-                {
-                    TrainingJob.progress: training_job.progress,
-                    TrainingJob.updated_at: training_job.updated_at,
-                    # Persist the heartbeat, or the stale-job reaper (#484) would
-                    # see only the start value and reap this live run after the
-                    # timeout. update_progress() advanced it in memory.
-                    TrainingJob.last_heartbeat: training_job.last_heartbeat,
-                }
-            )
-
-        # Event callback persists engine logs, the pipeline stage, and
-        # incremental model-comparison rows as candidates finish training.
-        async def on_event(event: TrainingEvent):
-            if not training_job:
-                return
-            level: LogLevel
-            if event.level == "warning":
-                level = "warning"
-            elif event.level == "error":
-                level = "error"
-            else:
-                level = "info"
-            entry = training_job.add_log(level, event.message, stage=event.stage)
-            # add_log bumped updated_at; treat every persisted event as a
-            # heartbeat too so a live run isn't reaped between algorithms (#484).
-            training_job.last_heartbeat = training_job.updated_at
-            fields_to_set: dict[Any, Any] = {
-                TrainingJob.progress: training_job.progress,
-                TrainingJob.updated_at: training_job.updated_at,
-                TrainingJob.last_heartbeat: training_job.last_heartbeat,
-            }
-            if event.stage:
-                training_job.progress.current_stage = event.stage
-            if event.candidate:
-                training_job.model_comparison.append(
-                    ModelComparisonEntry(**event.candidate)
-                )
-                # Only candidate events change the comparison; rewriting the
-                # array on every stage/log event is wasted write volume.
-                fields_to_set[TrainingJob.model_comparison] = (
-                    training_job.model_comparison
-                )
-            await training_job.update(
-                Push({TrainingJob.logs: entry}),
-                Set(fields_to_set),
-            )
-
-        # Cancellation check re-reads the job from MongoDB so a flag set by
-        # POST /{model_id}/cancel after this task loaded its copy is seen.
-        async def is_cancellation_requested() -> bool:
-            fresh = await TrainingJob.find_one(
-                TrainingJob.model_id == model_id,
-                TrainingJob.user_id == user_id,
-            )
-            return bool(fresh and fresh.cancellation_requested)
-
-        # Run AutoML under the plan's hard wall clock (#500). The engine's own
-        # time_limit is soft (checked between candidates, after tuning); this
-        # is what actually ends a runaway run. A fit already inside a worker
-        # thread cannot be killed and finishes on its own; its result is dropped.
-        if wall_clock_seconds is None:
-            wall_clock_seconds = training_ceilings_for(PlanTier.FREE).wall_clock_seconds
-        # Global concurrency cap (#498): gate the CPU-heavy engine run behind
-        # the per-process semaphore so at most MAX_CONCURRENT_TRAINING_JOBS
-        # trainings compute at once across all tenants — excess jobs wait here
-        # rather than all saturating the shared VPS. The wall clock only bounds
-        # the run itself: its timeout starts after the semaphore is acquired,
-        # so queue time is not counted against the plan's limit.
-        async with _training_slot(training_job):
-            # A job cancelled, or ended by the stale-job reaper, while it queued
-            # must not consume the slot it just acquired (#498, #901): the engine's
-            # own cancel_check only fires after preprocessing/tuning setup, so
-            # re-check here and skip the run entirely, handing the slot to the next
-            # job (a no-op when no job could be loaded at all).
-            if training_job is not None:
-                await _require_in_flight(training_job)
-            # Keep the heartbeat fresh while a slow candidate fits, so the
-            # stale-job reaper (#484) never reaps this live run between the
-            # per-candidate progress events.
-            async with heartbeat_pump(training_job):
-                # Loaded here, not at task entry (#665): a queued job then holds
-                # no frame in memory, and the load counts toward the same cap.
-                df, content_hash = await _load_training_frame(user_data, on_event)
-                dataset_version_id = await _trained_version_id(
-                    user_id, user_data.s3_url, content_hash
-                )
-                try:
-                    result = await asyncio.wait_for(
-                        engine.run(
-                            df,
-                            request.target_column,
-                            feature_config,
-                            progress_callback=on_progress,
-                            event_callback=on_event,
-                            cancel_check=is_cancellation_requested,
-                        ),
-                        timeout=wall_clock_seconds,
-                    )
-                except TimeoutError as exc:
-                    # Scoped to the engine run only: a socket timeout from the S3
-                    # download above is a TimeoutError too and must keep its own
-                    # message.
-                    raise TrainingWallClockExceeded(
-                        f"Training exceeded the {wall_clock_seconds}s wall-clock limit for "
-                        "your plan and was stopped"
-                    ) from exc
-
-        # The fit can take minutes. A job that was erased, reaped or cancelled in that
-        # time builds and stores nothing (#936).
-        if training_job:
-            await _require_in_flight(training_job)
-
-        # Record the training-mode outcome (issue #101) in training_config so it
-        # persists on the MLModel alongside the requested mode.
-        training_config["early_stopped"] = result.early_stopped
-        training_config["stop_reason"] = result.stop_reason
-        training_config["algorithms_evaluated"] = result.algorithms_evaluated
-        # The columns the engineer left out of the features, by kind.
-        training_config.update(_recorded_exclusions(result.metadata))
-        # What the model report could only call "not recorded" (#801): the seed the
-        # engine actually used, and the settings the winning candidate ran with.
-        training_config["random_seed"] = engine.random_state
-        training_config["winner_hyperparameters"] = _to_json_safe(
-            result.best_model.hyperparameters
-        )
-
-        # Prepare metadata
-        model_metadata: dict[str, Any] = {
-            "name": request.name or f"{result.best_model.name} on {user_data.filename}",
-            "description": request.description,
-            "problem_type": result.problem_type.value,
-            "target_column": request.target_column,
-            "feature_names": result.feature_names,
-            "n_samples_train": len(df),
-            "feature_importance": result.feature_importance,
-            "metrics": {
-                "cv_score": result.best_model.cv_score,
-                "test_score": result.best_model.test_score,
-                "training_time": result.training_time,
-            },
-            # Confidence/uncertainty metadata (issue #83).
-            "is_calibrated": result.is_calibrated,
-            "calibration_method": result.calibration_method,
-            "calibration_score": result.calibration_score,
-            # Honesty of the calibration/eval split (issue #201).
-            "calibration_score_is_insample": result.calibration_score_is_insample,
-            "evaluation_on_calibration_set": result.evaluation_on_calibration_set,
-            "residual_std": result.residual_std,
-            # SHAP interpretability (issue #80).
-            "shap_explainer_type": result.shap_explainer_type,
-            # Hyperparameter tuning (issue #77). None when tuning was off.
-            # tuning_time is the sum of the per-algorithm search durations, NOT
-            # the full AutoML wall time (result.training_time).
-            "tuning_strategy": result.tuning_strategy,
-            "tuning_time": (
-                sum(r.get("total_time", 0.0) for r in result.tuning_results.values())
-                if result.tuning_results
-                else None
-            ),
-            "improvement_from_tuning": result.improvement_from_tuning,
-            "tuning_results": result.tuning_results,
-            "training_config": training_config,
-            "dataset_version_id": dataset_version_id,
-        }
-
-        # Held-out evaluation artifacts for the dashboard (issue #79).
-        # Built best-effort: a payload problem must never fail training.
-        evaluation_data = None
-        if result.y_test is not None and result.y_pred is not None:
-            try:
-                evaluation_data = build_evaluation_payload(
-                    problem_type=result.problem_type.value,
-                    y_test=result.y_test,
-                    y_pred=result.y_pred,
-                    y_proba=result.y_proba,
-                    class_labels=result.class_labels,
-                    x_test=result.x_test,
-                    feature_names=result.feature_names,
-                )
-            except Exception as exc:
-                logger.warning(
-                    f"Failed to build evaluation payload for {model_id}: {exc}"
-                )
-
-        # Global SHAP summary for the interpretability dashboard (issue #80).
-        # Built best-effort; ``None`` for unsupported model types.
-        shap_data = None
-        try:
-            shap_data = build_shap_payload(result.shap_global)
-        except Exception as exc:
-            logger.warning(f"Failed to build SHAP payload for {model_id}: {exc}")
-
-        # Save model with the pre-generated model_id
-        storage_service = ModelStorageService()
-        ml_model = await storage_service.save_model(
-            result.best_model,
-            engine.feature_engineer,
-            user_id,
-            request.dataset_id,
-            model_metadata,
-            model_id=model_id,
-            evaluation_data=evaluation_data,
-            shap_data=shap_data,
-        )
-        await _mark_version_trained_on(dataset_version_id, model_id)
-        await product_events.record(
-            user_id,
-            product_events.FIRST_MODEL_TRAINED,
-            once=product_events.FIRST_MODEL_TRAINED,
-        )
-
-        # Persist comparison + recommendations + best-model explanation on the job.
-        if training_job:
-            comparison = [
-                ModelComparisonEntry(**row)
-                for row in result.metadata.get("model_comparison", [])
-            ]
-            recommendations = await _build_algorithm_recommendations(
-                df, request.target_column, result.problem_type
-            )
-            explanation = build_best_model_explanation(
-                result.best_model, result.all_models, result.problem_type
-            )
-            training_job = await _refreshed_job(training_job)
-            training_job.mark_completed(
-                best_model_id=ml_model.model_id,
-                best_algorithm=result.best_model.name,
-                best_model_explanation=explanation,
-                model_comparison=comparison,
-                algorithm_recommendations=recommendations,
-                metrics=model_metadata["metrics"],
-            )
-            training_job.add_log(
-                "info",
-                (
-                    f"Training completed: best algorithm {result.best_model.name} "
-                    f"(cv_score={result.best_model.cv_score:.4f})"
-                ),
-            )
-            await _record(training_job)
-
+        ml_model = await _store_trained_model(run, user_data, request, user_id, model_id)
+        await _record_completion(training_job, run, request, ml_model)
         logger.info(f"Model training completed: {ml_model.model_id}")
 
     except TrainingWallClockExceeded as exc:
         reason = str(exc)
         logger.warning(f"{reason}: {model_id}")
-        if training_job:
-            try:
-                training_job = await _refreshed_job(training_job)
-                training_job.mark_failed(reason)
-                training_job.add_log("error", reason)
-                await _record(training_job)
-            except Exception as save_exc:
-                _log_unrecorded(model_id, "FAILED", save_exc)
+        await _record_failed(training_job, model_id, reason)
 
     except TrainingCancelledError:
         logger.info(f"Model training cancelled by user: {model_id}")
-        if training_job:
-            # Guarded like the failure path: persisting the cancellation must
-            # never raise out of the background task.
-            try:
-                training_job = await _refreshed_job(training_job)
-                training_job.mark_cancelled()
-                training_job.add_log("info", "Training cancelled by user")
-                await _record(training_job)
-            except Exception as save_exc:
-                _log_unrecorded(model_id, "CANCELLED", save_exc)
+        await _record_cancelled(training_job, model_id)
 
     except TrainingNoLongerInFlight as ended:
         # Whatever ended the job has had the last word: the reaper wrote its terminal
@@ -1023,20 +1154,7 @@ async def train_model_task(
         # Full traceback stays server-side, correlated by model_id; the user gets
         # a safe, actionable reason instead of raw str(e) (#518, #269).
         logger.exception("Error training model %s", model_id)
-        reason = user_safe_failure_reason(e)
-        if training_job:
-            # Guard the failure-recording itself: a secondary error here (e.g. a
-            # transient DB outage during save) must not escape the background task.
-            try:
-                training_job = await _refreshed_job(training_job)
-                training_job.mark_failed(reason)
-                training_job.add_log("error", reason)
-                await _record(training_job)
-            except Exception as save_exc:
-                _log_unrecorded(model_id, "FAILED", save_exc)
-        # Swallow here: this runs as a fire-and-forget BackgroundTask, so the
-        # failure is recorded on the TrainingJob (above) rather than re-raised
-        # into a context where nothing can handle it.
+        await _record_failed(training_job, model_id, user_safe_failure_reason(e))
 
 
 class TrainingNoLongerInFlight(Exception):

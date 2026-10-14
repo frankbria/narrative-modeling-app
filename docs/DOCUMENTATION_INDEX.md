@@ -8,7 +8,7 @@ Quick reference guide to all project documentation with clear purposes and targe
 
 ### Essential Reading
 1. **[README.md](../README.md)** - Project overview and quick start
-   - **Purpose**: High-level introduction to the Narrative Modeling App
+   - **Purpose**: High-level introduction to SheetPredict
    - **Audience**: Everyone (new developers, stakeholders, users)
    - **When**: First document to read
 

@@ -50,7 +50,7 @@ def mock_onboarding_steps():
     return [
         {
             "step_id": "welcome",
-            "title": "Welcome to Narrative Modeling",
+            "title": "Welcome to SheetPredict",
             "description": "Learn about the platform",
             "step_type": "welcome",
             "status": "completed",
@@ -191,7 +191,7 @@ class TestOnboardingRoutes:
         data = response.json()
         
         assert data["step_id"] == "welcome"
-        assert data["title"] == "Welcome to Narrative Modeling"
+        assert data["title"] == "Welcome to SheetPredict"
         assert data["status"] == "completed"
         
         # Verify service was called

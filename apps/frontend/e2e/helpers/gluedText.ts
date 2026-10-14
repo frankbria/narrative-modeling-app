@@ -3,7 +3,7 @@
  *
  * React separates adjacent text nodes in its server output with `<!-- -->`. When an
  * interpolation meets prose with no space between them, the served page reads
- * "Narrative Modeling Appservice" while jsdom, and so every component test, renders
+ * "SheetPredictservice" while jsdom, and so every component test, renders
  * the space. The signature is that marker with a word character on both sides.
  */
 const GLUED = /[A-Za-z0-9.,)]<!-- -->[A-Za-z0-9(]/g;

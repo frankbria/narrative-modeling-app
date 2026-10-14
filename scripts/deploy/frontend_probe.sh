@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Frontend readiness for the staging probe (#756). Runs ON THE BOX via
-# `ssh host "DEPLOY_PATH=… bash -s" < scripts/deploy/frontend_probe.sh` from
+# `scripts/deploy/on_box.sh scripts/deploy/frontend_probe.sh` from
 # staging-health.yml and deploy.yml, after the backend probe.
 #
 # The frontend container shares MONGODB_URI and NEXTAUTH_SECRET with the backend, and

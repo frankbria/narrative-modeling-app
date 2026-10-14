@@ -1,3 +1,3 @@
 """
-Database module for the Narrative Modeling Application
+Database module for SheetPredict
 """

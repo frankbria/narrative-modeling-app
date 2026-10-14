@@ -1,11 +1,13 @@
 'use client'
 
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
 import { useSession, signOut } from 'next-auth/react'
+import type { Session } from 'next-auth'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
+import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { COMPANY } from '@/lib/legal/company'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,11 +17,125 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
+const LINK = 'flex items-center space-x-2 hover:bg-gray-800 p-2 rounded'
+
+const MENU_ITEMS = [
+  { name: 'Load Data', icon: <Upload size={20} />, href: '/upload' },
+  { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
+  { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
+  { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
+  { name: 'Training Jobs', icon: <ListChecks size={20} />, href: '/training' },
+  { name: 'Create Predictions', icon: <BarChart size={20} />, href: '/predict' },
+  { name: 'Monitor', icon: <Activity size={20} />, href: '/monitor' },
+]
+
+type MenuItem = (typeof MENU_ITEMS)[number]
+type Account = { name?: string | null; email?: string | null; image?: string | null }
+type ToggleProps = { open: boolean; onToggle: VoidFunction; buttonRef: RefObject<HTMLButtonElement | null> }
+type AvatarProps = { image: Account['image']; name: string }
+type AccountMenuProps = { account?: Account; onNavigate: VoidFunction }
+type FooterProps = { session: Session | null; onNavigate: VoidFunction }
+
+function leave() {
+  void signOut()
+}
+
+/** Outside the translated drawer so it stays reachable when the drawer is
+ *  off-canvas. Hidden at lg+ where the drawer is pinned. */
+function DrawerToggle(props: ToggleProps) {
+  const { open, onToggle, buttonRef } = props
+  const label = open ? 'Close navigation menu' : 'Open navigation menu'
+  const Icon = open ? X : Menu
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      onClick={onToggle}
+      aria-label={label}
+      aria-expanded={open}
+      aria-controls="app-sidebar"
+      className="fixed top-3 left-3 z-40 rounded-md bg-gray-900 p-2 text-white shadow-lg lg:hidden"
+    >
+      <Icon size={20} />
+    </button>
+  )
+}
+
+function Avatar(props: AvatarProps) {
+  const { image, name } = props
+  if (image) return <img src={image} alt={name} className="w-8 h-8 rounded-full" />
+  return (
+    <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+      <User size={16} />
+    </div>
+  )
+}
+
+function AccountMenu(props: AccountMenuProps) {
+  const { account = {}, onNavigate } = props
+  const name = account.name || 'Guest'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="w-full justify-start text-left hover:bg-gray-800">
+          <div className="flex items-center space-x-3">
+            <Avatar image={account.image} name={name} />
+            <div className="flex-1 overflow-hidden">
+              <p className="text-sm font-semibold truncate">{name}</p>
+              <p className="text-xs text-gray-400 truncate">{account.email}</p>
+            </div>
+          </div>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56" align="end">
+        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings" onClick={onNavigate}>
+            <Settings className="mr-2 h-4 w-4" />
+            Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={leave}>
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function SidebarFooter(props: FooterProps) {
+  const { session, onNavigate } = props
+  return (
+    <div className="space-y-2 border-t border-gray-700 pt-4">
+      <div className="p-2">
+        <AccountMenu account={session?.user} onNavigate={onNavigate} />
+      </div>
+      <Link href="/settings/api" onClick={onNavigate} className={LINK}>
+        <Key size={20} />
+        <span>API Keys</span>
+      </Link>
+      {/* Admins only (#477): the flag is computed server-side in auth.ts;
+          middleware.ts guards the route itself, this just hides the door. */}
+      {session?.isAdmin && (
+        <Link href="/admin" onClick={onNavigate} className={LINK}>
+          <Shield size={20} />
+          <span>Admin</span>
+        </Link>
+      )}
+      {/* The only way to reach dark mode. Before #407 the `.dark` class was
+          never set by anything, so all 27 `dark:` utilities were dead. */}
+      <div className="px-2 pt-2">
+        <ThemeToggle />
+      </div>
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const { data: session } = useSession()
-  const userName = session?.user?.name || 'Guest'
-  const userEmail = session?.user?.email || ''
-  const userImage = session?.user?.image || ''
 
   // Below `lg` the sidebar is an off-canvas drawer toggled by a hamburger; at
   // `lg`+ it's always pinned (issue #282).
@@ -33,54 +149,32 @@ export default function Sidebar() {
     if (open) navRef.current?.querySelector<HTMLElement>('a')?.focus()
   }, [open])
 
-  const closeDrawer = () => {
+  const close = () => setOpen(false)
+  const toggle = () => setOpen(!open)
+  const closeOnEscape = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || !open) return
     setOpen(false)
     hamburgerRef.current?.focus()
   }
-
-  const menuItems = [
-    { name: 'Load Data', icon: <Upload size={20} />, href: '/upload' },
-    { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
-    { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
-    { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
-    { name: 'Training Jobs', icon: <ListChecks size={20} />, href: '/training' },
-    { name: 'Create Predictions', icon: <BarChart size={20} />, href: '/predict' },
-    { name: 'A/B Testing', icon: <Beaker size={20} />, href: '/experiments' },
-    { name: 'Monitor', icon: <Activity size={20} />, href: '/monitor' },
-  ]
+  const navLink = (item: MenuItem) => (
+    <Link key={item.name} href={item.href} onClick={close} className={LINK}>
+      {item.icon}
+      <span>{item.name}</span>
+    </Link>
+  )
 
   return (
     <>
-      {/* Hamburger toggle — outside the translated drawer so it stays reachable
-          when the drawer is off-canvas. Hidden at lg+ where the drawer is pinned. */}
-      <button
-        ref={hamburgerRef}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
-        aria-expanded={open}
-        aria-controls="app-sidebar"
-        className="fixed top-3 left-3 z-40 rounded-md bg-gray-900 p-2 text-white shadow-lg lg:hidden"
-      >
-        {open ? <X size={20} /> : <Menu size={20} />}
-      </button>
+      <DrawerToggle open={open} onToggle={toggle} buttonRef={hamburgerRef} />
 
       {/* Backdrop closes the drawer on mobile */}
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          aria-hidden="true"
-          className="fixed inset-0 z-20 bg-black/40 lg:hidden"
-        />
-      )}
+      {open && <div onClick={close} aria-hidden="true" className="fixed inset-0 z-20 bg-black/40 lg:hidden" />}
 
       <aside
         ref={navRef}
         id="app-sidebar"
         aria-label="Sidebar"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape' && open) closeDrawer()
-        }}
+        onKeyDown={closeOnEscape}
         // `invisible` (visibility:hidden) — not just an off-canvas transform —
         // so the closed drawer's links leave the tab order and AT below lg;
         // `lg:visible`/`lg:translate-x-0` keep it always-open on desktop.
@@ -89,80 +183,12 @@ export default function Sidebar() {
         }`}
       >
         <div>
-          <h1 className="text-xl font-bold mb-6">Modeling App</h1>
+          <h1 className="text-xl font-bold mb-6">{COMPANY.serviceName}</h1>
           <nav className="space-y-2" aria-label="Main navigation">
-            {menuItems.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded"
-              >
-                {item.icon}
-                <span>{item.name}</span>
-              </Link>
-            ))}
+            {MENU_ITEMS.map(navLink)}
           </nav>
         </div>
-        <div className="space-y-2 border-t border-gray-700 pt-4">
-          <div className="p-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="w-full justify-start text-left hover:bg-gray-800">
-                  <div className="flex items-center space-x-3">
-                    {userImage ? (
-                      <img
-                        src={userImage}
-                        alt={userName}
-                        className="w-8 h-8 rounded-full"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-                        <User size={16} />
-                      </div>
-                    )}
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-semibold truncate">{userName}</p>
-                      <p className="text-xs text-gray-400 truncate">{userEmail}</p>
-                    </div>
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/settings" onClick={() => setOpen(false)}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut()}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <Link href="/settings/api" onClick={() => setOpen(false)} className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
-            <Key size={20} />
-            <span>API Keys</span>
-          </Link>
-          {/* Admins only (#477): the flag is computed server-side in auth.ts;
-              middleware.ts guards the route itself, this just hides the door. */}
-          {session?.isAdmin && (
-            <Link href="/admin" onClick={() => setOpen(false)} className="flex items-center space-x-2 hover:bg-gray-800 p-2 rounded">
-              <Shield size={20} />
-              <span>Admin</span>
-            </Link>
-          )}
-          {/* The only way to reach dark mode. Before #407 the `.dark` class was
-              never set by anything, so all 27 `dark:` utilities were dead. */}
-          <div className="px-2 pt-2">
-            <ThemeToggle />
-          </div>
-        </div>
+        <SidebarFooter session={session} onNavigate={close} />
       </aside>
     </>
   )

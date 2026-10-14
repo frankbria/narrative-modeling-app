@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Backend container state for the staging alert (#757). Runs ON THE BOX via
-# `ssh host "DEPLOY_PATH=… bash -s" < scripts/deploy/backend_state.sh` from
+# `scripts/deploy/on_box.sh scripts/deploy/backend_state.sh` from
 # staging-health.yml / deploy.yml when the gate fails, and its output lands in a
 # public issue and a public run log — so it prints status fields and exception
 # CLASS names only, never a raw log line (a pymongo auth error names the Atlas

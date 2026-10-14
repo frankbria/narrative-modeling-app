@@ -2,7 +2,7 @@
 
 ## Overview
 
-Story 9.3 implements comprehensive integration test fixtures for real service dependencies in the Narrative Modeling App backend, enabling realistic testing with MongoDB, Redis, S3, and OpenAI.
+Story 9.3 implements comprehensive integration test fixtures for real service dependencies in the SheetPredict backend, enabling realistic testing with MongoDB, Redis, S3, and OpenAI.
 
 **Status**: ✅ **100% COMPLETE** (4/4 tasks)
 **Test Coverage**: >85% for all fixture types

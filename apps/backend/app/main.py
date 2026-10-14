@@ -48,7 +48,6 @@ from app.middleware.upload_cleanup import UnownedUploadCleanupMiddleware
 from app.services.rate_limit import build_rate_limit_store
 from prometheus_client import CONTENT_TYPE_LATEST
 from app.api.routes import (
-    ab_testing,
     admin,
     ai_analysis,
     ai_orchestration,
@@ -347,11 +346,6 @@ app.include_router(
     tags=["monitoring"],
 )
 app.include_router(
-    ab_testing.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["ab-testing"],
-)
-app.include_router(
     batch_prediction.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["batch-prediction"],
@@ -448,7 +442,7 @@ SOURCE_CODE_URL = "https://github.com/frankbria/narrative-modeling-app"
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to the Narrative Modeling API",
+        "message": "Welcome to the SheetPredict API",
         "license": "AGPL-3.0-or-later",
         "source_code": SOURCE_CODE_URL,
         "source_offer": (

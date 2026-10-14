@@ -2142,3 +2142,33 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Rule:** after merging something that runs in a deploy, read that deploy's log for the
   new step's own output. "The run is green" was true and wrong here.
 
+## 2026-10-13: the secret hook reads the lines a commit removes, too (#765)
+- Renaming the product in a deploy guide meant changing `adduser … --disabled-password
+  --gecos "<old name> Deployment"`. The pre-commit scan greps the whole staged diff, so the
+  REMOVED line matched its password pattern and the commit was refused whatever the new
+  line said. Reordering the flags did not help, for the same reason.
+- **Rule:** when the hook names a `-` line, the line cannot be edited from a session. Do
+  not reach for `--no-verify` or a rename that takes the file out of the scan. Leave the
+  line, say why where the reader will look (here: the name guard's one-line exemption),
+  and tell the operator.
+- **Rule:** `pkill -f '<pattern>'` matches the shell running it when the pattern is in
+  that shell's command line. `^.*` in front is not an anchor. Use `pgrep -f '[c]odex …'`
+  to find the pid, then kill the pid.
+
+## 2026-10-14: the next number is not the pull request's number (#529)
+- `gh pr create` printed `/pull/1017`; the demo comment in the same command went to 1016,
+  the number I had assumed. 1016 was a Dependabot pull request opened minutes earlier. The
+  comment could only be overwritten with a correction, since deleting is not allowed here.
+- **Rule:** take the number from what `gh pr create` prints (`pr=$(gh pr create … | grep -o
+  '[0-9]+$' -E)`), check it is not empty, and use that variable for every later call. Never
+  type it from memory. (`[0-9]*$` matches the empty string and returned nothing, #842; with no
+  number `gh pr comment` falls back to the branch's own pull request, which is also safe.)
+
+## 2026-10-14: on a versioned bucket, count versions, not objects (#529)
+- The staging bucket listed zero objects and held 676 noncurrent versions and 676 delete
+  markers: every "deleted" file, and one pair per boot from the app's own write-probe.
+  `list_objects_v2` cannot see any of it.
+- **Rule:** for "what is in the bucket", "did erasure remove it" or "does this leak", read
+  `list_object_versions`. A test of a delete against real S3 asserts on versions and delete
+  markers, on a bucket with versioning enabled.
+

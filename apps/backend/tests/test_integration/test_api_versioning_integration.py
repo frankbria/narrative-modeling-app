@@ -34,7 +34,7 @@ class TestAPIVersioningIntegration:
     async def test_v1_health_check_with_version_headers(self, client, setup_database):
         """Test v1 health check includes version headers."""
         response = await client.get(
-            "/health", headers={"Accept": "application/vnd.narrativeml.v1+json"}
+            "/health", headers={"Accept": "application/vnd.sheetpredict.v1+json"}
         )
 
         assert response.status_code == 200
@@ -46,7 +46,7 @@ class TestAPIVersioningIntegration:
         """Test version negotiation through Accept header."""
         # Request with explicit v1 version
         response = await client.get(
-            "/health", headers={"Accept": "application/vnd.narrativeml.v1+json"}
+            "/health", headers={"Accept": "application/vnd.sheetpredict.v1+json"}
         )
 
         assert response.status_code == 200
@@ -74,7 +74,7 @@ class TestAPIVersioningIntegration:
     async def test_unsupported_version_returns_406(self, client, setup_database):
         """Test requesting unsupported version returns 406."""
         response = await client.get(
-            "/health", headers={"Accept": "application/vnd.narrativeml.v99+json"}
+            "/health", headers={"Accept": "application/vnd.sheetpredict.v99+json"}
         )
 
         assert response.status_code == 406
@@ -97,9 +97,9 @@ class TestAPIVersioningIntegration:
     async def test_multiple_version_formats_accepted(self, client, setup_database):
         """Test various Accept header formats are handled."""
         test_cases = [
-            "application/vnd.narrativeml.v1+json",
-            "application/json, application/vnd.narrativeml.v1+json",
-            "application/vnd.narrativeml.v1+json; charset=utf-8",
+            "application/vnd.sheetpredict.v1+json",
+            "application/json, application/vnd.sheetpredict.v1+json",
+            "application/vnd.sheetpredict.v1+json; charset=utf-8",
         ]
 
         for accept_header in test_cases:
@@ -185,7 +185,7 @@ class TestVersionNegotiationPrecedence:
         """Test URL path version takes precedence over Accept header."""
         # Request v1 in URL but v2 in header (v2 doesn't exist)
         response = await client.get(
-            "/api/v1/models", headers={"Accept": "application/vnd.narrativeml.v2+json"}
+            "/api/v1/models", headers={"Accept": "application/vnd.sheetpredict.v2+json"}
         )
 
         # Should use URL version (v1) not header version
@@ -195,7 +195,7 @@ class TestVersionNegotiationPrecedence:
     async def test_header_version_overrides_default(self, client, setup_database):
         """Test Accept header version overrides default when no URL version."""
         response = await client.get(
-            "/health", headers={"Accept": "application/vnd.narrativeml.v1+json"}
+            "/health", headers={"Accept": "application/vnd.sheetpredict.v1+json"}
         )
 
         assert response.status_code == 200

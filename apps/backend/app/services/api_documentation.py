@@ -91,7 +91,7 @@ shows the current counts.
 ## Versioning
 
 The version is in the path (`/api/v1/...`). It can also be requested with
-`Accept: application/vnd.narrativeml.v1+json`.
+`Accept: application/vnd.sheetpredict.v1+json`.
 
 ## Client code for a deployed model
 

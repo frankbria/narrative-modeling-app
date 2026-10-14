@@ -129,18 +129,21 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "set -euo pipefail
-             cd '$DEPLOY_PATH'
-             git fetch --prune origin
-             git checkout main
-             git reset --hard origin/main
-             test -f .env.staging || { echo '.env.staging missing on server'; exit 1; }
-             # Fail fast with the FULL list of any missing required vars, instead of
-             # letting compose abort on the first \${VAR:?} it interpolates.
-             bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-             docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
-             docker compose -f docker-compose.staging.yml --env-file .env.staging ps"
+          # Every step reaches the box through on_box.sh (#790): the body below is a
+          # QUOTED heredoc, sent as written, and reads DEPLOY_PATH on the far side.
+          scripts/deploy/on_box.sh <<'REMOTE'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          git fetch --prune origin
+          git checkout main
+          git reset --hard origin/main
+          test -f .env.staging || { echo '.env.staging missing on server'; exit 1; }
+          # Fail fast with the FULL list of any missing required vars, instead of
+          # letting compose abort on the first ${VAR:?} it interpolates.
+          bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
+          docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
+          docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+          REMOTE
 
       # The edge config used to be pasted onto the box by hand (#594), so the live
       # file drifted from the repo for two months and everything the repo file
@@ -161,8 +164,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/apply_nginx_conf.sh
+          scripts/deploy/on_box.sh scripts/deploy/apply_nginx_conf.sh
 
       - name: Health check
         if: steps.preflight.outputs.configured == 'true'
@@ -177,24 +179,24 @@ jobs:
           # container `up -d` just recreated. Every connection the probe makes is
           # therefore fresh: this is the restart-after-rotation smoke step of #552.
           # Backend is exposed on host port 8010 (see compose).
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "set -e
-             for i in \$(seq 1 12); do
-               if curl -fsS http://localhost:8010/health/ready >/dev/null; then
-                 echo 'Backend ready.'; break
-               fi
-               if [ \$i -eq 12 ]; then echo 'Backend did not become ready in time.'; exit 1; fi
-               echo \"Waiting for backend readiness (\$i/12)...\"; sleep 10
-             done
-             cd '$DEPLOY_PATH'
-             docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe"
+          scripts/deploy/on_box.sh <<'REMOTE'
+          set -e
+          for i in $(seq 1 12); do
+            if curl -fsS http://localhost:8010/health/ready >/dev/null; then
+              echo 'Backend ready.'; break
+            fi
+            if [ $i -eq 12 ]; then echo 'Backend did not become ready in time.'; exit 1; fi
+            echo "Waiting for backend readiness ($i/12)..."; sleep 10
+          done
+          cd "$DEPLOY_PATH"
+          docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+          REMOTE
           # The frontend's half of the shared credentials (#756): a fresh Mongo
           # connection from its container, and a token it signed, verified by the backend.
           # Captured by redirect, not a pipe: this shell has no pipefail, and a pipe
           # would hand the step tee's exit code instead of the probe's.
           frontend=0
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/frontend_probe.sh \
+          scripts/deploy/on_box.sh scripts/deploy/frontend_probe.sh \
             > /tmp/frontend-probe.txt || frontend=$?
           cat /tmp/frontend-probe.txt
           # A verdict line or it did not run (its first deploy exited 0 having printed nothing).
@@ -210,8 +212,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
-          ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' bash -s" < scripts/deploy/backend_state.sh \
+          scripts/deploy/on_box.sh scripts/deploy/backend_state.sh \
             > /tmp/state.txt 2>&1 || echo "(state dump failed: exit $?)" >> /tmp/state.txt
           cat /tmp/state.txt
           { echo "## Backend container state"; echo; echo '```'; cat /tmp/state.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

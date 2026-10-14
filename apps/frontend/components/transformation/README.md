@@ -1,6 +1,6 @@
 # Transformation Components
 
-Comprehensive UI components for data preparation and transformation workflows in the Narrative Modeling App.
+Comprehensive UI components for data preparation and transformation workflows in SheetPredict.
 
 ## Overview
 

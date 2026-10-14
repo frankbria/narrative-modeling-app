@@ -128,7 +128,9 @@ Only is enough for `verify-backup-config.sh`).
    delete-markers (recoverable during the retention window) rather than
    destroying object history immediately.
 2. **Lifecycle rule `expire-noncurrent`:** permanently delete **noncurrent**
-   versions after 30 days, and abort incomplete multipart uploads after 7 days —
+   versions after 30 days, remove the delete markers that then have nothing
+   under them (`ExpiredObjectDeleteMarker`; without it every deleted object
+   leaves a marker for ever), and abort incomplete multipart uploads after 7 days —
    bounds the storage growth versioning would otherwise create.
 3. **Lifecycle rule `purge-erased` (optional, GDPR):** to guarantee erased PII is
    *permanently* gone (not just delete-markered), run a scheduled job that

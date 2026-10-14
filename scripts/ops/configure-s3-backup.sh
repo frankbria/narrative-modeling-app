@@ -57,6 +57,10 @@ echo "bucket:  $BUCKET"
 [[ $DRY_RUN -eq 1 ]] && echo "mode:    DRY RUN (no changes)"
 echo
 
+# The rule also removes expired delete markers (#529): once a deleted object's
+# noncurrent versions have expired, its delete marker is all that is left, and
+# without this it stays for ever. It costs nothing to store and something to list.
+#
 # Retention windows come from runbook section 3 and are the numbers the drill log
 # and the GDPR follow-up both refer to. Change them here and there together.
 NONCURRENT_DAYS=30
@@ -67,6 +71,7 @@ OUR_RULE=$(cat <<JSON
   "ID": "expire-noncurrent",
   "Status": "Enabled",
   "Filter": {"Prefix": ""},
+  "Expiration": {"ExpiredObjectDeleteMarker": true},
   "NoncurrentVersionExpiration": {"NoncurrentDays": ${NONCURRENT_DAYS}},
   "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": ${ABORT_MPU_DAYS}}
 }
@@ -111,7 +116,7 @@ import json,sys
 rules=json.loads(sys.argv[1]).get('Rules',[])
 print(', '.join(r.get('ID','<unnamed>') for r in rules if r.get('ID')!='expire-noncurrent') or '(none)')
 " "$LIFECYCLE")"
-echo "lifecycle: expire-noncurrent (${NONCURRENT_DAYS}d) + abort-incomplete-mpu (${ABORT_MPU_DAYS}d)"
+echo "lifecycle: expire-noncurrent (${NONCURRENT_DAYS}d, and the delete markers left with nothing under them) + abort-incomplete-mpu (${ABORT_MPU_DAYS}d)"
 echo "  preserving existing rules: $preserved"
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "  WOULD apply:"

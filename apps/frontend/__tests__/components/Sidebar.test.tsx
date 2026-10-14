@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Sidebar from '@/components/Sidebar';
+import { COMPANY } from '@/lib/legal/company';
 
 // Mutable so individual tests can flip the server-computed admin flag (#477).
 const mockSession: { isAdmin?: boolean; user: { name: string; email: string } } = {
@@ -13,6 +14,12 @@ jest.mock('next-auth/react', () => ({
 }));
 
 describe('Sidebar navigation', () => {
+  // #765: the sidebar carried a name of its own, a third beside the title's and onboarding's.
+  it('is headed by the product name', () => {
+    render(<Sidebar />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(COMPANY.serviceName);
+  });
+
   it('links to the training jobs dashboard after Build Model', () => {
     render(<Sidebar />);
 
@@ -26,6 +33,14 @@ describe('Sidebar navigation', () => {
     const buildModelIndex = links.indexOf('Build Model');
     expect(buildModelIndex).toBeGreaterThanOrEqual(0);
     expect(links[buildModelIndex + 1]).toBe('Training Jobs');
+  });
+
+  // #502: experiments collected nothing, so the product does not offer them.
+  it('offers no A/B testing entry', () => {
+    render(<Sidebar />);
+    const links = screen.getAllByRole('link');
+    expect(links.map((link) => link.textContent)).not.toContain('A/B Testing');
+    expect(links.map((link) => link.getAttribute('href'))).not.toContain('/experiments');
   });
 
   // ---- Responsive drawer + labeled nav (issue #282) ----

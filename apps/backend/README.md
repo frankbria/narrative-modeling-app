@@ -1,6 +1,6 @@
-# Backend API - Narrative Modeling App
+# Backend API - SheetPredict
 
-FastAPI-based backend service for the Narrative Modeling Application, providing AI-guided machine learning capabilities through a RESTful API.
+FastAPI-based backend service for SheetPredict, providing AI-guided machine learning capabilities through a RESTful API.
 
 ## 🏗️ Architecture
 

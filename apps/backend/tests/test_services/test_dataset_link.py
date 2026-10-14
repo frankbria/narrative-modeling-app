@@ -272,6 +272,36 @@ class TestAConcurrentWriteSurvivesTheMove:
         assert (await DatasetMetadata.get(meta.id)).file_type == file_type
         assert (await UserData.get(ud.id)).file_type == file_type
 
+    async def test_a_move_records_the_size_of_the_file_it_moved_to(self, setup_database, monkeypatch):
+        """#781: the storage ceiling sums `file_size`, which stayed the upload's size
+        however large a transformation made the dataset. Only the HEAD is stubbed."""
+        from app.services import dataset_link
+
+        asked = []
+        monkeypatch.setattr(dataset_link, "object_size", lambda url: asked.append(url) or 4096)
+        meta, ud = await _twins()
+        await ud.set({"file_size": 100})
+
+        await record_new_file(meta, NEW)
+
+        assert asked == [NEW]
+        assert (await UserData.get(ud.id)).file_size == 4096
+        assert (await DatasetMetadata.get(meta.id)).file_size == 4096
+
+    async def test_a_size_that_cannot_be_read_leaves_the_recorded_one_and_the_move_stands(
+        self, setup_database, monkeypatch
+    ):
+        from app.services import dataset_link
+
+        monkeypatch.setattr(dataset_link, "object_size", lambda url: None)
+        meta, ud = await _twins()
+        await ud.set({"file_size": 100})
+
+        await record_new_file(ud, NEW)
+
+        moved = await UserData.get(ud.id)
+        assert (moved.s3_url, moved.file_size) == (NEW, 100)
+
     async def test_a_version_object_that_cannot_be_read_fails_the_move(self, setup_database):
         """No guess: the twins stay where they were rather than take a type off the name."""
         meta, ud = await _twins()

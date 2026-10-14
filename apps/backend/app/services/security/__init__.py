@@ -1,5 +1,5 @@
 """
-Security services for the Narrative Modeling App
+Security services for SheetPredict
 """
 
 from .pii_detector import PIIDetection, PIIDetector, PIIType

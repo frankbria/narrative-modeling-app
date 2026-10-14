@@ -17,6 +17,7 @@
 
 import { test, expect } from '../fixtures';
 import type { Page, Route } from '@playwright/test';
+import { expectLandedOnStage } from '../helpers/landing';
 
 const DATASET_ID = 'e2e-nav-ds';
 const MODEL_ID = 'e2e-nav-model';
@@ -274,7 +275,7 @@ test.describe.serial('Seamless stage transitions (#88)', () => {
     await expect(predictContinue).toBeEnabled({ timeout: 15000 });
     await predictContinue.click();
 
-    // --- Stage 8: Deployment reached ---
-    await expect(page).toHaveURL(/\/deploy$/, { timeout: 15000 });
+    // --- Stage 8: Deployment reached, and not bounced from (#810) ---
+    await expectLandedOnStage(page, /\/deploy$/, 'Deployment');
   });
 });

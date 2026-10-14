@@ -443,13 +443,34 @@ class S3Service:
             )
         probe_key = f"_startup/write-probe-{uuid.uuid4().hex}"
         try:
-            self.s3_client.put_object(Bucket=bucket, Key=probe_key, Body=b"ok")
-            self.s3_client.delete_object(Bucket=bucket, Key=probe_key)
+            written = self.s3_client.put_object(Bucket=bucket, Key=probe_key, Body=b"ok")
+            self._remove_probe(bucket, probe_key, written.get("VersionId"))
         except Exception as exc:  # noqa: BLE001 - any failure means "not writable"
             raise RuntimeError(
                 f"Configured S3 bucket {bucket!r} is not writable "
                 f"({type(exc).__name__}); refusing to start (#495)."
             ) from exc
+
+    def _remove_probe(self, bucket: str, key: str, version_id: str | None) -> None:
+        """Delete the probe, and on a versioned bucket the version it wrote (#529).
+
+        A plain delete there keeps the bytes as a noncurrent version and adds a delete
+        marker, one of each per boot of each worker. Deleting a version needs
+        ``s3:DeleteObjectVersion``; a policy without it gets the plain delete, never a
+        refused boot, and the bucket's lifecycle rule expires what is left.
+        """
+        if version_id:
+            try:
+                self.s3_client.delete_object(Bucket=bucket, Key=key, VersionId=version_id)
+                return
+            except ClientError as exc:
+                logger.warning(
+                    "The startup probe could not delete the object version it wrote (%s): "
+                    "a noncurrent version and a delete marker stay in the bucket until its "
+                    "lifecycle rule expires them. Grant s3:DeleteObjectVersion to stop that.",
+                    exc.response.get("Error", {}).get("Code", "unknown"),
+                )
+        self.s3_client.delete_object(Bucket=bucket, Key=key)
 
     @with_circuit_breaker(
         "s3",

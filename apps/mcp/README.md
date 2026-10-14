@@ -1,7 +1,7 @@
-# MCP Server - Narrative Modeling App
+# MCP Server - SheetPredict
 
 Model Context Protocol (MCP) server exposing data-analysis tools for the
-Narrative Modeling Application over an SSE transport.
+SheetPredict over an SSE transport.
 
 ## Architecture
 
