@@ -16,6 +16,7 @@ it; `scripts/inventory_dataset_links.py` finds every pair in that state.
 import asyncio
 import contextlib
 import functools
+import inspect
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
@@ -333,20 +334,25 @@ def holds_the_dataset(
     dataset_id_of: Callable[[dict[str, Any]], str], busy: Callable[[dict[str, Any]], Any]
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """For a route that moves a dataset: run the handler holding the dataset's lease
-    (#1022), so it reads the file the last writer left. `dataset_id_of(kwargs)` names the
-    dataset from the handler's arguments; `busy(kwargs)` is the route's own failure answer
+    (#1022), so it reads the file the last writer left. `dataset_id_of(arguments)` names the
+    dataset from the handler's arguments by name; `busy(arguments)` is the route's own failure answer
     when the lease is still held after the wait, and nothing has been written then.
     Place it directly above the handler, under the other decorators.
     """
 
     def wrap(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        signature = inspect.signature(handler)
+
         @functools.wraps(handler)
         async def run(*args: Any, **kwargs: Any) -> Any:
+            # By name, however the handler was called: FastAPI passes keywords, a test
+            # calling the handler directly may not.
+            named = signature.bind_partial(*args, **kwargs).arguments
             try:
-                async with holding_the_dataset(dataset_id_of(kwargs), kwargs["current_user_id"]):
+                async with holding_the_dataset(dataset_id_of(named), named["current_user_id"]):
                     return await handler(*args, **kwargs)
             except LeaseBusy:
-                return busy(kwargs)
+                return busy(named)
 
         return run
 
