@@ -15,8 +15,9 @@ import { join } from 'path'
 import { globSync } from 'glob'
 
 const ROOT = join(__dirname, '..', '..')
-// `return;` alone on a line, or ending a one-line `if (...) return;`.
-const EARLY_RETURN = /(^\s*|\)\s*)return;\s*$/m
+// A bare `return;` (or `return ;`) alone on a line, ending `if (...)` or `else`, or in a
+// one-line block, with or without a trailing comment.
+const EARLY_RETURN = /(^|[)}{]|\belse)\s*return\s*;\s*(\}\s*)?(\/\/.*)?$/m
 
 const specs = globSync('e2e/**/*.spec.ts', { cwd: ROOT })
 
@@ -30,9 +31,21 @@ describe('e2e specs do not return early', () => {
     expect(offenders).toEqual([])
   })
 
-  it('the pattern catches both shapes, and a return with a value is left alone', () => {
-    expect(EARLY_RETURN.test('    if (!ready) return;\n')).toBe(true)
-    expect(EARLY_RETURN.test('      return;\n')).toBe(true)
-    expect(EARLY_RETURN.test('    return page.url();\n')).toBe(false)
+  it.each([
+    '    if (!ready) return;',
+    '      return;',
+    '      return ;',
+    '    } else return;',
+    '    if (!ready) { return; }',
+    '      return; // the gate bounced us',
+  ])('the pattern catches %j', (line) => {
+    expect(EARLY_RETURN.test(`${line}\n`)).toBe(true)
   })
+
+  it.each(['    return page.url();', '    const returned = await go();', '    // return; in prose'])(
+    'the pattern leaves %j alone',
+    (line) => {
+      expect(EARLY_RETURN.test(`${line}\n`)).toBe(false)
+    }
+  )
 })

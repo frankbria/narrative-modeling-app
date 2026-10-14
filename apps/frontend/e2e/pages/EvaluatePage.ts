@@ -14,20 +14,10 @@ export class EvaluatePage extends BasePage {
     super(page);
   }
 
-  async gotoEvaluate() {
-    await this.goto('/evaluate');
-  }
-
   /** Resolves once the dashboard's tabs replace the loading spinner. It waited for the
    *  text "Model Evaluation", which the stage bar shows from the start (#921). */
   async waitForDashboard(timeout: number = 60000) {
     await this.tab(/overview/i).waitFor({ state: 'visible', timeout });
-  }
-
-  /** Whether the workflow gating redirected away from /evaluate. */
-  wasRedirected(): boolean {
-    const url = this.page.url();
-    return url.includes('/upload') || url.includes('/model');
   }
 
   tab(name: string | RegExp): Locator {

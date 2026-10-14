@@ -89,6 +89,7 @@ test.describe('Model Evaluation Dashboard', () => {
   });
 
   test('compares two models trained on the dataset', async ({ authenticatedPage, trainModel }) => {
+    test.setTimeout(300000); // a second real training on top of beforeEach's
     await trainModel(datasetId, TARGET_COLUMN);
     const evaluatePage = await openDashboard(authenticatedPage);
 
