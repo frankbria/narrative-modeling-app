@@ -1,3 +1,24 @@
+# Issue #529: S3 lifecycle (the part that is code: delete markers, and the startup probe's own leak)
+
+Measured on the staging bucket first (read-only): 0 current objects, 676 noncurrent
+versions (42.6 MB) and 676 delete markers, no lifecycle rule. 154 of each are the startup
+write-probe's, all written in the last 30 days.
+
+## Plan
+- [x] RED (LocalStack, versioned bucket): the startup probe leaves no version and no delete
+      marker. Today each boot leaves one of each, per worker.
+- [x] The probe deletes the version it wrote (`VersionId` from the put). If that delete is
+      refused (no `s3:DeleteObjectVersion`), it falls back to the plain delete it does
+      today, so a boot can never fail on this.
+- [x] RED: the scripted lifecycle rule removes expired delete markers
+      (`ExpiredObjectDeleteMarker`), and `verify-backup-config.sh` fails without it. The rule
+      expired noncurrent versions already; their markers stayed for ever.
+- [x] Runbook section 3 says so.
+- [x] Not code, on the issue: the measurements, why no prefix is safe for an age-based
+      expiry of current objects, why a storage-class transition costs more than it saves at
+      this size, and that applying the rule to a bucket is the operator's (#299).
+
+
 # Issue #502: A/B testing is removed (owner decision: hide the UI and nav entry, unmount the routes, keep the models)
 
 ## Plan
