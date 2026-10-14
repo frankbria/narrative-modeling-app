@@ -287,6 +287,17 @@ async def ensure_metadata_twin(dataset_id: str, user_id: str) -> DatasetMetadata
     return twin or await _create_twin(upload)
 
 
+async def owns_dataset(dataset_id: str, user_id: str) -> bool:
+    """Whether the caller owns a dataset of this id, in either id space (#847).
+
+    Read-only: a caller that only needs to know must not create a twin. Someone
+    else's dataset and one that does not exist are the same answer.
+    """
+    if await DatasetMetadata.find_one({"dataset_id": dataset_id, "user_id": user_id}):
+        return True
+    return await _owned_upload(dataset_id, user_id) is not None
+
+
 async def history_key(dataset_id: str, user_id: str) -> str:
     """The id a dataset's history is kept under, whichever id the request named it by (#851).
 

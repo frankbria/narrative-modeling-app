@@ -24,6 +24,7 @@ from app.schemas.workflow import (
     WorkflowResponse,
     WorkflowUpdateRequest,
 )
+from app.services.dataset_link import owns_dataset
 from app.services.exceptions import ConflictError, NotFoundError
 from app.services.workflow_service import WorkflowService
 
@@ -51,6 +52,13 @@ async def create_workflow(
         logger.info(
             f"Creating workflow for user {current_user_id} dataset {dataset_id}"
         )
+        # Erasure finds a workflow through its dataset, so a row for a dataset that
+        # was erased, or never existed, would stay for ever (#847).
+        if not await owns_dataset(dataset_id, current_user_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dataset {dataset_id} not found",
+            )
         service = WorkflowService()
         workflow = await service.create_workflow(
             user_id=current_user_id,

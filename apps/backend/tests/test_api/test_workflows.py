@@ -12,7 +12,45 @@ Auth fixture maps to user "test_user_123".
 
 import pytest
 
+from app.models.dataset import DatasetMetadata
+from app.models.user_data import UserData
+from app.models.workflow import WorkflowState
+
 DATASET_ID = "dataset_wf_api_1"
+TEST_USER = "test_user_123"
+
+
+@pytest.fixture(autouse=True)
+async def _the_callers_dataset(setup_database):
+    """A workflow is created only for a dataset its caller owns (#847)."""
+    await _metadata(TEST_USER, DATASET_ID)
+
+
+async def _upload(user_id: str) -> UserData:
+    return await UserData(
+        user_id=user_id,
+        filename="visits.csv",
+        original_filename="visits.csv",
+        s3_url=f"s3://test-bucket/datasets/{user_id}/visits.csv",
+        num_rows=2,
+        num_columns=2,
+        data_schema=[],
+    ).insert()
+
+
+async def _metadata(user_id: str, dataset_id: str) -> DatasetMetadata:
+    return await DatasetMetadata(
+        user_id=user_id,
+        dataset_id=dataset_id,
+        filename="visits.csv",
+        original_filename="visits.csv",
+        file_type="csv",
+        file_path=f"datasets/{user_id}/{dataset_id}.csv",
+        s3_url=f"s3://test-bucket/datasets/{user_id}/{dataset_id}.csv",
+        file_size=10,
+        num_rows=2,
+        num_columns=2,
+    ).insert()
 
 CREATE_PAYLOAD = {
     "current_stage": "data_profiling",
@@ -316,3 +354,44 @@ class TestRecoveryScenarios:
             }
         assert entries[-1]["model_id"] == "model_1"
         assert entries[-1]["stage_data"] == {"features": {"selected": ["a"]}}
+
+
+class TestCreateNeedsADatasetTheCallerOwns:
+    """A workflow is created only for a dataset the caller owns (#847).
+
+    The route used to create a row for any id it was sent. Erasure finds a
+    workflow through its dataset, so a row for an erased or invented dataset
+    stayed for ever, and since #808 the frontend's PUT-then-POST fallback could
+    recreate the workflow of a dataset erased in another tab.
+    """
+
+    async def test_the_owner_creates_one_for_an_upload_and_for_a_metadata_dataset(
+        self, async_authorized_client, setup_database
+    ):
+        upload = await _upload(TEST_USER)
+        metadata = await _metadata(TEST_USER, "ds_847_owned")
+
+        for dataset_id in (str(upload.id), metadata.dataset_id):
+            response = await async_authorized_client.post(
+                f"/api/v1/workflows/{dataset_id}", json=CREATE_PAYLOAD
+            )
+            assert response.status_code == 201, response.text
+            assert response.json()["dataset_id"] == dataset_id
+
+    async def test_another_tenants_dataset_and_an_unknown_one_answer_alike(
+        self, async_authorized_client, setup_database
+    ):
+        theirs = await _upload("someone_else")
+        their_metadata = await _metadata("someone_else", "ds_847_theirs")
+        unknown = "66f0c0ffee0000000000dead"
+
+        answers = []
+        for dataset_id in (str(theirs.id), their_metadata.dataset_id, unknown, "never_existed"):
+            response = await async_authorized_client.post(
+                f"/api/v1/workflows/{dataset_id}", json=CREATE_PAYLOAD
+            )
+            assert response.status_code == 404, response.text
+            answers.append(response.json()["detail"].replace(dataset_id, "<id>"))
+
+        assert len(set(answers)) == 1, "a foreign id must not be told apart from an unknown one"
+        assert await WorkflowState.find_all().count() == 0
