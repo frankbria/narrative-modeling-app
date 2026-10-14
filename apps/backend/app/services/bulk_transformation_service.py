@@ -640,7 +640,9 @@ class BulkTransformationService:
             job.mark_partially_completed(result)
         else:
             job.mark_completed(result)
-        await self._write_if_running(job, "status", "completed_at", "result", "output_file_path")
+        if not await self._write_if_running(job, "status", "completed_at", "result", "output_file_path"):
+            # Cancelled after the re-check above: the dataset may have moved (#925).
+            logger.warning(f"Bulk transformation job {job.job_id} ended before its result was recorded")
 
     @staticmethod
     async def _still_running(job: BulkTransformationJob) -> bool:
@@ -822,11 +824,7 @@ class BulkTransformationService:
         # Conditional: a whole-document save could put CANCELLED over a run that
         # finished meanwhile, or write back progress the run had moved on from (#925).
         job.mark_cancelled()
-        cancelled = await BulkTransformationJob.get_motor_collection().update_one(
-            {"job_id": job_id, "status": {"$in": [BulkJobStatus.PENDING.value, BulkJobStatus.RUNNING.value]}},
-            {"$set": {"status": job.status.value, "completed_at": job.completed_at, "updated_at": job.updated_at}},
-        )
-        return cancelled.modified_count == 1
+        return await self._write_if_live(job, "status", "completed_at")
 
     async def _stop_task(self, job_id: str) -> None:
         """Cancel the job's background task in this process, if there is one."""
