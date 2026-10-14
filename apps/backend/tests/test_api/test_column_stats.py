@@ -23,7 +23,7 @@ OTHER_USER = "other_user_449"
 
 
 async def make_user_data(
-    user_id: str, filename: str = "payroll.csv", stored_as: str | None = None
+    user_id: str, filename: str = "payroll.csv", stored_as: str | None = None, num_columns: int = 2
 ) -> UserData:
     """A minimal persisted UserData owned by `user_id`.
 
@@ -38,7 +38,7 @@ async def make_user_data(
         s3_url=f"s3://test-bucket/{user_id}/{stored_as}",
         file_path=f"{user_id}/{stored_as}",
         num_rows=100,
-        num_columns=2,
+        num_columns=num_columns,
         data_schema=[],
     )
     await dataset.insert()
@@ -139,8 +139,8 @@ class TestColumnStatsTenantIsolation:
         self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
     ):
         """Regression guard: scoping the cache must not break the owner path."""
-        # ARRANGE
-        mine = await make_user_data(mock_user_id)
+        # ARRANGE: a one-column dataset, so its one row is a complete set (#889)
+        mine = await make_user_data(mock_user_id, num_columns=1)
         await seed_cached_stats(mine, mock_user_id)
 
         # ACT
@@ -163,8 +163,8 @@ class TestColumnStatsTenantIsolation:
         foreign-owned stats row from being served — which is what AC2 asks for
         ("even if the check above is later refactored away").
         """
-        # ARRANGE
-        mine = await make_user_data(mock_user_id)
+        # ARRANGE: a one-column dataset, so the owner's one row is a complete set (#889)
+        mine = await make_user_data(mock_user_id, num_columns=1)
         await seed_cached_stats(mine, mock_user_id, column_name="salary")
         await seed_cached_stats(mine, OTHER_USER, column_name="ssn")
 
@@ -539,6 +539,67 @@ class TestColumnStatsTenantIsolation:
             response = await async_authorized_client.get(
                 f"/api/v1/column_stats/dataset/{mine.id}"
             )
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+
+
+class TestOnlyACompleteSetIsAHit:
+    """#889: a cached set was a hit whenever it had any row at all.
+
+    `insert_many` commits in batches, so a reader arriving mid-write, or after a writer
+    that died between batches, was served the columns written so far as the answer,
+    and the second case never healed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_set_missing_columns_is_recomputed_and_completed(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str, monkeypatch
+    ):
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id)  # two columns: salary, dept
+        await seed_cached_stats(mine, mock_user_id, "salary")  # a write cut off after one
+
+        body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+        with patch("app.api.routes.column_stats.get_file_from_s3", return_value=body):
+            response = await async_authorized_client.get(f"/api/v1/column_stats/dataset/{mine.id}")
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+        stored = await ColumnStats.get_motor_collection().distinct("column_name", {"dataset_id.$id": mine.id})
+        assert sorted(stored) == ["dept", "salary"], "the stored set was completed"
+
+    @pytest.mark.asyncio
+    async def test_a_complete_set_is_served_without_a_download(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str
+    ):
+        mine = await make_user_data(mock_user_id)
+        for column in ("salary", "dept"):
+            await seed_cached_stats(mine, mock_user_id, column)
+
+        def no_download(*_args, **_kwargs):
+            raise AssertionError("a complete cache was re-downloaded")
+
+        with patch("app.api.routes.column_stats.get_file_from_s3", no_download):
+            response = await async_authorized_client.get(f"/api/v1/column_stats/dataset/{mine.id}")
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
+
+
+    @pytest.mark.asyncio
+    async def test_the_column_names_decide_over_the_count_when_both_are_recorded(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str, monkeypatch
+    ):
+        """After /data/process a dataset carries its column names; those are the truth."""
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, num_columns=1)
+        await mine.set({"columns": ["salary", "dept"]})
+        await seed_cached_stats(mine, mock_user_id, "salary")
+
+        body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+        with patch("app.api.routes.column_stats.get_file_from_s3", return_value=body):
+            response = await async_authorized_client.get(f"/api/v1/column_stats/dataset/{mine.id}")
 
         assert response.status_code == 200
         assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]

@@ -1,13 +1,17 @@
-# Issue #880: say at startup when invite mode has an empty INVITE_ALLOWLIST
+# Issue #889: cached column stats are served without a completeness check
 
 ## Plan
-- [x] RED, backend: the startup announcement warns that nobody can sign in when the mode is
-      `invite` and the list is empty; says invite mode at INFO when the list has entries;
-      never prints an address.
-- [x] RED, frontend: `signupModeWarning(env)` is that sentence in production, and nothing
-      for a populated list or outside production; open mode keeps its own warning.
-- [x] `_announce_signup_mode` (backend) and `signupModeWarning` (frontend), each called where
-      the open-mode warning is today.
+- [x] Decision: the route stays. Removing it would leave its rows (per-column values of
+      customer data) in a collection nothing erases; keeping it costs one comparison.
+      Case 3 of the issue (a moved dataset) is already handled: `record_new_file` deletes
+      the dataset's stats with every move (#960). A test pins that through a transformation.
+- [x] RED: a cached set with fewer rows than the dataset has columns (a writer cut off, or
+      one still writing) is not a hit: the answer has every column, and the stored set is
+      completed so the next read is a hit.
+- [x] RED: a complete set is served with no download.
+- [x] The healing insert is unordered, so a partial set is completed: the rows already
+      there collide and are skipped, the missing ones go in.
+- [x] `_file_type_of` becomes public (`file_type_of`), since the route uses it.
 
 
 # Issue #864: DELETE /user_data/{id} deletes only the row, and the e2e cleanup relies on it

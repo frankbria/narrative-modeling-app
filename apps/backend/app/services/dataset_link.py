@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 _KNOWN_TYPES = {"parquet", "csv", "json", "xlsx", "xls"}
 
 
-def _file_type_of(url: str) -> str | None:
+def file_type_of(url: str) -> str | None:
     """The stored `file_type` value for a location, from its extension; None if unknown."""
     path = url.split("?", 1)[0]
     # A masked copy is CSV whatever its name says: until #937 it kept the upload's extension.
@@ -53,7 +53,7 @@ async def file_type_at(url: str) -> str | None:
     for those the bytes decide. Raises if that object cannot be read: a guess here is
     what made training parse parquet as CSV after an undo.
     """
-    named = _file_type_of(url)
+    named = file_type_of(url)
     if named == "parquet" or "/versions/" not in url:
         return named
     content = await asyncio.to_thread(lambda: get_file_from_s3(url).getvalue())
@@ -372,14 +372,14 @@ def _twin_file_type(upload: UserData) -> str:
 
 
 def _transformable_kind(upload: UserData) -> str | None:
-    for candidate in ((upload.file_type or "").lower(), _file_type_of(upload.s3_url)):
+    for candidate in ((upload.file_type or "").lower(), file_type_of(upload.s3_url)):
         if candidate in _TRANSFORMABLE:
             return candidate
     return None
 
 
 def _not_transformable(upload: UserData) -> NotFoundError:
-    kind = upload.file_type or _file_type_of(upload.s3_url) or "of an unknown type"
+    kind = upload.file_type or file_type_of(upload.s3_url) or "of an unknown type"
     return NotFoundError(
         resource_type="Dataset",
         resource_id=str(upload.id),

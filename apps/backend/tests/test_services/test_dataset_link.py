@@ -129,11 +129,11 @@ class TestRecordNewFile:
         assert (await UserData.get(ud.id)).file_type == "parquet"
 
     def test_unknown_extensions_leave_the_type_alone(self):
-        from app.services.dataset_link import _file_type_of
+        from app.services.dataset_link import file_type_of
 
-        assert _file_type_of("s3://b/x/y.parquet?X-Amz-Signature=1") == "parquet"
-        assert _file_type_of("s3://b/x/y.PARQUET") == "parquet"
-        assert _file_type_of("s3://b/x/no-extension") is None
+        assert file_type_of("s3://b/x/y.parquet?X-Amz-Signature=1") == "parquet"
+        assert file_type_of("s3://b/x/y.PARQUET") == "parquet"
+        assert file_type_of("s3://b/x/no-extension") is None
 
     async def test_a_failure_before_anything_moved_is_not_a_half_move(self, setup_database, caplog):
         """The ERROR is for the half-moved state only: a failure on the FIRST save raises plainly."""
