@@ -586,3 +586,20 @@ class TestOnlyACompleteSetIsAHit:
         assert response.status_code == 200
         assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
 
+
+    @pytest.mark.asyncio
+    async def test_the_column_names_decide_over_the_count_when_both_are_recorded(
+        self, async_authorized_client: AsyncClient, setup_database, mock_user_id: str, monkeypatch
+    ):
+        """After /data/process a dataset carries its column names; those are the truth."""
+        monkeypatch.setenv("AWS_BUCKET_NAME", "test-bucket")
+        mine = await make_user_data(mock_user_id, num_columns=1)
+        await mine.set({"columns": ["salary", "dept"]})
+        await seed_cached_stats(mine, mock_user_id, "salary")
+
+        body = io.BytesIO(b"salary,dept\n100,a\n200,b\n")
+        with patch("app.api.routes.column_stats.get_file_from_s3", return_value=body):
+            response = await async_authorized_client.get(f"/api/v1/column_stats/dataset/{mine.id}")
+
+        assert response.status_code == 200
+        assert sorted(c["column_name"] for c in response.json()) == ["dept", "salary"]
