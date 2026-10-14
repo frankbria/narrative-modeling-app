@@ -1253,3 +1253,46 @@ class TestPaddedWebhookSecret:
         )
 
         assert response.status_code == 400
+
+
+class TestStripeCallsAreBounded:
+    """A Stripe call that hangs is given up on, not waited out.
+
+    The SDK's own defaults are an 80-second timeout and two retries. The checkout
+    webhook now asks Stripe a question while Stripe waits for the webhook's answer,
+    so an unanswered call held that request for four minutes.
+    """
+
+    async def test_an_unanswered_call_fails_inside_its_bound(self, monkeypatch):
+        import asyncio
+        import socket
+        import time
+
+        import stripe
+
+        from app.billing import stripe_client
+
+        # A server that accepts the connection and never answers.
+        silent = socket.socket()
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(8)
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(stripe, "api_base", f"http://127.0.0.1:{silent.getsockname()[1]}")
+        monkeypatch.setattr(stripe, "default_http_client", None)
+        monkeypatch.setattr(stripe_client, "REQUEST_TIMEOUT_SECONDS", 0.3)
+        monkeypatch.setattr(stripe_client, "MAX_NETWORK_RETRIES", 0)
+
+        started = time.monotonic()
+        try:
+            with pytest.raises(stripe_client.BillingProviderError):
+                await asyncio.wait_for(stripe_client.retrieve_subscription("sub_1"), timeout=5)
+        finally:
+            silent.close()
+
+        assert time.monotonic() - started < 3
+
+    def test_the_bound_is_far_inside_the_sdks_default(self):
+        from app.billing import stripe_client
+
+        worst_case = stripe_client.REQUEST_TIMEOUT_SECONDS * (1 + stripe_client.MAX_NETWORK_RETRIES)
+        assert worst_case <= 30

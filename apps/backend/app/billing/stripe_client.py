@@ -80,6 +80,13 @@ def setting(name: str) -> str:
 STRIPE_API_VERSION = "2026-07-29.dahlia"
 
 
+#: Every Stripe call is bounded, like every other upstream client (#501, #519). The
+#: SDK's own defaults are 80 seconds and two retries, which is four minutes inside
+#: a webhook that Stripe itself is waiting on (#598).
+REQUEST_TIMEOUT_SECONDS: float = 10
+MAX_NETWORK_RETRIES = 1
+
+
 def _client():
     """The Stripe SDK, configured on first use.
 
@@ -95,6 +102,11 @@ def _client():
 
     stripe.api_key = key
     stripe.api_version = STRIPE_API_VERSION
+    stripe.max_network_retries = MAX_NETWORK_RETRIES
+    if stripe.default_http_client is None:
+        stripe.default_http_client = stripe.new_default_http_client(
+            timeout=REQUEST_TIMEOUT_SECONDS
+        )
     return stripe
 
 
