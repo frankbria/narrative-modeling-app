@@ -5,6 +5,7 @@ tests/test_integration/test_undo_the_first_step_localstack.py. These hold the de
 that flow depends on: when the starting version is recorded, and what undo does with it.
 """
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,18 @@ from app.models.transformation import TransformationConfig
 from app.services.exceptions import ValidationError
 from app.services.history_service import HistoryService, _cannot_undo
 from app.services.transformation_service import TransformationService
+
+
+@contextlib.asynccontextmanager
+async def _no_lease(*_args, **_kwargs):
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _no_database_so_no_lease():
+    """No database here, so no lease either (#1022)."""
+    with patch("app.services.history_service.holding_the_dataset", _no_lease):
+        yield
 
 pytestmark = pytest.mark.asyncio
 

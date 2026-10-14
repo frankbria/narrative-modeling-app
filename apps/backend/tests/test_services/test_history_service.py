@@ -11,6 +11,7 @@ Tests cover:
 - Error handling (invalid position, no history, unauthorized access)
 """
 
+import contextlib
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,6 +22,19 @@ from app.services.exceptions import (
     ValidationError,
 )
 from app.services.history_service import HistoryService
+
+
+@contextlib.asynccontextmanager
+async def _no_lease(*_args, **_kwargs):
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _no_database_so_no_lease():
+    """No database here, so no lease either (#1022; its tests are in test_dataset_lease.py
+    and test_undo_during_an_apply_localstack.py)."""
+    with patch("app.services.history_service.holding_the_dataset", _no_lease):
+        yield
 
 
 @pytest.fixture
