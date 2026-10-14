@@ -739,15 +739,17 @@ class TransformationService(BaseService[TransformationConfig]):
         """Write each step's version; the history steps to record, and the last frame."""
         recorded: list[dict[str, Any]] = []
         last: pd.DataFrame | None = None
+        written: str | None = None
         for step in ran:
             if not recorded:
                 done["transformation_id"] = await self._history_config_id(
                     dataset_id, user_id, timestamp, dataset.s3_url
                 )
             # The cursor does not move until every version is written, so a later step
-            # of the same apply derives from the version the step before it just wrote.
-            before = recorded[-1]["version_id"] if recorded else None
-            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, done, before))
+            # of the same apply derives from the last version this apply wrote. A step
+            # whose version could not be written is passed over, not derived from.
+            recorded.append(await self._versioned(dataset, dataset_id, user_id, step, done, written))
+            written = recorded[-1]["version_id"] or written
             if len(recorded) == 1:
                 await self._remember_the_start(done["transformation_id"], dataset, recorded[0]["version_id"])
             last = step.after

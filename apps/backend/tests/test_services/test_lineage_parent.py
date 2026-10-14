@@ -8,6 +8,7 @@ choice itself, on real documents.
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -93,3 +94,25 @@ async def test_a_version_of_another_dataset_or_another_tenant_is_never_the_paren
 
     for foreign in ("v_theirs", "v_other_dataset"):
         assert await _parent(derived_from=foreign) == "v_second"
+
+
+async def test_a_step_whose_version_was_not_written_is_passed_over_not_derived_from():
+    """Writing a version is best-effort. In a three-step apply whose second version
+    fails, the third derives from the first: the last one this apply actually wrote."""
+    service = TransformationService()
+    wrote = iter(["v_first", None, "v_third"])
+    derived_from: list[str | None] = []
+
+    async def versioned(_dataset, _dataset_id, _user_id, _step, _done, parent=None):
+        derived_from.append(parent)
+        return {"version_id": next(wrote)}
+
+    steps = iter([SimpleNamespace(after=n) for n in range(3)])
+    with (
+        patch.object(service, "_versioned", versioned),
+        patch.object(service, "_history_config_id", AsyncMock(return_value=CONFIG)),
+        patch.object(service, "_remember_the_start", AsyncMock()),
+    ):
+        await service._write_versions(SimpleNamespace(s3_url="s3://b/k"), "d852", USER, steps, {}, 0.0)
+
+    assert derived_from == [None, "v_first", "v_first"]
