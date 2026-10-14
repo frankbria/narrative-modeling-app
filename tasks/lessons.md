@@ -2155,3 +2155,18 @@ checked, and the fix is always the same: the claim is a query, so run it.
   that shell's command line. `^.*` in front is not an anchor. Use `pgrep -f '[c]odex …'`
   to find the pid, then kill the pid.
 
+## 2026-10-14: the next number is not the pull request's number (#529)
+- `gh pr create` printed `/pull/1017`; the demo comment in the same command went to 1016,
+  the number I had assumed. 1016 was a Dependabot pull request opened minutes earlier. The
+  comment could only be overwritten with a correction, since deleting is not allowed here.
+- **Rule:** take the number from what `gh pr create` prints (`pr=$(gh pr create … | grep -o
+  '[0-9]*$')`) and use that variable for every later call. Never type it from memory.
+
+## 2026-10-14: on a versioned bucket, count versions, not objects (#529)
+- The staging bucket listed zero objects and held 676 noncurrent versions and 676 delete
+  markers: every "deleted" file, and one pair per boot from the app's own write-probe.
+  `list_objects_v2` cannot see any of it.
+- **Rule:** for "what is in the bucket", "did erasure remove it" or "does this leak", read
+  `list_object_versions`. A test of a delete against real S3 asserts on versions and delete
+  markers, on a bucket with versioning enabled.
+
