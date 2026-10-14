@@ -322,3 +322,22 @@ class TestRetryAndCancelAreClaims:
         stored = await BulkTransformationJob.find_one({"job_id": "bulk_claim"})
         assert stored.status == BulkJobStatus.FAILED
         storage.assert_not_awaited()
+
+    async def test_cancelling_a_running_job_stops_its_task(self, setup_database, storage):
+        upload = await _upload()
+        service = BulkTransformationService()
+        started = asyncio.Event()
+
+        async def blocks(*_args, **_kwargs):
+            started.set()
+            await asyncio.sleep(60)
+
+        service._apply_column_transformation = blocks
+        job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mode"})
+        await asyncio.wait_for(started.wait(), timeout=10)
+
+        assert await service.cancel_job(job.job_id, USER) is True
+
+        assert job.job_id not in service._active_tasks
+        assert (await BulkTransformationJob.find_one({"job_id": job.job_id})).status == BulkJobStatus.CANCELLED
+        storage.assert_not_awaited()
