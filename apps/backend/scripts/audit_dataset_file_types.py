@@ -10,11 +10,8 @@ both dual-written twins (``UserData`` and ``DatasetMetadata``).
 
 The object's extension (``s3_url``, then ``file_path``) is authoritative — it names
 the bytes that actually exist — so a mismatch is corrected by setting ``file_type``
-to the extension-derived type (the same derivation `record_new_file` uses). The one
-exception is a version object (``…/versions/…``) not named ``.parquet``: until #888
-those held parquet under the upload's name, so the script downloads it and the bytes
-decide. That needs the S3 settings the backend runs with. Rows whose location has no
-recognizable extension, or whose version object cannot be read, are reported as
+to the extension-derived type (the same derivation `record_new_file` uses). Rows whose
+location has no recognizable extension are reported as
 ``undetermined`` and never changed.
 
 Read-only by default; ``--apply`` writes the corrected ``file_type``. Output is
@@ -40,19 +37,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.models.dataset import DatasetMetadata
 from app.models.registry import DOCUMENT_MODELS
 from app.models.user_data import UserData
-from app.services.dataset_link import file_type_at
-
-
-async def _expected_type(location: str) -> str | None:
-    """What the object at ``location`` holds, by its extension; None when that cannot be told."""
-    try:
-        return await file_type_at(location)
-    except Exception as e:
-        # A version object that could not be read: its name proves nothing (#888).
-        # Say why, by class only (this output gets pasted into public issues), so
-        # missing S3 settings do not pass for "nothing to fix".
-        print(f"unreadable version object: {type(e).__name__}", file=sys.stderr)
-        return None
+from app.services.dataset_link import file_type_of
 
 
 async def _audit(model, *, apply: bool) -> dict[str, int]:
@@ -79,7 +64,7 @@ async def _outcomes(collection, doc: dict, apply: bool) -> list[str]:
     location = _location(doc)
     if not location:
         return []
-    expected = await _expected_type(location)
+    expected = file_type_of(location)
     if expected is None:
         return ["checked", "undetermined"]
     if _stored_type(doc) == expected:

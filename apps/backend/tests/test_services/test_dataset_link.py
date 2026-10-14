@@ -247,31 +247,6 @@ class TestAConcurrentWriteSurvivesTheMove:
         assert stored.columns == ["a", "b", "ratio"]
         assert (await UserData.get(ud.id)).data_schema == [], "the schema is not copied to the twin"
 
-    @pytest.mark.parametrize("stored, file_type", [
-        (b"PAR1 a transformed frame PAR1", "parquet"),  # a version written before #888
-        (b"id,name\n1,a\n", "csv"),  # a copy of the upload: its name is true
-    ])
-    async def test_a_version_object_not_named_parquet_is_typed_by_its_bytes(
-        self, setup_database, monkeypatch, stored, file_type
-    ):
-        """#888: versions held parquet under the upload's name, and an undo stamped the
-        name's type on both twins. Only the download is stubbed."""
-        import io
-
-        from app.services import dataset_link
-
-        version_url = f"s3://test-bucket/datasets/{USER}/ds/versions/v2/d.csv"
-        monkeypatch.setattr(
-            dataset_link, "get_file_from_s3", lambda url: io.BytesIO(stored) if url == version_url else None
-        )
-        meta, ud = await _twins(NEW)
-        await meta.set({"file_type": "parquet"})
-
-        await record_new_file(meta, version_url)
-
-        assert (await DatasetMetadata.get(meta.id)).file_type == file_type
-        assert (await UserData.get(ud.id)).file_type == file_type
-
     async def test_a_move_records_the_size_of_the_file_it_moved_to(self, setup_database, monkeypatch):
         """#781: the storage ceiling sums `file_size`, which stayed the upload's size
         however large a transformation made the dataset. Only the HEAD is stubbed."""
@@ -301,16 +276,6 @@ class TestAConcurrentWriteSurvivesTheMove:
 
         moved = await UserData.get(ud.id)
         assert (moved.s3_url, moved.file_size) == (NEW, 100)
-
-    async def test_a_version_object_that_cannot_be_read_fails_the_move(self, setup_database):
-        """No guess: the twins stay where they were rather than take a type off the name."""
-        meta, ud = await _twins()
-
-        with pytest.raises(Exception):
-            await record_new_file(meta, "s3://some-other-bucket/datasets/u/ds/versions/v2/d.csv")
-
-        assert (await DatasetMetadata.get(meta.id)).s3_url == OLD
-        assert (await UserData.get(ud.id)).s3_url == OLD
 
 
 class TestEnsureMetadataTwin:

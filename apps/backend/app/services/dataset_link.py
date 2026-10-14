@@ -27,7 +27,7 @@ from app.models.visualization_cache import VisualizationCache
 from app.services.dataset_lease import dataset_lease
 from app.services.exceptions import NotFoundError
 from app.services.redis_cache import cache_service
-from app.utils.s3 import get_file_from_s3, holds_parquet, object_size
+from app.utils.s3 import object_size
 
 logger = logging.getLogger(__name__)
 
@@ -43,21 +43,6 @@ def file_type_of(url: str) -> str | None:
         return "csv"
     ext = path.rsplit(".", 1)[-1].lower()
     return ext if ext in _KNOWN_TYPES else None
-
-
-async def file_type_at(url: str) -> str | None:
-    """The `file_type` of the object at `url`: what its name says, unless it is a version
-    object whose name does not say parquet.
-
-    Until #888 every version held parquet under the upload's own name (`…/d.csv`), so
-    for those the bytes decide. Raises if that object cannot be read: a guess here is
-    what made training parse parquet as CSV after an undo.
-    """
-    named = file_type_of(url)
-    if named == "parquet" or "/versions/" not in url:
-        return named
-    content = await asyncio.to_thread(lambda: get_file_from_s3(url).getvalue())
-    return "parquet" if holds_parquet(content) else named
 
 
 # What the caller may have changed on the document for the new file (#723: these and the
@@ -87,7 +72,7 @@ async def record_new_file(doc: Dataset, new_url: str, *, in_history: bool = Fals
     # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
     # Resolved before the re-read below, never after: this can be a download, and a
     # concurrent move landing during it would be reverted from a stale snapshot (#723).
-    file_type = await file_type_at(new_url) or doc.file_type
+    file_type = file_type_of(new_url) or doc.file_type
     # What the storage ceiling sums (#781): the size of the file the dataset is on now,
     # not of the upload it started from. Asked of S3 here, so every writer that moves a
     # dataset is covered, undo and redo included; unreadable, the recorded size stays.
