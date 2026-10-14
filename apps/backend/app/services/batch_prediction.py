@@ -967,12 +967,17 @@ class BatchPredictionService:
         chunk_df: pd.DataFrame,
         preds: Any,
         proba_matrix: Any,
-        X_array: Any,
+        explained: Any,
         model: MLModel,
         config: BatchPredictionConfig,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """One result per chunk row, in order, from the chunk's predictions, and the
-        rows to explain. Synchronous: it runs in a worker thread (#909)."""
+        rows to explain. Synchronous: it runs in a worker thread (#909).
+
+        ``explained`` is the engineered frame when explanations are requested, densified
+        here for the batched explainer (#80), so the common path never densifies a
+        (possibly sparse) feature matrix."""
+        X_array = None if explained is None else np.asarray(explained)
         is_classification = str(model.problem_type).endswith("classification")
         predictions: list[dict[str, Any]] = []
         to_explain: list[dict[str, Any]] = []
@@ -1065,16 +1070,12 @@ class BatchPredictionService:
             model.model_id, model.user_id, lambda: _infer(X_transformed)
         )
 
-        # Engineered feature rows for the batched explainer (issue #80) — only
-        # materialised when explanations are requested, so we never densify a
-        # (possibly sparse) feature matrix for the common no-explanation path.
-        want_explanations = config.include_explanations
-        X_array = np.asarray(X_transformed) if want_explanations else None
-
         # The per-row results are built in a worker thread too: at the largest chunk
-        # this loop alone held the event loop for a third of a second (#909).
+        # this loop alone held the event loop for a third of a second (#909). The
+        # engineered rows go along only when explanations are requested.
+        explained = X_transformed if config.include_explanations else None
         predictions, to_explain = await asyncio.to_thread(
-            self._assemble_rows, chunk_df, preds, proba_matrix, X_array, model, config
+            self._assemble_rows, chunk_df, preds, proba_matrix, explained, model, config
         )
 
         await self._attach_explanations(to_explain, trained_model, model)
