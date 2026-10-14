@@ -21,8 +21,11 @@ from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
-#: How long a lease lasts if its holder never releases it (a worker that died mid-run).
-LEASE_SECONDS = 300
+#: How long a lease lasts once its holder stops renewing it (a worker that died mid-run).
+LEASE_SECONDS = 300.0
+#: How often a living holder pushes its expiry out. Well inside the lease, so a renewal
+#: delayed by a busy event loop still lands in time.
+RENEW_SECONDS = 60.0
 #: How long a second caller waits for the first to finish before giving up.
 WAIT_SECONDS = 30.0
 _POLL_SECONDS = 0.1
@@ -41,10 +44,28 @@ async def dataset_lease(name: str, *, wait_seconds: float | None = None) -> Asyn
     """
     holder = uuid.uuid4().hex
     await _acquire(name, holder, WAIT_SECONDS if wait_seconds is None else wait_seconds)
+    renewing = asyncio.create_task(_keep(name, holder))
     try:
         yield
     finally:
+        renewing.cancel()
         await _release(name, holder)
+
+
+async def _keep(name: str, holder: str) -> None:
+    """Renew the lease for as long as its holder is running.
+
+    Work that takes longer than the lease is still one holder: without this a second
+    caller took a live holder for a dead one once the lease ran out, and both wrote.
+    """
+    while True:
+        await asyncio.sleep(RENEW_SECONDS)
+        try:
+            await DatasetLease.find({"_id": name, "holder": holder}).update(
+                {"$set": {"expires_at": utcnow() + timedelta(seconds=LEASE_SECONDS)}}
+            )
+        except Exception:
+            logger.warning("Could not renew the lease %s", name, exc_info=True)
 
 
 async def _acquire(name: str, holder: str, wait_seconds: float) -> None:

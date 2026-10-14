@@ -58,6 +58,36 @@ async def test_the_lease_of_a_holder_that_died_is_taken_over(setup_database):
         assert held.holder != "a worker that was killed"
 
 
+async def test_work_longer_than_the_lease_is_still_one_holder(setup_database, monkeypatch):
+    """A slow apply is not a dead one: its lease is renewed while it runs (codex review)."""
+    monkeypatch.setattr(lease, "LEASE_SECONDS", 0.3)
+    monkeypatch.setattr(lease, "RENEW_SECONDS", 0.1)
+
+    async with dataset_lease("apply:u:d"):
+        await asyncio.sleep(0.6)  # twice the lease
+        with pytest.raises(LeaseBusy):
+            async with dataset_lease("apply:u:d", wait_seconds=0.2):
+                pytest.fail("the lease of a holder that is still running was taken")
+
+
+async def test_a_renewal_that_fails_is_tried_again_and_does_not_stop_the_work(setup_database, monkeypatch):
+    monkeypatch.setattr(lease, "RENEW_SECONDS", 0.05)
+    renewals = 0
+
+    def unreachable(*_args, **_kwargs):
+        nonlocal renewals
+        renewals += 1
+        raise RuntimeError("mongo is away")
+
+    async with dataset_lease("apply:u:d"):
+        monkeypatch.setattr(lease.DatasetLease, "find", unreachable)
+        await asyncio.sleep(0.2)
+        monkeypatch.undo()
+
+    assert renewals >= 2
+    assert await DatasetLease.find_all().count() == 0, "released as usual"
+
+
 async def test_a_run_that_outlived_its_lease_does_not_release_its_successors(setup_database):
     async with dataset_lease("apply:u:d"):
         # This holder's lease expired and someone else took it.
