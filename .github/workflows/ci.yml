@@ -187,6 +187,12 @@ jobs:
       - name: Install dependencies
         working-directory: apps/backend
         run: uv sync
+      - name: Install the MCP server's dependencies
+        # The backend-to-MCP SSE round trip (test_mcp_integration_sse_localstack.py)
+        # starts apps/mcp/main.py; without its environment those tests skipped on every
+        # run, and CI_REQUIRE_SERVICES now fails them instead (#998).
+        working-directory: apps/mcp
+        run: uv sync --frozen
       - name: Start LocalStack (S3, required)
         working-directory: apps/backend
         # LocalStack is a HARD requirement of the gate (issue #221): the S3/upload

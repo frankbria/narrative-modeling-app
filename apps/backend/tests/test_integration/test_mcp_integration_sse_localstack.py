@@ -8,7 +8,8 @@ the client spoke REST to paths the server never exposes.
 The tool call uses a non-existent dataset id, so the server returns a well-formed
 ``{"success": False, "message": ...}`` (owner check fails) — which only round-trips if
 transport + tool name + arg shape + result parsing are ALL correct. It needs Mongo (the
-server resolves the dataset there) and the `apps/mcp` uv environment; skips otherwise.
+server resolves the dataset there) and the `apps/mcp` uv environment; skips otherwise,
+except in CI, where the environment is synced and a skip is a failure (#998).
 """
 
 import contextlib
@@ -25,6 +26,7 @@ from app.services.mcp_integration import (
     MCPIntegrationService,
     MCPToolRequest,
 )
+from tests.conftest import require_service
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -40,13 +42,13 @@ def _free_port() -> int:
 
 @pytest.fixture
 def mcp_server():
-    # A plain skip, NOT require_service: this harness starts the sibling apps/mcp app as
-    # a subprocess, which is not one of the provisioned services (Mongo/Redis/LocalStack)
-    # that CI_REQUIRE_SERVICES makes non-skippable. The backend-integration CI job never
-    # syncs apps/mcp, so it must SKIP here, not fail the gate (#506, internal review). AC5
-    # is exercised wherever apps/mcp's env exists (local dev, the mcp-tests runner).
+    # require_service, not a plain skip (#998): the backend-integration CI job syncs
+    # apps/mcp so these run on every PR, and CI_REQUIRE_SERVICES turns a missing server
+    # into a failure. They skipped on every run until then, so an `mcp` bump in either
+    # app could break the connection with CI green. test_mcp_round_trip_runs_in_ci.py
+    # pins the sync step. Locally, an unsynced apps/mcp still skips.
     if not (MCP_DIR / "main.py").exists() or not (MCP_DIR / ".venv").exists():
-        pytest.skip("apps/mcp environment not available (sibling app not synced here)")
+        require_service("apps/mcp environment not available (run `uv sync` in apps/mcp)")
     port = _free_port()
     env = {
         **os.environ,
@@ -67,14 +69,14 @@ def mcp_server():
         while time.time() < deadline:
             if proc.poll() is not None:
                 out = proc.stdout.read() if proc.stdout else ""
-                pytest.skip(f"MCP server exited early: {out[-500:]}")
+                require_service(f"MCP server exited early: {out[-500:]}")
             with contextlib.closing(socket.socket()) as s:
                 s.settimeout(0.5)
                 if s.connect_ex(("127.0.0.1", port)) == 0:
                     break
             time.sleep(0.5)
         else:
-            pytest.skip("MCP server did not start within 60s")
+            require_service("MCP server did not start within 60s")
         yield port
     finally:
         proc.terminate()
