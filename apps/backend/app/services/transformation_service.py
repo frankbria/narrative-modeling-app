@@ -22,7 +22,8 @@ from app.models.transformation import (
 )
 from app.services.base_service import BaseService
 from app.services.data_processing.quality_assessment import QualityAssessmentService
-from app.services.dataset_link import ensure_metadata_twin, record_new_file
+from app.services.dataset_lease import LeaseBusy, dataset_lease
+from app.services.dataset_link import ensure_metadata_twin, history_key, record_new_file
 from app.services.exceptions import NotFoundError, OperationError
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
@@ -53,6 +54,17 @@ class _RanStep:
 
 class _StepFailed(Exception):
     """A transformation reported failure; the message is the one the caller is shown."""
+
+
+def _failed(dataset_id: str, started: float, error: str) -> dict[str, Any]:
+    """The answer for an apply that wrote nothing, with the reason to show."""
+    return {
+        "success": False,
+        "dataset_id": dataset_id,
+        "transformation_id": "",
+        "execution_time_ms": _elapsed_ms(started),
+        "error": error,
+    }
 
 
 def _elapsed_ms(started: float) -> int:
@@ -635,15 +647,34 @@ class TransformationService(BaseService[TransformationConfig]):
         time. Before #851 the pipeline route moved the dataset with no step at all, and
         an undo afterwards restored a version from before it.
 
+        One apply at a time for a dataset (#853). Two at once both transformed the same
+        starting file, and a first pair also created two histories. The second now waits
+        for the first and transforms what it wrote; if the first is still running when
+        the wait runs out, the second is reported as failed and nothing is written.
+
         Raises:
             NotFoundError: If dataset not found or user doesn't own it
             OperationError: If a transformation raises while it runs
         """
         import time
 
+        started = time.time()
+        try:
+            async with dataset_lease(f"apply:{user_id}:{await history_key(dataset_id, user_id)}"):
+                return await self._apply_holding_the_lease(user_id, dataset_id, steps, started)
+        except LeaseBusy:
+            return _failed(
+                dataset_id, started,
+                "Another change to this dataset is still being applied. Try again in a moment.",
+            )
+
+    async def _apply_holding_the_lease(
+        self, user_id: str, dataset_id: str, steps: list[tuple[str, dict[str, Any]]], started: float
+    ) -> dict[str, Any]:
+        """`apply_pipeline`'s work. The dataset is read here, with the lease held, so it
+        is the file as the apply before this one left it."""
         from app.services.transformation_engine.data_utils import get_dataframe_from_s3
 
-        started = time.time()
         # Either id space: a UI upload's UserData id resolves to its twin (#850).
         dataset = await ensure_metadata_twin(dataset_id, user_id)
         if not dataset:
@@ -667,13 +698,7 @@ class TransformationService(BaseService[TransformationConfig]):
                 dataset, dataset.dataset_id, user_id, self._run(df, steps), started
             )
         except _StepFailed as failed:
-            return {
-                "success": False,
-                "dataset_id": dataset_id,
-                "transformation_id": "",
-                "execution_time_ms": _elapsed_ms(started),
-                "error": str(failed),
-            }
+            return _failed(dataset_id, started, str(failed))
         except ValueError as e:
             raise OperationError(
                 message="Failed to apply transformation",

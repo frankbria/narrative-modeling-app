@@ -87,6 +87,49 @@ async def test_another_tenant_cannot_read_the_history(client, real_s3_env):
 # csv over parquet bytes, and training and column stats misread it.
 
 
+async def test_another_tenant_cannot_clear_the_history(client, real_s3_env):
+    """Unknown and foreign answer alike, and the owner's steps are still there (#853)."""
+    from app.services.exceptions import NotFoundError
+    from app.services.history_service import HistoryService
+    from app.services.transformation_service import TransformationService
+    from app.services.versioning_service import versioning_service
+
+    dataset_id = await _upload_and_transform_twice(client)
+    service = HistoryService(
+        versioning_service=versioning_service, transformation_service=TransformationService()
+    )
+
+    with pytest.raises(NotFoundError):
+        await service.clear_history(dataset_id, "someone_else")
+
+    assert len((await service.get_history(dataset_id, USER))["history"]) == 2
+
+
+async def test_of_two_legacy_one_step_configs_the_newest_is_the_history(client, real_s3_env):
+    """Before #800 every apply made its own config. A dataset from then has one per
+    step, and the newest is its current state (#853)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.transformation import TransformationConfig, TransformationStep
+
+    upload = await client.post(
+        "/api/v1/datasets/upload", files={"file": ("d.csv", io.BytesIO(CSV), "text/csv")}
+    )
+    dataset_id = upload.json()["dataset_id"]
+    now = datetime.now(UTC)
+    for age, kind in ((timedelta(days=2), "trim_whitespace"), (timedelta(days=1), "fill_missing")):
+        await TransformationConfig(
+            user_id=USER, dataset_id=dataset_id, config_id=f"config_{dataset_id}_{kind}",
+            transformation_steps=[TransformationStep(transformation_type=kind)],
+            current_position=0, total_transformations=1, created_at=now - age,
+        ).insert()
+
+    history = await client.get(f"/api/v1/transformations/datasets/{dataset_id}/history")
+
+    assert history.status_code == 200, history.text
+    assert [h["transformation_type"] for h in history.json()["history"]] == ["fill_missing"]
+
+
 async def _undo(client, dataset_id: str):
     """Undo one step; the dataset's two twins as stored afterwards."""
     from app.models.dataset import DatasetMetadata
