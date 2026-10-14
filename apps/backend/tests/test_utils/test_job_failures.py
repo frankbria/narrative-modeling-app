@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.services.s3_service import FormatMismatchError
 from app.utils.job_failures import _GENERIC, user_safe_failure_reason
 
 pytestmark = pytest.mark.unit
@@ -27,6 +28,9 @@ _WallClock.__name__ = "TrainingWallClockExceeded"
         (ZeroDivisionError("division by zero"), "prediction task"),
         (ValueError("Could not determine problem type"), "prediction task"),
         (ValueError("Every feature column is a per-row identifier"), "identifier"),
+        # The typed reader's refusal names the s3_url and an issue number; neither reaches the job.
+        (FormatMismatchError("declared file_type 'csv' but the object is Parquet — the stored "
+                             "file_type and s3_url disagree (#524)"), "does not match its file"),
     ],
 )
 def test_known_modes_get_specific_messages(exc, needle):

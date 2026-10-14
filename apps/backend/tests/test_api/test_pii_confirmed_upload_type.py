@@ -13,7 +13,7 @@ import pytest
 from bson import ObjectId
 
 from app.api.routes import secure_upload
-from app.api.routes.model_training import _parse_dataset
+from app.api.routes.model_training import _parse_and_hash
 from app.models.user_data import UserData
 from app.services.data_processing.data_processor import DataProcessor
 from app.services.dataset_link import file_type_of
@@ -75,7 +75,7 @@ async def test_the_stored_type_is_the_type_of_the_bytes_written(
     assert row.file_type == file_type
     assert key.endswith(f".{file_type}")
     # Training's reader, then the explore page's, on the bytes that were stored.
-    assert list(_parse_dataset(written, row.file_type).columns) == ["id", "email"]
+    assert list(_parse_and_hash(written, row.file_type)[0].columns) == ["id", "email"]
     processed = await DataProcessor().process_bytes(written, row.original_filename, file_type=row.file_type)
     assert len(processed.dataframe) == 2
 
@@ -83,7 +83,7 @@ async def test_the_stored_type_is_the_type_of_the_bytes_written(
 @pytest.mark.parametrize("body", [_csv, _xlsx])
 async def test_training_reads_a_row_with_no_declared_type_by_its_bytes(body):
     """Rows this route stored before it wrote a type."""
-    assert list(_parse_dataset(body(), None).columns) == ["id", "email"]
+    assert list(_parse_and_hash(body(), None)[0].columns) == ["id", "email"]
 
 
 async def test_a_masked_object_is_csv_whatever_its_name_says():

@@ -33,6 +33,11 @@ def _is_nothing_selected(exc: BaseException, low: str) -> bool:
     return _has(low, "every feature column was left out")
 
 
+def _is_format_mismatch(exc: BaseException, low: str) -> bool:
+    # The typed reader's refusal (#524, #1019): the stored type and the file disagree.
+    return type(exc).__name__ == "FormatMismatchError"
+
+
 def _is_identifier_only(exc: BaseException, low: str) -> bool:
     # First of the substring buckets, which could otherwise match a column name.
     return _has(low, "per-row identifier")
@@ -101,6 +106,12 @@ def _is_undetermined_task(exc: BaseException, low: str) -> bool:
 
 # First match wins, so order matters.
 _RULES: tuple[tuple[Callable[[BaseException, str], bool], str], ...] = (
+    (
+        _is_format_mismatch,
+        "The dataset's stored file type does not match its file, so it could not be "
+        "read. Upload the file again; if the dataset was transformed, quote this job's "
+        "id to support so the record can be corrected.",
+    ),
     (
         _is_nothing_selected,
         "None of the columns selected in Feature Engineering can be learned from: "
