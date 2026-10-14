@@ -2196,3 +2196,12 @@ checked, and the fix is always the same: the claim is a query, so run it.
   (`pytest tests/test_api/<file> tests/test_integration/<file>`). Count only the objects
   the test itself wrote.
 
+
+## 2026-10-14: a merge on a skimmed bot review (#1005, PR #1037)
+
+- I merged after grepping the bot's comment for `bug|should|risk`. The grep matched the
+  heading "Potential bugs / correctness" and nothing under it, and I read that as no
+  findings. Two real ones were in the section (an unbounded `curl` poll, and any HTTP
+  status counting as ready) and needed a follow-up PR (#1038).
+- **Rule:** before merging, read every section of a review whose heading names bugs or
+  correctness in full. A keyword grep is for finding the comment, not for judging it.
