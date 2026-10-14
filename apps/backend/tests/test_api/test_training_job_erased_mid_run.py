@@ -158,3 +158,53 @@ async def test_a_job_the_reaper_ended_during_the_fit_keeps_the_reapers_verdict(s
     run.save_model.assert_not_awaited()
     after = await _stored("model_936_reaped")
     assert (after.status, after.error) == (JobStatus.FAILED, "reaped")
+
+
+# #945: the two windows #936 left.
+
+
+async def test_a_job_erased_before_its_task_starts_is_not_run(setup_database):
+    """The route creates the row before it schedules the task, so a lookup that finds
+    nothing at entry means it was erased in between. The task trained anyway."""
+    run = _Run("model_945_gone")
+    run.resume.set()
+
+    await run.to_the_end()  # no job row
+
+    assert not run.fitting.is_set(), "the model was not fitted"
+    run.save_model.assert_not_awaited()
+    assert await _stored("model_945_gone") is None
+
+
+async def test_a_model_stored_for_an_erased_job_marks_no_version_and_records_no_event(setup_database):
+    """The version mark and the first-model event ran after the model was stored and
+    before the re-read that notices the row is gone; they now follow it."""
+    from app.api.routes import model_training
+
+    run = _Run("model_945_marks")
+    with (
+        patch.object(model_training, "_mark_version_trained_on", AsyncMock()) as mark,
+        patch.object(model_training.product_events, "record", AsyncMock()) as event,
+    ):
+        await _erased_while_the_model_is_stored(run)
+
+    mark.assert_not_awaited()
+    event.assert_not_awaited()
+    run.delete_model.assert_awaited_once_with("model_945_marks", "test_user")
+
+
+async def test_a_completed_job_still_marks_its_version_and_records_the_event(setup_database):
+    from app.api.routes import model_training
+
+    run = _Run("model_945_done")
+    await _job(run.model_id)
+    run.resume.set()
+    with (
+        patch.object(model_training, "_mark_version_trained_on", AsyncMock()) as mark,
+        patch.object(model_training.product_events, "record", AsyncMock()) as event,
+        patch.object(model_training, "_record_completion", AsyncMock()),
+    ):
+        await run.to_the_end()
+
+    mark.assert_awaited_once()
+    event.assert_awaited_once()

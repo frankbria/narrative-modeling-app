@@ -138,9 +138,11 @@ async def _run_train_task(training_config: dict, metadata: dict | None = None):
     ), patch(
         "app.api.routes.model_training.AutoMLEngine"
     ) as EngineCls, patch(
+        # No database here: a job lookup that fails is the best-effort path, which
+        # trains on. One that finds nothing means the job was erased (#945).
         "app.models.training_job.TrainingJob.find_one",
         new_callable=AsyncMock,
-        return_value=None,
+        side_effect=RuntimeError("no database in this test"),
     ), patch(
         "app.services.model_storage.ModelStorageService.save_model",
         new_callable=AsyncMock,

@@ -702,16 +702,25 @@ class _JobReporter:
 
 
 async def _tracking_job(model_id: str, user_id: str) -> TrainingJob | None:
-    """Best-effort lookup of the tracking job; training proceeds even if it is
-    missing or the lookup fails (e.g. DB unavailable)."""
+    """The tracking job, or None when the lookup fails (e.g. DB unavailable): training
+    then proceeds, best effort.
+
+    Raises:
+        TrainingNoLongerInFlight: the lookup worked and found no row. The route creates
+            the row before it schedules this task, so it was erased in between (#945),
+            and a run now would store a model for erased data.
+    """
     try:
-        return await TrainingJob.find_one(
+        job = await TrainingJob.find_one(
             TrainingJob.model_id == model_id,
             TrainingJob.user_id == user_id,
         )
     except Exception as exc:
         logger.warning(f"Could not load TrainingJob {model_id}: {exc}")
         return None
+    if job is None:
+        raise TrainingNoLongerInFlight("deleted")
+    return job
 
 
 async def _mark_task_started(training_job: TrainingJob | None, dataset_id: str) -> None:
@@ -992,8 +1001,8 @@ async def _store_trained_model(
     user_id: str,
     model_id: str,
 ) -> MLModel:
-    """Save the winner under the pre-generated ``model_id`` and record what follows
-    from a model existing."""
+    """Save the winner under the pre-generated ``model_id``. What follows from a model
+    existing is recorded by ``_record_what_follows``, once the job is complete."""
     result = run.result
     model_metadata = _model_metadata(run, user_data, request)
     evaluation_data = _evaluation_payload(result, model_id)
@@ -1010,13 +1019,21 @@ async def _store_trained_model(
         evaluation_data=evaluation_data,
         shap_data=shap_data,
     )
+    return ml_model
+
+
+async def _record_what_follows(run: _TrainingRun, user_id: str, model_id: str) -> None:
+    """What a model existing marks elsewhere: the version it was trained on, and the
+    tenant's first-model event. After the job's completion is recorded, which removes the
+    model and stops here when the job was erased meanwhile (#945). The cost of that order:
+    a completion write that fails for another reason leaves the model stored and these
+    two unwritten, where they used to precede it."""
     await _mark_version_trained_on(run.dataset_version_id, model_id)
     await product_events.record(
         user_id,
         product_events.FIRST_MODEL_TRAINED,
         once=product_events.FIRST_MODEL_TRAINED,
     )
-    return ml_model
 
 
 async def _record_completion(
@@ -1107,9 +1124,10 @@ async def train_model_task(
     ending is recorded on the TrainingJob rather than raised into a context where
     nothing can handle it.
     """
-    training_job = await _tracking_job(model_id, user_id)
+    training_job: TrainingJob | None = None
 
     try:
+        training_job = await _tracking_job(model_id, user_id)
         logger.info(f"Starting model training for dataset {request.dataset_id}")
         await _mark_task_started(training_job, request.dataset_id)
         run = await _run_training(
@@ -1117,6 +1135,7 @@ async def train_model_task(
         )
         ml_model = await _store_trained_model(run, user_data, request, user_id, model_id)
         await _record_completion(training_job, run, request, ml_model)
+        await _record_what_follows(run, user_id, model_id)
         logger.info(f"Model training completed: {ml_model.model_id}")
 
     except TrainingWallClockExceeded as exc:
