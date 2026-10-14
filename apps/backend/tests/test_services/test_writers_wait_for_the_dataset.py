@@ -15,8 +15,6 @@ from beanie import PydanticObjectId
 from app.services import dataset_lease
 from app.services.dataset_link import DATASET_BUSY, holding_the_dataset
 
-pytestmark = pytest.mark.asyncio
-
 USER = "test_user_123"  # the identity async_authorized_client signs in as
 APP = Path(__file__).resolve().parents[2] / "app"
 
@@ -28,6 +26,7 @@ def held(monkeypatch):
     return lambda dataset_id: holding_the_dataset(dataset_id, USER)
 
 
+@pytest.mark.asyncio
 async def test_an_undo_is_refused_while_another_writer_holds_the_dataset(
     setup_database, async_authorized_client, held
 ):
@@ -41,6 +40,7 @@ async def test_an_undo_is_refused_while_another_writer_holds_the_dataset(
     ("/api/v1/data-issues/apply-fix", {"issue_id": "i1", "preview_mode": False}),
     ("/api/v1/data-issues/batch-fix", {"issue_ids": ["i1"], "preview_mode": False}),
 ], ids=["apply-fix", "batch-fix"])
+@pytest.mark.asyncio
 async def test_a_fix_is_refused_while_another_writer_holds_the_dataset(
     setup_database, async_authorized_client, held, route, body
 ):
@@ -52,6 +52,7 @@ async def test_a_fix_is_refused_while_another_writer_holds_the_dataset(
     assert (response.json()["success"], response.json()["error"]) == (False, DATASET_BUSY)
 
 
+@pytest.mark.asyncio
 async def test_a_feature_added_in_place_is_refused_while_another_writer_holds_the_dataset(
     setup_database, async_authorized_client, held
 ):
@@ -67,6 +68,7 @@ async def test_a_feature_added_in_place_is_refused_while_another_writer_holds_th
     }
 
 
+@pytest.mark.asyncio
 async def test_a_bulk_job_fails_with_that_reason_while_another_writer_holds_the_dataset(setup_database, held):
     from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
     from app.services.bulk_transformation_service import BulkTransformationService
