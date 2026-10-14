@@ -6,6 +6,7 @@ and feature application.
 """
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -311,6 +312,14 @@ async def suggest_more_features(
         )
 
 
+def _what_it_computes(suggestion: FeatureSuggestion) -> str:
+    """A suggestion's identity across generations: its type, its source columns and its
+    parameters. Its id is not, being minted afresh each time."""
+    return json.dumps(
+        [suggestion.feature_type, suggestion.input_columns, suggestion.parameters], sort_keys=True, default=str
+    )
+
+
 async def _another_batch(
     df: pd.DataFrame,
     dataset_id: str,
@@ -335,7 +344,12 @@ async def _another_batch(
         user_id=user_id,
         write_cache=False,  # the union is written below, not this batch alone
     )
-    fresh = [s for s in response.suggestions if s.id not in excluded][:request.count]
+    # By what it computes, not by id (#970): ids are minted per generation, so a
+    # deterministic rule-based suggestion came back under a new id every time.
+    seen = {_what_it_computes(s) for s in shown}
+    fresh = [
+        s for s in response.suggestions if s.id not in excluded and _what_it_computes(s) not in seen
+    ][:request.count]
 
     response.suggestions = shown + fresh
     await feature_engineering_service.cache_suggestions(user_id, dataset_id, response)
