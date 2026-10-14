@@ -87,6 +87,22 @@ class TestComposePassesStripeConfig:
 class TestEnvExamplesDocumentStripe:
     """AC3 of #457 — the omission was invisible partly because nothing listed them."""
 
+    def test_staging_example_lists_every_webhook_event(self):
+        """The endpoint receives only the events it is subscribed to in Stripe.
+
+        The example used to list three, without `customer.subscription.created`,
+        the one event Stripe sends for a new checkout subscription, and the first
+        staging checkout paid and stayed on FREE (#598). An operator subscribes the
+        endpoint from this list, so it must name everything the handler acts on.
+        """
+        from app.api.routes.billing_webhook import HANDLED_EVENTS
+
+        text = STAGING_ENV_EXAMPLE.read_text()
+        missing = sorted(e for e in HANDLED_EVENTS if e not in text)
+        assert not missing, (
+            f".env.staging.example does not tell the operator to subscribe to {missing}"
+        )
+
     def test_staging_example_documents_every_variable(self):
         text = STAGING_ENV_EXAMPLE.read_text()
         missing = [v for v in REQUIRED_STRIPE_VARS if f"{v}=" not in text]

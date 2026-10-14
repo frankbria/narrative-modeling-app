@@ -19,7 +19,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pymongo.errors import DuplicateKeyError
 
@@ -309,10 +309,174 @@ def _epoch(raw: Any):
         return None
 
 
+async def _subscription_terms(subscription_id: str | None) -> dict[str, Any]:
+    """The tier, price and period of the subscription a checkout created (#598).
+
+    A checkout session carries no price, so the tier has to come from the
+    subscription. It used to come only from `customer.subscription.created` or
+    `.updated`, which left a paid customer on FREE whenever the endpoint was not
+    subscribed to `created`, the event Stripe sends for a checkout and that the
+    setup notes did not list. Asking Stripe here makes the checkout event alone
+    enough.
+
+    Empty when there is nothing to ask about, when Stripe is not configured, or
+    when the subscription has no price: the tier is then left alone, never guessed.
+    A failed request is a 503, which Stripe retries; it runs before anything is
+    written, so a retry starts from where this one did.
+    """
+    if not subscription_id:
+        return {}
+    try:
+        subscription = await stripe_client.retrieve_subscription(subscription_id)
+    except stripe_client.BillingNotConfigured:
+        logger.warning("cannot resolve a checkout's tier: Stripe is not configured")
+        return {}
+    except stripe_client.BillingProviderError:
+        logger.exception("could not read a checkout's subscription from Stripe")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="subscription lookup failed; Stripe will retry",
+        ) from None
+    price = _price_id(subscription)
+    if not price:
+        return {}
+    return {
+        "tier": tier_for_price(price),
+        "price_id": price,
+        "period_end": _period_end(subscription),
+    }
+
+
+def _settlement(obj: dict[str, Any], cleared: bool) -> tuple[bool, bool]:
+    """Whether a checkout grants access, and whether money actually moved."""
+    payment_status = obj.get("payment_status")
+    settled = cleared or payment_status in ("paid", "no_payment_required")
+    paid = cleared or payment_status == "paid"
+    return settled, paid
+
+
+async def _record_checkout(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None, *, cleared: bool
+) -> None:
+    """A finished checkout. `cleared` is true for `async_payment_succeeded`.
+
+    `completed` does NOT mean paid. Asynchronous methods (bank debits) fire it with
+    payment_status "unpaid": the flow finished, the funds have not cleared, and
+    granting ACTIVE there would entitle a customer who may never pay. Only a settled
+    session grants access; the async_payment_succeeded event that follows a cleared
+    debit takes the same path.
+
+    `settled` grants entitlement (ACTIVE), which a trial or 100%-discounted checkout
+    earns too (`no_payment_required`). The refund window opens on the first *paid*
+    charge (#602), so `paid` excludes that case: otherwise the window would start,
+    and could expire, before any money moved, and first-write-wins would stop the
+    real charge from correcting it.
+
+    The tier is read from the subscription itself (`_subscription_terms`), never
+    guessed: `tier_for_price(None)` would grant PRO to an ENTERPRISE purchase.
+    """
+    settled, paid = _settlement(obj, cleared)
+    terms = await _subscription_terms(obj.get("subscription")) if settled else {}
+    await _upsert(
+        user_id,
+        status_=SubscriptionStatus.ACTIVE if settled else SubscriptionStatus.INCOMPLETE,
+        customer_id=obj.get("customer"),
+        subscription_id=obj.get("subscription"),
+        event_at=event_at,
+        **terms,
+    )
+    # After the upsert created the row; a later charge won't move it.
+    if paid:
+        await _record_first_paid(user_id, event_at)
+    if settled:
+        await product_events.record(
+            user_id, product_events.CHECKOUT_COMPLETED, once=f"checkout:{obj.get('id')}"
+        )
+
+
+async def _on_checkout_completed(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None
+) -> None:
+    await _record_checkout(user_id, obj, event_at, cleared=False)
+
+
+async def _on_async_payment_succeeded(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None
+) -> None:
+    await _record_checkout(user_id, obj, event_at, cleared=True)
+
+
+async def _on_async_payment_failed(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None
+) -> None:
+    """The debit bounced. Without this the INCOMPLETE set at checkout would be the
+    only thing standing between a failed payment and entitlement, and a
+    `completed`-then-`updated` sequence could quietly flip it to ACTIVE."""
+    await _upsert(user_id, status_=SubscriptionStatus.INCOMPLETE, event_at=event_at)
+
+
+async def _on_subscription_changed(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None
+) -> None:
+    """`customer.subscription.created` and `.updated`.
+
+    No price on an UPDATE means leave the tier alone. `tier_for_price` never returns
+    None (it falls back to PRO), so passing it unconditionally would silently
+    downgrade an ENTERPRISE tenant on any update that arrived without expanded item
+    data. Not guessing high and not guessing wrong are the same principle.
+    """
+    price = _price_id(obj)
+    await _upsert(
+        user_id,
+        status_=SubscriptionStatus.from_stripe(obj.get("status", "")),
+        tier=tier_for_price(price) if price else None,
+        customer_id=obj.get("customer"),
+        subscription_id=obj.get("id"),
+        price_id=price,
+        period_end=_period_end(obj),
+        cancel_at_period_end=bool(obj.get("cancel_at_period_end", False)),
+        event_at=event_at,
+    )
+
+
+async def _on_subscription_deleted(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None
+) -> None:
+    """Tier is deliberately left alone: it records what was bought, and
+    `effective_tier` already drops to FREE once the status is CANCELED (#366)."""
+    await _upsert(user_id, status_=SubscriptionStatus.CANCELED, event_at=event_at)
+    await product_events.record(
+        user_id, product_events.SUBSCRIPTION_CANCELLED, once=f"cancel:{obj.get('id')}"
+    )
+
+
+async def _on_payment_failed(
+    user_id: str, obj: dict[str, Any], event_at: datetime | None
+) -> None:
+    """PAST_DUE still grants access: Stripe retries for days, and cutting a paying
+    customer off at the first failure is worse (#366)."""
+    await _upsert(user_id, status_=SubscriptionStatus.PAST_DUE, event_at=event_at)
+
+
+#: One handler per event acted on. Everything else is acknowledged and ignored.
+_HANDLERS = {
+    "checkout.session.completed": _on_checkout_completed,
+    "checkout.session.async_payment_succeeded": _on_async_payment_succeeded,
+    "checkout.session.async_payment_failed": _on_async_payment_failed,
+    "customer.subscription.created": _on_subscription_changed,
+    "customer.subscription.updated": _on_subscription_changed,
+    "customer.subscription.deleted": _on_subscription_deleted,
+    "invoice.payment_failed": _on_payment_failed,
+}
+
+
 async def _handle(
     event_type: str, obj: dict[str, Any], event_at: datetime | None = None
 ) -> bool:
     """Apply one event. Returns whether it was acted on."""
+    handler = _HANDLERS.get(event_type)
+    if handler is None:
+        return False
     user_id = _user_id_from(obj)
     if not user_id:
         logger.warning(
@@ -320,98 +484,8 @@ async def _handle(
             extra={"event_type": event_type},
         )
         return False
-
-    if event_type in (
-        "checkout.session.completed",
-        "checkout.session.async_payment_succeeded",
-    ):
-        # `completed` does NOT mean paid. Asynchronous methods (bank debits) fire it
-        # with payment_status "unpaid" — the flow finished, the funds have not
-        # cleared — and granting ACTIVE there would entitle a customer who may never
-        # pay. Only a settled session grants access; the async_payment_succeeded
-        # event that follows a cleared debit takes the same path.
-        payment_status = obj.get("payment_status")
-        settled = event_type == "checkout.session.async_payment_succeeded" or (
-            payment_status in ("paid", "no_payment_required")
-        )
-        # `settled` grants entitlement (ACTIVE), which a trial or 100%-discounted
-        # checkout earns too — `no_payment_required`. But the refund window opens on
-        # the first *paid* charge (#602), so it must exclude that case: an actual
-        # payment is `paid`, or a delayed debit clearing (async_payment_succeeded).
-        # Otherwise the window would start (and could expire) before any money moved,
-        # and first-write-wins would stop the real charge from correcting it.
-        paid = event_type == "checkout.session.async_payment_succeeded" or (
-            payment_status == "paid"
-        )
-
-        # Tier is deliberately NOT set here. A checkout session does not carry the
-        # price without an `expand`, and calling tier_for_price(None) would grant
-        # PRO to every completed checkout — including an ENTERPRISE purchase.
-        # `customer.subscription.created/updated` follows and DOES resolve the
-        # price, so that event is the source of truth for tier. This one establishes
-        # the link and, once settled, the ACTIVE status.
-        await _upsert(
-            user_id,
-            status_=(
-                SubscriptionStatus.ACTIVE if settled else SubscriptionStatus.INCOMPLETE
-            ),
-            customer_id=obj.get("customer"),
-            subscription_id=obj.get("subscription"),
-            event_at=event_at,
-        )
-        # The first PAID charge opens the refund window (#602) — not a free trial.
-        # Record it once, after the upsert created the row; a later charge won't move it.
-        if paid:
-            await _record_first_paid(user_id, event_at)
-        if settled:
-            await product_events.record(
-                user_id, product_events.CHECKOUT_COMPLETED, once=f"checkout:{obj.get('id')}"
-            )
-        return True
-
-    if event_type == "checkout.session.async_payment_failed":
-        # The debit bounced. Without this the INCOMPLETE set above would be the only
-        # thing standing between a failed payment and entitlement, and a
-        # `completed`-then-`updated` sequence could quietly flip it to ACTIVE.
-        await _upsert(user_id, status_=SubscriptionStatus.INCOMPLETE, event_at=event_at)
-        return True
-
-    if event_type in ("customer.subscription.created", "customer.subscription.updated"):
-        price = _price_id(obj)
-        # No price on an UPDATE means leave the tier alone. `tier_for_price` never
-        # returns None — it falls back to PRO — so passing it here unconditionally
-        # would silently downgrade an ENTERPRISE tenant on any update that arrived
-        # without expanded item data. Not guessing high and not guessing wrong are
-        # the same principle; this is the second half of it.
-        await _upsert(
-            user_id,
-            status_=SubscriptionStatus.from_stripe(obj.get("status", "")),
-            tier=tier_for_price(price) if price else None,
-            customer_id=obj.get("customer"),
-            subscription_id=obj.get("id"),
-            price_id=price,
-            period_end=_period_end(obj),
-            cancel_at_period_end=bool(obj.get("cancel_at_period_end", False)),
-            event_at=event_at,
-        )
-        return True
-
-    if event_type == "customer.subscription.deleted":
-        # Tier is deliberately left alone: it records what was bought, and
-        # `effective_tier` already drops to FREE once the status is CANCELED (#366).
-        await _upsert(user_id, status_=SubscriptionStatus.CANCELED, event_at=event_at)
-        await product_events.record(
-            user_id, product_events.SUBSCRIPTION_CANCELLED, once=f"cancel:{obj.get('id')}"
-        )
-        return True
-
-    if event_type == "invoice.payment_failed":
-        # PAST_DUE still grants access — Stripe retries for days, and cutting a
-        # paying customer off at the first failure is worse (#366).
-        await _upsert(user_id, status_=SubscriptionStatus.PAST_DUE, event_at=event_at)
-        return True
-
-    return False
+    await handler(user_id, obj, event_at)
+    return True
 
 
 @router.post("/webhook", include_in_schema=False)

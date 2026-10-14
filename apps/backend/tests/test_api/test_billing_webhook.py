@@ -1024,6 +1024,195 @@ class TestWebhookEndpoint:
         assert response.status_code == 400
 
 
+def _checkout(payment_status: str = "paid", subscription: str | None = "sub_1") -> bytes:
+    obj = {
+        "id": "cs_1",
+        "client_reference_id": TEST_USER,
+        "customer": "cus_1",
+        "payment_status": payment_status,
+    }
+    if subscription:
+        obj["subscription"] = subscription
+    return event("checkout.session.completed", obj)
+
+
+def _stripe_subscription(price: str = "price_pro", period_end: int = 1_900_000_000):
+    """A subscription the way the pinned API version returns it: the price and
+    the period end on the first item, not on the subscription."""
+    return {
+        "id": "sub_1",
+        "status": "active",
+        "items": {"data": [{"price": {"id": price}, "current_period_end": period_end}]},
+    }
+
+
+class TestCheckoutResolvesTheTier:
+    """The checkout event alone entitles the customer to what they bought (#598).
+
+    The first staging checkout paid and stayed on FREE: the endpoint was subscribed
+    to the three events the setup notes listed, `customer.subscription.created` was
+    not among them, and the checkout event set the status but never the tier.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _config(self, monkeypatch):
+        monkeypatch.setattr(_settings, "STRIPE_WEBHOOK_SECRET", SECRET, raising=False)
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False)
+
+    @pytest.fixture
+    def asked(self, monkeypatch):
+        """Stands in for Stripe; records which subscriptions were looked up."""
+        from app.billing import stripe_client
+
+        class Asked:
+            calls: list[str] = []
+            answer = _stripe_subscription()
+
+            @classmethod
+            async def retrieve(cls, subscription_id):
+                cls.calls.append(subscription_id)
+                return cls.answer
+
+        Asked.calls = []
+        monkeypatch.setattr(stripe_client, "retrieve_subscription", Asked.retrieve)
+        return Asked
+
+    async def _post(self, client, payload):
+        return await client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+
+    async def test_a_paid_checkout_sets_the_tier_it_bought(
+        self, async_authorized_client, setup_database, asked
+    ):
+        response = await self._post(async_authorized_client, _checkout())
+
+        assert response.status_code == 200
+        assert asked.calls == ["sub_1"]
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.PRO
+        assert sub.effective_tier == PlanTier.PRO
+        assert sub.stripe_price_id == "price_pro"
+        assert as_utc(sub.current_period_end) == datetime.fromtimestamp(
+            1_900_000_000, tz=UTC
+        )
+
+    async def test_an_enterprise_checkout_is_enterprise(
+        self, async_authorized_client, setup_database, asked
+    ):
+        asked.answer = _stripe_subscription(price="price_ent")
+
+        await self._post(async_authorized_client, _checkout())
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.ENTERPRISE
+
+    async def test_an_unpaid_checkout_does_not_ask_stripe(
+        self, async_authorized_client, setup_database, asked
+    ):
+        await self._post(async_authorized_client, _checkout(payment_status="unpaid"))
+
+        assert asked.calls == []
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.plan_tier == PlanTier.FREE
+        assert not sub.is_entitled
+
+    async def test_a_subscription_without_a_price_leaves_the_tier_alone(
+        self, async_authorized_client, setup_database, asked
+    ):
+        asked.answer = {"id": "sub_1", "status": "active", "items": {"data": []}}
+
+        await self._post(async_authorized_client, _checkout())
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        assert sub.plan_tier == PlanTier.FREE
+
+    async def test_a_checkout_with_no_subscription_does_not_ask(
+        self, async_authorized_client, setup_database, asked
+    ):
+        await self._post(async_authorized_client, _checkout(subscription=None))
+
+        assert asked.calls == []
+
+    async def test_without_a_secret_key_the_tier_is_left_alone(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", None, raising=False)
+
+        response = await self._post(async_authorized_client, _checkout())
+
+        assert response.status_code == 200
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.ACTIVE
+        assert sub.plan_tier == PlanTier.FREE
+
+    async def test_a_failed_lookup_is_retried_by_stripe(
+        self, async_authorized_client, setup_database, monkeypatch
+    ):
+        """A 5xx makes Stripe deliver the event again, and nothing half-applied is
+        left behind: the lookup runs before the write."""
+        from app.billing import stripe_client
+
+        async def unreachable(subscription_id):
+            raise stripe_client.BillingProviderError("connection reset")
+
+        monkeypatch.setattr(stripe_client, "retrieve_subscription", unreachable)
+
+        response = await self._post(async_authorized_client, _checkout())
+
+        assert response.status_code == 503
+        assert "connection reset" not in response.text
+        assert await Subscription.find(Subscription.user_id == TEST_USER).count() == 0
+
+
+class TestRetrieveSubscription:
+    async def test_returns_plain_dicts_the_readers_accept(self, monkeypatch):
+        """SDK objects are not dicts in this SDK major, and `_first_item` checks
+        `isinstance(..., dict)` at every level, so an unconverted object would
+        read as having no price."""
+        import stripe
+
+        from app.api.routes.billing_webhook import _period_end, _price_id
+        from app.billing import stripe_client
+
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        returned = stripe.StripeObject.construct_from(_stripe_subscription(), "sk_test_x")
+        monkeypatch.setattr(stripe.Subscription, "retrieve", lambda sid: returned)
+
+        subscription = await stripe_client.retrieve_subscription("sub_1")
+
+        assert _price_id(subscription) == "price_pro"
+        assert _period_end(subscription) is not None
+
+    async def test_a_provider_failure_is_a_billing_provider_error(self, monkeypatch):
+        import stripe
+
+        from app.billing import stripe_client
+
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+
+        def fail(sid):
+            raise stripe.APIConnectionError("down")
+
+        monkeypatch.setattr(stripe.Subscription, "retrieve", fail)
+
+        with pytest.raises(stripe_client.BillingProviderError):
+            await stripe_client.retrieve_subscription("sub_1")
+
+
+def test_every_handled_event_has_a_handler():
+    from app.api.routes.billing_webhook import _HANDLERS, HANDLED_EVENTS
+
+    assert set(_HANDLERS) == HANDLED_EVENTS
+
+
 class TestPaddedWebhookSecret:
     """A trailing newline on `STRIPE_WEBHOOK_SECRET` must not kill entitlement.
 
@@ -1064,3 +1253,46 @@ class TestPaddedWebhookSecret:
         )
 
         assert response.status_code == 400
+
+
+class TestStripeCallsAreBounded:
+    """A Stripe call that hangs is given up on, not waited out.
+
+    The SDK's own defaults are an 80-second timeout and two retries. The checkout
+    webhook now asks Stripe a question while Stripe waits for the webhook's answer,
+    so an unanswered call held that request for four minutes.
+    """
+
+    async def test_an_unanswered_call_fails_inside_its_bound(self, monkeypatch):
+        import asyncio
+        import socket
+        import time
+
+        import stripe
+
+        from app.billing import stripe_client
+
+        # A server that accepts the connection and never answers.
+        silent = socket.socket()
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(8)
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(stripe, "api_base", f"http://127.0.0.1:{silent.getsockname()[1]}")
+        monkeypatch.setattr(stripe, "default_http_client", None)
+        monkeypatch.setattr(stripe_client, "REQUEST_TIMEOUT_SECONDS", 0.3)
+        monkeypatch.setattr(stripe_client, "MAX_NETWORK_RETRIES", 0)
+
+        started = time.monotonic()
+        try:
+            with pytest.raises(stripe_client.BillingProviderError):
+                await asyncio.wait_for(stripe_client.retrieve_subscription("sub_1"), timeout=5)
+        finally:
+            silent.close()
+
+        assert time.monotonic() - started < 3
+
+    def test_the_bound_is_far_inside_the_sdks_default(self):
+        from app.billing import stripe_client
+
+        worst_case = stripe_client.REQUEST_TIMEOUT_SECONDS * (1 + stripe_client.MAX_NETWORK_RETRIES)
+        assert worst_case <= 30
