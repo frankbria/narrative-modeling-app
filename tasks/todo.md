@@ -10,12 +10,12 @@ calibration tests are the check, with no edit to an assertion.
       `_target_score_stop`), `_deploy_best` (importance, SHAP, calibration, evaluation
       arrays). `_TrainingData` and `_Deployed` carry what one phase hands the next; the
       three callbacks travel as `_RunHooks`.
-- [ ] `train_model_task` becomes an orchestrator over: the engine's construction from the
+- [x] `train_model_task` becomes an orchestrator over: the engine's construction from the
       request, the job's reporting callbacks, the gated run, the model's metadata and
       payloads, the store, and one recorder per ending.
-- [ ] Tests for the task's paths the split exposes as uncovered (AC2).
-- [ ] The standing exemption in CLAUDE.md goes.
-- [ ] Not in this change: `_parse_dataset` still dispatches on the stored type itself
+- [x] Tests for the task's paths the split exposes as uncovered (AC2).
+- [x] The standing exemption in CLAUDE.md goes.
+- [x] Not in this change: `_parse_dataset` still dispatches on the stored type itself
       instead of going through the typed reader (the note on the issue). It is no longer
       part of the task, and changing its failure mode is not a refactor. Filed separately.
 
