@@ -237,8 +237,9 @@ class TestTransformations:
         assert column["success"] is False
         assert r.headers["X-Request-ID"] in column["error"]
 
-    async def test_bulk_apply_column_and_job_failures(self):
+    async def test_bulk_apply_column_and_job_failures(self, setup_database):
         """The apply-side twins: ColumnResult.error and the job's error_message."""
+        from app.models.bulk_transformation import BulkTransformationJob
         from app.services.bulk_transformation_service import BulkTransformationService
 
         service = BulkTransformationService()
@@ -250,12 +251,14 @@ class TestTransformations:
         assert result.success is False
         assert "secret-bucket" not in result.error and "boom" not in result.error
 
-        job = MagicMock()
-        job.job_id = "bulk_j1"
-        job.save = AsyncMock()
-        with patch("app.services.bulk_transformation_service.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET):
+        # A real job: its writes are conditional on its stored status (#925).
+        job = await BulkTransformationJob(
+            job_id="bulk_j1", user_id="u1", dataset_id="d1", transformation_type="trim_whitespace", selected_columns=["a"],
+        ).insert()
+        with patch("app.services.bulk_transformation_service.ensure_metadata_twin", new_callable=AsyncMock, return_value=MagicMock(file_path="datasets/u1/d.csv", s3_url="s3://test-bucket/datasets/u1/d.csv")), \
+             patch("app.services.bulk_transformation_service.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET):
             await service._process_bulk_job(job)
-        (message,), _ = job.mark_failed.call_args
+        message = (await BulkTransformationJob.find_one({"job_id": "bulk_j1"})).error_message
         assert "secret-bucket" not in message and "boom" not in message
         assert "internal error" in message
 
