@@ -24,6 +24,7 @@ from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
 from app.models.visualization_cache import VisualizationCache
+from app.services.dataset_lease import dataset_lease
 from app.services.exceptions import NotFoundError
 from app.services.redis_cache import cache_service
 from app.utils.s3 import get_file_from_s3, holds_parquet, object_size
@@ -281,10 +282,19 @@ async def ensure_metadata_twin(dataset_id: str, user_id: str) -> DatasetMetadata
     upload = await _owned_upload(dataset_id, user_id)
     if upload is None:
         return None
-    twin = await DatasetMetadata.find_one(
-        DatasetMetadata.user_id == user_id, DatasetMetadata.s3_url == upload.s3_url
+    twin = await _twin_of(upload)
+    if twin:
+        return twin
+    # Two first requests for one upload both found no twin and both made one (#853).
+    # One at a time, and look again once it is our turn.
+    async with dataset_lease(f"twin:{user_id}:{upload.id}"):
+        return await _twin_of(upload) or await _create_twin(upload)
+
+
+async def _twin_of(upload: UserData) -> DatasetMetadata | None:
+    return await DatasetMetadata.find_one(
+        DatasetMetadata.user_id == upload.user_id, DatasetMetadata.s3_url == upload.s3_url
     )
-    return twin or await _create_twin(upload)
 
 
 async def owns_dataset(dataset_id: str, user_id: str) -> bool:
@@ -322,9 +332,6 @@ async def _owned_upload(dataset_id: str, user_id: str) -> UserData | None:
 async def _create_twin(upload: UserData) -> DatasetMetadata:
     """The upload's metadata twin, keyed by the upload's own id so the id the UI holds
     resolves directly from now on."""
-    # ponytail: find-then-insert with no unique (user_id, dataset_id) index, so a
-    # double-click on a dataset's very first transform can write two twins. A unique
-    # index needs CLAUDE.md's #565 new-name migration; tracked with #853.
     twin = await DatasetMetadata(
         user_id=upload.user_id,
         dataset_id=str(upload.id),

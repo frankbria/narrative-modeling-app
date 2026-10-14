@@ -1,3 +1,26 @@
+# Issue #853: two concurrent first transformations can create two history configs for one dataset
+
+Two first applies at once both miss the config lookup and both create one (and, for a UI
+upload, both create its metadata twin). Beyond the duplicate rows: each transforms the
+same starting file, so a history holding both steps would describe a file that only one
+of them was applied to.
+
+## Plan
+- [x] RED (LocalStack, through the route): two first applies with `asyncio.gather` leave one
+      twin and one config with both steps, and the dataset's file has both applied.
+- [x] `dataset_lease(name)`: one holder at a time across workers. A document whose `_id` is
+      the name (unique without a new index, so no migration and no duplicate check), with
+      an expiry so a holder that died is taken over, and a TTL index to sweep them.
+- [x] `apply_pipeline` runs under the dataset's lease, and reads the dataset after taking
+      it, so the second apply transforms what the first one wrote. A lease it cannot get
+      within the wait is a reported failure, not a second history.
+- [x] `ensure_metadata_twin` creates the twin under a lease and looks again once it holds
+      it, for every caller (preview and apply can race too).
+- [x] Index `(dataset_id, user_id, created_at)` for `get_dataset_config`, now on every apply.
+- [x] The LocalStack history tests gain: another tenant cannot clear a history; of two
+      legacy one-step configs, the newest is the history served.
+
+
 # Issue #852: after undo then apply, the new version's lineage parent is the undone version
 
 ## Plan

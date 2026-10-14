@@ -218,6 +218,8 @@ class TransformationConfig(Document):
             # History navigation indexes
             [("dataset_id", 1), ("current_position", 1)],  # Query by dataset and position
             [("user_id", 1), ("dataset_id", 1), ("updated_at", -1)],  # User's dataset configs by recency
+            # get_dataset_config: the dataset's newest owned config, read on every apply (#853)
+            [("dataset_id", 1), ("user_id", 1), ("created_at", -1)],
         ]
 
     model_config = {

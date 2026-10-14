@@ -11,6 +11,7 @@ Test Coverage:
 - apply_transformation links version to transformation config
 """
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -68,6 +69,11 @@ def mock_parent_version():
     return mock
 
 
+@contextlib.asynccontextmanager
+async def _no_lease(_name: str, **_kwargs):
+    yield
+
+
 @pytest.mark.unit
 class TestApplyTransformationVersioning:
     """Tests for apply_transformation versioning integration."""
@@ -77,7 +83,11 @@ class TestApplyTransformationVersioning:
         """These tests stand in for the version lookup, not for the history. With no
         version at the cursor the parent is the latest one, which is what they supply
         (#852; the cursor's own tests are in test_lineage_parent.py)."""
-        with patch.object(TransformationService, "_version_at_cursor", AsyncMock(return_value=None)):
+        with (
+            patch.object(TransformationService, "_version_at_cursor", AsyncMock(return_value=None)),
+            # No database here, so no lease either (#853; its tests are in test_dataset_lease.py).
+            patch("app.services.transformation_service.dataset_lease", _no_lease),
+        ):
             yield
 
     @pytest.mark.asyncio
