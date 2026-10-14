@@ -99,9 +99,33 @@ interface RecipeListProps {
   onMore: VoidFunction;
 }
 
+interface RecipeCardsProps {
+  list: RecipePage;
+  onLoad(recipe: SavedRecipe): void;
+  onMore: VoidFunction;
+}
+
+function RecipeCards(props: RecipeCardsProps) {
+  const { list, onLoad, onMore } = props;
+  const { recipes, total } = list;
+  // More than one page: the list route pages, and the browser showed the first only (#929).
+  const more = recipes.length < total;
+  return (
+    <div className="space-y-3">
+      {recipes.map((recipe) => (
+        <RecipeCard key={recipe.id} recipe={recipe} onLoad={onLoad} />
+      ))}
+      {more && (
+        <button type="button" onClick={onMore} className="w-full py-2 text-sm text-blue-600 hover:underline">
+          Show more recipes ({recipes.length} of {total})
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RecipeList(props: RecipeListProps) {
   const { loading, error, list, onLoad, onMore } = props;
-  const recipes = list?.recipes;
   if (loading) return SPINNER;
   if (error) {
     return (
@@ -110,21 +134,8 @@ function RecipeList(props: RecipeListProps) {
       </p>
     );
   }
-  if (!recipes?.length) return NOTHING_FOUND;
-  // More than one page: the list route pages, and the browser showed the first only (#929).
-  const more = recipes.length < (list?.total ?? 0);
-  return (
-    <div className="space-y-3">
-      {recipes.map((recipe) => (
-        <RecipeCard key={recipe.id} recipe={recipe} onLoad={onLoad} />
-      ))}
-      {more && (
-        <button type="button" onClick={onMore} className="w-full py-2 text-sm text-blue-600 hover:underline">
-          Show more recipes ({recipes.length} of {list?.total})
-        </button>
-      )}
-    </div>
-  );
+  if (!list?.recipes.length) return NOTHING_FOUND;
+  return <RecipeCards list={list} onLoad={onLoad} onMore={onMore} />;
 }
 
 interface RecipeBrowserProps {
