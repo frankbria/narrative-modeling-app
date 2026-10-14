@@ -72,6 +72,7 @@ from app.services.transformation_engine.data_utils import (
 from app.services.transformation_engine.recipe_manager import (
     RecipeCompatibilityChecker,
     RecipeManager,
+    TransformationRecipe,
 )
 from app.services.transformation_engine.transformation_engine import (
     TransformationType as EngineTransformationType,
@@ -499,32 +500,14 @@ async def create_recipe(
             tags=request.tags
         )
         
-        return RecipeResponse(
-            id=str(recipe.id),
-            name=recipe.name,
-            description=recipe.description,
-            user_id=recipe.user_id,
-            steps=[{
-                "step_id": step.step_id,
-                "type": step.transformation_type,
-                "parameters": step.parameters,
-                "description": step.description,
-                "order": step.order
-            } for step in recipe.steps],
-            created_at=recipe.created_at,
-            updated_at=recipe.updated_at,
-            is_public=recipe.is_public,
-            tags=recipe.tags,
-            usage_count=recipe.usage_count,
-            rating=recipe.rating
-        )
+        return _recipe_response(recipe, current_user_id)
         
     except Exception as e:
         logger.error(f"Create recipe failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _recipe_response(recipe: Any, viewer_id: str) -> RecipeResponse:
+def _recipe_response(recipe: TransformationRecipe, viewer_id: str) -> RecipeResponse:
     """A recipe as ``viewer_id`` may see it (#914).
 
     A public recipe is shared with other accounts, so its name and steps go to any
@@ -553,19 +536,18 @@ def _recipe_response(recipe: Any, viewer_id: str) -> RecipeResponse:
     )
 
 
-def _require_readable(recipe: Any, viewer_id: str) -> None:
+def _require_readable(recipe: TransformationRecipe | None, viewer_id: str) -> TransformationRecipe:
     """404 for no recipe, 403 for another account's private one."""
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
     if not recipe.is_public and recipe.user_id != viewer_id:
         raise HTTPException(status_code=403, detail="Access denied")
-
-
-async def _readable_recipe(recipe_id: str, viewer_id: str) -> Any:
-    """The recipe, if ``viewer_id`` may read it; the 404 or 403 otherwise."""
-    recipe = await RecipeManager.get_recipe(recipe_id)
-    _require_readable(recipe, viewer_id)
     return recipe
+
+
+async def _readable_recipe(recipe_id: str, viewer_id: str) -> TransformationRecipe:
+    """The recipe, if ``viewer_id`` may read it; the 404 or 403 otherwise."""
+    return _require_readable(await RecipeManager.get_recipe(recipe_id), viewer_id)
 
 
 @router.get("/recipes", response_model=RecipeListResponse)
@@ -667,8 +649,7 @@ async def get_recipe(
 ):
     """Get a specific recipe"""
     try:
-        recipe = await RecipeManager.get_recipe(recipe_id)
-        _require_readable(recipe, current_user_id)
+        recipe = await _readable_recipe(recipe_id, current_user_id)
         return _recipe_response(recipe, current_user_id)
 
     except HTTPException:
@@ -847,25 +828,7 @@ async def create_recipe_version(
         if not new_version:
             raise HTTPException(status_code=404, detail="Recipe not found or unauthorized")
 
-        return RecipeResponse(
-            id=str(new_version.id),
-            name=new_version.name,
-            description=new_version.description,
-            user_id=new_version.user_id,
-            steps=[{
-                "step_id": step.step_id,
-                "type": step.transformation_type,
-                "parameters": step.parameters,
-                "description": step.description,
-                "order": step.order
-            } for step in new_version.steps],
-            created_at=new_version.created_at,
-            updated_at=new_version.updated_at,
-            is_public=new_version.is_public,
-            tags=new_version.tags,
-            usage_count=new_version.usage_count,
-            rating=new_version.rating
-        )
+        return _recipe_response(new_version, current_user_id)
 
     except HTTPException:
         raise
@@ -926,21 +889,8 @@ async def duplicate_recipe(
 ):
     """Duplicate a recipe as a template"""
     try:
-        # Fetch source recipe to check authorization
-        recipe = await RecipeManager.get_recipe(recipe_id)
-
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-
-        # Check access - user must own the recipe or it must be public
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            logger.warning(
-                f"Access denied: User {current_user_id} attempted to duplicate "
-                f"recipe {recipe_id} owned by {recipe.user_id}"
-            )
-            raise HTTPException(status_code=403, detail="Access denied")
-
-        # Only proceed with duplication if authorized
+        # Only a recipe the caller may read is duplicated.
+        await _readable_recipe(recipe_id, current_user_id)
         duplicate = await RecipeManager.duplicate_recipe(
             recipe_id=recipe_id,
             user_id=current_user_id,
@@ -950,25 +900,7 @@ async def duplicate_recipe(
         if not duplicate:
             raise HTTPException(status_code=404, detail="Recipe not found")
 
-        return RecipeResponse(
-            id=str(duplicate.id),
-            name=duplicate.name,
-            description=duplicate.description,
-            user_id=duplicate.user_id,
-            steps=[{
-                "step_id": step.step_id,
-                "type": step.transformation_type,
-                "parameters": step.parameters,
-                "description": step.description,
-                "order": step.order
-            } for step in duplicate.steps],
-            created_at=duplicate.created_at,
-            updated_at=duplicate.updated_at,
-            is_public=duplicate.is_public,
-            tags=duplicate.tags,
-            usage_count=duplicate.usage_count,
-            rating=duplicate.rating
-        )
+        return _recipe_response(duplicate, current_user_id)
 
     except HTTPException:
         raise
@@ -1054,25 +986,7 @@ async def import_recipe(
         if not imported:
             raise HTTPException(status_code=400, detail="Import failed - invalid recipe format")
 
-        return RecipeResponse(
-            id=str(imported.id),
-            name=imported.name,
-            description=imported.description,
-            user_id=imported.user_id,
-            steps=[{
-                "step_id": step.step_id,
-                "type": step.transformation_type,
-                "parameters": step.parameters,
-                "description": step.description,
-                "order": step.order
-            } for step in imported.steps],
-            created_at=imported.created_at,
-            updated_at=imported.updated_at,
-            is_public=imported.is_public,
-            tags=imported.tags,
-            usage_count=imported.usage_count,
-            rating=imported.rating
-        )
+        return _recipe_response(imported, current_user_id)
 
     except HTTPException:
         raise
