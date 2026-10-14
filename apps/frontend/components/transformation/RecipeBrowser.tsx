@@ -8,7 +8,7 @@ import { fetchRecipePages, type RecipeFilter, type RecipePage, type SavedRecipe 
 /**
  * The saved recipes a pipeline can be loaded from (#859).
  *
- * The list is read through `fetchRecipes`, whose routes are pinned to the API. It used
+ * The list is read through `fetchRecipePages`, whose routes are pinned to the API. It used
  * to be fetched inline from a route that does not exist, with the failure swallowed, so
  * the tab was always empty and never said why.
  */

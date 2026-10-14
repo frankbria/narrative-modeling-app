@@ -14,6 +14,7 @@ import {
   applyRequest,
   exportRequest,
   fetchRecipes,
+  fetchRecipePages,
   previewRequest,
   recipeListPath,
   recipeRequest,
@@ -96,6 +97,24 @@ describe('Recipe browsing reads the routes the API has (#859)', () => {
 
     expect(route).toBeDefined();
     expect([...new URLSearchParams(query).keys()].filter((name) => !route.query.includes(name))).toEqual([]);
+  });
+
+  it('a later page names itself after any query already there (#929)', () => {
+    expect(recipeListPath('all', 2)).toBe('/transformations/recipes?page=2');
+    expect(recipeListPath('mine', 3)).toBe('/transformations/recipes?include_public=false&page=3');
+    expect(recipeListPath('mine', 1)).toBe('/transformations/recipes?include_public=false');
+  });
+
+  it('popular is one request however many pages are asked for (#929)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => lists['GET /transformations/recipes/popular'].response,
+    });
+
+    const shown = await fetchRecipePages('popular', 3);
+
+    expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+    expect(shown.recipes.length).toBe(shown.total);
   });
 
   it('"mine" leaves other accounts\' public recipes out, and "all" does not', () => {
