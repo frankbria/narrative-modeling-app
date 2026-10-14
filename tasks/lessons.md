@@ -2160,7 +2160,9 @@ checked, and the fix is always the same: the claim is a query, so run it.
   the number I had assumed. 1016 was a Dependabot pull request opened minutes earlier. The
   comment could only be overwritten with a correction, since deleting is not allowed here.
 - **Rule:** take the number from what `gh pr create` prints (`pr=$(gh pr create … | grep -o
-  '[0-9]*$')`) and use that variable for every later call. Never type it from memory.
+  '[0-9]+$' -E)`), check it is not empty, and use that variable for every later call. Never
+  type it from memory. (`[0-9]*$` matches the empty string and returned nothing, #842; with no
+  number `gh pr comment` falls back to the branch's own pull request, which is also safe.)
 
 ## 2026-10-14: on a versioned bucket, count versions, not objects (#529)
 - The staging bucket listed zero objects and held 676 noncurrent versions and 676 delete
