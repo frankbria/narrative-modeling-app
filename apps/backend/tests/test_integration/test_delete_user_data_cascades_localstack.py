@@ -30,7 +30,14 @@ def _objects_of(s3_client, bucket: str) -> list[str]:
     return [o["Key"] for o in listed if f"/{USER}/" in o["Key"]]
 
 
-async def test_deleting_a_transformed_upload_leaves_nothing_of_it(client, s3_client, real_s3_env):  # noqa: F811
+async def test_deleting_a_transformed_upload_leaves_nothing_of_it(client, s3_client, real_s3_env, monkeypatch):  # noqa: F811
+    from app.api.routes import user_data as route
+    from app.services.erasure_service import DatasetErasureService
+
+    # The route's erasure service is built at import, in whatever S3 settings the
+    # process had then; in a full run that is an earlier test's mock mode, which
+    # skips S3. One built now has LocalStack's.
+    monkeypatch.setattr(route, "dataset_erasure_service", DatasetErasureService())
     # Other suites share this bucket and this user, so the count is this test's own.
     already_there = set(_objects_of(s3_client, real_s3_env))
     upload = await client.post("/api/v1/upload/secure", files={"file": ("visits.csv", io.BytesIO(CSV), "text/csv")})
