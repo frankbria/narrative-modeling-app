@@ -13,8 +13,8 @@ describe('modelService instance export', () => {
     jest.clearAllMocks();
   });
 
-  // Regression: app/experiments/new imports { modelService } but the module
-  // previously only exported the ModelService class. Verify the instance exists
+  // Regression: pages import { modelService }, but the module previously
+  // only exported the ModelService class. Verify the instance exists
   // and exposes the methods the pages call without an explicit token argument.
   it('exposes a modelService instance distinct from the class', () => {
     expect(modelService).toBeDefined();

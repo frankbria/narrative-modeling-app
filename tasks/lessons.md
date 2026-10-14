@@ -2142,3 +2142,16 @@ checked, and the fix is always the same: the claim is a query, so run it.
 - **Rule:** after merging something that runs in a deploy, read that deploy's log for the
   new step's own output. "The run is green" was true and wrong here.
 
+## 2026-10-13: the secret hook reads the lines a commit removes, too (#765)
+- Renaming the product in a deploy guide meant changing `adduser … --disabled-password
+  --gecos "<old name> Deployment"`. The pre-commit scan greps the whole staged diff, so the
+  REMOVED line matched its password pattern and the commit was refused whatever the new
+  line said. Reordering the flags did not help, for the same reason.
+- **Rule:** when the hook names a `-` line, the line cannot be edited from a session. Do
+  not reach for `--no-verify` or a rename that takes the file out of the scan. Leave the
+  line, say why where the reader will look (here: the name guard's one-line exemption),
+  and tell the operator.
+- **Rule:** `pkill -f '<pattern>'` matches the shell running it when the pattern is in
+  that shell's command line. `^.*` in front is not an anchor. Use `pgrep -f '[c]odex …'`
+  to find the pid, then kill the pid.
+

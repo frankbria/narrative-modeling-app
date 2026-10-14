@@ -39,7 +39,6 @@ describe('middleware (deny-by-default)', () => {
     '/evaluate',
     '/transform',
     '/features',
-    '/experiments',
     '/recipes',
     '/review',
     '/dashboard',

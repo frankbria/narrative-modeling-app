@@ -35,6 +35,14 @@ describe('Sidebar navigation', () => {
     expect(links[buildModelIndex + 1]).toBe('Training Jobs');
   });
 
+  // #502: experiments collected nothing, so the product does not offer them.
+  it('offers no A/B testing entry', () => {
+    render(<Sidebar />);
+    const links = screen.getAllByRole('link');
+    expect(links.map((link) => link.textContent)).not.toContain('A/B Testing');
+    expect(links.map((link) => link.getAttribute('href'))).not.toContain('/experiments');
+  });
+
   // ---- Responsive drawer + labeled nav (issue #282) ----
 
   it('exposes the nav as a labeled region', () => {

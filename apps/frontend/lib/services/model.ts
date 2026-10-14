@@ -944,8 +944,7 @@ export class ModelService {
 
 /**
  * Instance-style facade over {@link ModelService} that resolves the auth token
- * automatically, matching the convention used by the other client services
- * (e.g. {@link abTestingService}).
+ * automatically, matching the convention used by the other client services.
  */
 class ModelServiceClient {
   async listModels(datasetId?: string): Promise<ModelInfo[]> {

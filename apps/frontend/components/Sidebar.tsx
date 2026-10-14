@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 
 import { useSession, signOut } from 'next-auth/react'
 import type { Session } from 'next-auth'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, Beaker, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
+import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { COMPANY } from '@/lib/legal/company'
 import {
@@ -26,7 +26,6 @@ const MENU_ITEMS = [
   { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
   { name: 'Training Jobs', icon: <ListChecks size={20} />, href: '/training' },
   { name: 'Create Predictions', icon: <BarChart size={20} />, href: '/predict' },
-  { name: 'A/B Testing', icon: <Beaker size={20} />, href: '/experiments' },
   { name: 'Monitor', icon: <Activity size={20} />, href: '/monitor' },
 ]
 
