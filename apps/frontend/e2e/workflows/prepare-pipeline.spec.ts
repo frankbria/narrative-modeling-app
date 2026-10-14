@@ -51,8 +51,13 @@ test.describe('Prepare pipeline', () => {
     expect(source).toContain('# Step 1: Remove Duplicates');
     await expect(page.getByTestId('pipeline-error')).toHaveCount(0);
 
+    // #863: once the dataset is on its new file, the panel reads its rows again.
+    const reread = page.waitForResponse(
+      (r) => r.url().endsWith(`/data/${datasetId}/preview`) && r.request().method() === 'GET',
+    );
     await page.getByRole('button', { name: /apply & continue/i }).click();
     await expect(page.getByText('Applied 1 transformation')).toBeVisible({ timeout: 20000 });
+    expect((await reread).ok(), 'the rows are read again after the apply').toBe(true);
 
     const history = await request.get(`${API_BASE}/transformations/datasets/${datasetId}/history`, {
       headers: await apiAuthHeaders(request),

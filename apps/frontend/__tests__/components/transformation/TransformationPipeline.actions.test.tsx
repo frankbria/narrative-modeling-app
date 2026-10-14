@@ -73,6 +73,58 @@ describe('TransformationPipeline actions (#855)', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith('dataset-1'));
   });
 
+  // #863: the rows were read once, on mount. After an apply the dataset is on a new
+  // file, and the next preview compared against rows that no longer exist.
+  it('shows the file the dataset is on now as Before, once an apply has moved it', async () => {
+    respond('/transformations/apply', { success: true });
+    const user = await addTrimWhitespace();
+    expect(await screen.findByText('bob')).toBeInTheDocument();
+
+    const afterApply = { columns: ['name', 'score'], data: [{ name: 'carol', score: 30 }] };
+    const beforeApply = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      /\/data\/[^/]+\/preview$/.test(String(url))
+        ? { ok: true, json: async () => afterApply }
+        : beforeApply(url, init),
+    );
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+    expect(await screen.findByText('Applied 1 transformation')).toBeInTheDocument();
+
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
+
+    respond('/transformations/preview', {
+      success: true,
+      preview_data: [{ name: 'carol', score: 30 }],
+      stats_before: { row_count: 1, column_count: 2 },
+      stats_after: { row_count: 1, column_count: 2 },
+    });
+    await user.click(screen.getByRole('button', { name: /^preview$/i }));
+    await user.click(await screen.findByRole('button', { name: /^before$/i }));
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
+  });
+
+  it('keeps Preview disabled until the rows are read again, so it never previews without them', async () => {
+    respond('/transformations/apply', { success: true });
+    const user = await addTrimWhitespace();
+    expect(await screen.findByText('bob')).toBeInTheDocument();
+
+    let rowsArrive: (rows: unknown) => void = () => {};
+    const beforeApply = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      /\/data\/[^/]+\/preview$/.test(String(url))
+        ? { ok: true, json: () => new Promise((resolve) => (rowsArrive = resolve)) }
+        : beforeApply(url, init),
+    );
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^preview$/i })).toBeDisabled());
+    rowsArrive({ columns: ['name', 'score'], data: [{ name: 'carol', score: 30 }] });
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^preview$/i })).toBeEnabled();
+  });
+
   it('drops the steps a failed apply already applied, so a retry sends only the rest', async () => {
     let applies = 0;
     const mountTime = fetchMock().getMockImplementation()!;
@@ -92,6 +144,27 @@ describe('TransformationPipeline actions (#855)', () => {
     expect(screen.getAllByText('Trim Whitespace')).toHaveLength(1);
     expect(screen.getAllByText('Remove Duplicates')).toHaveLength(2);
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('reads the rows again after an apply that failed part-way, since its first steps moved the dataset', async () => {
+    let applies = 0;
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (/\/data\/[^/]+\/preview$/.test(String(url)) && applies > 0) {
+        return { ok: true, json: async () => ({ columns: ['name', 'score'], data: [{ name: 'carol', score: 30 }] }) };
+      }
+      if (!String(url).endsWith('/transformations/apply')) return mountTime(url, init);
+      applies += 1;
+      return { ok: true, json: async () => (applies === 1 ? { success: true } : { success: false, error: 'not numeric' }) };
+    });
+    const user = await addSteps(/add trim whitespace/i, /add remove duplicates/i);
+    expect(await screen.findByText('bob')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent('Applied 1 of 2 steps');
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
   });
 
   it('shows a failed code export instead of doing nothing', async () => {
