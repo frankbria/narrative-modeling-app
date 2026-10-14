@@ -136,13 +136,12 @@ class TestHooks:
         import pandas as pd
 
         from app.api.routes.model_training import TrainModelRequest, train_model_task
+        from app.models.training_job import TrainingJob
         from app.services.model_training import ProblemType
         from app.services.model_training.automl_engine import (
             AutoMLResult,
             ModelCandidate,
         )
-
-        from app.models.training_job import TrainingJob
 
         # The route creates the job before the task runs; a task with none ends (#945).
         await TrainingJob(model_id="m1", user_id=TEST_USER, dataset_id="ds", target_column="target").insert()
