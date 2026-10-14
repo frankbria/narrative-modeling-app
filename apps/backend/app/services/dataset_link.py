@@ -331,25 +331,31 @@ async def holding_the_dataset(dataset_id: str, user_id: str) -> AsyncIterator[No
 
 
 def holds_the_dataset(
-    dataset_id_of: Callable[[dict[str, Any]], str], busy: Callable[[dict[str, Any]], Any]
+    dataset_id_of: Callable[[dict[str, Any]], str | None], busy: Callable[[dict[str, Any]], Any]
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """For a route that moves a dataset: run the handler holding the dataset's lease
     (#1022), so it reads the file the last writer left. `dataset_id_of(arguments)` names the
     dataset from the handler's arguments by name; `busy(arguments)` is the route's own failure answer
     when the lease is still held after the wait, and nothing has been written then.
+    A request that moves nothing (a preview) names no dataset (`None`) and takes no lease.
     Place it directly above the handler, under the other decorators.
     """
 
     def wrap(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         signature = inspect.signature(handler)
+        if "current_user_id" not in signature.parameters:
+            raise TypeError(f"{handler.__name__} takes no current_user_id, so its lease cannot be named")
 
         @functools.wraps(handler)
         async def run(*args: Any, **kwargs: Any) -> Any:
             # By name, however the handler was called: FastAPI passes keywords, a test
             # calling the handler directly may not.
             named = signature.bind_partial(*args, **kwargs).arguments
+            dataset_id = dataset_id_of(named)
+            if dataset_id is None:
+                return await handler(*args, **kwargs)
             try:
-                async with holding_the_dataset(dataset_id_of(named), named["current_user_id"]):
+                async with holding_the_dataset(dataset_id, named["current_user_id"]):
                     return await handler(*args, **kwargs)
             except LeaseBusy:
                 return busy(named)

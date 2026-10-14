@@ -2205,3 +2205,15 @@ checked, and the fix is always the same: the claim is a query, so run it.
   status counting as ready) and needed a follow-up PR (#1038).
 - **Rule:** before merging, read every section of a review whose heading names bugs or
   correctness in full. A keyword grep is for finding the comment, not for judging it.
+
+## 2026-10-14: a stash with nothing to save, then a pop (#921 demo)
+
+- To compare a spec against `main` I ran `git stash -- <path>` (nothing was uncommitted,
+  so nothing was stashed), checked out main's files, and then `git stash pop`. The pop
+  applied the repository's oldest unrelated stash entry, from another session months
+  earlier, onto the worktree, with conflicts. The entry was kept, so nothing was lost;
+  the worktree was reset to its committed HEAD.
+- **Rule:** to look at `main`'s version of committed files, use
+  `git checkout origin/main -- <path>` and `git checkout HEAD -- <path>` to come back.
+  Never pair `stash` and `pop` in a script: the stash is shared by every worktree and
+  session, and an empty `stash` makes the `pop` take someone else's.

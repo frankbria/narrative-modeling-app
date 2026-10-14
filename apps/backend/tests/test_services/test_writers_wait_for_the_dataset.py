@@ -52,6 +52,29 @@ async def test_a_fix_is_refused_while_another_writer_holds_the_dataset(
     assert (response.json()["success"], response.json()["error"]) == (False, DATASET_BUSY)
 
 
+@pytest.mark.parametrize("route, body", [
+    ("/api/v1/data-issues/apply-fix", {"issue_id": "i1", "preview_mode": True}),
+    ("/api/v1/data-issues/batch-fix", {"issue_ids": ["i1"], "preview_mode": True}),
+], ids=["apply-fix", "batch-fix"])
+@pytest.mark.asyncio
+async def test_a_preview_moves_nothing_so_it_does_not_wait_for_the_dataset(
+    setup_database, async_authorized_client, held, route, body
+):
+    """It reaches the handler, which answers for the unknown dataset, instead of busy."""
+    dataset_id = str(PydanticObjectId())
+    async with held(dataset_id):
+        response = await async_authorized_client.post(route, json={"dataset_id": dataset_id, **body})
+
+    assert response.status_code == 404
+
+
+def test_a_handler_the_lease_cannot_be_named_for_is_refused_when_decorated():
+    from app.services.dataset_link import holds_the_dataset
+
+    with pytest.raises(TypeError, match="current_user_id"):
+        holds_the_dataset(lambda a: "d", lambda a: None)(lambda request, user_id: None)
+
+
 @pytest.mark.asyncio
 async def test_a_feature_added_in_place_is_refused_while_another_writer_holds_the_dataset(
     setup_database, async_authorized_client, held

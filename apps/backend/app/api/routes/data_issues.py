@@ -390,7 +390,7 @@ async def preview_fix(
 @router.post("/apply-fix", response_model=FixApplicationResponse)
 @discards_uploads_on_reported_failure
 @holds_the_dataset(
-    lambda kw: kw["request"].dataset_id,
+    lambda kw: None if kw["request"].preview_mode else kw["request"].dataset_id,
     lambda kw: FixApplicationResponse(
         success=False, dataset_id=kw["request"].dataset_id, issue_id=kw["request"].issue_id,
         fix_id=kw["request"].fix_id or "", error=DATASET_BUSY,
@@ -542,7 +542,7 @@ async def apply_fix(
 @router.post("/batch-fix", response_model=BatchFixResponse)
 @discards_uploads_on_reported_failure
 @holds_the_dataset(
-    lambda kw: kw["request"].dataset_id,
+    lambda kw: None if kw["request"].preview_mode else kw["request"].dataset_id,
     lambda kw: BatchFixResponse(success=False, dataset_id=kw["request"].dataset_id, error=DATASET_BUSY),
 )
 async def batch_apply_fixes(
