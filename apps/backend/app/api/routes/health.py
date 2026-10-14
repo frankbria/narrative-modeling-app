@@ -132,7 +132,7 @@ async def _ask_openai(api_key: str) -> tuple[dict[str, Any], bool]:
                 headers={"Authorization": f"Bearer {api_key}"}
             )
     except Exception as e:
-        logger.error(f"OpenAI health check failed: {type(e).__name__}")
+        logger.error("OpenAI health check failed: %s: %s", type(e).__name__, e)
         return _unhealthy(start_time, type(e).__name__), True
     if response.status_code == 200:
         return {"status": "healthy", "latency_ms": _ms_since(start_time), "api_version": "v1"}, False
