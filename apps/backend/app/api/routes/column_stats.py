@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.column_stats import ColumnStats
 from app.models.user_data import UserData
-from app.services.dataset_link import _file_type_of
+from app.services.dataset_link import file_type_of
 from app.utils.column_stats import calculate_and_store_column_stats
 from app.utils.s3 import get_file_from_s3, holds_parquet
 
@@ -90,7 +90,7 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
 
     # Dispatch on where the file is now, not on `filename`: a transformation
     # rewrites it as parquet and moves `s3_url`, but never renames the upload.
-    file_type = _file_type_of(dataset.s3_url)
+    file_type = file_type_of(dataset.s3_url)
     try:
         # Parquet by its bytes, not its name: a version written before #888 is
         # parquet under the upload's own .csv name. Other bytes under a .parquet
@@ -114,6 +114,14 @@ def _load_dataframe(dataset: UserData) -> pd.DataFrame:
             status_code=400,
             detail=f"Unsupported file format or parsing error: {str(e)}. Please upload a valid CSV or Excel file.",
         )
+
+
+def _complete(rows: list[ColumnStats], dataset: UserData) -> bool:
+    """Whether the cached rows cover every column of the dataset, read from its own
+    record, so a healthy hit costs no download. `record_new_file` deletes the rows when
+    the dataset moves to another file (#960), so the rows are of the current file."""
+    expected = len(dataset.columns) if dataset.columns else dataset.num_columns
+    return bool(rows) and len(rows) >= expected
 
 
 @router.get("/dataset/{dataset_id}", response_model=list[ColumnStats])
@@ -140,8 +148,9 @@ async def get_column_stats(
     # under this dataset_id must not be served even if that check is refactored.
     column_stats = await _read_scoped_stats(dataset_id, user_id)
 
-    # If no stats exist, calculate them
-    if not column_stats:
+    # A set that is missing columns is a write cut off, or one still going: compute
+    # them, and the unordered insert completes the stored set (#889).
+    if not _complete(column_stats, dataset):
         try:
             df = _load_dataframe(dataset)
 

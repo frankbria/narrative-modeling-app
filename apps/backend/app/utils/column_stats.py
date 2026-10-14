@@ -94,7 +94,8 @@ async def _store(column_stats_list: list[ColumnStats]) -> None:
     if not column_stats_list:
         return
     try:
-        await ColumnStats.insert_many(column_stats_list)
+        # Unordered: a cut-off set is completed, the rows already there colliding (#889).
+        await ColumnStats.insert_many(column_stats_list, ordered=False)
     except BulkWriteError as e:
         codes = {err.get("code") for err in e.details.get("writeErrors", [])}
         if codes != {_DUPLICATE_KEY}:

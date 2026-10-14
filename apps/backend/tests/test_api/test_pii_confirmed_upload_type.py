@@ -16,7 +16,7 @@ from app.api.routes import secure_upload
 from app.api.routes.model_training import _parse_dataset
 from app.models.user_data import UserData
 from app.services.data_processing.data_processor import DataProcessor
-from app.services.dataset_link import _file_type_of
+from app.services.dataset_link import file_type_of
 
 pytestmark = pytest.mark.asyncio
 
@@ -88,5 +88,5 @@ async def test_training_reads_a_row_with_no_declared_type_by_its_bytes(body):
 
 async def test_a_masked_object_is_csv_whatever_its_name_says():
     """Until #937 a masked workbook was CSV under the upload's own extension."""
-    assert _file_type_of("s3://bucket/datasets/u/masked_0f1e.xlsx?X-Amz-Signature=1") == "csv"
-    assert _file_type_of("s3://bucket/datasets/u/0f1e.xlsx") == "xlsx"
+    assert file_type_of("s3://bucket/datasets/u/masked_0f1e.xlsx?X-Amz-Signature=1") == "csv"
+    assert file_type_of("s3://bucket/datasets/u/0f1e.xlsx") == "xlsx"
