@@ -42,8 +42,13 @@ async def _scatter(client, monkeypatch, filters, *, columns: list[str] | None = 
         ([{"column": "region", "operator": "equals", "value": "north"},
           {"column": "spend", "operator": "at_least", "value": 5}], "Filter 2: unknown operator 'at_least'"),
         ([{"column": "spend", "operator": "between", "value": 5}], "Filter 1: between takes a list of two values"),
+        ([{"column": "region", "operator": ["equals"], "value": "north"}], "Filter 1: the column and the operator are names"),
+        ([{"column": ["region"], "operator": "equals", "value": "north"}], "Filter 1: the column and the operator are names"),
     ],
-    ids=["not a list", "a missing key", "not an object", "an unknown operator", "between without a pair"],
+    ids=[
+        "not a list", "a missing key", "not an object", "an unknown operator", "between without a pair",
+        "an operator that is not a name", "a column that is not a name",
+    ],
 )
 async def test_a_filter_of_the_wrong_shape_is_refused_before_anything_is_read(
     setup_database, async_authorized_client, monkeypatch, filters, detail
@@ -107,3 +112,16 @@ async def test_every_operator_still_filters(setup_database, async_authorized_cli
 
     assert response.status_code == 200, response.text
     assert response.json()["data"] == [{"x": 3.0, "y": 30.0}]
+
+
+@pytest.mark.parametrize("typed, matches", [("(", []), (".", [])], ids=["a bracket", "a dot"])
+async def test_contains_matches_what_was_typed_not_a_pattern(
+    setup_database, async_authorized_client, monkeypatch, typed, matches
+):
+    """A regex made "(" a 500 and "." a match for every row."""
+    response, _ = await _scatter(
+        async_authorized_client, monkeypatch, [{"column": "notes", "operator": "contains", "value": typed}]
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == matches

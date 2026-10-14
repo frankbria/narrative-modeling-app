@@ -72,6 +72,8 @@ def _parse_filters(filters: str | None, known_columns: list[str] | None) -> list
 def _check_filter(position: int, entry: Any, known_columns: list[str] | None) -> None:
     if not isinstance(entry, dict) or not {"column", "operator", "value"} <= entry.keys():
         raise _bad_filter(position, "each filter needs a column, an operator and a value")
+    if not isinstance(entry["column"], str) or not isinstance(entry["operator"], str):
+        raise _bad_filter(position, "the column and the operator are names")
     if entry["operator"] not in _FILTER_OPERATORS:
         raise _bad_filter(position, f"unknown operator {entry['operator']!r}")
     if entry["operator"] == "between" and not (isinstance(entry["value"], list) and len(entry["value"]) == 2):
@@ -107,7 +109,8 @@ def _filter_mask(column: pd.Series, operator: str, value: Any) -> pd.Series:
     if operator == "less_than":
         return column < value
     if operator == "contains":
-        return column.str.contains(str(value), na=False)
+        # Literal: the value is what a person typed, not a pattern ("." matched every row).
+        return column.str.contains(str(value), na=False, regex=False)
     return (column >= value[0]) & (column <= value[1])
 
 
