@@ -2217,3 +2217,13 @@ checked, and the fix is always the same: the claim is a query, so run it.
   `git checkout origin/main -- <path>` and `git checkout HEAD -- <path>` to come back.
   Never pair `stash` and `pop` in a script: the stash is shared by every worktree and
   session, and an empty `stash` makes the `pop` take someone else's.
+
+## 2026-10-14: a rebase and force-push of a pushed branch (#925, PR #1044)
+
+- To add a docs commit to an open PR I ran `git rebase origin/main` on a branch that was
+  already pushed, then `git push --force-with-lease`. The standing rule is never to
+  force-push a feature branch. Nothing was lost, since the PR's commits were replayed
+  unchanged onto the new main, but the published history was rewritten.
+- **Rule:** rebase a branch only before its first push. Once it is pushed, add commits
+  on top. If it needs main, `git merge origin/main`; usually it needs nothing, because
+  the squash merge applies it to the current main.
