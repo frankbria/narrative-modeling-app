@@ -135,6 +135,17 @@ def sample_dataframe():
 class TestColumnSelectionPatterns:
     """Tests for column selection by pattern."""
 
+    @pytest.fixture(autouse=True)
+    def _the_file_has_that_schema(self, mock_dataset):
+        """These hold the matching rules, so the file's schema is the fixture's. Reading
+        it from the real file is tested in test_select_columns_from_the_file_localstack.py."""
+        module = "app.services.bulk_transformation_service"
+        with (
+            patch(f"{module}.get_dataframe_from_s3", AsyncMock(return_value=pd.DataFrame())),
+            patch(f"{module}.infer_schema", return_value=[f.model_dump() for f in mock_dataset.data_schema]),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_select_columns_by_data_type_numeric(self, bulk_service, mock_dataset):
         """Test selecting numeric columns."""

@@ -73,13 +73,13 @@ class TestAUiUploadsId:
         assert (body["success"], body["total_columns"], body["successful_previews"]) == (True, 2, 2)
         assert [p["column_name"] for p in body["column_previews"]] == ["age", "city"]
 
-    async def test_selecting_columns_resolves_the_upload(self, setup_database):
+    async def test_selecting_columns_resolves_the_upload(self, setup_database, storage):
         upload = await _upload()
-        pattern = ColumnSelectionPattern(pattern_type=PatternType.NAME_PATTERN, criteria={"pattern": "a.*"})
+        pattern = ColumnSelectionPattern(pattern_type=PatternType.NAME_PATTERN, criteria={"pattern": "^a"})
 
         matched = await BulkTransformationService().select_columns_by_pattern(USER, str(upload.id), pattern)
 
-        assert matched == [], "resolved; the upload's twin carries no schema to match against"
+        assert [c["column_name"] for c in matched] == ["age"], "read from the upload's own file (#924)"
         assert await DatasetMetadata.find_one({"dataset_id": str(upload.id), "user_id": USER}) is not None
 
     async def test_a_bulk_job_runs_and_moves_the_upload(self, setup_database, storage):

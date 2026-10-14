@@ -47,6 +47,7 @@ from app.services.transformation_engine.transformation_engine import (
     TransformationType,
 )
 from app.utils.s3 import downloadable_url, record_request_uploads
+from app.utils.schema_inference import infer_schema
 
 logger = logging.getLogger(__name__)
 
@@ -258,10 +259,17 @@ class BulkTransformationService:
             NotFoundError: If dataset not found
         """
         dataset = await _owned_dataset(user_id, dataset_id)
+        # The schema of the file the dataset is on now (#924). No upload path stores one
+        # on the metadata (`/datasets/upload` keeps it in `inferred_schema`, a UI upload's
+        # twin has none), and a stored one goes stale when a transformation changes the
+        # columns, so every selection matched nothing.
+        # a raw key must not reach the URL-only downloader (#466)
+        df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
+        fields = [SchemaField(**described) for described in await asyncio.to_thread(infer_schema, df)]
 
         matching_columns = []
 
-        for field in dataset.data_schema:
+        for field in fields:
             if self._matches_pattern(field, pattern):
                 matching_columns.append({
                     "column_name": field.field_name,
