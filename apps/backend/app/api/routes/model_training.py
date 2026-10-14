@@ -1025,7 +1025,9 @@ async def _store_trained_model(
 async def _record_what_follows(run: _TrainingRun, user_id: str, model_id: str) -> None:
     """What a model existing marks elsewhere: the version it was trained on, and the
     tenant's first-model event. After the job's completion is recorded, which removes the
-    model and stops here when the job was erased meanwhile (#945)."""
+    model and stops here when the job was erased meanwhile (#945). The cost of that order:
+    a completion write that fails for another reason leaves the model stored and these
+    two unwritten, where they used to precede it."""
     await _mark_version_trained_on(run.dataset_version_id, model_id)
     await product_events.record(
         user_id,

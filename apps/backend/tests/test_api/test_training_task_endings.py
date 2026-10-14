@@ -80,15 +80,22 @@ async def test_a_cancellation_that_cannot_be_recorded_does_not_escape_the_task(s
     ids=["cancelled", "failed"],
 )
 async def test_a_task_with_no_tracking_job_ends_quietly(setup_database, ending):
-    # The lookup is best-effort: a run whose job row was never written still trains,
-    # and its reporting and its ending have nothing to write to.
+    # A job lookup that FAILS is best effort: the run still trains, and its reporting
+    # and its ending have nothing to write to. (A lookup that works and finds no row
+    # means the job was erased, and the task does not run: #945, in
+    # test_training_job_erased_mid_run.py.)
+    ran = []
+
     async def reports_then_ends(*_args, progress_callback, event_callback, cancel_check, **_kwargs):
+        ran.append(True)
         await progress_callback(0, 1, "RandomForest")
         assert await cancel_check() is False
         raise ending
 
-    await _run_task("model_without_a_job", reports_then_ends)  # no raise
+    with patch.object(model_training, "_tracking_job", AsyncMock(return_value=None)):
+        await _run_task("model_without_a_job", reports_then_ends)  # no raise
 
+    assert ran, "the untracked run trained"
     assert await TrainingJob.find_one(TrainingJob.model_id == "model_without_a_job") is None
 
 
