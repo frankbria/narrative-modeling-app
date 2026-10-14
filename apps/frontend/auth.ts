@@ -7,7 +7,7 @@ import GitHubProvider from "next-auth/providers/github"
 import CredentialsProvider from "next-auth/providers/credentials"
 import client from "./lib/db"
 import { mintApiToken } from "./lib/api-token"
-import { isSignInAllowed, signupMode } from "./lib/invite-allowlist"
+import { isSignInAllowed, signupModeWarning } from "./lib/invite-allowlist"
 import { isAdminEmail } from "./lib/admin-allowlist"
 import { assertAuthConfig, assertDatabaseConfig } from "./lib/auth-config"
 import { resolveExtraTestIdentity } from "./lib/test-credentials"
@@ -18,10 +18,9 @@ import { recordAccountCreated } from "./lib/product-events"
 // No-op in development/test, where the dummy fallbacks below are intentional.
 assertAuthConfig()
 assertDatabaseConfig()
-// SIGNUP_MODE=open is a deliberate value (#768), so say it out loud at startup.
-if (signupMode() === 'open' && process.env.NODE_ENV === 'production') {
-  console.warn('[auth] Signup mode: OPEN — any Google/GitHub account may sign up (SIGNUP_MODE=open)')
-}
+// Open signup, and invite mode with nobody on the list, are said out loud (#768, #880).
+const signupWarning = signupModeWarning()
+if (signupWarning) console.warn(signupWarning)
 
 // Development mode flag
 const isDevelopment = process.env.NODE_ENV === 'development'
