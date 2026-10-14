@@ -91,12 +91,20 @@ async def check_s3_access() -> dict[str, Any]:
             "error": "unavailable"  # detail logged server-side (issue #269)
         }
 
+#: The pause before the one retry of a transient OpenAI failure (#973).
+OPENAI_RETRY_PAUSE_SECONDS = 1.0
+
+
 async def check_openai_api() -> dict[str, Any]:
     """
     Check OpenAI API accessibility and response time
     Returns health status, latency, and API availability
+
+    A transient failure (a timeout or connection error, a 5xx, a 429) is asked again
+    once after a short pause before it is reported (#973): one slow answer opened a P1
+    staging alert. A refused key (401, 403) is reported at once. ``error`` names the
+    kind of failure (an exception class or ``http <status>``), never its text.
     """
-    start_time = time.time()
     openai_api_key = os.getenv("OPENAI_API_KEY")
 
     if not openai_api_key or openai_api_key == "your-openai-api-key":
@@ -106,35 +114,38 @@ async def check_openai_api() -> dict[str, Any]:
             "message": "OpenAI API key not configured"
         }
 
+    result, transient = await _ask_openai(openai_api_key)
+    if transient:
+        await asyncio.sleep(OPENAI_RETRY_PAUSE_SECONDS)
+        result, _ = await _ask_openai(openai_api_key)
+    return result
+
+
+async def _ask_openai(api_key: str) -> tuple[dict[str, Any], bool]:
+    """One lightweight call (list models): the result, and whether a failure is worth
+    asking again."""
+    start_time = time.time()
     try:
-        # Lightweight API check - list models endpoint
         async with httpx.AsyncClient(timeout=3.0) as client:
             response = await client.get(
                 "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {openai_api_key}"}
+                headers={"Authorization": f"Bearer {api_key}"}
             )
-            latency_ms = (time.time() - start_time) * 1000
-
-            if response.status_code == 200:
-                return {
-                    "status": "healthy",
-                    "latency_ms": round(latency_ms, 2),
-                    "api_version": "v1"
-                }
-            else:
-                return {
-                    "status": "unhealthy",
-                    "latency_ms": round(latency_ms, 2),
-                    "error": f"API returned status {response.status_code}"
-                }
     except Exception as e:
-        latency_ms = (time.time() - start_time) * 1000
-        logger.error(f"OpenAI health check failed: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "latency_ms": round(latency_ms, 2),
-            "error": "unavailable"  # detail logged server-side (issue #269)
-        }
+        logger.error("OpenAI health check failed: %s: %s", type(e).__name__, e)
+        return _unhealthy(start_time, type(e).__name__), True
+    if response.status_code == 200:
+        return {"status": "healthy", "latency_ms": _ms_since(start_time), "api_version": "v1"}, False
+    code = response.status_code
+    return _unhealthy(start_time, f"http {code}"), code >= 500 or code == 429
+
+
+def _ms_since(start_time: float) -> float:
+    return round((time.time() - start_time) * 1000, 2)
+
+
+def _unhealthy(start_time: float, kind: str) -> dict[str, Any]:
+    return {"status": "unhealthy", "latency_ms": _ms_since(start_time), "error": kind}
 
 @router.get("/health")
 async def health_check():

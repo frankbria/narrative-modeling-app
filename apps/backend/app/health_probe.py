@@ -112,11 +112,26 @@ async def probe(
         statuses["ready"] = f"unreachable ({type(exc).__name__})"
     else:
         statuses["ready"] = "healthy" if code == 200 else f"http {code}"
-    # Parsed outside the try so a malformed entry can't relabel a reached service,
-    # and tolerant of any shape so the "never raises" contract holds on drift.
+    # Parsed outside the try so a malformed entry can't relabel a reached service.
+    statuses.update(_ready_checks(body))
+    statuses.update(await _fresh_statuses())
+    return statuses
+
+
+def _ready_checks(body: dict[str, Any]) -> dict[str, str]:
+    """The per-check statuses in the readiness body, tolerant of any shape so the
+    "never raises" contract holds on drift."""
     checks = body.get("checks")
-    for name, check in (checks.items() if isinstance(checks, dict) else ()):
-        statuses[name] = str(check.get("status")) if isinstance(check, dict) else str(check)
+    return {
+        name: str(check.get("status")) if isinstance(check, dict) else str(check)
+        for name, check in (checks.items() if isinstance(checks, dict) else ())
+    }
+
+
+async def _fresh_statuses() -> dict[str, str]:
+    """The checks run in this fresh process (a new Mongo connection, S3, OpenAI, the
+    signup rate). One that raises is ``unreachable``."""
+    statuses: dict[str, str] = {}
     fresh = (
         ("mongodb_fresh", _fresh_mongo_ping),
         ("s3", check_s3_access),
@@ -125,10 +140,18 @@ async def probe(
     )
     for name, check_fn in fresh:
         try:
-            statuses[name] = str((await check_fn()).get("status"))
+            statuses[name] = _reported(await check_fn())
         except Exception as exc:
             statuses[name] = f"unreachable ({type(exc).__name__})"
     return statuses
+
+
+def _reported(check: dict) -> str:
+    """The status, and for a failure the kind the check names (#973): a class name or an
+    HTTP status, never an error message, since this output reaches a public issue."""
+    status = str(check.get("status"))
+    kind = check.get("error")
+    return f"{status} ({kind})" if kind and status != "healthy" else status
 
 
 def main(transport: httpx.AsyncBaseTransport | None = None) -> int:
