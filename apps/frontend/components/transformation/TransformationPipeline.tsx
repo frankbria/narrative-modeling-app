@@ -472,8 +472,10 @@ export default function TransformationPipeline(props: TransformationPipelineProp
   const handleApplyTransformations = () =>
     runAction(async () => {
       const steps = pipelineSteps();
-      await applyPipeline(datasetId, steps).catch((err) => {
+      await applyPipeline(datasetId, steps).catch(async (err) => {
         dropApplied(err);
+        // Steps that landed before the failure moved the dataset too.
+        await refresh();
         throw err;
       });
       setHasUnsavedChanges(false);

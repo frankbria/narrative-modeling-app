@@ -146,6 +146,27 @@ describe('TransformationPipeline actions (#855)', () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
+  it('reads the rows again after an apply that failed part-way, since its first steps moved the dataset', async () => {
+    let applies = 0;
+    const mountTime = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (/\/data\/[^/]+\/preview$/.test(String(url)) && applies > 0) {
+        return { ok: true, json: async () => ({ columns: ['name', 'score'], data: [{ name: 'carol', score: 30 }] }) };
+      }
+      if (!String(url).endsWith('/transformations/apply')) return mountTime(url, init);
+      applies += 1;
+      return { ok: true, json: async () => (applies === 1 ? { success: true } : { success: false, error: 'not numeric' }) };
+    });
+    const user = await addSteps(/add trim whitespace/i, /add remove duplicates/i);
+    expect(await screen.findByText('bob')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+
+    expect(await screen.findByTestId('pipeline-error')).toHaveTextContent('Applied 1 of 2 steps');
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
+  });
+
   it('shows a failed code export instead of doing nothing', async () => {
     const mountTime = fetchMock().getMockImplementation()!;
     fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
