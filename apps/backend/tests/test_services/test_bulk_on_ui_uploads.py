@@ -251,3 +251,74 @@ class TestACancelIsNotOverwritten:
         assert done.status == BulkJobStatus.CANCELLED
         storage.assert_not_awaited()
         assert (await UserData.get(upload.id)).s3_url == upload.s3_url, "the dataset did not move"
+
+
+async def _failed_job(upload: UserData, job_id: str) -> BulkTransformationJob:
+    return await BulkTransformationJob(
+        job_id=job_id, user_id=USER, dataset_id=str(upload.id), selected_columns=["age"],
+        transformation_type="fill_missing", global_parameters={"method": "mode"},
+        status=BulkJobStatus.FAILED, retry_count=1,
+    ).insert()
+
+
+class TestRetryAndCancelAreClaims:
+    """#925 review: retry read, checked and saved the whole document, so a double-click
+    reset a job the first retry had already claimed and both ran it."""
+
+    async def test_a_retry_runs_the_job_and_moves_the_dataset(self, setup_database, storage):
+        upload = await _upload()
+        await _failed_job(upload, "bulk_retry")
+        service = BulkTransformationService()
+
+        job = await service.retry_job("bulk_retry", USER)
+        done = await _finished(service, job)
+
+        assert done.status == BulkJobStatus.COMPLETED, done.error_message
+        storage.assert_awaited_once()
+
+    async def test_two_retries_at_once_run_the_job_once(self, setup_database, storage):
+        upload = await _upload()
+        await _failed_job(upload, "bulk_twice")
+        service = BulkTransformationService()
+
+        first, second = await asyncio.gather(
+            service.retry_job("bulk_twice", USER), service.retry_job("bulk_twice", USER)
+        )
+        claimed = [job for job in (first, second) if job is not None]
+        assert len(claimed) == 1
+        await _finished(service, claimed[0])
+
+        storage.assert_awaited_once()
+
+    async def test_cancel_moves_only_a_live_job(self, setup_database, storage):
+        upload = await _upload()
+        live = await _failed_job(upload, "bulk_live")
+        await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": live.job_id}, {"$set": {"status": BulkJobStatus.PENDING.value}}
+        )
+        done = await _failed_job(upload, "bulk_done")
+        await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": done.job_id}, {"$set": {"status": BulkJobStatus.COMPLETED.value}}
+        )
+        service = BulkTransformationService()
+
+        assert await service.cancel_job("bulk_live", USER) is True
+        assert await service.cancel_job("bulk_done", USER) is False
+        assert (await BulkTransformationJob.find_one({"job_id": "bulk_live"})).status == BulkJobStatus.CANCELLED
+        assert (await BulkTransformationJob.find_one({"job_id": "bulk_done"})).status == BulkJobStatus.COMPLETED
+
+    async def test_a_claim_that_raises_fails_the_job_rather_than_leaving_it_pending(self, setup_database, storage):
+        upload = await _upload()
+        job = await _failed_job(upload, "bulk_claim")
+        await BulkTransformationJob.get_motor_collection().update_one(
+            {"job_id": job.job_id}, {"$set": {"status": BulkJobStatus.PENDING.value}}
+        )
+        job.status = BulkJobStatus.PENDING
+        service = BulkTransformationService()
+
+        with patch.object(service, "_claim_running", AsyncMock(side_effect=RuntimeError("database went away"))):
+            await service._process_bulk_job(job)
+
+        stored = await BulkTransformationJob.find_one({"job_id": "bulk_claim"})
+        assert stored.status == BulkJobStatus.FAILED
+        storage.assert_not_awaited()

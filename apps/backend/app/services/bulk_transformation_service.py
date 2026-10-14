@@ -17,6 +17,7 @@ from typing import Any
 
 import pandas as pd
 from beanie import PydanticObjectId
+from pymongo import ReturnDocument
 
 from app.middleware.error_handlers import internal_error_message
 from app.middleware.upload_cleanup import discard_unowned_uploads
@@ -28,6 +29,7 @@ from app.models.bulk_transformation import (
     ColumnResult,
     ColumnSelectionPattern,
     PatternType,
+    get_current_time,
 )
 from app.models.dataset import DatasetMetadata, SchemaField
 from app.services.dataset_lease import LeaseBusy
@@ -216,6 +218,16 @@ async def _owned_dataset(user_id: str, dataset_id: str) -> DatasetMetadata:
             message=f"Dataset {dataset_id} not found or not owned by user",
         )
     return dataset
+
+
+def _result_of(run: _ColumnRun, start_time: float) -> BulkTransformationResult:
+    return BulkTransformationResult(
+        successful_columns=run.succeeded,
+        failed_columns=run.failed,
+        column_results=run.results,
+        total_time_ms=int((time.time() - start_time) * 1000),
+        total_rows_affected=sum(r.affected_rows for r in run.results if r.success),
+    )
 
 
 class BulkTransformationService:
@@ -528,20 +540,28 @@ class BulkTransformationService:
         return claimed.modified_count == 1
 
     @staticmethod
-    async def _write_if_running(job: BulkTransformationJob, *fields: str) -> bool:
+    async def _write_if_running(
+        job: BulkTransformationJob, *fields: str, live: tuple[BulkJobStatus, ...] = (BulkJobStatus.RUNNING,)
+    ) -> bool:
         """The named fields of the job, written only while it is still RUNNING, so a
         cancel that landed meanwhile is never overwritten (#925, as #485 for batches)."""
         values = job.model_dump(include={*fields, "updated_at"})
         if "status" in values:
             values["status"] = job.status.value
         written = await BulkTransformationJob.get_motor_collection().update_one(
-            {"job_id": job.job_id, "status": BulkJobStatus.RUNNING.value}, {"$set": values}
+            {"job_id": job.job_id, "status": {"$in": [status.value for status in live]}}, {"$set": values}
         )
         return written.modified_count == 1
 
+    @classmethod
+    async def _write_if_live(cls, job: BulkTransformationJob, *fields: str) -> bool:
+        return await cls._write_if_running(job, *fields, live=(BulkJobStatus.PENDING, BulkJobStatus.RUNNING))
+
     async def _fail(self, job: BulkTransformationJob, reason: str) -> None:
+        """FAILED, unless the job was cancelled or ended meanwhile. PENDING counts too: a
+        claim that raised leaves it there, and nothing else would ever move it on."""
         job.mark_failed(reason)
-        await self._write_if_running(job, "status", "completed_at", "error_message", "retry_count")
+        await self._write_if_live(job, "status", "completed_at", "error_message", "retry_count")
 
     async def _transform_the_dataset(self, job: BulkTransformationJob, start_time: float) -> None:
         """Read the dataset, run the columns and move it to the result. The caller holds
@@ -611,13 +631,7 @@ class BulkTransformationService:
         self, job: BulkTransformationJob, dataset: DatasetMetadata, run: _ColumnRun, start_time: float
     ) -> None:
         """Write the result, move the dataset to it if any column worked, and close the job."""
-        result = BulkTransformationResult(
-            successful_columns=run.succeeded,
-            failed_columns=run.failed,
-            column_results=run.results,
-            total_time_ms=int((time.time() - start_time) * 1000),
-            total_rows_affected=sum(r.affected_rows for r in run.results if r.success),
-        )
+        result = _result_of(run, start_time)
         if not await self._still_running(job):
             return  # cancelled after its last column: the dataset is not moved
         if run.succeeded:
@@ -803,19 +817,7 @@ class BulkTransformationService:
         if not job:
             return False
 
-        # Cancel the actual background task if it exists
-        if job_id in self._active_tasks:
-            task = self._active_tasks[job_id]
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                logger.info(f"Background task for job {job_id} was cancelled")
-            except Exception as e:
-                logger.warning(f"Error while cancelling task for job {job_id}: {e}")
-            finally:
-                if job_id in self._active_tasks:
-                    del self._active_tasks[job_id]
+        await self._stop_task(job_id)
 
         # Conditional: a whole-document save could put CANCELLED over a run that
         # finished meanwhile, or write back progress the run had moved on from (#925).
@@ -825,6 +827,19 @@ class BulkTransformationService:
             {"$set": {"status": job.status.value, "completed_at": job.completed_at, "updated_at": job.updated_at}},
         )
         return cancelled.modified_count == 1
+
+    async def _stop_task(self, job_id: str) -> None:
+        """Cancel the job's background task in this process, if there is one."""
+        task = self._active_tasks.pop(job_id, None)
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info(f"Background task for job {job_id} was cancelled")
+        except Exception as e:
+            logger.warning(f"Error while cancelling task for job {job_id}: {e}")
 
     async def retry_job(
         self,
@@ -841,28 +856,35 @@ class BulkTransformationService:
         Returns:
             Restarted job or None if cannot retry
         """
-        job = await BulkTransformationJob.find_one({
-            "job_id": job_id,
-            "user_id": user_id
-        })
-
-        if not job or not job.can_retry():
-            return None
-
-        # Reset job state
-        job.status = BulkJobStatus.PENDING
-        job.started_at = None
-        job.completed_at = None
-        job.error_message = None
-        job.result = None
-        job.progress = BulkTransformationProgress(
-            total_columns=len(job.selected_columns),
-            processed_columns=0,
-            successful_columns=0,
-            failed_columns=0,
+        # One conditional claim (#925), the shape of batch's `_claim_retry`: a read, a
+        # check and a whole-document save let a double-click reset a job the first
+        # retry had already claimed, and both then ran it.
+        claimed = await BulkTransformationJob.get_motor_collection().find_one_and_update(
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": BulkJobStatus.FAILED.value,
+                "$expr": {"$lt": ["$retry_count", "$max_retries"]},
+            },
+            {
+                "$set": {
+                    "status": BulkJobStatus.PENDING.value,
+                    "started_at": None,
+                    "completed_at": None,
+                    "error_message": None,
+                    "result": None,
+                    "progress.processed_columns": 0,
+                    "progress.successful_columns": 0,
+                    "progress.failed_columns": 0,
+                    "progress.current_column": None,
+                    "updated_at": get_current_time(),
+                }
+            },
+            return_document=ReturnDocument.AFTER,
         )
-
-        await job.save()
+        if claimed is None:
+            return None
+        job = BulkTransformationJob.model_validate(claimed)
 
         # Start processing again with proper task management
         task = asyncio.create_task(self._process_bulk_job(job))
