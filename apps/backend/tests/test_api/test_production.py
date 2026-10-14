@@ -766,14 +766,14 @@ class TestProductionPredictErrorHandling:
 
     @pytest.mark.asyncio
     async def test_transform_valueerror_returns_422(self):
-        """A ValueError from feature_engineer.transform (e.g. an unknown category
+        """A ValueError from the engineer's transform (e.g. an unknown category
         at encode time) is also mapped to a sanitized 422, matching the internal
         twin's security guarantee — not only predict-level errors."""
         model = self._model()
         trained = MagicMock()
         engineer = MagicMock()
         raw = "Found unknown categories ['LEAK'] in column 0 during transform"
-        engineer.transform = AsyncMock(side_effect=ValueError(raw))
+        engineer.served = MagicMock(side_effect=ValueError(raw))
         find, load = self._patch_load(model)
         with find, load as mock_load:
             mock_load.return_value = (trained, engineer)

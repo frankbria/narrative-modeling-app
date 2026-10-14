@@ -926,7 +926,7 @@ class BatchPredictionService:
         error isolation. Explanations stay batched via ``_attach_explanations``.
         """
         try:
-            results = await self._predict_chunk_vectorized(
+            results, warnings = await self._predict_chunk_vectorized(
                 chunk_df, trained_model, feature_engineer, model, config
             )
         except Exception as exc:  # noqa: BLE001 - fall back to per-row isolation
@@ -940,11 +940,14 @@ class BatchPredictionService:
             results = await self._predict_chunk_sequential(
                 chunk_df, trained_model, feature_engineer, model, config
             )
-        return self._with_input_warnings(results, chunk_df, feature_engineer)
+            warnings = (
+                await asyncio.to_thread(feature_engineer.input_warnings, chunk_df) if feature_engineer else None
+            )
+        return self._with_input_warnings(results, warnings)
 
     @staticmethod
     def _with_input_warnings(
-        results: list[dict[str, Any]], chunk_df: pd.DataFrame, feature_engineer: Any
+        results: list[dict[str, Any]], report: list[dict[str, str]] | None
     ) -> list[dict[str, Any]]:
         """Mark each row whose input the model did not learn from (#838).
 
@@ -952,12 +955,83 @@ class BatchPredictionService:
         included, so the engineer's per-row report lines up by position. A clean
         row gets no key. ``strict``: a path that ever returns fewer records fails
         the chunk here, where a silent truncation would put a flag on the wrong row."""
-        if feature_engineer is None:
+        if report is None:
             return results
-        for result, warnings in zip(results, feature_engineer.input_warnings(chunk_df), strict=True):
+        for result, warnings in zip(results, report, strict=True):
             if warnings:
                 result["input_warnings"] = warnings
         return results
+
+    def _assemble_rows(
+        self,
+        chunk_df: pd.DataFrame,
+        preds: Any,
+        proba_matrix: Any,
+        explained: Any,
+        model: MLModel,
+        config: BatchPredictionConfig,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """One result per chunk row, in order, from the chunk's predictions, and the
+        rows to explain. Synchronous: it runs in a worker thread (#909).
+
+        ``explained`` is the engineered frame when explanations are requested, densified
+        here for the batched explainer (#80), so the common path never densifies a
+        (possibly sparse) feature matrix."""
+        X_array = None if explained is None else np.asarray(explained)
+        is_classification = str(model.problem_type).endswith("classification")
+        predictions: list[dict[str, Any]] = []
+        to_explain: list[dict[str, Any]] = []
+        for i, (index, row) in enumerate(chunk_df.iterrows()):
+            proba_row = None if proba_matrix is None else proba_matrix[i]
+            result = self._row_result(index, row.to_dict(), preds[i], proba_row, model, config, is_classification)
+            # Explanations are computed in one batched pass after the loop, so the
+            # explainer is built once per chunk, not once per row (#83/#80).
+            if X_array is not None:
+                to_explain.append({"result": result, "x_row": X_array[i], "prediction": result["prediction"]})
+            predictions.append(result)
+        return predictions, to_explain
+
+    def _row_result(
+        self,
+        index: Any,
+        input_data: dict[str, Any],
+        prediction: Any,
+        proba_row: Any,
+        model: MLModel,
+        config: BatchPredictionConfig,
+        is_classification: bool,
+    ) -> dict[str, Any]:
+        value = prediction.item() if hasattr(prediction, "item") else prediction
+        result: dict[str, Any] = {"row_index": index, "prediction": value, "input_data": input_data}
+        # Probabilities drive confidence + low-confidence flags even when the
+        # caller didn't request the full vectors (#83).
+        if proba_row is not None:
+            result.update(self._probability_fields(proba_row.tolist(), config))
+        result.update(self._interval_fields(value, model, is_classification))
+        if config.include_metadata:
+            result["metadata"] = {
+                "model_id": model.model_id,
+                "model_version": model.version,
+                "prediction_time": datetime.now(UTC).isoformat(),
+            }
+        return result
+
+    def _probability_fields(self, proba_list: list[float], config: BatchPredictionConfig) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+        confidence = self.confidence.confidence_from_proba(proba_list)
+        if confidence is not None:
+            fields["confidence"] = confidence
+            fields["low_confidence"] = self.confidence.is_low_confidence(confidence)
+        if config.include_probabilities:
+            fields["probabilities"] = proba_list
+        return fields
+
+    def _interval_fields(self, value: Any, model: MLModel, is_classification: bool) -> dict[str, Any]:
+        """A regression prediction's interval, from the model's residual std."""
+        if is_classification or getattr(model, "residual_std", None) is None:
+            return {}
+        interval = self.confidence.regression_interval(value, model.residual_std)
+        return {} if interval is None else {"prediction_interval": interval}
 
     async def _predict_chunk_vectorized(
         self,
@@ -966,7 +1040,7 @@ class BatchPredictionService:
         feature_engineer: Any,
         model: MLModel,
         config: BatchPredictionConfig,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
         """Vectorised chunk inference (issue #202).
 
         Runs feature transform, ``predict`` and (for classifiers) ``predict_proba``
@@ -976,11 +1050,12 @@ class BatchPredictionService:
         """
         is_classification = str(model.problem_type).endswith("classification")
 
-        # One transform / predict / predict_proba per chunk.
+        # One transform / predict / predict_proba per chunk. The preprocessing and the
+        # input warnings run in a worker thread, like the inference (#909).
         if feature_engineer:
-            X_transformed = await feature_engineer.transform(chunk_df)
+            X_transformed, warnings = await asyncio.to_thread(feature_engineer.served, chunk_df)
         else:
-            X_transformed = chunk_df[model.feature_names]
+            X_transformed, warnings = chunk_df[model.feature_names], None
 
         # Inference runs off the loop and serialized per model on the shared
         # cached estimator (issue #265).
@@ -995,75 +1070,16 @@ class BatchPredictionService:
             model.model_id, model.user_id, lambda: _infer(X_transformed)
         )
 
-        # Engineered feature rows for the batched explainer (issue #80) — only
-        # materialised when explanations are requested, so we never densify a
-        # (possibly sparse) feature matrix for the common no-explanation path.
-        want_explanations = config.include_explanations
-        X_array = np.asarray(X_transformed) if want_explanations else None
-
-        predictions: list[dict[str, Any]] = []
-        to_explain: list[dict[str, Any]] = []
-
-        for i, (index, row) in enumerate(chunk_df.iterrows()):
-            input_data = row.to_dict()
-            prediction = preds[i]
-            prediction_value = (
-                prediction.item() if hasattr(prediction, "item") else prediction
-            )
-
-            result: dict[str, Any] = {
-                "row_index": index,
-                "prediction": prediction_value,
-                "input_data": input_data,
-            }
-
-            # Probabilities drive confidence + low-confidence flags even when the
-            # caller didn't request the full vectors (#83).
-            if proba_matrix is not None:
-                proba_list = proba_matrix[i].tolist()
-                confidence = self.confidence.confidence_from_proba(proba_list)
-                if confidence is not None:
-                    result["confidence"] = confidence
-                    result["low_confidence"] = self.confidence.is_low_confidence(
-                        confidence
-                    )
-                if config.include_probabilities:
-                    result["probabilities"] = proba_list
-
-            # Regression prediction interval from the model's residual std.
-            if (
-                not is_classification
-                and getattr(model, "residual_std", None) is not None
-            ):
-                interval = self.confidence.regression_interval(
-                    prediction_value, model.residual_std
-                )
-                if interval is not None:
-                    result["prediction_interval"] = interval
-
-            # Per-prediction explanation (opt-in — issue #83/#80). Collected here
-            # and computed in one batched pass after the loop so the explainer is
-            # built once per chunk, not once per row.
-            if want_explanations and X_array is not None:
-                to_explain.append(
-                    {
-                        "result": result,
-                        "x_row": X_array[i],
-                        "prediction": prediction_value,
-                    }
-                )
-
-            if config.include_metadata:
-                result["metadata"] = {
-                    "model_id": model.model_id,
-                    "model_version": model.version,
-                    "prediction_time": datetime.now(UTC).isoformat(),
-                }
-
-            predictions.append(result)
+        # The per-row results are built in a worker thread too: at the largest chunk
+        # this loop alone held the event loop for a third of a second (#909). The
+        # engineered rows go along only when explanations are requested.
+        explained = X_transformed if config.include_explanations else None
+        predictions, to_explain = await asyncio.to_thread(
+            self._assemble_rows, chunk_df, preds, proba_matrix, explained, model, config
+        )
 
         await self._attach_explanations(to_explain, trained_model, model)
-        return predictions
+        return predictions, warnings
 
     async def _predict_chunk_sequential(
         self,

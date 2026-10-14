@@ -36,6 +36,9 @@ class _FakeFeatureEngineer:
     def input_warnings(self, df: pd.DataFrame) -> list[dict[str, str]]:
         return [{} for _ in range(len(df))]
 
+    def served(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[dict[str, str]]]:
+        return df[self.numeric_features], self.input_warnings(df)
+
 
 class _FakeClassifier:
     def predict(self, X):
@@ -89,6 +92,9 @@ async def test_predict_chunk_records_per_row_errors():
 
     class _Boom:
         async def transform(self, df):
+            raise ValueError("bad row")
+
+        def served(self, df):
             raise ValueError("bad row")
 
         numeric_features = ["age"]
@@ -349,7 +355,7 @@ async def test_vectorized_and_sequential_paths_produce_identical_results():
     config = BatchPredictionConfig(model_id="model_123", include_probabilities=True)
     chunk = pd.DataFrame([{"age": 30}, {"age": 41}, {"age": 52}])
 
-    vectorized = await svc._predict_chunk_vectorized(
+    vectorized, _ = await svc._predict_chunk_vectorized(
         chunk, _FakeClassifier(), _FakeFeatureEngineer(), _model(), config
     )
     sequential = await svc._predict_chunk_sequential(

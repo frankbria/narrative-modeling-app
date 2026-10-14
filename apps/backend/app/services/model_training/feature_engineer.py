@@ -419,7 +419,19 @@ class FeatureEngineer:
 
     async def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Transform new data using fitted transformers, in fit's step order."""
-        X_transformed = self._apply_imputers(self._prepare(X))
+        return self._transform_prepared(self._prepare(X))
+
+    def served(self, X: pd.DataFrame) -> tuple[pd.DataFrame, list[dict[str, str]]]:
+        """What a serving path needs from one request's records: the transformed frame
+        and the input warnings, from one ``_prepare`` (#909). Synchronous so a caller
+        can run it in a worker thread; it reads the fitted state and writes none."""
+        prepared = self._prepare(X)
+        # Before the transform, which fills the prepared frame's blanks in place.
+        warnings = self._warnings_of(prepared)
+        return self._transform_prepared(prepared), warnings
+
+    def _transform_prepared(self, X: pd.DataFrame) -> pd.DataFrame:
+        X_transformed = self._apply_imputers(X)
         X_transformed = self._apply_encoders(X_transformed)
         if "scaler" in self.transformers:
             X_transformed[self.numeric_features] = self.transformers["scaler"].transform(
@@ -453,7 +465,9 @@ class FeatureEngineer:
         one-hot serves as an all-zeros block and label encoding as the most frequent
         value. A clean row is an empty dict. Only the columns supplied are read, and
         nothing is stored on the engineer, which is shared across requests."""
-        X = self._prepare(X)
+        return self._warnings_of(self._prepare(X))
+
+    def _warnings_of(self, X: pd.DataFrame) -> list[dict[str, str]]:
         report: list[dict[str, str]] = [{} for _ in range(len(X))]
         for col in [c for c in self.numeric_features + self.categorical_features if c in X.columns]:
             missing = X[col].isna().to_numpy()

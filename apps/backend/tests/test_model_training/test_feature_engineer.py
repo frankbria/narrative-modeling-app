@@ -809,6 +809,23 @@ class TestANullAtServingIsABlank:
         pd.testing.assert_frame_equal(out.loc[[0]], await _served(fe, [_CLEAN]), check_dtype=False)
 
     @pytest.mark.asyncio
+    async def test_served_is_the_transform_and_the_warnings_from_one_prepare(self, encoding_method, monkeypatch):
+        """#909: the serving paths take both from `served`, which prepares the frame
+        once. The warnings are read before the transform fills its blanks in place."""
+        fe = await _fit_served(encoding_method)
+        frame = pd.DataFrame([_CLEAN, {**_CLEAN, "plan": "enterprise"}, {**_CLEAN, "region": None, "spend": None}])
+        transformed, report = await fe.transform(frame), fe.input_warnings(frame)
+        prepares = []
+        prepare = fe._prepare
+        monkeypatch.setattr(fe, "_prepare", lambda X: prepares.append(X) or prepare(X))
+
+        features, warnings = fe.served(frame)
+
+        pd.testing.assert_frame_equal(features, transformed)
+        assert warnings == report == [{}, {"plan": "unseen"}, {"region": "missing", "spend": "missing"}]
+        assert len(prepares) == 1
+
+    @pytest.mark.asyncio
     async def test_warnings_name_each_unseen_and_missing_input(self, encoding_method):
         fe = await _fit_served(encoding_method)
         records = [

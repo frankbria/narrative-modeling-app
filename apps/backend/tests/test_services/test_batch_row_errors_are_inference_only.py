@@ -29,6 +29,9 @@ IN_MEMORY = {
     "self._predict_chunk_sequential",
     "self._attach_explanations",
     "feature_engineer.transform",  # fitted transformers, already loaded
+    "asyncio.to_thread(feature_engineer.served)",  # the same, in a worker thread (#909)
+    "asyncio.to_thread(feature_engineer.input_warnings)",  # the fitted categories, in a worker thread
+    "asyncio.to_thread(self._assemble_rows)",  # the chunk's predictions into result dicts
     # The two wrappers run whatever they are handed, so they are listed with it.
     "run_locked_inference(lambda: _infer(X_transformed))",  # the loaded estimator, behind its lock
     "asyncio.to_thread(self.interpretability.compute_instance_shap_batch)",  # SHAP, off the event loop
