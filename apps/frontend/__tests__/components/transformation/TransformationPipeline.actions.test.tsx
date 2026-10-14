@@ -73,6 +73,38 @@ describe('TransformationPipeline actions (#855)', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith('dataset-1'));
   });
 
+  // #863: the rows were read once, on mount. After an apply the dataset is on a new
+  // file, and the next preview compared against rows that no longer exist.
+  it('shows the file the dataset is on now as Before, once an apply has moved it', async () => {
+    respond('/transformations/apply', { success: true });
+    const user = await addTrimWhitespace();
+    expect(await screen.findByText('bob')).toBeInTheDocument();
+
+    const afterApply = { columns: ['name', 'score'], data: [{ name: 'carol', score: 30 }] };
+    const beforeApply = fetchMock().getMockImplementation()!;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) =>
+      /\/data\/[^/]+\/preview$/.test(String(url))
+        ? { ok: true, json: async () => afterApply }
+        : beforeApply(url, init),
+    );
+    await user.click(screen.getByRole('button', { name: /apply & continue/i }));
+    expect(await screen.findByText('Applied 1 transformation')).toBeInTheDocument();
+
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
+
+    respond('/transformations/preview', {
+      success: true,
+      preview_data: [{ name: 'carol', score: 30 }],
+      stats_before: { row_count: 1, column_count: 2 },
+      stats_after: { row_count: 1, column_count: 2 },
+    });
+    await user.click(screen.getByRole('button', { name: /^preview$/i }));
+    await user.click(await screen.findByRole('button', { name: /^before$/i }));
+    expect(await screen.findByText('carol')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
+  });
+
   it('drops the steps a failed apply already applied, so a retry sends only the rest', async () => {
     let applies = 0;
     const mountTime = fetchMock().getMockImplementation()!;

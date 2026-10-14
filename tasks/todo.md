@@ -1,3 +1,16 @@
+# Issue #863: after Apply, the Prepare preview still shows the pre-apply rows as Before
+
+## Plan
+- [x] RED (jest): apply, then the panel and a following preview show the file the dataset
+      is on now as Before, not the rows read at mount.
+- [x] The rows and the preview state move into `usePipelineData`; a successful apply calls
+      its `refresh`, which drops the last preview and reads the rows again.
+- [x] The complexity reader could not parse the component (an inline object type as a
+      prop type and as a generic argument, and destructured props): named types, and
+      props destructured in a statement.
+- [x] On the real stack: `prepare-pipeline.spec.ts` sees the rows read again after Apply.
+
+
 # Issue #853: two concurrent first transformations can create two history configs for one dataset
 
 Two first applies at once both miss the config lookup and both create one (and, for a UI

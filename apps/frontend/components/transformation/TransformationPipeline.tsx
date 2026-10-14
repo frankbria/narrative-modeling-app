@@ -97,12 +97,32 @@ function metadataView(metadata: PipelineMetadata | null | undefined) {
  * before any preview runs, the dataset's own rows. Tagging the override with its
  * dataset means switching datasets discards it by derivation. */
 function currentPreview(
-  override: { datasetId: string; data: PipelinePreview } | null,
+  override: PreviewOverride | null,
   datasetId: string,
   rows: PreviewTable | null,
 ): PipelinePreview | null {
   if (override?.datasetId === datasetId) return override.data;
   return rows && { before: rows, after: null, summary: null };
+}
+
+type PreviewOverride = { datasetId: string; data: PipelinePreview };
+type PipelineSnapshot = { nodes: TransformationFlowNode[]; edges: Edge[] };
+
+/** The dataset's rows and the transformation types, and what the preview panel shows. */
+function usePipelineData(datasetId: string) {
+  const { data: metadata, reload } = useAsyncData(() => loadMetadata(datasetId), [datasetId], {
+    enabled: !!datasetId,
+  });
+  const view = metadataView(metadata);
+  // An action's preview replaces the dataset's own rows until the dataset changes.
+  const [override, setOverride] = useState<PreviewOverride | null>(null);
+  const showPreview = (data: PipelinePreview) => setOverride({ datasetId, data });
+  // After an apply the dataset is on a new file: Before is read again (#863).
+  const refresh = () => {
+    setOverride(null);
+    reload();
+  };
+  return { ...view, preview: currentPreview(override, datasetId, view.rows), showPreview, refresh };
 }
 
 /** The node ids an apply that stopped part-way already applied: the first `applied`
@@ -113,7 +133,7 @@ function appliedNodeIds(err: unknown, nodes: TransformationFlowNode[]): Set<stri
 }
 
 /** The Chain view's edit-parameters dialog (keyboard-accessible). */
-function EditStepDialog(props: {
+interface EditStepDialogProps {
   node: TransformationFlowNode | undefined;
   config: TransformationConfig | null;
   types: TransformationTypeMeta[] | null;
@@ -121,7 +141,9 @@ function EditStepDialog(props: {
   datasetId: string;
   onClose: VoidFunction;
   onSave(config: TransformationConfig): void;
-}) {
+}
+
+function EditStepDialog(props: EditStepDialogProps) {
   const { node, config, types, columns, datasetId, onClose, onSave } = props;
   if (!node || !config) return null;
   const meta = {
@@ -162,11 +184,8 @@ function RecipeModal(props: RecipeModalProps) {
   return <RecipeManager {...manager} />;
 }
 
-export default function TransformationPipeline({
-  datasetId,
-  onComplete,
-  onUnsavedChanges
-}: TransformationPipelineProps) {
+export default function TransformationPipeline(props: TransformationPipelineProps) {
+  const { datasetId, onComplete, onUnsavedChanges } = props;
   const [nodes, setNodes, onNodesChange] = useNodesState<TransformationFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -175,9 +194,7 @@ export default function TransformationPipeline({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Undo/redo history over structural snapshots of the pipeline (#281).
-  const [history, setHistory] = useState<
-    Array<{ nodes: TransformationFlowNode[]; edges: Edge[] }>
-  >([]);
+  const [history, setHistory] = useState<PipelineSnapshot[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   // Ref mirror of the index so the recording effect reads a fresh value
   // without depending on (and re-running for) historyIndex.
@@ -203,17 +220,14 @@ export default function TransformationPipeline({
 
   // Transformation-type metadata + column names so the Chain view's Edit action
   // can open a keyboard-accessible parameter dialog.
-  const { data: metadata } = useAsyncData(() => loadMetadata(datasetId), [datasetId], {
-    enabled: !!datasetId,
-  });
-  const { types: transformationTypes, rows: datasetRows, columns: availableColumns } = metadataView(metadata);
-
-  // An action's preview replaces the dataset's own rows until the dataset changes.
-  const [previewOverride, setPreviewOverride] = useState<{
-    datasetId: string;
-    data: PipelinePreview;
-  } | null>(null);
-  const preview = currentPreview(previewOverride, datasetId, datasetRows);
+  const {
+    types: transformationTypes,
+    rows: datasetRows,
+    columns: availableColumns,
+    preview,
+    showPreview,
+    refresh,
+  } = usePipelineData(datasetId);
 
   // Reset the pipeline + undo history when the dataset changes, so switching
   // datasets on a reused component instance (the /prepare routes key only on
@@ -433,7 +447,7 @@ export default function TransformationPipeline({
   const handlePreviewTransformation = () =>
     runAction(async () => {
       const data = await previewPipeline(datasetId, pipelineSteps(), datasetRows);
-      setPreviewOverride({ datasetId, data });
+      showPreview(data);
       return null;
     });
 
@@ -452,6 +466,7 @@ export default function TransformationPipeline({
         throw err;
       });
       setHasUnsavedChanges(false);
+      refresh();
       // Transformations move the same dataset to a new file; there is no new id.
       onComplete?.(datasetId);
       return `Applied ${steps.length} transformation${steps.length === 1 ? '' : 's'}`;
