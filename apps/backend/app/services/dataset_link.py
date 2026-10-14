@@ -70,8 +70,6 @@ async def record_new_file(doc: Dataset, new_url: str, *, in_history: bool = Fals
     """
     # Every writer uploads the transformed frame as parquet, so a dataset uploaded as CSV
     # would otherwise be parsed as CSV by readers that dispatch on file_type (#524, codex).
-    # Resolved before the re-read below, never after: this can be a download, and a
-    # concurrent move landing during it would be reverted from a stale snapshot (#723).
     file_type = file_type_of(new_url) or doc.file_type
     # What the storage ceiling sums (#781): the size of the file the dataset is on now,
     # not of the upload it started from. Asked of S3 here, so every writer that moves a
