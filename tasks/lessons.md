@@ -2197,7 +2197,7 @@ checked, and the fix is always the same: the claim is a query, so run it.
   the test itself wrote.
 
 
-## #1005 (PR #1037): a merge on a skimmed bot review
+## 2026-10-14: a merge on a skimmed bot review (#1005, PR #1037)
 
 - I merged after grepping the bot's comment for `bug|should|risk`. The grep matched the
   heading "Potential bugs / correctness" and nothing under it, and I read that as no
