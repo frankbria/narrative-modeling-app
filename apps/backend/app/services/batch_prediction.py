@@ -926,7 +926,7 @@ class BatchPredictionService:
         error isolation. Explanations stay batched via ``_attach_explanations``.
         """
         try:
-            results = await self._predict_chunk_vectorized(
+            results, warnings = await self._predict_chunk_vectorized(
                 chunk_df, trained_model, feature_engineer, model, config
             )
         except Exception as exc:  # noqa: BLE001 - fall back to per-row isolation
@@ -940,11 +940,14 @@ class BatchPredictionService:
             results = await self._predict_chunk_sequential(
                 chunk_df, trained_model, feature_engineer, model, config
             )
-        return self._with_input_warnings(results, chunk_df, feature_engineer)
+            warnings = (
+                await asyncio.to_thread(feature_engineer.input_warnings, chunk_df) if feature_engineer else None
+            )
+        return self._with_input_warnings(results, warnings)
 
     @staticmethod
     def _with_input_warnings(
-        results: list[dict[str, Any]], chunk_df: pd.DataFrame, feature_engineer: Any
+        results: list[dict[str, Any]], report: list[dict[str, str]] | None
     ) -> list[dict[str, Any]]:
         """Mark each row whose input the model did not learn from (#838).
 
@@ -952,55 +955,26 @@ class BatchPredictionService:
         included, so the engineer's per-row report lines up by position. A clean
         row gets no key. ``strict``: a path that ever returns fewer records fails
         the chunk here, where a silent truncation would put a flag on the wrong row."""
-        if feature_engineer is None:
+        if report is None:
             return results
-        for result, warnings in zip(results, feature_engineer.input_warnings(chunk_df), strict=True):
+        for result, warnings in zip(results, report, strict=True):
             if warnings:
                 result["input_warnings"] = warnings
         return results
 
-    async def _predict_chunk_vectorized(
+    def _assemble_rows(
         self,
         chunk_df: pd.DataFrame,
-        trained_model: Any,
-        feature_engineer: Any,
+        preds: Any,
+        proba_matrix: Any,
+        X_array: Any,
         model: MLModel,
         config: BatchPredictionConfig,
-    ) -> list[dict[str, Any]]:
-        """Vectorised chunk inference (issue #202).
-
-        Runs feature transform, ``predict`` and (for classifiers) ``predict_proba``
-        once over the entire chunk, then assembles per-row result dicts by indexing
-        into the resulting arrays — no sklearn calls in the assembly loop. Any
-        failure here propagates to ``_predict_chunk``'s row-by-row fallback.
-        """
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """One result per chunk row, in order, from the chunk's predictions, and the
+        rows to explain. Synchronous: it runs in a worker thread (#909)."""
         is_classification = str(model.problem_type).endswith("classification")
-
-        # One transform / predict / predict_proba per chunk.
-        if feature_engineer:
-            X_transformed = await feature_engineer.transform(chunk_df)
-        else:
-            X_transformed = chunk_df[model.feature_names]
-
-        # Inference runs off the loop and serialized per model on the shared
-        # cached estimator (issue #265).
-        want_proba = is_classification and hasattr(trained_model, "predict_proba")
-
-        def _infer(X):
-            p = trained_model.predict(X)
-            pm = trained_model.predict_proba(X) if want_proba else None
-            return p, pm
-
-        preds, proba_matrix = await run_locked_inference(
-            model.model_id, model.user_id, lambda: _infer(X_transformed)
-        )
-
-        # Engineered feature rows for the batched explainer (issue #80) — only
-        # materialised when explanations are requested, so we never densify a
-        # (possibly sparse) feature matrix for the common no-explanation path.
-        want_explanations = config.include_explanations
-        X_array = np.asarray(X_transformed) if want_explanations else None
-
+        want_explanations = X_array is not None
         predictions: list[dict[str, Any]] = []
         to_explain: list[dict[str, Any]] = []
 
@@ -1062,8 +1036,59 @@ class BatchPredictionService:
 
             predictions.append(result)
 
+        return predictions, to_explain
+
+    async def _predict_chunk_vectorized(
+        self,
+        chunk_df: pd.DataFrame,
+        trained_model: Any,
+        feature_engineer: Any,
+        model: MLModel,
+        config: BatchPredictionConfig,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
+        """Vectorised chunk inference (issue #202).
+
+        Runs feature transform, ``predict`` and (for classifiers) ``predict_proba``
+        once over the entire chunk, then assembles per-row result dicts by indexing
+        into the resulting arrays — no sklearn calls in the assembly loop. Any
+        failure here propagates to ``_predict_chunk``'s row-by-row fallback.
+        """
+        is_classification = str(model.problem_type).endswith("classification")
+
+        # One transform / predict / predict_proba per chunk. The preprocessing and the
+        # input warnings run in a worker thread, like the inference (#909).
+        if feature_engineer:
+            X_transformed, warnings = await asyncio.to_thread(feature_engineer.served, chunk_df)
+        else:
+            X_transformed, warnings = chunk_df[model.feature_names], None
+
+        # Inference runs off the loop and serialized per model on the shared
+        # cached estimator (issue #265).
+        want_proba = is_classification and hasattr(trained_model, "predict_proba")
+
+        def _infer(X):
+            p = trained_model.predict(X)
+            pm = trained_model.predict_proba(X) if want_proba else None
+            return p, pm
+
+        preds, proba_matrix = await run_locked_inference(
+            model.model_id, model.user_id, lambda: _infer(X_transformed)
+        )
+
+        # Engineered feature rows for the batched explainer (issue #80) — only
+        # materialised when explanations are requested, so we never densify a
+        # (possibly sparse) feature matrix for the common no-explanation path.
+        want_explanations = config.include_explanations
+        X_array = np.asarray(X_transformed) if want_explanations else None
+
+        # The per-row results are built in a worker thread too: at the largest chunk
+        # this loop alone held the event loop for a third of a second (#909).
+        predictions, to_explain = await asyncio.to_thread(
+            self._assemble_rows, chunk_df, preds, proba_matrix, X_array, model, config
+        )
+
         await self._attach_explanations(to_explain, trained_model, model)
-        return predictions
+        return predictions, warnings
 
     async def _predict_chunk_sequential(
         self,

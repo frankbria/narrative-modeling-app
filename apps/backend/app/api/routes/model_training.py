@@ -2415,10 +2415,14 @@ class ServedRecords:
     input_warnings: list[dict[str, str]] | None
 
 
-async def _features_for(feature_engineer, frame: pd.DataFrame, columns: list[str] | None) -> pd.DataFrame:
+async def _features_for(
+    feature_engineer, frame: pd.DataFrame, columns: list[str] | None
+) -> tuple[pd.DataFrame, list[dict[str, str]] | None]:
+    """The estimator's input and the input warnings. The preprocessing runs in a worker
+    thread, like the inference after it, so it does not hold the event loop (#909)."""
     if feature_engineer:
-        return await feature_engineer.transform(frame)
-    return frame[columns] if columns else frame
+        return await asyncio.to_thread(feature_engineer.served, frame)
+    return (frame[columns] if columns else frame), None
 
 
 def _probabilities(model, features: pd.DataFrame):
@@ -2444,9 +2448,7 @@ async def infer_records(
     surfaces as ValueError/KeyError, which each route words as its own 422.
     ``columns`` selects the estimator's input when no engineer was fitted.
     """
-    frame = pd.DataFrame(records)
-    warnings = feature_engineer.input_warnings(frame) if feature_engineer else None
-    features = await _features_for(feature_engineer, frame, columns)
+    features, warnings = await _features_for(feature_engineer, pd.DataFrame(records), columns)
 
     def _infer():
         # Probabilities drive confidence and the low-confidence flags even when
