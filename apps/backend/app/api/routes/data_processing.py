@@ -24,7 +24,7 @@ from app.schemas.quality import QualityReportResponse
 from app.services.data_processing.data_processor import DataProcessor
 from app.services.data_processing.quality_assessment import ActionableRecommendation
 from app.services.quality_gate_service import evaluate_gates, overall_score
-from app.services.s3_service import s3_service
+from app.services.s3_service import read_dataframe_from_bytes, s3_service
 from app.utils.json_encoder import NumpyJSONEncoder, convert_numpy_types
 from app.utils.object_id import require_object_id
 from app.utils.s3 import parse_s3_url
@@ -107,23 +107,22 @@ class _PreviewFrameCache:
 _preview_cache = _PreviewFrameCache(_PREVIEW_CACHE_MAX_ENTRIES, _PREVIEW_CACHE_TTL_SECONDS)
 
 
+#: The stored types the typed reader takes (#940).
+_READABLE = {"csv", "xls", "xlsx", "parquet", "json"}
+
+
 def _preview_format(user_data: UserData) -> str | None:
-    """The pandas reader to use for this dataset's preview, or None if unknown."""
-    name = user_data.original_filename or ""
-    if user_data.file_type == "csv" or name.endswith(".csv"):
-        return "csv"
-    if user_data.file_type == "excel" or name.endswith((".xlsx", ".xls")):
-        return "excel"
-    return None
+    """How to read this dataset's file: by its stored type (#940); "" for a row with no
+    type, which is read by its bytes; None for a type no reader takes. It went by the
+    upload's filename first, so a transformed dataset (parquet under a .csv name) or a
+    masked workbook stored before #937 (CSV bytes, no type, an .xlsx name) failed."""
+    stored = (user_data.file_type or "").lower()
+    return stored if not stored or stored in _READABLE else None
 
 
 def _parse_full(file_bytes: bytes, fmt: str):
     """Parse the whole file (runs off the event loop via asyncio.to_thread)."""
-    import pandas as pd
-
-    if fmt == "csv":
-        return pd.read_csv(io.BytesIO(file_bytes))
-    return pd.read_excel(io.BytesIO(file_bytes))
+    return read_dataframe_from_bytes(file_bytes, fmt or None)
 
 
 def _parse_and_size(file_bytes: bytes, fmt: str):
@@ -162,7 +161,7 @@ def _range_read(file_bytes: bytes, fmt: str, offset: int, rows: int):
             line_count += 1
         total_rows = max(line_count - 1, 0)
         return page_df, total_rows
-    page_df = pd.read_excel(io.BytesIO(file_bytes))
+    page_df = _parse_full(file_bytes, fmt)
     return page_df.iloc[offset:offset + rows], len(page_df)
 
 
@@ -527,22 +526,17 @@ def _read_source_dataframe(user_data: UserData, file_bytes: bytes):
     """
     import pandas as pd
 
-    name = user_data.original_filename or ""
-    ftype = user_data.file_type
-    if ftype == "csv" or name.endswith(".csv"):
-        return pd.read_csv(io.BytesIO(file_bytes))
-    if ftype == "txt" or name.endswith(".txt"):
+    ftype = (user_data.file_type or "").lower()
+    if ftype == "txt":
         return pd.read_csv(io.BytesIO(file_bytes), sep="\t")  # upload stores txt as TSV
-    if ftype in ("excel", "xls", "xlsx") or name.endswith((".xlsx", ".xls")):
-        return pd.read_excel(io.BytesIO(file_bytes))
-    if ftype == "parquet" or name.endswith(".parquet"):
-        return pd.read_parquet(io.BytesIO(file_bytes))
-    if ftype == "json" or name.endswith(".json"):
-        return pd.read_json(io.BytesIO(file_bytes))
-    raise HTTPException(
-        status_code=422,
-        detail=f"Cannot export unsupported source file type: {ftype}",
-    )
+    fmt = _preview_format(user_data)
+    if fmt is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot export unsupported source file type: {user_data.file_type}",
+        )
+    # By the stored type, or by the bytes for a row with none (#940).
+    return _parse_full(file_bytes, fmt)
 
 
 def _serialize_dataframe(df, export_format: str) -> bytes:
