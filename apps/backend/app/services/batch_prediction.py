@@ -384,9 +384,9 @@ class BatchPredictionService:
         try:
             await self._admit(job)
         except Exception:
-            # Usually: lost the race for the last slot after uploading. With no job
-            # row, nothing will ever read or erase the input, so take it back.
-            await self._discard_unowned_input(job)
+            # Usually: lost the race for the last slot after uploading. Nothing will
+            # ever run this job, so take back its input, and its row if one landed.
+            await self._discard_unadmitted(job)
             raise
 
         # Start processing asynchronously
@@ -414,18 +414,24 @@ class BatchPredictionService:
             MAX_CONCURRENT_BATCH_JOBS_PER_USER, MAX_CONCURRENT_BATCH_JOBS_PER_USER
         )
 
-    async def _discard_unowned_input(self, job: BatchJob) -> None:
-        """Best-effort delete of the input uploaded for a job whose row was not written.
+    async def _discard_unadmitted(self, job: BatchJob) -> None:
+        """Best-effort removal of a job whose create failed: its row, if the insert was
+        applied though it reported failure, and then its input.
 
-        Looked up, not assumed: an insert can fail after the server applied it, and
+        The row goes because nothing will ever run it (processing is spawned only after
+        `_admit` returns) and the route's error already refunds the reservation: left,
+        it held a slot for half an hour and the reaper then refunded it again (#904).
+        Only a PENDING row is removed, and the input only once no row is left, since
         deleting the input of a job that exists would make every run of it fail. When
-        the lookup or the delete fails, the input is left (#735's rule).
+        a step fails, the rest is left (#735's rule).
         """
         try:
-            if job.input_path and await BatchJob.find_one(BatchJob.job_id == job.job_id) is None:
+            rows = BatchJob.get_motor_collection()
+            await rows.delete_one({"job_id": job.job_id, "status": JobStatus.PENDING.value})
+            if job.input_path and await rows.find_one({"job_id": job.job_id}) is None:
                 await self.s3_service.delete_file(job.input_path)
         except Exception:
-            logger.warning("Could not clean up the input of a batch job that was not created", exc_info=True)
+            logger.warning("Could not clean up a batch job that was not created", exc_info=True)
 
     async def _prepare_input_data(
         self, input_data: Any, user_id: str, model_id: str, job_id: str
@@ -512,16 +518,21 @@ class BatchPredictionService:
             f"This batch job ran past the {BATCH_JOB_WALL_CLOCK_SECONDS}-second limit and "
             "was stopped. Retry it, or split the input into smaller files."
         )
-        if not await self._finalize_if_running(job):
-            stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
-            if stored is not None:
-                # What the webhook reports is what is stored, not the failure that lost.
-                job.status, job.error_message = stored.status, stored.error_message
+        # `job` is the object the run itself updates, so its progress is current.
+        processed = job.progress.processed_records
+        if await self._finalize_if_running(job, settle_refund=True):
+            # FAILED and the refund marker were one write (#904): a retry landing after
+            # it resets the marker for its own reservation, which this must not consume.
+            await self._refund_unprocessed(job, processed)
+            return
+        stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+        if stored is not None:
+            # What the webhook reports is what is stored, not the failure that lost.
+            job.status, job.error_message = stored.status, stored.error_message
         if job.status != JobStatus.COMPLETED:
-            # FAILED just now, or CANCELLED while the run was too stuck to reach the
-            # check where it refunds a cancel. `_refund_remainder` refunds once.
-            # `job` is the object the run itself updates, so its progress is current.
-            await self._refund_remainder(job, job.progress.processed_records)
+            # CANCELLED while the run was too stuck to reach the check where it
+            # refunds a cancel. `_refund_remainder` refunds once.
+            await self._refund_remainder(job, processed)
 
     async def _run_batch_job(self, job: BatchJob) -> None:
         try:
@@ -717,9 +728,11 @@ class BatchPredictionService:
             },
         )
 
-    async def _finalize_if_running(self, job: BatchJob) -> bool:
+    async def _finalize_if_running(self, job: BatchJob, *, settle_refund: bool = False) -> bool:
         """Write the terminal state ONLY if the job is still RUNNING (#485 AC2):
         a cancel that already set CANCELLED wins; returns whether it was written.
+        `settle_refund` marks the run's remainder refunded in the same write, for a
+        caller that then refunds it itself.
         Atomic + conditional; explicit
         BSON-safe fields (a raw motor $set can't encode the enum objects a whole
         model_dump would produce)."""
@@ -732,6 +745,8 @@ class BatchPredictionService:
         }
         if job.output_path is not None:
             set_fields["output_path"] = job.output_path
+        if settle_refund:
+            set_fields["remainder_refunded"] = True
         result = await BatchJob.get_motor_collection().update_one(
             {"job_id": job.job_id, "status": JobStatus.RUNNING.value},
             {"$set": set_fields},
@@ -741,15 +756,19 @@ class BatchPredictionService:
     async def _refund_remainder(self, job: BatchJob, processed: int) -> None:
         """Refund the predictions reserved for records a cancelled run never
         processed (#485 AC3), against the period the reservation was taken from."""
-        remainder = max(0, job.progress.total_records - processed)
         # Claimed even when nothing is owed, so "this run's remainder is settled" does
         # not depend on every caller computing the same remainder.
-        if await self._claim_refund(job.job_id) and remainder > 0:
+        if await self._claim_refund(job.job_id):
+            await self._refund_unprocessed(job, processed)
+
+    @staticmethod
+    async def _refund_unprocessed(job: BatchJob, processed: int) -> None:
+        """Return the records a run never reached, against the reservation's period.
+        The caller has settled the run's marker."""
+        remainder = max(0, job.progress.total_records - processed)
+        if remainder > 0:
             await metering.refund(
-                job.user_id,
-                "predictions",
-                remainder,
-                period_key_for(as_utc(job.created_at)),
+                job.user_id, "predictions", remainder, period_key_for(as_utc(job.created_at))
             )
 
     @staticmethod

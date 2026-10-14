@@ -1475,9 +1475,10 @@ async def test_a_failed_insert_that_is_not_a_full_tenant_is_raised_and_its_input
 
 
 @pytest.mark.asyncio
-async def test_an_insert_that_landed_and_then_raised_keeps_its_input(setup_database, monkeypatch):
-    """A write can fail after the server applied it. The job exists then, and deleting
-    its input would make every run of it fail, so the row is looked up first."""
+async def test_a_landed_row_that_is_no_longer_pending_keeps_its_input(setup_database, monkeypatch):
+    """A write can fail after the server applied it. Such a row is removed only while it
+    is PENDING (#904); one that something has moved on is a job that exists, and
+    deleting its input would make every run of it fail, so the input stays."""
     monkeypatch.setattr(
         "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
     )
@@ -1486,6 +1487,9 @@ async def test_an_insert_that_landed_and_then_raised_keeps_its_input(setup_datab
 
     async def create_then_time_out(self, *args, **kwargs):
         await real_create(self, *args, **kwargs)
+        await BatchJob.get_motor_collection().update_one(
+            {"job_id": self.job_id}, {"$set": {"status": JobStatus.RUNNING.value}}
+        )
         raise ConnectionError("the reply was lost")
 
     monkeypatch.setattr(BatchJob, "create", create_then_time_out)
@@ -1721,3 +1725,87 @@ async def test_a_report_that_does_not_cover_every_row_fails_the_chunk():
         await _service()._predict_chunk(
             chunk, _FakeClassifier(), _ShortReport(), _model(), BatchPredictionConfig(model_id="m")
         )
+
+
+# --- Refund windows left after the refund-once marker (#904) -------------------------
+
+
+async def _predictions_used(user: str) -> int:
+    from app.billing import metering
+
+    return await metering.usage_for(user, "predictions")
+
+
+@pytest.mark.asyncio
+async def test_a_retry_landing_between_the_wall_clocks_writes_keeps_its_own_refund(
+    setup_database, monkeypatch
+):
+    """The wall clock wrote FAILED, then claimed the refund marker. A retry served in
+    between reset the marker for its new reservation, and the claim consumed it, so the
+    retry's own later refund was dropped."""
+    from app.billing import metering
+
+    svc, user = _service(), "retry_between_904"
+    svc._spawn_processing = MagicMock()
+    job = await _running_job(user, "batch_retry_between_904")
+    await BatchJob.get_motor_collection().update_one(
+        {"job_id": job.job_id}, {"$set": {"status": JobStatus.RUNNING.value}}
+    )
+    await metering.consume(user, "predictions", limit=1000, amount=10)  # the first run
+    finalize = svc._finalize_if_running
+
+    async def a_retry_lands_right_after(*args, **kwargs):
+        written = await finalize(*args, **kwargs)
+        assert await svc.retry_job(job.job_id, user) is True
+        await metering.consume(user, "predictions", limit=1000, amount=10)  # the retry
+        return written
+
+    svc._finalize_if_running = a_retry_lands_right_after
+    job.progress.processed_records = 4
+    try:
+        await svc._fail_at_wall_clock(job)
+        assert await _predictions_used(user) == 14, "the first run's 6 unreached records came back"
+
+        retried = await BatchJob.find_one(BatchJob.job_id == job.job_id)
+        await svc._refund_remainder(retried, 0)  # the retry is cancelled before it runs
+        assert await _predictions_used(user) == 4, "and the retry's 10 came back too"
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
+
+
+@pytest.mark.asyncio
+async def test_an_insert_that_landed_but_reported_failure_leaves_no_job_for_the_reaper(
+    setup_database, monkeypatch
+):
+    """Processing is spawned only after admission returns, so the landed row never ran:
+    it held a slot, and the reaper refunded its reservation a second time after the
+    route's error had refunded it once."""
+    from app.billing import metering
+    from app.services import batch_prediction as bp
+    from app.services.job_reaper import reap_stale_jobs
+
+    monkeypatch.setattr(
+        "app.services.batch_prediction.MLModel.find_one", AsyncMock(return_value=_model())
+    )
+    svc, user = _admission_service(), "landed_904"
+
+    async def lands_then_fails(job):
+        job.admission_slot = 0
+        await job.create()
+        raise RuntimeError("the reply was lost")
+
+    svc._admit = lands_then_fails
+    await metering.consume(user, "predictions", limit=1000, amount=5)  # earlier predictions
+    try:
+        await metering.consume(user, "predictions", limit=1000, amount=1)  # this create
+        with pytest.raises(RuntimeError):
+            await svc.create_batch_prediction_job(user, "model_123", pd.DataFrame({"age": [1]}), auto_start=False)
+        await metering.refund(user, "predictions", 1, bp.period_key_for(None))  # the route's 500
+
+        await reap_stale_jobs(timeout_seconds=0)
+
+        assert await BatchJob.find(BatchJob.user_id == user).count() == 0
+        assert svc.s3_service.delete_file.await_count == 1, "its input went with it"
+        assert await _predictions_used(user) == 5, "refunded once, not twice"
+    finally:
+        await BatchJob.find(BatchJob.user_id == user).delete()
