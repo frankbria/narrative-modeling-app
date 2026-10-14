@@ -239,7 +239,6 @@ See [Transformation History Documentation](../../claudedocs/TRANSFORMATION_HISTO
 ```
 GET    /api/v1/datasets/{id}/versions           - List versions
 GET    /api/v1/datasets/{id}/versions/{vid}     - Get version details
-POST   /api/v1/datasets/{id}/versions           - Create manual snapshot
 DELETE /api/v1/datasets/{id}/versions/{vid}     - Delete version
 GET    /api/v1/datasets/{id}/versions/{vid}/download - Download version
 ```
