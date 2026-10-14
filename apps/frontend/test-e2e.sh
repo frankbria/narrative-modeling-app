@@ -14,6 +14,8 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="${SCRIPT_DIR}"
 BACKEND_DIR="$(cd "${SCRIPT_DIR}/../backend" && pwd)"
+# shellcheck source=e2e/wait-for-server.sh
+source "${SCRIPT_DIR}/e2e/wait-for-server.sh"
 
 # Determine the ports to use
 TEST_PORT="${PORT:-3010}"
@@ -205,22 +207,15 @@ echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
 uv run --directory "${BACKEND_DIR}" uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} > /tmp/backend-e2e.log 2>&1 &
 BACKEND_PID=$!
 
-# Wait for backend to be ready
+# Wait for backend to be ready. 90 seconds by default: a loaded development machine
+# took longer than the old 30 to start it (#1005). A crash is reported at once.
 echo "Waiting for backend to start..."
-for i in {1..30}; do
-  if curl -s http://localhost:${BACKEND_PORT}/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Backend is ready${NC}"
-    break
-  fi
-  if [ $i -eq 30 ]; then
-    echo -e "${RED}ERROR: Backend failed to start within 30 seconds${NC}"
-    echo -e "${YELLOW}Backend logs:${NC}"
-    cat /tmp/backend-e2e.log 2>/dev/null || echo "No backend logs found"
-    stop_tree $BACKEND_PID
-    exit 1
-  fi
-  sleep 1
-done
+if ! wait_for_server "backend" "http://localhost:${BACKEND_PORT}/health" "$BACKEND_PID" "${E2E_BACKEND_WAIT_SECONDS:-90}"; then
+  echo -e "${YELLOW}Backend logs:${NC}"
+  cat /tmp/backend-e2e.log 2>/dev/null || echo "No backend logs found"
+  stop_tree $BACKEND_PID
+  exit 1
+fi
 
 echo ""
 echo -e "${YELLOW}=== Seeding E2E Test Data ===${NC}"
@@ -240,21 +235,15 @@ echo -e "${YELLOW}=== Starting Frontend Dev Server ===${NC}"
 PORT=${TEST_PORT} npm run dev > /tmp/frontend-e2e.log 2>&1 &
 FRONTEND_PID=$!
 
-# Wait for frontend to be ready
+# Wait for frontend to be ready (120 seconds by default, #1005).
 echo "Waiting for frontend to start..."
-for i in {1..60}; do
-  if curl -s http://localhost:${TEST_PORT} > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Frontend is ready${NC}"
-    break
-  fi
-  if [ $i -eq 60 ]; then
-    echo -e "${RED}ERROR: Frontend failed to start within 60 seconds${NC}"
-    stop_tree $FRONTEND_PID
-    stop_tree $BACKEND_PID
-    exit 1
-  fi
-  sleep 1
-done
+if ! wait_for_server "frontend" "http://localhost:${TEST_PORT}" "$FRONTEND_PID" "${E2E_FRONTEND_WAIT_SECONDS:-120}"; then
+  echo -e "${YELLOW}Frontend logs:${NC}"
+  tail -50 /tmp/frontend-e2e.log 2>/dev/null || echo "No frontend logs found"
+  stop_tree $FRONTEND_PID
+  stop_tree $BACKEND_PID
+  exit 1
+fi
 
 echo ""
 echo -e "${YELLOW}=== Starting Playwright Tests ===${NC}"
