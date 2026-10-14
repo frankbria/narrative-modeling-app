@@ -119,9 +119,9 @@ Methods with ownership checks:
     ownership in the handler before listing, and scopes both the list and the
     total count to the session user. Unknown and foreign datasets both answer
     404 so the pair is not an existence oracle (issue #446).
-  - `POST /api/v1/datasets/{dataset_id}/versions` — guards ownership *before*
-    reading any content (the handler copies the parent version's bytes into a
-    new version owned by the caller) and scopes the parent lookup too (#447).
+  - `POST /api/v1/datasets/{dataset_id}/versions` was removed (#893): it copied the
+    latest version onto itself. Its #447 guard on the content dedupe lives on in
+    `VersioningService._duplicate_of`'s owner predicate.
   - `DELETE /api/v1/versions/{version_id}` — the owner predicate lives in the
     lookup itself, which also puts it *ahead* of the `is_base_version` /
     `is_pinned` guards below: those answer 400 and would otherwise confirm a

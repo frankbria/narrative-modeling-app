@@ -210,7 +210,7 @@ class TestVersionCreation:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("content, name", [
         (b"PAR1 a transformed frame PAR1", "data.parquet"),  # what every transformation writes
-        (b"id,name\n1,a\n", "test.csv"),  # POST /versions copies the latest, maybe the upload
+        (b"id,name\n1,a\n", "test.csv"),  # bytes that are not parquet keep the upload's name
     ])
     async def test_transformation_version_key_embeds_version_id(
         self, versioning_service, mock_dataset_metadata, content, name

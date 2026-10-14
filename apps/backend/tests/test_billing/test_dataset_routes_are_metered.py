@@ -81,9 +81,6 @@ _EXEMPT = {
     "/api/v1/upload/chunked/{session_id}/chunk/{chunk_number}": (
         "Transfers bytes into an already-admitted session."
     ),
-    "/api/v1/datasets/{dataset_id}/versions": (
-        "A version of a dataset the tenant already paid to upload."
-    ),
     "/api/v1/datasets/{dataset_id}/erase": "Deletes.",
     "/api/v1/datasets/{dataset_id}/process": "Processes the dataset in place.",
     "/api/v1/datasets/{dataset_id}/features": "Defines a Feature, not a dataset.",

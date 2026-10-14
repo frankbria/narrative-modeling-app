@@ -58,21 +58,6 @@ class DatasetVersionResponse(BaseModel):
     )
 
 
-class DatasetVersionCreate(BaseModel):
-    """Request model for creating a new dataset version."""
-
-    description: str | None = Field(None, description="Version description")
-    tags: list[str] = Field(default_factory=list, description="Version tags")
-    transformation_steps: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Transformation steps applied"
-    )
-    transformation_config_id: str | None = Field(
-        None,
-        description="Reference to TransformationConfig"
-    )
-
-
 class LineageResponse(BaseModel):
     """Response model for transformation lineage."""
 
