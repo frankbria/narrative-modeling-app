@@ -669,7 +669,7 @@ async def batch_apply_fixes(
         return await _batch_applied(request, current_user_id, user_data, record, issues, start_time)
     except HTTPException:
         raise
-    except NotFoundError as e:  # a file a transformation cannot read, named by its type
+    except (ValidationError, OperationError, NotFoundError) as e:  # a domain error says what it is (#269)
         return BatchFixResponse(success=False, dataset_id=request.dataset_id, error=e.message)
     except Exception:
         logger.exception("Batch fix failed")
