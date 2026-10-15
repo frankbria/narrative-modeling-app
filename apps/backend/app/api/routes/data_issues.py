@@ -10,8 +10,8 @@ These endpoints provide functionality for:
 
 import logging
 import time
-from datetime import UTC, datetime
 
+import pandas as pd
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -20,9 +20,11 @@ from app.billing import enforcement
 from app.middleware.error_handlers import internal_error_message
 from app.middleware.upload_cleanup import discards_uploads_on_reported_failure
 from app.models.data_issue import (
+    AppliedFix,
     DataIssue,
     DataIssueRecord,
     IssueSeverity,
+    SuggestedFix,
 )
 from app.models.user_data import UserData
 from app.schemas.data_issue import (
@@ -42,13 +44,16 @@ from app.schemas.data_issue import (
     SuggestedFixResponse,
 )
 from app.services.data_issue_detection_service import DataIssueDetectionService
-from app.services.dataset_link import DATASET_BUSY, holds_the_dataset, record_new_file
-from app.services.exceptions import OperationError, ValidationError
-from app.services.fix_suggestion_engine import FixSuggestionEngine
-from app.services.transformation_engine.data_utils import (
-    get_dataframe_from_s3,
-    upload_dataframe_to_s3,
+from app.services.dataset_link import (
+    DATASET_BUSY,
+    ensure_metadata_twin,
+    holds_the_dataset,
 )
+from app.services.exceptions import NotFoundError, OperationError, ValidationError
+from app.services.fix_suggestion_engine import FixSuggestionEngine
+from app.services.transformation_engine.data_utils import get_dataframe_from_s3
+from app.services.transformation_engine.transformation_engine import TransformationType
+from app.services.transformation_service import TransformationService
 from app.utils.s3 import downloadable_url
 
 router = APIRouter()
@@ -387,6 +392,131 @@ async def preview_fix(
         )
 
 
+async def _owned_upload(dataset_id: str, user_id: str) -> UserData:
+    """The caller's upload; 400 for a malformed id, 404 for an unknown or foreign one."""
+    try:
+        dataset_oid = PydanticObjectId(dataset_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid dataset ID format") from None
+    user_data = await UserData.find_one(UserData.id == dataset_oid, UserData.user_id == user_id)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return user_data
+
+
+async def _latest_record(dataset_id: str, user_id: str) -> DataIssueRecord:
+    record = await DataIssueRecord.find_one(
+        DataIssueRecord.dataset_id == dataset_id,
+        DataIssueRecord.user_id == user_id,
+        sort=[("detected_at", -1)],
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="No issues found for this dataset")
+    return record
+
+
+def _issue(record: DataIssueRecord, issue_id: str) -> DataIssue:
+    issue = next((i for i in record.issues if i.issue_id == issue_id), None)
+    if not issue:
+        raise HTTPException(status_code=404, detail=f"Issue {issue_id} not found")
+    return issue
+
+
+def _fix(issue: DataIssue, fix_id: str | None) -> SuggestedFix:
+    """The fix asked for, or the issue's first suggestion when none is named."""
+    fixes = [f for f in issue.suggested_fixes if f.fix_id == fix_id] if fix_id else issue.suggested_fixes
+    if not fixes:
+        raise HTTPException(status_code=404, detail="No fix found to apply")
+    return fixes[0]
+
+
+def _fixed(issues: list[DataIssue]) -> str:
+    """What the history lists for fixes (#923): each issue's own description."""
+    noun = "data issue" if len(issues) == 1 else "data issues"
+    return f"Fixed {noun}: " + "; ".join(issue.description for issue in issues)
+
+
+def _columns_of(issues: list[DataIssue]) -> list[str]:
+    return sorted({c for issue in issues for c in [issue.affected_column, *issue.affected_columns] if c})
+
+
+async def _record_fixes(
+    user_data: UserData, user_id: str, frames: tuple[pd.DataFrame, pd.DataFrame],
+    issues: list[DataIssue], applied: list[AppliedFix],
+) -> str:
+    """Record the fixes as one history step and move the dataset to the result, so the
+    history lists them and undo restores the step before (#923); the new file's URL.
+
+    The history is keyed on the upload's `DatasetMetadata` twin, created here if the
+    upload has none. A file a transformation cannot read is refused with its type named.
+    """
+    dataset = await ensure_metadata_twin(str(user_data.id), user_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return await TransformationService().record_edit(
+        dataset, user_id, frames, kind=TransformationType.DATA_ISSUE_FIX.value,
+        parameters={
+            "columns": _columns_of(issues),
+            "fixes": [a.model_dump(include={"issue_id", "fix_id", "transformation_type", "parameters"}) for a in applied],
+        },
+        description=_fixed(issues),
+        rows_affected=sum(a.rows_affected for a in applied),
+    )
+
+
+def _fix_failed(request: FixApplicationRequest, start_time: float, error: str) -> FixApplicationResponse:
+    return FixApplicationResponse(
+        success=False,
+        dataset_id=request.dataset_id,
+        issue_id=request.issue_id,
+        fix_id=request.fix_id or "",
+        execution_time_ms=int((time.time() - start_time) * 1000),
+        error=error,
+    )
+
+
+async def _previewed_fix(
+    request: FixApplicationRequest, user_data: UserData, issue: DataIssue, fix: SuggestedFix, start_time: float
+) -> FixApplicationResponse:
+    df = await get_dataframe_from_s3(_download_url(user_data))
+    preview_result = FixSuggestionEngine().preview_fix(df, issue, fix, n_rows=100)
+    return FixApplicationResponse(
+        success=True,
+        dataset_id=request.dataset_id,
+        issue_id=request.issue_id,
+        fix_id=fix.fix_id,
+        affected_rows=preview_result.get("affected_rows", 0),
+        affected_columns=preview_result.get("affected_columns", []),
+        execution_time_ms=int((time.time() - start_time) * 1000),
+        warnings=["Preview mode - fix not applied"],
+    )
+
+
+async def _applied_fix(
+    request: FixApplicationRequest, user_id: str, user_data: UserData, record: DataIssueRecord,
+    issue: DataIssue, fix: SuggestedFix, start_time: float,
+) -> FixApplicationResponse:
+    df = await get_dataframe_from_s3(_download_url(user_data))
+    transformed_df, applied_fix = FixSuggestionEngine().apply_fix(df=df, issue=issue, fix=fix, user_id=user_id)
+    new_file_path = await _record_fixes(user_data, user_id, (df, transformed_df), [issue], [applied_fix])
+
+    record.add_applied_fix(applied_fix)
+    record.mark_issue_fixed(request.issue_id)
+    await record.save()
+
+    return FixApplicationResponse(
+        success=True,
+        dataset_id=request.dataset_id,
+        issue_id=request.issue_id,
+        fix_id=fix.fix_id,
+        transformation_id=applied_fix.fix_id,
+        affected_rows=applied_fix.rows_affected,
+        affected_columns=fix.parameters.get("columns", []),
+        execution_time_ms=int((time.time() - start_time) * 1000),
+        new_version_id=new_file_path if request.save_as_new_version else None,
+    )
+
+
 @router.post("/apply-fix", response_model=FixApplicationResponse)
 @discards_uploads_on_reported_failure
 @holds_the_dataset(
@@ -401,142 +531,117 @@ async def apply_fix(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Apply a suggested fix to the dataset.
+    Apply a suggested fix to the dataset, as one step of its transformation history.
 
     Can optionally save as a new dataset version.
     """
     start_time = time.time()
-
     try:
-        # Get the dataset
-        try:
-            dataset_oid = PydanticObjectId(request.dataset_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid dataset ID format")
-
-        user_data = await UserData.find_one(
-            UserData.id == dataset_oid,
-            UserData.user_id == current_user_id,
-        )
-
-        if not user_data:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        # Get the issue record
-        record = await DataIssueRecord.find_one(
-            DataIssueRecord.dataset_id == request.dataset_id,
-            DataIssueRecord.user_id == current_user_id,
-            sort=[("detected_at", -1)]
-        )
-
-        if not record:
-            raise HTTPException(status_code=404, detail="No issues found for this dataset")
-
-        # Find the issue
-        issue = None
-        for i in record.issues:
-            if i.issue_id == request.issue_id:
-                issue = i
-                break
-
-        if not issue:
-            raise HTTPException(status_code=404, detail=f"Issue {request.issue_id} not found")
-
-        # Find the fix
-        fix = None
-        if request.fix_id:
-            for f in issue.suggested_fixes:
-                if f.fix_id == request.fix_id:
-                    fix = f
-                    break
-        elif issue.suggested_fixes:
-            fix = issue.suggested_fixes[0]
-
-        if not fix:
-            raise HTTPException(status_code=404, detail="No fix found to apply")
-
-        # If preview mode, just return preview
+        user_data = await _owned_upload(request.dataset_id, current_user_id)
+        record = await _latest_record(request.dataset_id, current_user_id)
+        issue = _issue(record, request.issue_id)
+        fix = _fix(issue, request.fix_id)
         if request.preview_mode:
-            file_path = _download_url(user_data)
-            df = await get_dataframe_from_s3(file_path)
-            engine = FixSuggestionEngine()
-            preview_result = engine.preview_fix(df, issue, fix, n_rows=100)
-
-            return FixApplicationResponse(
-                success=True,
-                dataset_id=request.dataset_id,
-                issue_id=request.issue_id,
-                fix_id=fix.fix_id,
-                affected_rows=preview_result.get("affected_rows", 0),
-                affected_columns=preview_result.get("affected_columns", []),
-                execution_time_ms=int((time.time() - start_time) * 1000),
-                warnings=["Preview mode - fix not applied"],
-            )
-
-        # Load data and apply fix
-        file_path = _download_url(user_data)
-        df = await get_dataframe_from_s3(file_path)
-
-        engine = FixSuggestionEngine()
-        transformed_df, applied_fix = engine.apply_fix(
-            df=df,
-            issue=issue,
-            fix=fix,
-            user_id=current_user_id,
-        )
-
-        # Save transformed data
-        timestamp = datetime.now(UTC).timestamp()
-        new_file_path = await upload_dataframe_to_s3(
-            transformed_df,
-            f"transformed/{current_user_id}/{request.dataset_id}_{timestamp}.parquet"
-        )
-
-        # Update dataset record — and its dual-written twin (#467, #627)
-        user_data.num_rows = len(transformed_df)
-        await record_new_file(user_data, new_file_path)
-
-        # Update issue record
-        record.add_applied_fix(applied_fix)
-        record.mark_issue_fixed(request.issue_id)
-        await record.save()
-
-        execution_time_ms = int((time.time() - start_time) * 1000)
-
-        return FixApplicationResponse(
-            success=True,
-            dataset_id=request.dataset_id,
-            issue_id=request.issue_id,
-            fix_id=fix.fix_id,
-            transformation_id=applied_fix.fix_id,
-            affected_rows=applied_fix.rows_affected,
-            affected_columns=fix.parameters.get("columns", []),
-            execution_time_ms=execution_time_ms,
-            new_version_id=new_file_path if request.save_as_new_version else None,
-        )
-
+            return await _previewed_fix(request, user_data, issue, fix, start_time)
+        return await _applied_fix(request, current_user_id, user_data, record, issue, fix, start_time)
     except HTTPException:
         raise
-    except (ValidationError, OperationError) as e:
+    except (ValidationError, OperationError, NotFoundError) as e:
         logger.error(f"Apply fix failed: {str(e)}")
-        return FixApplicationResponse(
-            success=False,
-            dataset_id=request.dataset_id,
-            issue_id=request.issue_id,
-            fix_id=request.fix_id or "",
-            execution_time_ms=int((time.time() - start_time) * 1000),
-            error=str(e),
-        )
+        return _fix_failed(request, start_time, str(e))
     except Exception:
         logger.exception("Apply fix failed")
-        return FixApplicationResponse(
-            success=False,
-            dataset_id=request.dataset_id,
-            issue_id=request.issue_id,
-            fix_id=request.fix_id or "",
-            execution_time_ms=int((time.time() - start_time) * 1000),
-            error=internal_error_message("Apply fix"),
-        )
+        return _fix_failed(request, start_time, internal_error_message("Apply fix"))
+
+
+def _issues_to_fix(record: DataIssueRecord, issue_ids: list[str]) -> list[DataIssue]:
+    issues = [i for i in record.issues if i.issue_id in issue_ids]
+    if not issues:
+        raise HTTPException(status_code=400, detail="No matching issues found")
+    return issues
+
+
+def _first_fix(issue: DataIssue, safe_only: bool) -> SuggestedFix | None:
+    """The fix a batch applies for the issue: its first suggestion, if it may."""
+    if not issue.suggested_fixes:
+        return None
+    fix = issue.suggested_fixes[0]
+    return None if safe_only and not fix.is_safe else fix
+
+
+def _batch_preview(request: BatchFixRequest, issues: list[DataIssue], start_time: float) -> BatchFixResponse:
+    picked = [(issue, _first_fix(issue, request.auto_apply_safe)) for issue in issues]
+    results = [
+        BatchFixResult(issue_id=issue.issue_id, fix_id=fix.fix_id, success=True, affected_rows=fix.estimated_rows_affected)
+        for issue, fix in picked
+        if fix
+    ]
+    return BatchFixResponse(
+        success=True,
+        dataset_id=request.dataset_id,
+        total_fixes=len(results),
+        successful_fixes=len(results),
+        failed_fixes=0,
+        results=results,
+        execution_time_ms=int((time.time() - start_time) * 1000),
+        warnings=["Preview mode - fixes not applied"],
+    )
+
+
+def _batch_results(applied_fixes: list[AppliedFix], errors: list[str]) -> list[BatchFixResult]:
+    done = [
+        BatchFixResult(issue_id=a.issue_id, fix_id=a.fix_id, success=a.success,
+                       affected_rows=a.rows_affected, error=a.error_message)
+        for a in applied_fixes
+    ]
+    # An error string names no issue, so its entry cannot either.
+    return done + [BatchFixResult(issue_id="", fix_id="", success=False, error=error) for error in errors]
+
+
+async def _batch_applied(
+    request: BatchFixRequest, user_id: str, user_data: UserData, record: DataIssueRecord,
+    issues: list[DataIssue], start_time: float,
+) -> BatchFixResponse:
+    df = await get_dataframe_from_s3(_download_url(user_data))
+    transformed_df, applied_fixes, errors = await FixSuggestionEngine().apply_batch_fixes(
+        df=df,
+        issues=issues,
+        user_id=user_id,
+        auto_apply_safe_only=request.auto_apply_safe,
+        stop_on_error=request.stop_on_error,
+    )
+    new_version_id = None
+    if applied_fixes:
+        new_version_id = await _record_batch(user_data, user_id, record, (df, transformed_df), issues, applied_fixes)
+    results = _batch_results(applied_fixes, errors)
+    return BatchFixResponse(
+        success=len(errors) == 0,
+        dataset_id=request.dataset_id,
+        total_fixes=len(results),
+        successful_fixes=len(applied_fixes),
+        failed_fixes=len(errors),
+        results=results,
+        total_rows_affected=sum(a.rows_affected for a in applied_fixes),
+        execution_time_ms=int((time.time() - start_time) * 1000),
+        new_version_id=new_version_id,
+        warnings=errors,
+    )
+
+
+async def _record_batch(
+    user_data: UserData, user_id: str, record: DataIssueRecord, frames: tuple[pd.DataFrame, pd.DataFrame],
+    issues: list[DataIssue], applied_fixes: list[AppliedFix],
+) -> str:
+    """One history step for every fix that was applied; the new file's URL."""
+    fixed_ids = {a.issue_id for a in applied_fixes}
+    new_file_path = await _record_fixes(
+        user_data, user_id, frames, [i for i in issues if i.issue_id in fixed_ids], applied_fixes
+    )
+    for applied in applied_fixes:
+        record.add_applied_fix(applied)
+        record.mark_issue_fixed(applied.issue_id)
+    await record.save()
+    return new_file_path
 
 
 @router.post("/batch-fix", response_model=BatchFixResponse)
@@ -550,147 +655,22 @@ async def batch_apply_fixes(
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Apply multiple fixes in batch.
+    Apply multiple fixes in batch, as one step of the dataset's transformation history.
 
     Can optionally apply only safe fixes automatically.
     """
     start_time = time.time()
-
     try:
-        # Get the dataset
-        try:
-            dataset_oid = PydanticObjectId(request.dataset_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid dataset ID format")
-
-        user_data = await UserData.find_one(
-            UserData.id == dataset_oid,
-            UserData.user_id == current_user_id,
-        )
-
-        if not user_data:
-            raise HTTPException(status_code=404, detail="Dataset not found")
-
-        # Get the issue record
-        record = await DataIssueRecord.find_one(
-            DataIssueRecord.dataset_id == request.dataset_id,
-            DataIssueRecord.user_id == current_user_id,
-            sort=[("detected_at", -1)]
-        )
-
-        if not record:
-            raise HTTPException(status_code=404, detail="No issues found for this dataset")
-
-        # Get issues to fix
-        issues_to_fix = [
-            i for i in record.issues
-            if i.issue_id in request.issue_ids
-        ]
-
-        if not issues_to_fix:
-            raise HTTPException(status_code=400, detail="No matching issues found")
-
-        # Preview mode check
+        user_data = await _owned_upload(request.dataset_id, current_user_id)
+        record = await _latest_record(request.dataset_id, current_user_id)
+        issues = _issues_to_fix(record, request.issue_ids)
         if request.preview_mode:
-            results = []
-            for issue in issues_to_fix:
-                if issue.suggested_fixes:
-                    fix = issue.suggested_fixes[0]
-                    if not request.auto_apply_safe or fix.is_safe:
-                        results.append(BatchFixResult(
-                            issue_id=issue.issue_id,
-                            fix_id=fix.fix_id,
-                            success=True,
-                            affected_rows=fix.estimated_rows_affected,
-                        ))
-
-            return BatchFixResponse(
-                success=True,
-                dataset_id=request.dataset_id,
-                total_fixes=len(results),
-                successful_fixes=len(results),
-                failed_fixes=0,
-                results=results,
-                execution_time_ms=int((time.time() - start_time) * 1000),
-                warnings=["Preview mode - fixes not applied"],
-            )
-
-        # Load data
-        file_path = _download_url(user_data)
-        df = await get_dataframe_from_s3(file_path)
-
-        # Apply fixes in batch
-        engine = FixSuggestionEngine()
-        transformed_df, applied_fixes, errors = await engine.apply_batch_fixes(
-            df=df,
-            issues=issues_to_fix,
-            user_id=current_user_id,
-            auto_apply_safe_only=request.auto_apply_safe,
-            stop_on_error=request.stop_on_error,
-        )
-
-        # Build results
-        results = []
-        total_rows_affected = 0
-
-        for applied in applied_fixes:
-            results.append(BatchFixResult(
-                issue_id=applied.issue_id,
-                fix_id=applied.fix_id,
-                success=applied.success,
-                affected_rows=applied.rows_affected,
-                error=applied.error_message,
-            ))
-            total_rows_affected += applied.rows_affected
-
-        # Add error entries for failed fixes
-        for error in errors:
-            # Extract issue_id from error message if possible
-            results.append(BatchFixResult(
-                issue_id="",  # Unknown if error doesn't contain issue_id
-                fix_id="",
-                success=False,
-                error=error,
-            ))
-
-        # Save transformed data if any fixes were applied
-        new_version_id = None
-        if applied_fixes:
-            timestamp = datetime.now(UTC).timestamp()
-            new_file_path = await upload_dataframe_to_s3(
-                transformed_df,
-                f"transformed/{current_user_id}/{request.dataset_id}_{timestamp}.parquet"
-            )
-
-            # Update dataset — and its dual-written twin (#467, #627)
-            user_data.num_rows = len(transformed_df)
-            await record_new_file(user_data, new_file_path)
-
-            # Update issue record
-            for applied in applied_fixes:
-                record.add_applied_fix(applied)
-                record.mark_issue_fixed(applied.issue_id)
-            await record.save()
-
-            new_version_id = new_file_path
-
-        execution_time_ms = int((time.time() - start_time) * 1000)
-
-        return BatchFixResponse(
-            success=len(errors) == 0,
-            dataset_id=request.dataset_id,
-            total_fixes=len(results),
-            successful_fixes=len(applied_fixes),
-            failed_fixes=len(errors),
-            results=results,
-            total_rows_affected=total_rows_affected,
-            execution_time_ms=execution_time_ms,
-            new_version_id=new_version_id,
-            warnings=errors if errors else [],
-        )
-
+            return _batch_preview(request, issues, start_time)
+        return await _batch_applied(request, current_user_id, user_data, record, issues, start_time)
     except HTTPException:
         raise
+    except NotFoundError as e:  # a file a transformation cannot read, named by its type
+        return BatchFixResponse(success=False, dataset_id=request.dataset_id, error=e.message)
     except Exception:
         logger.exception("Batch fix failed")
         return BatchFixResponse(

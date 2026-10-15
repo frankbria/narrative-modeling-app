@@ -7,7 +7,6 @@ plot's median says which file the dataset is at (1000 as uploaded, 10 once the d
 rows are removed). Skips locally when LocalStack is down; ``CI_REQUIRE_SERVICES`` makes
 that a failure.
 """
-import asyncio
 import io
 
 import pytest
@@ -90,22 +89,19 @@ async def test_a_different_first_step_after_undoing_can_be_undone_too(client):  
 
 
 async def test_a_dataset_edited_before_its_first_step_keeps_that_step(client):  # noqa: F811
-    """The upload has moved (here by a bulk change, which records no step) before any
-    step exists. No version describes the edited file, so the first step has nothing
-    certain to go back to and stays as it was before: not undoable."""
+    """The upload has moved (here by an edit no step describes) before any step exists.
+    No version describes the edited file, so the first step has nothing certain to go
+    back to and stays as it was before: not undoable."""
+    from tests.test_integration.test_charts_follow_a_transformation_localstack import (
+        USER,
+    )
+    from tests.test_integration.test_pipeline_history_localstack import (
+        edit_outside_the_history,
+    )
+
     upload = await client.post("/api/v1/upload/secure", files={"file": ("visits.csv", io.BytesIO(CSV), "text/csv")})
     dataset_id = upload.json()["file_id"]
-    base = f"/api/v1/transformations/datasets/{dataset_id}"
-    job = await client.post(f"{base}/bulk-apply", json={
-        "selected_columns": ["spend"], "transformation_type": "fill_missing", "global_parameters": {"method": "mean"},
-    })
-    assert job.status_code == 200, job.text
-    for _ in range(200):
-        status = (await client.get(f"{base}/bulk-jobs/{job.json()['job_id']}")).json()["status"]
-        if status not in ("pending", "running"):
-            break
-        await asyncio.sleep(0.05)
-    assert status == "completed", status
+    await edit_outside_the_history(dataset_id, USER, "spend")
     applied = await client.post(
         "/api/v1/transformations/apply",
         json={"dataset_id": dataset_id, "transformation_type": "remove_duplicates", "parameters": {}},

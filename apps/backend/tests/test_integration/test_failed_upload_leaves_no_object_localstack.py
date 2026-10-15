@@ -207,7 +207,7 @@ async def test_a_data_issue_fix_that_fails_after_the_put_leaves_no_object(client
     assert fixable, "precondition: the file has an issue with a suggested fix"
     body = {"issue_id": fixable[0]} if route == "apply-fix" else {"issue_ids": fixable}
 
-    with _the_database_goes_away("app.api.routes.data_issues.record_new_file"):
+    with _the_database_goes_away(STEP):
         response = await client.post(f"/api/v1/data-issues/{route}", json={
             "dataset_id": upload_id, "preview_mode": False, **body})
 
@@ -221,7 +221,7 @@ async def test_a_bulk_job_that_fails_after_the_put_leaves_no_object(client, s3_c
     dataset_id, _ = await _dataset(client)
     base = f"{T}/datasets/{dataset_id}"
 
-    with _the_database_goes_away("app.services.bulk_transformation_service.record_new_file"):
+    with _the_database_goes_away(STEP):
         job = await client.post(f"{base}/bulk-apply", json={
             "selected_columns": ["score"], "transformation_type": "fill_missing",
             "global_parameters": {"method": "mean"}})

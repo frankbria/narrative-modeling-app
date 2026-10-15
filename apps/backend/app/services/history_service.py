@@ -339,7 +339,10 @@ class HistoryService:
 
     @staticmethod
     def _describe_step(step) -> str:
-        """Build a human-readable description of a transformation step."""
+        """Build a human-readable description of a transformation step: the one it was
+        recorded with (an edit made outside the engine, #923), else one from its type."""
+        if step.description:
+            return step.description
         # transformation_type may surface as a TransformationType enum member;
         # str() on a str-Enum yields 'TransformationType.X', so use .value
         raw_type = step.transformation_type

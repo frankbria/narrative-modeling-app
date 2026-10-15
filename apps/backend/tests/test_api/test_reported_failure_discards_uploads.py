@@ -158,7 +158,7 @@ class TestDataIssueFixes:
         upload = await _upload()
         issue_id = (await self._fixable(async_authorized_client, upload))[0]
 
-        with _fails("app.api.routes.data_issues.record_new_file"):
+        with _fails(STEP):
             response = await async_authorized_client.post("/api/v1/data-issues/apply-fix", json={
                 "dataset_id": str(upload.id), "issue_id": issue_id, "preview_mode": False})
 
@@ -171,7 +171,7 @@ class TestDataIssueFixes:
         upload = await _upload()
         issue_ids = await self._fixable(async_authorized_client, upload)
 
-        with _fails("app.api.routes.data_issues.record_new_file"):
+        with _fails(STEP):
             response = await async_authorized_client.post("/api/v1/data-issues/batch-fix", json={
                 "dataset_id": str(upload.id), "issue_ids": issue_ids, "preview_mode": False})
 
@@ -226,13 +226,13 @@ class TestBulkJob:
         upload = await _upload()
         service = BulkTransformationService()
 
-        with _fails("app.services.bulk_transformation_service.record_new_file"):
+        with _fails(STEP):
             job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
             await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
 
         stored = await BulkTransformationJob.find_one({"job_id": job.job_id})
         assert stored.status == BulkJobStatus.FAILED and stored.output_file_path is None
-        assert len(written) == 1 and "_bulk_" in written[0]
+        assert len(written) == 1 and written[0].startswith(f"transformed/{USER}/")
         deleted.assert_awaited_once_with(written[0])
 
     async def test_the_file_is_gone_by_the_time_the_job_says_it_failed(self, setup_database, written, monkeypatch):
@@ -251,7 +251,7 @@ class TestBulkJob:
             return True
 
         monkeypatch.setattr(upload_cleanup.s3_service, "delete_file", delete)
-        with _fails("app.services.bulk_transformation_service.record_new_file"):
+        with _fails(STEP):
             job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
             await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
 

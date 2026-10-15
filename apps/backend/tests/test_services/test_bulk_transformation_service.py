@@ -794,9 +794,10 @@ async def test_bulk_job_downloads_through_a_url_not_a_raw_key(bulk_service):
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("beanie_models_initialized")
-async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk_service):
-    """#467/#627: a completed bulk job used to set `dataset.file_path` alone; it must move
-    both twins through `record_new_file` with the uploaded URL."""
+async def test_bulk_job_records_its_columns_as_one_history_step(bulk_service):
+    """#923: a completed bulk job moves the dataset through `record_edit`, one history
+    step for the columns that worked, with the frame before and after them. Before, it
+    moved the dataset with no step (#467/#627), which closed the history (#851)."""
     from app.models.bulk_transformation import BulkTransformationJob
 
     job = await BulkTransformationJob(job_id="bj-467", user_id="u1", dataset_id="d1",
@@ -811,11 +812,15 @@ async def test_bulk_job_moves_the_dataset_and_its_twin_when_columns_succeed(bulk
 
     with patch("app.services.bulk_transformation_service.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=dataset), \
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=get_df), \
-         patch("app.services.bulk_transformation_service.upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
-         patch("app.services.bulk_transformation_service.record_new_file", new_callable=AsyncMock) as move, \
+         patch("app.services.bulk_transformation_service.TransformationService.record_edit",
+               new_callable=AsyncMock, return_value=new_url) as record, \
          patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
         await bulk_service._process_bulk_job(job)
 
-    assert job.status.value == "completed", job.error_message if hasattr(job, "error_message") else job.status
-    move.assert_awaited_once_with(dataset, new_url)
-    assert dataset.num_rows == 3  # counts are set on the dataset before the move persists them
+    assert job.status.value == "completed", job.status
+    assert job.output_file_path == new_url
+    (recorded, user_id, (before, after)), kwargs = record.await_args
+    assert (recorded, user_id) == (dataset, "u1")
+    assert before is frame and after["age"].isna().sum() == 0
+    assert kwargs["kind"] == "fill_missing" and kwargs["parameters"]["columns"] == ["age"]
+    assert kwargs["description"] == "Bulk fill missing on age"

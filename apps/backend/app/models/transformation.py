@@ -77,6 +77,11 @@ class TransformationType(str, Enum):
     DERIVE = "derive"
     OUTLIER_REMOVAL = "outlier_removal"
 
+    # Recorded edits (#923): history steps for edits made outside the engine. The engine
+    # never runs them; undo restores a step's version and does not re-run it.
+    DATA_ISSUE_FIX = "data_issue_fix"
+    FEATURE_COLUMN = "feature_column"
+
 
 # Constant for data loss threshold (50%)
 DATA_LOSS_THRESHOLD_PERCENT = 50.0
@@ -91,6 +96,7 @@ class TransformationStep(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict, description="Transformation parameters")
     applied_at: datetime = Field(default_factory=get_current_time, description="When transformation was applied")
     version_id: str | None = Field(None, description="Dataset version ID after this transformation")
+    description: str | None = Field(None, description="What the history lists for this step, when its type alone does not say")
 
     # Validation results
     is_valid: bool = Field(default=True, description="Whether transformation parameters are valid")
@@ -237,7 +243,8 @@ class TransformationConfig(Document):
         column: str | None = None,
         columns: list[str] | None = None,
         parameters: dict[str, Any] | None = None,
-        version_id: str | None = None
+        version_id: str | None = None,
+        description: str | None = None,
     ) -> TransformationStep:
         """
         Add a new transformation step with branching support.
@@ -260,7 +267,8 @@ class TransformationConfig(Document):
             column=column,
             columns=columns,
             parameters=parameters or {},
-            version_id=version_id
+            version_id=version_id,
+            description=description,
         )
 
         # Handle branching: if we're not at the end, truncate forward history

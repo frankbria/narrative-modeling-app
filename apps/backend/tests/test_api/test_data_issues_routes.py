@@ -72,7 +72,7 @@ class TestDataIssuesRoutes:
         preview = await async_authorized_client.post(f"{BASE}/preview-fix", json={"dataset_id": str(ds.id), "issue_id": issue_id})
         assert preview.status_code == 200, preview.text
 
-        with patch("app.api.routes.data_issues.upload_dataframe_to_s3", new_callable=AsyncMock,
+        with patch("app.services.transformation_engine.data_utils.upload_dataframe_to_s3", new_callable=AsyncMock,
                    return_value=f"s3://test-bucket/transformed/{TEST_USER}/d_fixed.parquet"):
             applied = await async_authorized_client.post(
                 f"{BASE}/apply-fix", json={"dataset_id": str(ds.id), "issue_id": issue_id, "preview_mode": False}

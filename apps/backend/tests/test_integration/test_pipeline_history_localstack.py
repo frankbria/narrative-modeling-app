@@ -80,27 +80,25 @@ async def test_undo_after_a_pipeline_walks_back_through_its_steps(client, real_s
     assert (await _history(client, dataset_id))["current_position"] == 0
 
 
-async def _bulk_fill(client, dataset_id: str) -> None:
-    """A bulk transformation, run to completion: it moves the dataset and records no step."""
-    import asyncio
+async def edit_outside_the_history(dataset_id: str, user_id: str, column: str) -> None:
+    """An edit no history step describes: the column's gaps filled, and the dataset moved
+    with `record_new_file` alone. Every writer in the app records a step now (#923), so
+    this is the shape a writer that did not would take."""
+    from app.services.dataset_link import ensure_metadata_twin, record_new_file
+    from app.services.transformation_engine.data_utils import (
+        get_dataframe_from_s3,
+        upload_dataframe_to_s3,
+    )
+    from app.utils.s3 import downloadable_url
 
-    base = f"/api/v1/transformations/datasets/{dataset_id}"
-    job = await client.post(f"{base}/bulk-apply", json={
-        "selected_columns": ["score"], "transformation_type": "fill_missing",
-        "global_parameters": {"method": "mean"},
-    })
-    assert job.status_code == 200, job.text
-    for _ in range(200):
-        status = (await client.get(f"{base}/bulk-jobs/{job.json()['job_id']}")).json()["status"]
-        if status not in ("pending", "running"):
-            break
-        await asyncio.sleep(0.05)
-    assert status == "completed", status
+    dataset = await ensure_metadata_twin(dataset_id, user_id)
+    frame = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
+    frame[column] = frame[column].fillna(frame[column].mean())
+    await record_new_file(dataset, await upload_dataframe_to_s3(frame, f"transformed/{user_id}/{dataset.dataset_id}_outside.parquet"))
 
 
 async def test_undo_stops_at_an_edit_the_history_does_not_list(client, real_s3_env):
-    """Bulk transformations, data-issue fixes and a feature column added in place all move
-    the dataset through `record_new_file` without a step. A bulk fill is that move here."""
+    """A move with no step closes the history behind it (#851)."""
     from app.models.dataset import DatasetMetadata
 
     dataset_id = await _upload_and_dedupe(client)
@@ -110,7 +108,7 @@ async def test_undo_stops_at_an_edit_the_history_does_not_list(client, real_s3_e
     )
     assert piped.json()["success"] is True, piped.text
 
-    await _bulk_fill(client, dataset_id)
+    await edit_outside_the_history(dataset_id, first_apply.USER, "score")
     edited = (await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)).s3_url
 
     listing = await _history(client, dataset_id)

@@ -8,6 +8,7 @@ provides preview/validation functionality using safe expression evaluation.
 import asyncio
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,7 +23,6 @@ from app.models.feature import (
     OutputType,
 )
 from app.services.base_service import BaseService
-from app.services.dataset_link import record_new_file
 from app.services.dataset_service import DatasetService
 from app.services.exceptions import ValidationError
 from app.services.expression_evaluator import (
@@ -34,6 +34,8 @@ from app.services.transformation_engine.data_utils import (
     get_dataframe_from_s3,
     upload_parquet_bytes,
 )
+from app.services.transformation_engine.transformation_engine import TransformationType
+from app.services.transformation_service import TransformationService
 
 logger = logging.getLogger(__name__)
 
@@ -614,6 +616,9 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
         """
         Apply a feature to the dataset, adding the computed column and persisting to S3.
 
+        Added in place, the column is one step of the dataset's transformation history,
+        so undo removes it (#923). With `create_new_dataset` it is a new dataset.
+
         Args:
             feature_id: Feature to apply
             user_id: User requesting the application
@@ -621,164 +626,143 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             create_new_dataset: If True, create a new dataset; otherwise update existing
 
         Returns:
-            Dictionary with result details including dataset_id and s3_url
+            Dictionary with result details including dataset_id and s3_url, built by
+            `_apply_result`. `dataset_committed` says whether a NEW dataset has been
+            persisted, apart from `success`: a failure after `create_dataset()` leaves a
+            real dataset in both id-spaces, and the caller meters on it (#459).
         """
-        # Get feature
-        feature = await self.get_by_id_or_raise(
-            resource_id=feature_id,
-            user_id=user_id,
-            check_ownership=True
-        )
-
-        # Get dataset
+        feature = await self.get_by_id_or_raise(resource_id=feature_id, user_id=user_id, check_ownership=True)
         dataset = await self.dataset_service.get_dataset_or_raise(
-            dataset_id=feature.dataset_id,
-            user_id=user_id,
-            check_ownership=True
+            dataset_id=feature.dataset_id, user_id=user_id, check_ownership=True
         )
-
-        # Use feature name if no column name specified
         column_name = output_column_name or feature.name
-
-        # Whether a NEW dataset has actually been persisted. Reported separately from
-        # `success` because the catch-all below wraps `create_dataset()` *and* the
-        # `feature.save()` that follows it: a raise in between leaves a real dataset in
-        # both id-spaces while this returns `success: False`. The caller meters on this
-        # (#459) — refunding on `success` alone would hand out a free dataset.
-        dataset_committed = False
-
         try:
-            # Load full dataset
-            df = await get_dataframe_from_s3(dataset.s3_url)
-
-            # Evaluate expression
+            before = await get_dataframe_from_s3(dataset.s3_url)
             result_series, warnings = self.evaluator.evaluate(
-                expression_tree=feature.expression_tree,
-                dataframe=df,
-                feature_name=column_name
+                expression_tree=feature.expression_tree, dataframe=before, feature_name=column_name
             )
-
-            # Add column to dataframe
-            df[column_name] = result_series
-
-            # Calculate statistics
-            stats = self._calculate_statistics(result_series)
-
-            # Generate S3 key for the updated dataframe
-            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            column = _Column(column_name, result_series, warnings, self._calculate_statistics(result_series))
             if create_new_dataset:
-                new_dataset_id = str(uuid.uuid4())
-                s3_key = f"datasets/{user_id}/{new_dataset_id}/data_{timestamp}.parquet"
-            else:
-                s3_key = f"datasets/{user_id}/{dataset.dataset_id}/data_{timestamp}.parquet"
-
-            # Upload modified dataframe to S3
-            try:
-                parquet = await asyncio.to_thread(df.to_parquet, index=False)
-                new_s3_url = await upload_parquet_bytes(parquet, s3_key)
-            except Exception as upload_error:
-                logger.exception(f"Failed to upload dataframe to S3: {upload_error}")
-                return {
-                    "success": False,
-                    "dataset_committed": dataset_committed,
-                    "dataset_id": feature.dataset_id,
-                    "column_name": column_name,
-                    "rows_computed": 0,
-                    "null_values": 0,
-                    "warnings": warnings,
-                    "error": f"Failed to upload to S3: {str(upload_error)}",
-                    "s3_url": None
-                }
-
-            # Handle dataset creation or update
-            final_dataset_id = feature.dataset_id
-            if create_new_dataset:
-                # Create new dataset with copied metadata
-                new_columns = list(dataset.columns) + [column_name]
-                new_schema = list(dataset.data_schema)
-                # Add schema field for new column
-                from app.models.dataset import SchemaField
-                new_schema.append(SchemaField(
-                    field_name=column_name,
-                    field_type=self._infer_output_type(result_series),
-                    inferred_dtype=str(result_series.dtype),
-                    unique_values=int(stats["unique_count"]),
-                    missing_values=int(stats["null_count"]),
-                ))
-
-                await self.dataset_service.create_dataset(
-                    user_id=user_id,
-                    dataset_id=new_dataset_id,
-                    filename=f"{dataset.original_filename.rsplit('.', 1)[0]}_with_{column_name}.parquet",
-                    original_filename=f"{dataset.original_filename.rsplit('.', 1)[0]}_with_{column_name}",
-                    file_type="parquet",
-                    file_path=s3_key,
-                    s3_url=new_s3_url,
-                    num_rows=len(df),
-                    num_columns=len(new_columns),
-                    columns=new_columns,
-                    data_schema=new_schema,
-                    file_size=len(parquet),  # what the storage ceiling counts (#768)
-                )
-                dataset_committed = True
-                final_dataset_id = new_dataset_id
-
-                # Update feature to point to new dataset
-                feature.dataset_id = new_dataset_id
-            else:
-                # Update existing dataset — and its dual-written UserData twin (#467): counts and
-                # schema are set here; record_new_file moves file_path + s3_url on both and saves.
-                dataset.columns = list(dataset.columns) + [column_name]
-                dataset.num_columns = len(dataset.columns)
-                # Add schema field for new column
-                from app.models.dataset import SchemaField
-                dataset.data_schema.append(SchemaField(
-                    field_name=column_name,
-                    field_type=self._infer_output_type(result_series),
-                    inferred_dtype=str(result_series.dtype),
-                    unique_values=int(stats["unique_count"]),
-                    missing_values=int(stats["null_count"]),
-                ))
-                await record_new_file(dataset, new_s3_url)
-
-            # Update feature statistics
-            feature.statistics = FeatureStatistics(
-                mean=stats["mean"],
-                median=stats["median"],
-                std=stats["std"],
-                min_value=stats["min"],
-                max_value=stats["max"],
-                null_count=stats["null_count"],
-                unique_count=stats["unique_count"],
-                total_count=stats["total_count"]
-            )
-            await feature.save()
-
-            return {
-                "success": True,
-                "dataset_committed": dataset_committed,
-                "dataset_id": final_dataset_id,
-                "column_name": column_name,
-                "rows_computed": len(result_series),
-                "null_values": stats["null_count"],
-                "warnings": warnings,
-                "error": None,
-                "s3_url": new_s3_url
-            }
-
+                return await self._apply_as_new_dataset(feature, dataset, user_id, before, column)
+            return await self._apply_in_place(feature, dataset, user_id, before, column)
         except Exception as e:
             logger.exception(f"Error applying feature: {e}")
-            return {
-                "success": False,
-                "dataset_committed": dataset_committed,
-                "dataset_id": feature.dataset_id,
-                "column_name": column_name,
-                "rows_computed": 0,
-                "null_values": 0,
-                "warnings": [],
-                "error": str(e),
-                "s3_url": None
-            }
+            return _apply_result(committed=False, dataset_id=feature.dataset_id, column_name=column_name, error=str(e))
+
+    def _schema_field(self, column: "_Column") -> Any:
+        from app.models.dataset import SchemaField
+
+        return SchemaField(
+            field_name=column.name,
+            field_type=self._infer_output_type(column.series),
+            inferred_dtype=str(column.series.dtype),
+            unique_values=int(column.stats["unique_count"]),
+            missing_values=int(column.stats["null_count"]),
+        )
+
+    async def _apply_in_place(
+        self, feature: FeatureDefinition, dataset: Any, user_id: str, before: pd.DataFrame, column: "_Column"
+    ) -> dict[str, Any]:
+        """Add the column to the dataset as one history step (#923). The caller (the
+        route) holds the dataset's lease; the move takes its twin along (#467)."""
+        dataset.data_schema.append(self._schema_field(column))
+        new_s3_url = await TransformationService().record_edit(
+            dataset, user_id, (before, before.assign(**{column.name: column.series})),
+            kind=TransformationType.FEATURE_COLUMN.value,
+            parameters={"columns": [column.name], "feature_id": feature.feature_id},
+            description=f"Added feature column {column.name}",
+        )
+        return await self._applied(feature, column, new_s3_url, committed=False)
+
+    async def _apply_as_new_dataset(
+        self, feature: FeatureDefinition, dataset: Any, user_id: str, before: pd.DataFrame, column: "_Column"
+    ) -> dict[str, Any]:
+        """A new dataset: the source's file with the column added."""
+        df = before.assign(**{column.name: column.series})
+        new_dataset_id = str(uuid.uuid4())
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        s3_key = f"datasets/{user_id}/{new_dataset_id}/data_{timestamp}.parquet"
+        try:
+            parquet = await asyncio.to_thread(df.to_parquet, index=False)
+            new_s3_url = await upload_parquet_bytes(parquet, s3_key)
+        except Exception as upload_error:
+            logger.exception(f"Failed to upload dataframe to S3: {upload_error}")
+            return _apply_result(
+                committed=False, dataset_id=feature.dataset_id, column_name=column.name,
+                warnings=column.warnings, error=f"Failed to upload to S3: {str(upload_error)}",
+            )
+        stem = dataset.original_filename.rsplit('.', 1)[0]
+        await self.dataset_service.create_dataset(
+            user_id=user_id,
+            dataset_id=new_dataset_id,
+            filename=f"{stem}_with_{column.name}.parquet",
+            original_filename=f"{stem}_with_{column.name}",
+            file_type="parquet",
+            file_path=s3_key,
+            s3_url=new_s3_url,
+            num_rows=len(df),
+            num_columns=len(dataset.columns) + 1,
+            columns=list(dataset.columns) + [column.name],
+            data_schema=list(dataset.data_schema) + [self._schema_field(column)],
+            file_size=len(parquet),  # what the storage ceiling counts (#768)
+        )
+        # Update feature to point to new dataset
+        feature.dataset_id = new_dataset_id
+        try:
+            return await self._applied(feature, column, new_s3_url, committed=True)
+        except Exception as e:
+            logger.exception(f"Error applying feature: {e}")
+            return _apply_result(committed=True, dataset_id=new_dataset_id, column_name=column.name, error=str(e))
+
+    async def _applied(
+        self, feature: FeatureDefinition, column: "_Column", s3_url: str, *, committed: bool
+    ) -> dict[str, Any]:
+        """Record the column's statistics on the feature; the success answer."""
+        stats = column.stats
+        feature.statistics = FeatureStatistics(
+            mean=stats["mean"],
+            median=stats["median"],
+            std=stats["std"],
+            min_value=stats["min"],
+            max_value=stats["max"],
+            null_count=stats["null_count"],
+            unique_count=stats["unique_count"],
+            total_count=stats["total_count"]
+        )
+        await feature.save()
+        return _apply_result(
+            committed=committed, dataset_id=feature.dataset_id, column_name=column.name, warnings=column.warnings,
+            rows_computed=len(column.series), null_values=stats["null_count"], s3_url=s3_url,
+        )
+
+
+@dataclass
+class _Column:
+    """The column a feature computed: its name, values, the evaluator's warnings, and statistics."""
+
+    name: str
+    series: pd.Series
+    warnings: list[str]
+    stats: dict[str, Any]
+
+
+def _apply_result(
+    *, committed: bool, dataset_id: str, column_name: str, warnings: list[str] | None = None,
+    error: str | None = None, rows_computed: int = 0, null_values: int = 0, s3_url: str | None = None,
+) -> dict[str, Any]:
+    """What `apply_feature_to_dataset` answers. `committed` is required: the route meters
+    on `dataset_committed`, so no answer may leave it to a default (#459)."""
+    return {
+        "success": error is None,
+        "dataset_committed": committed,
+        "dataset_id": dataset_id,
+        "column_name": column_name,
+        "rows_computed": rows_computed,
+        "null_values": null_values,
+        "warnings": warnings or [],
+        "error": error,
+        "s3_url": s3_url,
+    }
 
 
 # Create singleton instance
