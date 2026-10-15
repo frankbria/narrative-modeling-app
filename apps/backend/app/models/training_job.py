@@ -95,6 +95,9 @@ class TrainingJob(Document):
     # advancing it. A PENDING job that never started keeps its creation time here,
     # so an orphaned queue entry is reaped once it ages past the timeout too.
     last_heartbeat: datetime = Field(default_factory=utcnow)
+    # Refunds the reaper owes this job and has not yet paid (#1032): see
+    # app/billing/owed_refunds.py.
+    refunds_owed: list[dict[str, Any]] = Field(default_factory=list)
     completed_at: datetime | None = None
 
     class Settings:

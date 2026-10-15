@@ -24,6 +24,7 @@ Two properties matter more than anything else in this module:
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 
@@ -236,8 +237,13 @@ async def consume(
 
 
 async def refund(
-    user_id: str, metric: str, amount: int = 1, period_key: str | None = None
-) -> None:
+    user_id: str,
+    metric: str,
+    amount: int = 1,
+    period_key: str | None = None,
+    *,
+    refund_id: str | None = None,
+) -> bool:
     """Return reserved units after the work they were reserved for failed.
 
     Enforcement consumes at admission, so a request that then 4xxs would otherwise
@@ -253,26 +259,47 @@ async def refund(
     must not mint quota, which would turn every failed request into free credit.
     Swallows storage errors for the same reason `record()` does — a failed refund
     must not turn a 4xx into a 500.
+
+    `refund_id` makes the refund idempotent (#1032): the record keeps the ids it has
+    paid, and a second refund under the same id changes nothing. A refund that must
+    survive a crash is retried under its id until this answers True. False means
+    storage failed and nothing is known to be paid; a refund the clamp skipped is
+    done, and answers True.
     """
     if metric not in METERED_METRICS:
         raise KeyError(f"unknown metered metric: {metric}")
     if amount <= 0:
-        return
+        return True
 
     try:
         await UsageRecord.get_motor_collection().update_one(
-            {
-                "user_id": user_id,
-                "period_key": period_key or period_key_for(),
-                "metric": metric,
-                "units": {"$gte": amount},
-            },
-            {"$inc": {"units": -amount}, "$set": {"updated_at": datetime.now(UTC)}},
+            *_refund_update(user_id, metric, amount, period_key, refund_id)
         )
     except Exception:
         logger.exception(
             "failed to refund quota", extra={"user_id": user_id, "metric": metric}
         )
+        return False
+    return True
+
+
+def _refund_update(
+    user_id: str, metric: str, amount: int, period_key: str | None, refund_id: str | None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The filter and update for `refund`: clamped at zero, and once per `refund_id`."""
+    match: dict[str, Any] = {
+        "user_id": user_id,
+        "period_key": period_key or period_key_for(),
+        "metric": metric,
+        "units": {"$gte": amount},
+    }
+    change: dict[str, Any] = {"$inc": {"units": -amount}, "$set": {"updated_at": datetime.now(UTC)}}
+    if refund_id:
+        # shortcut: the list grows by one id per crash-safe refund in the period, and a
+        # period's record is never read whole on a hot path; prune it if that changes.
+        match["applied_refunds"] = {"$ne": refund_id}
+        change["$push"] = {"applied_refunds": refund_id}
+    return match, change
 
 
 async def usage_for(

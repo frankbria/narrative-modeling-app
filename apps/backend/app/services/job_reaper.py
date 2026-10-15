@@ -17,18 +17,23 @@ Two things make this safe under the 2 gunicorn workers (see the Dockerfile):
     workers reaping concurrently claim disjoint jobs and each reserved unit is
     refunded exactly once.
 
-Refunds go against the period the unit was RESERVED in (``created_at``), per the
-``QuotaRefundMiddleware`` contract in CLAUDE.md — refunding against the current
-period would credit a month that was never charged.
+Refunds go against the period the unit was RESERVED in (``created_at``, or a batch
+retry's own period), per the ``QuotaRefundMiddleware`` contract in CLAUDE.md:
+refunding against the current period would credit a month that was never charged.
+The claim records the refund it owes in the same write, so a worker that dies before
+paying it leaves it for the next pass (``app/billing/owed_refunds.py``, #1032).
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from app.billing import metering
+from motor.motor_asyncio import AsyncIOMotorCollection
+
+from app.billing import owed_refunds
 from app.billing.metering import period_key_for
 from app.billing.plans import _env_positive_int
 from app.models.batch_job import BatchJob, JobStatus, JobType
@@ -98,65 +103,64 @@ def _stale_filter(cutoff: datetime, extra: dict | None = None) -> dict:
 
 async def _reap_training(cutoff: datetime) -> int:
     coll = TrainingJob.get_motor_collection()
-    reaped = 0
-    while True:
-        doc = await coll.find_one_and_update(
-            _stale_filter(cutoff),
-            {
-                "$set": {
-                    "status": JobStatus.FAILED.value,
-                    "error": _REASON,
-                    "completed_at": utcnow(),
-                    "updated_at": utcnow(),
-                }
-            },
-        )
-        if doc is None:
-            return reaped
-        # Claimed atomically -> refund the one training_runs unit reserved at
-        # creation, against the period it was taken from.
-        await metering.refund(
-            doc["user_id"], "training_runs", 1, period_key_for(as_utc(doc["created_at"]))
-        )
-        reaped += 1
+    await owed_refunds.settle_pending(coll)
+    return await _reap(coll, _stale_filter(cutoff), _training_failure)
+
+
+def _training_failure(doc: dict) -> tuple[dict, dict]:
+    """FAILED, owing the one `training_runs` unit reserved at creation."""
+    refund = owed_refunds.owed(
+        doc["user_id"], "training_runs", 1, period_key_for(as_utc(doc["created_at"]))
+    )
+    return {
+        "status": JobStatus.FAILED.value,
+        "error": _REASON,
+        "completed_at": utcnow(),
+        "updated_at": utcnow(),
+    }, refund
 
 
 async def _reap_batch(cutoff: datetime) -> int:
     coll = BatchJob.get_motor_collection()
-    reaped = 0
-    while True:
-        doc = await coll.find_one_and_update(
-            _stale_filter(cutoff, {"job_type": JobType.BATCH_PREDICTION.value}),
-            {
-                "$set": {
-                    "status": JobStatus.FAILED.value,
-                    "error_message": _REASON,
-                    "completed_at": utcnow(),
-                    # This path refunds the whole reservation below, so mark it
-                    # (#653): a reaped job that was only queued is still picked up
-                    # when its slot frees, fails its claim, and would otherwise be
-                    # refunded a second time by the batch service.
-                    "remainder_refunded": True,
-                }
-            },
-        )
-        if doc is None:
-            return reaped
-        await _refund_batch_reservation(doc)
-        reaped += 1
+    await owed_refunds.settle_pending(coll)
+    return await _reap(coll, _stale_filter(cutoff, {"job_type": JobType.BATCH_PREDICTION.value}), _batch_failure)
 
 
-async def _refund_batch_reservation(doc: dict) -> None:
-    # A batch reserves `predictions` = total_records at creation. KNOWN
-    # LIMITATION (#484): a retry appends a *second* reservation against the
-    # retry-time period (#460), so a job created, then retried across a UTC
-    # month boundary, then reaped, refunds only the creation period here and
-    # leaves the retry period's units burned (an under-refund). The
-    # `units >= amount` clamp in metering.refund prevents the opposite
-    # (minting), so this never credits units a period never held. An exact
-    # split needs a per-reservation ledger — tracked as a follow-up.
+def _batch_failure(doc: dict) -> tuple[dict, dict]:
+    """FAILED, owing the whole reservation (`predictions` = total_records), against
+    the period the latest reservation was taken from."""
     reserved = int((doc.get("progress") or {}).get("total_records") or 0)
-    if reserved > 0:
-        await metering.refund(
-            doc["user_id"], "predictions", reserved, period_key_for(as_utc(doc["created_at"]))
-        )
+    refund = owed_refunds.owed(
+        doc["user_id"], "predictions", reserved, reservation_period(doc)
+    )
+    return {
+        "status": JobStatus.FAILED.value,
+        "error_message": _REASON,
+        "completed_at": utcnow(),
+        # This path refunds the whole reservation, so mark it (#653): a reaped job
+        # that was only queued is still picked up when its slot frees, fails its
+        # claim, and would otherwise be refunded a second time by the batch service.
+        "remainder_refunded": True,
+    }, refund
+
+
+def reservation_period(doc: dict) -> str:
+    """The period a batch job's latest reservation was taken from (#1032): a retry
+    records its own, and a row written before that falls back to creation's."""
+    return doc.get("reserved_period") or period_key_for(as_utc(doc["created_at"]))
+
+
+async def _reap(
+    coll: AsyncIOMotorCollection, stale: dict, failure: Callable[[dict], tuple[dict, dict]]
+) -> int:
+    """Claim each stale job with one conditional write that also records the refund
+    it owes, then pay that refund. Another worker's claim between the read and the
+    write makes the write match nothing, and this one moves on."""
+    reaped = 0
+    while (doc := await coll.find_one(stale)) is not None:
+        fields, refund = failure(doc)
+        claim = {"$set": fields, "$push": {"refunds_owed": refund}}
+        if await coll.find_one_and_update({**stale, "_id": doc["_id"]}, claim):
+            await owed_refunds.settle(coll, {"_id": doc["_id"]}, refund)
+            reaped += 1
+    return reaped
