@@ -72,7 +72,8 @@ def _fails(what: str):
     return patch(what, new_callable=AsyncMock, side_effect=RuntimeError("the database went away"))
 
 
-STEP = "app.services.transformation_service.TransformationService.add_transformation_step"
+# The move is the last write before the apply succeeds (#1060).
+STEP = "app.services.transformation_service.record_new_file"
 
 
 class TestTransformationApply:
