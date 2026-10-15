@@ -135,6 +135,7 @@ class HistoryService:
         dataset.num_rows = version.num_rows
         dataset.num_columns = version.num_columns
         dataset.columns = version.columns
+        dataset.data_schema = _schema_for(dataset.data_schema, version.columns)
         # Move file_path, s3_url AND the dual-written UserData twin together (#629):
         # setting file_path alone left the twin (which training reads by ObjectId) and
         # s3_url at the pre-navigation file, so training silently used the state the user
@@ -377,3 +378,14 @@ class HistoryService:
         logger.info(f"Cleared transformation history for dataset {dataset_id}")
 
         return True
+
+
+def _schema_for(schema: list, columns: list[str] | None) -> list:
+    """The schema entries for the columns the restored file has (#1061): an undone
+    feature column must not stay described. A version that recorded no columns keeps
+    the schema as it is. Redoing the column brings it back without an entry, which
+    says less than the file has, never more."""
+    if not columns:
+        return schema
+    return [field for field in schema if field.field_name in columns]
+

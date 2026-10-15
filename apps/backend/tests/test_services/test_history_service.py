@@ -642,3 +642,15 @@ class TestAnEditOutsideTheHistory:
         listing = await history_service.get_history("ds1", "user1")
 
         assert listing["can_undo"] is False and listing["current_position"] == 2
+
+
+def test_a_restored_schema_names_only_the_columns_the_version_has():
+    """#1061: an undone feature column must not stay described; a version that
+    recorded no columns leaves the schema as it is."""
+    from types import SimpleNamespace
+
+    from app.services.history_service import _schema_for
+
+    schema = [SimpleNamespace(field_name="a"), SimpleNamespace(field_name="added")]
+    assert [f.field_name for f in _schema_for(schema, ["a"])] == ["a"]
+    assert _schema_for(schema, None) is schema
