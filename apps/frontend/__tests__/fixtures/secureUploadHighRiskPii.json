@@ -1,0 +1,41 @@
+{
+  "message": "High-risk PII detected. Please review and confirm upload.",
+  "pii_report": {
+    "detections": [
+      {
+        "column": "name",
+        "confidence": 0.8,
+        "recommendation": "Column name suggests name. Consider encryption or removal.",
+        "type": "name"
+      },
+      {
+        "column": "email",
+        "confidence": 1.0,
+        "recommendation": "High confidence email detected. Strongly recommend encryption or removal.",
+        "type": "email"
+      },
+      {
+        "column": "phone",
+        "confidence": 0.8,
+        "recommendation": "Column name suggests phone. Consider encryption or removal.",
+        "type": "phone"
+      }
+    ],
+    "has_pii": true,
+    "high_risk_columns": 1,
+    "recommendations": [
+      "Review all detected PII columns",
+      "Apply encryption to sensitive data at rest",
+      "Implement access controls for PII data",
+      "Consider data minimization strategies",
+      "Immediate action required: Remove or encrypt high-risk PII",
+      "Implement data loss prevention (DLP) measures",
+      "Conduct privacy impact assessment"
+    ],
+    "risk_level": "high",
+    "summary": "Found 3 columns with potential PII.",
+    "total_pii_columns": 3
+  },
+  "requires_confirmation": true,
+  "status": "pii_detected"
+}
