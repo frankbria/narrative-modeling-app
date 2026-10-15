@@ -1,25 +1,80 @@
 /**
  * Recipe Management E2E Tests
  *
- * Tests the complete recipe management workflow including:
- * - Recipe library browsing and navigation
- * - Recipe search and filtering
- * - Recipe creation and duplication
- * - Recipe sharing and permissions
- * - Recipe export and import
- * - Tab switching (All Recipes, My Recipes, Shared with Me, Popular)
- * - Error handling and validation
- *
- * Coverage Target: >85%
+ * The `/recipes` library on the real stack: tabs, search, sort, view mode, tag filter,
+ * and the per-recipe actions (apply, duplicate, share, export, delete). Each test seeds
+ * its own recipes through the API and removes them, and any copy made of them, after.
+ * (`/recipes` has no inbound navigation yet; #738 decides whether it stays.)
  */
 
 import { test, expect } from '../fixtures';
+import type { APIRequestContext, Page } from '@playwright/test';
+import { API_BASE, apiAuthHeaders } from '../helpers/apiAuth';
+
+interface Seeded {
+  id: string;
+  name: string;
+}
+
+const prefix = () => `E2E recipe ${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+async function createRecipe(
+  request: APIRequestContext,
+  name: string,
+  tags: string[] = []
+): Promise<Seeded> {
+  const response = await request.post(`${API_BASE}/transformations/recipes`, {
+    headers: await apiAuthHeaders(request),
+    data: {
+      name,
+      description: 'Removes duplicate rows',
+      steps: [{ type: 'remove_duplicates' }],
+      tags,
+    },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  return { id: (await response.json()).id, name };
+}
+
+/** Delete every recipe of the user whose name starts with `namePrefix` (copies included). */
+async function deleteRecipes(request: APIRequestContext, namePrefix: string) {
+  const headers = await apiAuthHeaders(request);
+  const response = await request.get(
+    `${API_BASE}/transformations/recipes?include_public=false&per_page=100`,
+    { headers }
+  );
+  const { recipes } = (await response.json()) as { recipes: Seeded[] };
+  for (const recipe of recipes.filter((r) => r.name.startsWith(namePrefix))) {
+    await request.delete(`${API_BASE}/transformations/recipes/${recipe.id}`, { headers });
+  }
+}
+
+/** The card of the recipe with this name: the smallest block holding its title and its menu. */
+const card = (page: Page, name: string) =>
+  page
+    .locator('div')
+    .filter({ has: page.getByText(name, { exact: true }) })
+    .filter({ has: page.getByRole('button', { name: 'Apply Recipe' }) })
+    .last();
+
+async function openActions(page: Page, name: string) {
+  await card(page, name).getByRole('button', { name: 'Recipe actions' }).click();
+  await expect(page.getByRole('menu')).toBeVisible();
+}
 
 test.describe('Recipe Management', () => {
-  test.beforeEach(async ({ authenticatedPage }) => {
-    // Navigate to recipes page
+  let namePrefix = '';
+  let recipe: Seeded;
+
+  test.beforeEach(async ({ authenticatedPage, request }) => {
+    namePrefix = prefix();
+    recipe = await createRecipe(request, namePrefix, [`e2e-${namePrefix.slice(-5)}`]);
     await authenticatedPage.goto('/recipes');
     await expect(authenticatedPage.locator('h1:has-text("Recipe Library")')).toBeVisible({ timeout: 10000 });
+  });
+
+  test.afterEach(async ({ request }) => {
+    await deleteRecipes(request, namePrefix);
   });
 
   test.describe('Recipe Library Navigation', () => {
@@ -80,434 +135,179 @@ test.describe('Recipe Management', () => {
       await expect(authenticatedPage.getByRole('button', { name: 'List view' })).toBeVisible();
     });
 
-    test('should filter recipes by search query', async ({ authenticatedPage }) => {
-      // Wait for recipes to load
-      await authenticatedPage.waitForTimeout(1000);
+    test('should filter recipes by search query', async ({ authenticatedPage: page }) => {
+      const search = page.locator('input[placeholder*="Search recipes"]');
+      await expect(page.getByText(recipe.name, { exact: true })).toBeVisible();
 
-      const searchInput = authenticatedPage.locator('input[placeholder*="Search recipes"]');
+      await search.fill('no recipe is called this');
+      await expect(page.getByText('No recipes found')).toBeVisible();
+      await expect(page.getByText(recipe.name, { exact: true })).toBeHidden();
 
-      // Type search query
-      await searchInput.fill('cleaning');
-      await authenticatedPage.waitForTimeout(500);
-
-      // Verify filtered results (if any recipes exist)
-      // Note: Actual results depend on database state
+      await search.fill(recipe.name);
+      await expect(page.getByText(recipe.name, { exact: true })).toBeVisible();
     });
 
-    test('should toggle view mode between grid and list', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
+    test('should toggle view mode between grid and list', async ({ authenticatedPage: page }) => {
+      const grid = page.getByRole('button', { name: 'Grid view' });
+      const list = page.getByRole('button', { name: 'List view' });
+      await expect(grid).toHaveAttribute('aria-pressed', 'true');
 
-      // Find view mode toggle buttons by accessible name (a page-global
-      // `button:has(svg)` index would collide with the sidebar hamburger #282).
-      const gridViewButton = authenticatedPage.getByRole('button', { name: 'Grid view' });
-      const listViewButton = authenticatedPage.getByRole('button', { name: 'List view' });
+      await list.click();
+      await expect(list).toHaveAttribute('aria-pressed', 'true');
+      await expect(grid).toHaveAttribute('aria-pressed', 'false');
 
-      // Switch to list view
-      await listViewButton.click();
-      await authenticatedPage.waitForTimeout(300);
-
-      // Switch back to grid view
-      await gridViewButton.click();
-      await authenticatedPage.waitForTimeout(300);
+      await grid.click();
+      await expect(grid).toHaveAttribute('aria-pressed', 'true');
     });
 
-    test('should sort recipes by different criteria', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Open sort dropdown
-      const sortDropdown = authenticatedPage.locator('button[role="combobox"]').first();
-      await sortDropdown.click();
-
-      // Select "Most Popular"
-      await authenticatedPage.locator('div[role="option"]:has-text("Most Popular")').click();
-      await authenticatedPage.waitForTimeout(500);
-
-      // Open sort dropdown again
-      await sortDropdown.click();
-
-      // Select "Name (A-Z)"
-      await authenticatedPage.locator('div[role="option"]:has-text("Name (A-Z)")').click();
-      await authenticatedPage.waitForTimeout(500);
-
-      // Open sort dropdown again
-      await sortDropdown.click();
-
-      // Select "Most Recent"
-      await authenticatedPage.locator('div[role="option"]:has-text("Most Recent")').click();
-      await authenticatedPage.waitForTimeout(500);
-    });
-
-    test('should filter by tags when available', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Check if tags are displayed
-      const tags = authenticatedPage.locator('div').filter({ hasText: /^(cleaning|preprocessing|feature-engineering)$/ });
-      const tagCount = await tags.count();
-
-      if (tagCount > 0) {
-        // Click first tag
-        await tags.first().click();
-        await authenticatedPage.waitForTimeout(500);
-
-        // Click tag again to deselect
-        await tags.first().click();
-        await authenticatedPage.waitForTimeout(500);
+    test('should sort recipes by different criteria', async ({ authenticatedPage: page }) => {
+      const sort = page.locator('button[role="combobox"]').first();
+      for (const option of ['Most Popular', 'Name (A-Z)', 'Most Recent']) {
+        await sort.click();
+        await page.getByRole('option', { name: option }).click();
+        await expect(sort).toHaveText(option);
       }
+    });
+
+    test('should filter by tags', async ({ authenticatedPage: page, request }) => {
+      const untagged = await createRecipe(request, `${namePrefix} untagged`);
+      await page.reload();
+      await expect(page.getByText(untagged.name, { exact: true })).toBeVisible();
+
+      await page.getByText(`e2e-${namePrefix.slice(-5)}`, { exact: true }).first().click();
+      await expect(page.getByText(recipe.name, { exact: true })).toBeVisible();
+      await expect(page.getByText(untagged.name, { exact: true })).toBeHidden();
     });
   });
 
   test.describe('Recipe Card Interactions', () => {
-    test('should display recipe cards with information', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Look for recipe cards (may be empty state)
-      const recipeCards = authenticatedPage.locator('div[class*="card"]');
-      const cardCount = await recipeCards.count();
-
-      if (cardCount > 0) {
-        // Verify first card has expected elements
-        const firstCard = recipeCards.first();
-
-        // Card should have some text content
-        const cardText = await firstCard.textContent();
-        expect(cardText).toBeTruthy();
-      }
+    test('should display recipe cards with information', async ({ authenticatedPage: page }) => {
+      const seeded = card(page, recipe.name);
+      await expect(seeded).toContainText('Removes duplicate rows');
+      await expect(seeded).toContainText(`e2e-${namePrefix.slice(-5)}`);
     });
 
-    test('should open recipe action menu', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Find recipe cards with action buttons
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        // Verify dropdown menu appears
-        await expect(authenticatedPage.locator('div[role="menu"]')).toBeVisible({ timeout: 2000 });
-
-        // Close menu by clicking outside
-        await authenticatedPage.keyboard.press('Escape');
+    test('should open recipe action menu', async ({ authenticatedPage: page }) => {
+      await openActions(page, recipe.name);
+      for (const item of ['Apply Recipe', 'Duplicate', 'Share', 'Export JSON', 'Delete']) {
+        await expect(page.getByRole('menuitem', { name: item })).toBeVisible();
       }
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toBeHidden();
     });
 
-    test('should apply recipe when Apply button is clicked', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      const applyButtons = authenticatedPage.locator('button:has-text("Apply Recipe")');
-      const buttonCount = await applyButtons.count();
-
-      if (buttonCount > 0) {
-        // Click first Apply button
-        await applyButtons.first().click();
-
-        // Should navigate to transform page with recipe ID
-        await expect(authenticatedPage).toHaveURL(/\/transform\?recipeId=/);
-      }
+    test('should apply recipe when Apply button is clicked', async ({ authenticatedPage: page }) => {
+      await card(page, recipe.name).getByRole('button', { name: 'Apply Recipe' }).click();
+      await expect(page).toHaveURL(new RegExp(`/transform\\?recipeId=${recipe.id}`));
     });
   });
 
   test.describe('Recipe Duplication', () => {
-    test('should duplicate a recipe', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Open action menu
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        // Click Duplicate option
-        const duplicateOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Duplicate")');
-        await duplicateOption.click();
-
-        // Wait for duplication to complete
-        await authenticatedPage.waitForTimeout(1500);
-
-        // Recipe list should reload
-        await authenticatedPage.waitForTimeout(500);
-      }
+    test('should duplicate a recipe', async ({ authenticatedPage: page }) => {
+      await openActions(page, recipe.name);
+      await page.getByRole('menuitem', { name: 'Duplicate' }).click();
+      await expect(page.getByText(`${recipe.name} (Copy)`, { exact: true })).toBeVisible();
     });
   });
 
   test.describe('Recipe Sharing', () => {
-    test('should open share dialog for owned recipes', async ({ authenticatedPage }) => {
-      // Switch to My Recipes tab to ensure we see owned recipes
-      await authenticatedPage.locator('button[role="tab"]:has-text("My Recipes")').click();
-      await authenticatedPage.waitForTimeout(1000);
+    test('should open share dialog for owned recipes', async ({ authenticatedPage: page }) => {
+      await page.getByRole('tab', { name: 'My Recipes' }).click();
+      await openActions(page, recipe.name);
+      await page.getByRole('menuitem', { name: 'Share' }).click();
 
-      // Open action menu
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        // Check if Share option exists (only for owned recipes)
-        const shareOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Share")');
-        const shareCount = await shareOption.count();
-
-        if (shareCount > 0) {
-          await shareOption.click();
-
-          // Verify share dialog appears
-          await expect(authenticatedPage.locator('h2:has-text("Share Recipe")')).toBeVisible({ timeout: 2000 });
-
-          // Close dialog
-          await authenticatedPage.locator('button:has-text("Cancel")').click();
-        }
-      }
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByRole('heading', { name: 'Share Recipe' })).toBeVisible();
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toBeHidden();
     });
 
-    test('should validate user ID in share dialog', async ({ authenticatedPage }) => {
-      // Switch to My Recipes tab
-      await authenticatedPage.locator('button[role="tab"]:has-text("My Recipes")').click();
-      await authenticatedPage.waitForTimeout(1000);
+    test('should validate user ID in share dialog', async ({ authenticatedPage: page }) => {
+      await page.getByRole('tab', { name: 'My Recipes' }).click();
+      await openActions(page, recipe.name);
+      await page.getByRole('menuitem', { name: 'Share' }).click();
 
-      // Open action menu and share dialog
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        const shareOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Share")');
-        const shareCount = await shareOption.count();
-
-        if (shareCount > 0) {
-          await shareOption.click();
-
-          // Verify share button is disabled without user ID
-          const shareButton = authenticatedPage.locator('button:has-text("Share Recipe")').last();
-          await expect(shareButton).toBeDisabled();
-
-          // Enter user ID
-          const userIdInput = authenticatedPage.locator('input[id="userId"]');
-          await userIdInput.fill('test-user-123');
-
-          // Share button should be enabled
-          await expect(shareButton).toBeEnabled();
-
-          // Close dialog
-          await authenticatedPage.locator('button:has-text("Cancel")').click();
-        }
-      }
+      const dialog = page.getByRole('dialog');
+      const share = dialog.getByRole('button', { name: 'Share Recipe' });
+      await expect(share).toBeDisabled();
+      await dialog.locator('input[id="userId"]').fill('test-user-123');
+      await expect(share).toBeEnabled();
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
     });
   });
 
   test.describe('Recipe Export', () => {
-    test('should open export dialog', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
+    async function openExport(page: Page, name: string) {
+      await openActions(page, name);
+      await page.getByRole('menuitem', { name: 'Export JSON' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByRole('heading', { name: 'Export Recipe' })).toBeVisible();
+      return dialog;
+    }
 
-      // Open action menu
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        // Click Export JSON option
-        const exportOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Export JSON")');
-        await exportOption.click();
-
-        // Verify export dialog appears
-        await expect(authenticatedPage.locator('h2:has-text("Export Recipe")')).toBeVisible({ timeout: 2000 });
-
-        // Close dialog
-        await authenticatedPage.locator('button:has-text("Close")').first().click();
-      }
+    test('should open export dialog', async ({ authenticatedPage: page }) => {
+      const dialog = await openExport(page, recipe.name);
+      await dialog.getByRole('button', { name: 'Close' }).first().click();
+      await expect(dialog).toBeHidden();
     });
 
-    test('should switch between preview and formatted tabs in export dialog', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
+    test('should switch between preview and formatted tabs in export dialog', async ({ authenticatedPage: page }) => {
+      const dialog = await openExport(page, recipe.name);
+      const preview = dialog.getByRole('tab', { name: 'Preview' });
+      const formatted = dialog.getByRole('tab', { name: 'Formatted' });
+      await expect(preview).toHaveAttribute('data-state', 'active');
 
-      // Open export dialog
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        const exportOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Export JSON")');
-        await exportOption.click();
-
-        // Wait for dialog and data to load
-        await authenticatedPage.waitForTimeout(1500);
-
-        // Verify Preview tab is active by default
-        const previewTab = authenticatedPage.locator('button[role="tab"]:has-text("Preview")');
-        await expect(previewTab).toHaveAttribute('data-state', 'active');
-
-        // Switch to Formatted tab
-        const formattedTab = authenticatedPage.locator('button[role="tab"]:has-text("Formatted")');
-        await formattedTab.click();
-        await expect(formattedTab).toHaveAttribute('data-state', 'active');
-
-        // Verify formatted content is displayed
-        await expect(authenticatedPage.locator('text=/Recipe Format/')).toBeVisible();
-
-        // Close dialog
-        await authenticatedPage.locator('button:has-text("Close")').first().click();
-      }
+      await formatted.click();
+      await expect(formatted).toHaveAttribute('data-state', 'active');
+      await expect(dialog.getByText(/Recipe Format/)).toBeVisible();
     });
 
-    test('should enable copy and download buttons after data loads', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Open export dialog
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        const exportOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Export JSON")');
-        await exportOption.click();
-
-        // Wait for data to load
-        await authenticatedPage.waitForTimeout(2000);
-
-        // Verify buttons are enabled
-        const copyButton = authenticatedPage.locator('button:has-text("Copy JSON")');
-        const downloadButton = authenticatedPage.locator('button:has-text("Download")');
-
-        await expect(copyButton).toBeEnabled({ timeout: 3000 });
-        await expect(downloadButton).toBeEnabled({ timeout: 3000 });
-
-        // Close dialog
-        await authenticatedPage.locator('button:has-text("Close")').first().click();
-      }
+    test('should enable copy and download buttons after data loads', async ({ authenticatedPage: page }) => {
+      const dialog = await openExport(page, recipe.name);
+      await expect(dialog.getByRole('button', { name: 'Copy JSON' })).toBeEnabled();
+      await expect(dialog.getByRole('button', { name: 'Download' })).toBeEnabled();
     });
   });
 
   test.describe('Recipe Deletion', () => {
-    test('should show delete option for owned recipes', async ({ authenticatedPage }) => {
-      // Switch to My Recipes tab
-      await authenticatedPage.locator('button[role="tab"]:has-text("My Recipes")').click();
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Open action menu
-      const actionButton = authenticatedPage.locator('button[aria-haspopup="menu"]').first();
-      const buttonCount = await actionButton.count();
-
-      if (buttonCount > 0) {
-        await actionButton.click();
-
-        // Check if Delete option exists
-        const deleteOption = authenticatedPage.locator('div[role="menuitem"]:has-text("Delete")');
-        const deleteCount = await deleteOption.count();
-
-        // Delete option should exist for owned recipes
-        if (deleteCount > 0) {
-          expect(deleteCount).toBeGreaterThan(0);
-        }
-
-        // Close menu
-        await authenticatedPage.keyboard.press('Escape');
-      }
+    test('should delete an owned recipe after confirming', async ({ authenticatedPage: page }) => {
+      await page.getByRole('tab', { name: 'My Recipes' }).click();
+      await openActions(page, recipe.name);
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.getByRole('menuitem', { name: 'Delete' }).click();
+      await expect(page.getByText(recipe.name, { exact: true })).toBeHidden();
     });
   });
 
   test.describe('Empty States', () => {
-    test('should display empty state in Shared with Me tab', async ({ authenticatedPage }) => {
-      await authenticatedPage.locator('button[role="tab"]:has-text("Shared with Me")').click();
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Check for empty state (likely in test environment)
-      const emptyStateText = authenticatedPage.locator('text=/No shared recipes/');
-      const hasEmptyState = await emptyStateText.count() > 0;
-
-      if (hasEmptyState) {
-        await expect(emptyStateText).toBeVisible();
-        await expect(authenticatedPage.locator('text=/When someone shares a recipe with you/')).toBeVisible();
-      }
-    });
-
-    test('should display empty state in Popular tab', async ({ authenticatedPage }) => {
-      await authenticatedPage.locator('button[role="tab"]:has-text("Popular")').click();
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Check for empty state or recipe cards
-      const emptyStateText = authenticatedPage.locator('text=/No popular recipes yet/');
-      const hasEmptyState = await emptyStateText.count() > 0;
-
-      if (hasEmptyState) {
-        await expect(emptyStateText).toBeVisible();
-      }
+    test('should display empty state in Shared with Me tab', async ({ authenticatedPage: page }) => {
+      // Nothing ever shares a recipe with the shared e2e user.
+      await page.getByRole('tab', { name: 'Shared with Me' }).click();
+      await expect(page.getByText('No shared recipes')).toBeVisible();
+      await expect(page.getByText(/When someone shares a recipe with you/)).toBeVisible();
     });
   });
 
   test.describe('Error Handling', () => {
-    test('should handle network errors gracefully', async ({ authenticatedPage, page }) => {
-      // Intercept API calls and simulate network error
-      await page.route('**/api/v1/recipes/list*', route => {
-        route.abort('failed');
-      });
-
-      // Navigate to recipes page
-      await authenticatedPage.goto('/recipes');
-      await authenticatedPage.waitForTimeout(2000);
-
-      // Should display error message
-      const errorMessage = authenticatedPage.locator('text=/Failed to load/');
-      const hasError = await errorMessage.count() > 0;
-
-      if (hasError) {
-        await expect(errorMessage).toBeVisible();
-      }
-
-      // Restore network
-      await page.unroute('**/api/v1/recipes/list*');
-    });
-  });
-
-  test.describe('Pagination', () => {
-    test('should display pagination when multiple pages exist', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Check if pagination exists
-      const prevButton = authenticatedPage.locator('button:has-text("Previous")');
-      const nextButton = authenticatedPage.locator('button:has-text("Next")');
-
-      const hasPagination = await prevButton.count() > 0;
-
-      if (hasPagination) {
-        // Verify pagination controls
-        await expect(prevButton).toBeVisible();
-        await expect(nextButton).toBeVisible();
-
-        // Verify page info
-        await expect(authenticatedPage.locator('text=/Page \\d+ of \\d+/')).toBeVisible();
-      }
+    test('should show an error when the list cannot load', async ({ authenticatedPage: page }) => {
+      // The UI's reaction to a failed list request, so only that request is failed.
+      await page.route(
+        (url) => url.pathname.endsWith('/transformations/recipes'),
+        (route) => route.abort('failed')
+      );
+      await page.reload();
+      await expect(page.getByRole('alert').filter({ hasText: /Failed to fetch/ })).toBeVisible();
     });
   });
 
   test.describe('Accessibility', () => {
     test('should have proper ARIA labels and roles', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
       // Verify tab roles
       const tabs = authenticatedPage.locator('button[role="tab"]');
       await expect(tabs.first()).toBeVisible();
 
       // Verify proper heading hierarchy
       await expect(authenticatedPage.locator('h1:has-text("Recipe Library")')).toBeVisible();
-    });
-
-    test('should support keyboard navigation', async ({ authenticatedPage }) => {
-      await authenticatedPage.waitForTimeout(1000);
-
-      // Test Tab key navigation
-      await authenticatedPage.keyboard.press('Tab');
-
-      // Test Arrow key navigation in tabs
-      await authenticatedPage.keyboard.press('ArrowRight');
-      await authenticatedPage.waitForTimeout(300);
-
-      await authenticatedPage.keyboard.press('ArrowLeft');
-      await authenticatedPage.waitForTimeout(300);
     });
   });
 });

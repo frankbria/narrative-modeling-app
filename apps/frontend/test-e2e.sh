@@ -152,6 +152,10 @@ export PLAN_FREE_UPLOADS=${PLAN_FREE_UPLOADS:-10000}
 export PLAN_FREE_TRAINING_RUNS=${PLAN_FREE_TRAINING_RUNS:-10000}
 export PLAN_FREE_PREDICTIONS=${PLAN_FREE_PREDICTIONS:-1000000}
 export PLAN_FREE_AI_CALLS=${PLAN_FREE_AI_CALLS:-100000}
+# The same reason for the per-tenant training cap (#498): parallel workers train as
+# one user, so a third concurrent run was a 429 that depended on scheduling. The
+# process-wide slot count still queues them; the cap itself is backend-tested.
+export MAX_CONCURRENT_TRAINING_JOBS_PER_USER=${MAX_CONCURRENT_TRAINING_JOBS_PER_USER:-100}
 # The admin identity is seeded on PRO (scripts/seed_e2e_data.py) and PRO's upload
 # ceiling is made tiny so plan-limit.spec.ts can drive a REAL 402 through the UI
 # (#767 AC5) without touching the shared FREE user's lifted limits above. No other

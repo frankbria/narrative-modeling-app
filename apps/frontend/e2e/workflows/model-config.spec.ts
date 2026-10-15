@@ -1,680 +1,106 @@
 /**
- * Model Config Workflow E2E Tests
+ * A training run on the real stack, after it starts (#991).
  *
- * Tests the complete model training configuration workflow including:
- * - Training classification models with Random Forest
- * - AI algorithm recommendations
- * - Training progress monitoring
- * - Model metrics visualization (accuracy, precision, recall, F1)
- * - Model save and deployment
- * - Model comparison
- * - Model versioning
- * - Cross-validation
- * - Imbalanced dataset warnings
- * - Insufficient data errors
- * - Training cancellation
- * - Training failure scenarios
- * - Hyperparameter validation
- *
- * Coverage Target: >85%
+ * train-form.spec.ts proves the form starts a run; training-errors.spec.ts covers the
+ * runs that do not start or do not finish. This spec follows a run to its end (or to a
+ * cancel) and reads what it stored. Every dataset is erased afterwards, and its models
+ * go with it (#943).
  */
 
 import { test, expect } from '../fixtures';
-import { ModelConfigPage } from '../pages/ModelConfigPage';
-import { EvaluatePage } from '../pages/EvaluatePage';
 import {
   BINARY_CLASS_DATASET,
   BINARY_CLASS_TARGET,
 } from '../helpers/binaryClassificationData';
-import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
+import { chooseTarget, seedTrainingWorkflow } from '../helpers/seedWorkflow';
 import { API_BASE, mlAuth } from '../helpers/mlApi';
 
-test.describe('Model Config Workflow', () => {
-  let datasetId: string;
-  let modelId: string;
-
-  test.beforeEach(async ({ uploadTestDataset }) => {
-    // #157: training is heavy; on 2-core CI the upload + model training can exceed
-    // the 30s test budget (hook/fixture setup counts against it) under parallel
-    // worker contention. test.slow() triples the budget to stabilize @smoke.
-    test.slow();
-    // Upload dataset before each test
-    datasetId = await uploadTestDataset();
-  });
-
-  test.afterEach(async ({ cleanupDataset, cleanupModel }) => {
-    // Clean up model and dataset after each test
-    if (modelId) {
-      await cleanupModel(modelId);
-      modelId = '';
-    }
-    if (datasetId) {
-      await cleanupDataset(datasetId);
-      datasetId = '';
-    }
-  });
-
-  // The smoke-tagged training test that stood here returned early on the workflow gate
-  // and caught every failure after it (#921). train-form.spec.ts drives the real form.
-
-  test('should get AI algorithm recommendation @ai-integration', async ({ authenticatedPage }) => {
-    test.setTimeout(120000); // 120s timeout for AI calls
-
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Select target column
-    await modelPage.selectTargetColumn('purchased');
-
-    // Request AI algorithm recommendation
-    const recommendButton = authenticatedPage.locator(
-      'button:has-text("Recommend"), button:has-text("AI Suggest"), [data-testid="ai-recommend-algorithm"]'
-    );
-
-    if (await recommendButton.isVisible({ timeout: 5000 })) {
-      await recommendButton.click();
-
-      // Wait for AI recommendations
-      await expect(
-        authenticatedPage.locator('text=/Recommended|AI suggests|Suggested algorithm/i')
-      ).toBeVisible({ timeout: 120000 });
-
-      // Verify recommendation includes algorithm name
-      await expect(
-        authenticatedPage.locator('text=/random.?forest|logistic.?regression|gradient.?boosting|svm/i').first()
-      ).toBeVisible({ timeout: 5000 });
-
-      // Verify recommendation includes reasoning
-      await expect(
-        authenticatedPage.locator('[data-testid="recommendation-reason"], .recommendation-text')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('AI algorithm recommendation feature not yet implemented');
-    }
-  });
-
-  test('should display training progress updates', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-
-    // Start training
-    await modelPage.startTraining();
-
-    // Verify progress indicator is visible
-    await expect(
-      authenticatedPage.locator('[data-testid="training-progress"], [role="progressbar"]')
-    ).toBeVisible({ timeout: 5000 });
-
-    // Monitor progress updates
-    const progressValues: number[] = [];
-    let lastProgress = 0;
-
-    for (let i = 0; i < 10; i++) {
-      const progress = await modelPage.getTrainingProgress();
-      progressValues.push(progress);
-
-      // Verify progress is increasing or complete
-      if (progress >= 100) {
-        break;
-      }
-
-      if (progress > lastProgress) {
-        lastProgress = progress;
-      }
-
-      await authenticatedPage.waitForTimeout(1000);
-    }
-
-    // Verify progress increased over time
-    const hasProgress = progressValues.some((p) => p > 0);
-    expect(hasProgress).toBe(true);
-
-    // Wait for completion
-    await modelPage.waitForTrainingComplete();
-
-    // Verify final progress is 100%
-    const finalProgress = await modelPage.getTrainingProgress();
-    expect(finalProgress).toBe(100);
-  });
-
-  test('should view model metrics (accuracy, precision, recall, F1)', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure and train model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    // Verify metrics are displayed
-    const metrics = await modelPage.getMetrics();
-
-    // For classification, should have at least accuracy
-    expect(metrics).toHaveProperty('accuracy');
-
-    // Verify metric values are valid (0-1 or 0-100)
-    if (metrics.accuracy) {
-      expect(metrics.accuracy).toBeGreaterThanOrEqual(0);
-      expect(metrics.accuracy).toBeLessThanOrEqual(100);
-    }
-
-    // Verify metrics UI elements
-    await expect(
-      authenticatedPage.locator('text=/Accuracy|Performance/i')
-    ).toBeVisible({ timeout: 5000 });
-
-    // Verify classification-specific metrics
-    const hasPrecision = await authenticatedPage.locator('text=/Precision/i').isVisible({ timeout: 3000 }).catch(() => false);
-    const hasRecall = await authenticatedPage.locator('text=/Recall/i').isVisible({ timeout: 3000 }).catch(() => false);
-    const hasF1 = await authenticatedPage.locator('text=/F1.?Score/i').isVisible({ timeout: 3000 }).catch(() => false);
-
-    // At least one additional metric should be present
-    expect(hasPrecision || hasRecall || hasF1).toBe(true);
-  });
-
-  test('should save and deploy trained model', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Train model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    // Save model
-    const modelName = 'test-model-' + Date.now();
-    await modelPage.saveModel(modelName);
-
-    // Verify save confirmation
-    await expect(
-      authenticatedPage.locator('text=/Model saved|Saved successfully/i')
-    ).toBeVisible({ timeout: 5000 });
-
-    // Get model ID
-    modelId = await modelPage.getModelId();
-
-    // Deploy model
-    const deployButton = authenticatedPage.locator('button:has-text("Deploy"), [data-testid="deploy-model"]');
-
-    if (await deployButton.isVisible({ timeout: 5000 })) {
-      await modelPage.deployModel();
-
-      // Verify deployment confirmation
-      await expect(
-        authenticatedPage.locator('text=/Deployed|Deployment successful|Ready for predictions/i')
-      ).toBeVisible({ timeout: 10000 });
-    } else {
-      console.log('Deployment feature not yet implemented');
-    }
-  });
-
-  // #234 [P4.12]: the model-comparison UI lives on the stage-gated /evaluate
-  // Compare tab (#79). The shared beforeEach uploads the un-trainable sample.csv,
-  // so this test uploads its own binary-classification dataset, trains two real
-  // models on it, seeds the evaluation workflow so /evaluate renders, then
-  // exercises the real Compare tab + ModelComparisonTable. Manual chromium-full
-  // only (two real trainings); not promoted to @smoke (#157).
-  test('should compare multiple models', async ({
-    authenticatedPage,
+test.describe('Model training run', () => {
+  test('shows progress and the result of a run', async ({
+    authenticatedPage: page,
+    request,
     uploadTestDataset,
-    trainModel,
-    cleanupModel,
     cleanupDataset,
   }) => {
-    test.slow();
-    const compareDatasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
-    const modelId1 = await trainModel(compareDatasetId, BINARY_CLASS_TARGET);
-    const modelId2 = await trainModel(compareDatasetId, BINARY_CLASS_TARGET);
-
+    test.setTimeout(240000);
+    const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
     try {
-      await seedEvaluationWorkflow(
-        authenticatedPage,
-        authenticatedPage.request,
-        compareDatasetId,
-        modelId1
-      );
+      await seedTrainingWorkflow(page, request, datasetId);
+      await page.goto('/model');
+      await chooseTarget(page, BINARY_CLASS_TARGET);
+      await page.getByRole('button', { name: /Start Training/ }).click();
 
-      const evaluatePage = new EvaluatePage(authenticatedPage);
-      await authenticatedPage.goto(`/evaluate/${compareDatasetId}`);
-      await evaluatePage.waitForDashboard();
-      await evaluatePage.switchToTab('Compare');
-
-      // Select both trained models and run the comparison.
-      await authenticatedPage.locator(`#compare-${modelId1}`).check();
-      await authenticatedPage.locator(`#compare-${modelId2}`).check();
-      await evaluatePage.runComparison();
-
-      // ModelComparisonTable renders a cell per (metric × model); assert both
-      // models have cells and that the best-per-metric highlighting ran.
-      await expect(
-        authenticatedPage.locator(`[data-testid$="-${modelId1}"]`).first()
-      ).toBeVisible({ timeout: 15000 });
-      await expect(
-        authenticatedPage.locator(`[data-testid$="-${modelId2}"]`).first()
-      ).toBeVisible();
-      await expect(
-        authenticatedPage.locator('[data-best="true"]').first()
-      ).toBeVisible();
+      await expect(page.getByRole('progressbar')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText('Training complete')).toBeVisible({ timeout: 180000 });
+      await expect(page.getByRole('heading', { name: 'Why these algorithms?' })).toBeVisible();
     } finally {
-      await cleanupModel(modelId1);
-      await cleanupModel(modelId2);
-      await cleanupDataset(compareDatasetId);
+      await cleanupDataset(datasetId);
     }
   });
 
-  test('should support model versioning', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
+  test('cancels a run in progress', async ({
+    authenticatedPage: page,
+    request,
+    uploadTestDataset,
+    cleanupDataset,
+  }) => {
+    test.setTimeout(240000);
+    const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
+    try {
+      await seedTrainingWorkflow(page, request, datasetId);
+      await page.goto('/model');
+      await chooseTarget(page, BINARY_CLASS_TARGET);
+      // The slowest mode, so the run is still going when the cancel lands.
+      await page.getByTestId('mode-option-comprehensive').click();
+      await page.getByRole('button', { name: /Start Training/ }).click();
 
-    await modelPage.gotoTraining(datasetId);
-
-    // Train and save first version
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    const modelName = 'versioned-model-' + Date.now();
-    await modelPage.saveModel(modelName);
-
-    modelId = await modelPage.getModelId();
-
-    // Navigate to model detail
-    await modelPage.gotoModelDetail(modelId);
-
-    // Verify version information is displayed
-    const versionElement = authenticatedPage.locator('[data-testid="model-version"], .model-version, text=/Version/i');
-
-    if (await versionElement.isVisible({ timeout: 5000 })) {
-      const version = await modelPage.getModelVersion();
-      expect(version).toBeTruthy();
-
-      // Verify version format (e.g., "v1", "1.0", etc.)
-      expect(version).toMatch(/v?\d+/i);
-    } else {
-      console.log('Model versioning feature not yet implemented');
+      await page.getByRole('button', { name: 'Cancel Training' }).click();
+      await page.getByRole('button', { name: 'Yes, cancel training' }).click();
+      await expect(page.getByText(/Cancellation requested/)).toBeVisible();
+      await expect(page.getByText('Training cancelled').first()).toBeVisible({ timeout: 180000 });
+    } finally {
+      await cleanupDataset(datasetId);
     }
   });
 
-  test('should perform cross-validation', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
+  test('stores the metrics of a trained model', async ({
+    request,
+    uploadTestDataset,
+    trainModel,
+    cleanupDataset,
+  }) => {
+    test.setTimeout(180000);
+    const datasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
+    try {
+      const modelId = await trainModel(datasetId, BINARY_CLASS_TARGET);
+      const response = await request.get(`${API_BASE}/ml/${modelId}`, {
+        headers: await mlAuth(request),
+      });
+      expect(response.ok()).toBeTruthy();
 
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure model with cross-validation
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-
-    // Enable cross-validation
-    const cvCheckbox = authenticatedPage.locator('input[type="checkbox"][name="enable_cv"], [data-testid="enable-cv"]');
-
-    if (await cvCheckbox.isVisible({ timeout: 5000 })) {
-      await modelPage.toggleCrossValidation(true);
-      await modelPage.setCrossValidationFolds(5);
-
-      // Start training
-      await modelPage.startTraining();
-      await modelPage.waitForTrainingComplete();
-
-      // Verify cross-validation results are displayed
-      const hasCVResults = await modelPage.hasCrossValidationResults();
-      expect(hasCVResults).toBe(true);
-
-      // Verify CV score is shown
-      const cvScore = await modelPage.getCrossValidationScore();
-      expect(cvScore).toBeGreaterThan(0);
-    } else {
-      console.log('Cross-validation feature not yet implemented');
-    }
-  });
-
-  test('should warn about imbalanced dataset', async ({ authenticatedPage }) => {
-    // This test assumes the sample dataset might be imbalanced
-    // or uses a dedicated imbalanced dataset if available
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Select target column
-    await modelPage.selectTargetColumn('purchased');
-
-    // Check for imbalance warning
-    const hasWarning = await modelPage.hasImbalancedDatasetWarning();
-
-    if (hasWarning) {
-      // Verify warning is displayed
-      await expect(
-        authenticatedPage.locator('text=/imbalanced|class imbalance|unbalanced/i')
-      ).toBeVisible({ timeout: 5000 });
-
-      // Verify warning suggests remediation
-      await expect(
-        authenticatedPage.locator('text=/resampling|SMOTE|balance/i')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('Dataset is balanced or imbalance detection not implemented');
-    }
-  });
-
-  test('should show error for insufficient data', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    // Try to train with very small dataset
-    // This test would ideally use a dataset with only 1-2 rows
-    await modelPage.gotoTraining(datasetId);
-
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-
-    // Attempt training
-    const startButton = authenticatedPage.locator('button:has-text("Train"), [data-testid="start-training"]');
-
-    // Training might be prevented by validation
-    if (await startButton.isEnabled({ timeout: 5000 })) {
-      await modelPage.startTraining();
-
-      // Check for insufficient data error
-      const hasError = await modelPage.hasInsufficientDataError();
-
-      if (hasError) {
-        await expect(
-          authenticatedPage.locator('text=/insufficient data|not enough data|too few samples/i')
-        ).toBeVisible({ timeout: 5000 });
+      const { metrics } = await response.json();
+      expect(typeof metrics).toBe('object');
+      const values = Object.values(metrics ?? {});
+      expect(values.length).toBeGreaterThan(0);
+      for (const value of values.filter((v) => typeof v === 'number')) {
+        expect(value).toBeGreaterThanOrEqual(0);
       }
-    } else {
-      // Button disabled is also valid behavior
-      console.log('Training prevented by client-side validation');
-    }
-  });
-
-  test('should allow canceling training mid-process', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-
-    // Start training
-    await modelPage.startTraining();
-
-    // Wait a moment for training to start
-    await authenticatedPage.waitForTimeout(1000);
-
-    // Try to cancel
-    const cancelButton = authenticatedPage.locator('button:has-text("Cancel"), [data-testid="cancel-training"]');
-
-    if (await cancelButton.isVisible({ timeout: 2000 })) {
-      await modelPage.cancelTraining();
-
-      // Verify cancellation message
-      await expect(
-        authenticatedPage.locator('text=/cancelled|stopped|aborted/i')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('Training completed too quickly to cancel');
-    }
-  });
-
-  test('should handle training failure - divergence', async ({ authenticatedPage, request }) => {
-    // This test simulates a training failure scenario
-    // In practice, would use specific dataset/parameters that cause divergence
-
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure model with potentially problematic hyperparameters
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('gradient_boosting');
-
-    // Set extreme hyperparameters that might cause issues
-    const learningRateInput = authenticatedPage.locator('input[name="learning_rate"], [data-param="learning_rate"]');
-
-    if (await learningRateInput.isVisible({ timeout: 5000 })) {
-      await modelPage.setHyperparameter('learning_rate', 100); // Extremely high learning rate
-
-      // Attempt training
-      await modelPage.startTraining();
-
-      // Check for failure message
-      const hasFailure = await modelPage.hasTrainingFailure();
-
-      if (hasFailure) {
-        const failureMessage = await modelPage.getFailureMessage();
-        expect(failureMessage).toMatch(/diverge|converge|unstable|overflow/i);
-      }
-    } else {
-      console.log('Hyperparameter configuration not available for divergence test');
-    }
-  });
-
-  test('should handle training failure - memory error', async ({ authenticatedPage }) => {
-    // This test would ideally use a very large dataset or memory-intensive algorithm
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-
-    // Set extreme parameters that might cause memory issues
-    const nEstimators = authenticatedPage.locator('input[name="n_estimators"], [data-param="n_estimators"]');
-
-    if (await nEstimators.isVisible({ timeout: 5000 })) {
-      await modelPage.setHyperparameter('n_estimators', 100000); // Extremely high number
-
-      // Attempt training
-      await modelPage.startTraining();
-
-      // Check for failure or warning
-      const hasFailure = await modelPage.hasTrainingFailure();
-      const hasWarning = await authenticatedPage.locator('text=/memory|resource|too large/i').isVisible({ timeout: 10000 }).catch(() => false);
-
-      if (hasFailure || hasWarning) {
-        console.log('Memory error or warning detected as expected');
-      } else {
-        console.log('Training succeeded or failed for different reason');
-      }
-    } else {
-      console.log('Hyperparameter configuration not available for memory test');
-    }
-  });
-
-  test('should validate invalid hyperparameters', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Configure model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-
-    // Set invalid hyperparameter value
-    const maxDepthInput = authenticatedPage.locator('input[name="max_depth"], [data-param="max_depth"]');
-
-    if (await maxDepthInput.isVisible({ timeout: 5000 })) {
-      await modelPage.setHyperparameter('max_depth', -1); // Invalid negative value
-
-      // Try to start training
-      const startButton = authenticatedPage.locator('button:has-text("Train"), [data-testid="start-training"]');
-      await startButton.click();
-
-      // Verify validation error is shown
-      await expect(
-        authenticatedPage.locator('text=/invalid|must be positive|greater than zero/i')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('Hyperparameter inputs not available for validation test');
+    } finally {
+      await cleanupDataset(datasetId);
     }
   });
 });
 
-test.describe('Model Config Visualizations', () => {
-  let datasetId: string;
-  let modelId: string;
-
-  test.beforeEach(async ({ uploadTestDataset }) => {
-    datasetId = await uploadTestDataset();
-  });
-
-  test.afterEach(async ({ cleanupDataset, cleanupModel }) => {
-    if (modelId) {
-      await cleanupModel(modelId);
-      modelId = '';
-    }
-    if (datasetId) {
-      await cleanupDataset(datasetId);
-      datasetId = '';
-    }
-  });
-
-  test('should display confusion matrix for classification', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Train classification model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    // Verify confusion matrix is displayed
-    const hasConfusionMatrix = await modelPage.hasConfusionMatrix();
-    expect(hasConfusionMatrix).toBe(true);
-
-    // Verify confusion matrix elements
-    await expect(
-      authenticatedPage.locator('text=/True Positive|TP|Predicted|Actual/i').first()
-    ).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should display ROC curve for binary classification', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Train binary classification model
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('logistic_regression');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    // Verify ROC curve is displayed
-    const hasROC = await modelPage.hasROCCurve();
-
-    if (hasROC) {
-      expect(hasROC).toBe(true);
-
-      // Verify AUC score is shown
-      await expect(
-        authenticatedPage.locator('text=/AUC|Area Under Curve/i')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('ROC curve not displayed - may not be binary classification');
-    }
-  });
-
-  test('should display feature importance chart', async ({ authenticatedPage }) => {
-    const modelPage = new ModelConfigPage(authenticatedPage);
-
-    await modelPage.gotoTraining(datasetId);
-
-    // Train model that supports feature importance
-    await modelPage.selectTargetColumn('purchased');
-    await modelPage.selectAlgorithm('random_forest');
-    await modelPage.startTraining();
-    await modelPage.waitForTrainingComplete();
-
-    // Verify feature importance is displayed
-    const hasFeatureImportance = await modelPage.hasFeatureImportance();
-    expect(hasFeatureImportance).toBe(true);
-
-    // Verify feature names are shown
-    await expect(
-      authenticatedPage.locator('text=/age|income/i').first()
-    ).toBeVisible({ timeout: 5000 });
-
-    // Verify importance values or chart is displayed
-    await expect(
-      authenticatedPage.locator('[data-testid="importance-chart"], .importance-bar, svg').first()
-    ).toBeVisible({ timeout: 5000 });
-  });
-});
-
-test.describe('Model Config API Integration', () => {
-  let datasetId: string;
-
-  test.beforeEach(async ({ uploadTestDataset }) => {
-    datasetId = await uploadTestDataset();
-  });
-
-  test.afterEach(async ({ cleanupDataset }) => {
-    if (datasetId) {
-      await cleanupDataset(datasetId);
-      datasetId = '';
-    }
-  });
-
-  test('legacy /models/train is removed (410)', async ({ request }) => {
-    // #274: the legacy ModelConfig train endpoint reported status="training" but
-    // never trained. It now returns 410 Gone → real training is POST /ml/train.
-    const response = await request.post('/api/v1/models/train', {
-      data: {
-        dataset_id: datasetId,
-        target_column: 'purchased',
-        algorithm: 'random_forest',
-        problem_type: 'classification',
-      },
+test.describe('Legacy training surface', () => {
+  test('/models/train answers 410 and points at /ml/train', async ({ request }) => {
+    // #274: the legacy ModelConfig train endpoint reported status="training" but never trained.
+    const response = await request.post(`${API_BASE}/models/train`, {
+      headers: await mlAuth(request),
+      data: { dataset_id: 'any', target_column: 'purchased' },
     });
 
     expect(response.status()).toBe(410);
     const body = await response.json();
     expect(body.detail).toContain('ml/train');
-  });
-
-  test('should validate training metrics structure', async ({ request, uploadTestDataset, trainModel }) => {
-    test.setTimeout(120000); // real AutoML training runs well past the 30s default
-    // #195: the shared beforeEach uploads the un-trainable sample.csv; override
-    // with a trainable dataset in-test so AutoML actually fits a model.
-    const trainableDatasetId = await uploadTestDataset(BINARY_CLASS_DATASET);
-    const modelId = await trainModel(trainableDatasetId, BINARY_CLASS_TARGET);
-
-    try {
-      // Metrics live on the model document at GET /api/v1/ml/{id} (there is no
-      // /models/{id} or training_metrics field — that was the stale contract).
-      const response = await request.get(`${API_BASE}/ml/${modelId}`, { headers: await mlAuth(request) });
-      expect(response.ok()).toBeTruthy();
-
-      const model = await response.json();
-      expect(model).toHaveProperty('metrics');
-
-      const metrics = model.metrics;
-      expect(metrics).toBeTruthy();
-      expect(typeof metrics).toBe('object');
-
-      // At least one metric is present and numeric metrics are non-negative.
-      const metricKeys = Object.keys(metrics);
-      expect(metricKeys.length).toBeGreaterThan(0);
-      for (const key of metricKeys) {
-        if (typeof metrics[key] === 'number') {
-          expect(metrics[key]).toBeGreaterThanOrEqual(0);
-        }
-      }
-    } finally {
-      await request.delete(`${API_BASE}/ml/${modelId}`, { headers: await mlAuth(request) }).catch(() => {});
-    }
   });
 });
