@@ -107,7 +107,7 @@ async def _reap_training(cutoff: datetime) -> int:
     return await _reap(coll, _stale_filter(cutoff), _training_failure)
 
 
-def _training_failure(doc: dict) -> dict:
+def _training_failure(doc: dict) -> tuple[dict, dict]:
     """FAILED, owing the one `training_runs` unit reserved at creation."""
     refund = owed_refunds.owed(
         doc["user_id"], "training_runs", 1, period_key_for(as_utc(doc["created_at"]))
@@ -117,8 +117,7 @@ def _training_failure(doc: dict) -> dict:
         "error": _REASON,
         "completed_at": utcnow(),
         "updated_at": utcnow(),
-        "refund_owed": refund,
-    }
+    }, refund
 
 
 async def _reap_batch(cutoff: datetime) -> int:
@@ -127,7 +126,7 @@ async def _reap_batch(cutoff: datetime) -> int:
     return await _reap(coll, _stale_filter(cutoff, {"job_type": JobType.BATCH_PREDICTION.value}), _batch_failure)
 
 
-def _batch_failure(doc: dict) -> dict:
+def _batch_failure(doc: dict) -> tuple[dict, dict]:
     """FAILED, owing the whole reservation (`predictions` = total_records), against
     the period the latest reservation was taken from."""
     reserved = int((doc.get("progress") or {}).get("total_records") or 0)
@@ -142,8 +141,7 @@ def _batch_failure(doc: dict) -> dict:
         # that was only queued is still picked up when its slot frees, fails its
         # claim, and would otherwise be refunded a second time by the batch service.
         "remainder_refunded": True,
-        "refund_owed": refund,
-    }
+    }, refund
 
 
 def reservation_period(doc: dict) -> str:
@@ -152,14 +150,17 @@ def reservation_period(doc: dict) -> str:
     return doc.get("reserved_period") or period_key_for(as_utc(doc["created_at"]))
 
 
-async def _reap(coll: AsyncIOMotorCollection, stale: dict, failure: Callable[[dict], dict]) -> int:
+async def _reap(
+    coll: AsyncIOMotorCollection, stale: dict, failure: Callable[[dict], tuple[dict, dict]]
+) -> int:
     """Claim each stale job with one conditional write that also records the refund
     it owes, then pay that refund. Another worker's claim between the read and the
     write makes the write match nothing, and this one moves on."""
     reaped = 0
     while (doc := await coll.find_one(stale)) is not None:
-        update = failure(doc)
-        if await coll.find_one_and_update({**stale, "_id": doc["_id"]}, {"$set": update}):
-            await owed_refunds.settle(coll, {"_id": doc["_id"]}, update["refund_owed"])
+        fields, refund = failure(doc)
+        claim = {"$set": fields, "$push": {"refunds_owed": refund}}
+        if await coll.find_one_and_update({**stale, "_id": doc["_id"]}, claim):
+            await owed_refunds.settle(coll, {"_id": doc["_id"]}, refund)
             reaped += 1
     return reaped

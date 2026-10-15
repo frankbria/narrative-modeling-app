@@ -1385,7 +1385,6 @@ async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_da
     """The run's own cancel check and the wall clock can both reach the refund within
     the same instant. Whichever marks the job first refunds; a retry reserves again
     and so may be refunded again."""
-    from app.services import batch_prediction as bp
 
     refunds = AsyncMock()
     monkeypatch.setattr(metering, "refund", refunds)
@@ -1417,7 +1416,6 @@ async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_da
 async def test_a_job_cancelled_while_queued_gets_its_whole_reservation_back(setup_database, monkeypatch):
     """It reserved its records at creation and never ran one. The queue skipped it
     without a refund."""
-    from app.services import batch_prediction as bp
 
     _batch_semaphores.clear()
     refunds = AsyncMock()

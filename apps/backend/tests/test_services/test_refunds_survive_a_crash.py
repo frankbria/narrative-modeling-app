@@ -74,14 +74,14 @@ async def test_a_batch_refund_lost_to_a_crash_is_paid_by_the_next_reaper_pass(se
             await reap_stale_jobs(timeout_seconds=60)
     stored = await BatchJob.get(job.id)
     assert stored.status == JobStatus.FAILED
-    assert stored.refund_owed is not None
+    assert len(stored.refunds_owed) == 1
     assert await _units("predictions", period) == 5
 
     await reap_stale_jobs(timeout_seconds=60)
     await reap_stale_jobs(timeout_seconds=60)
 
     assert await _units("predictions", period) == 0
-    assert (await BatchJob.get(job.id)).refund_owed is None
+    assert (await BatchJob.get(job.id)).refunds_owed == []
 
 
 async def test_a_training_refund_lost_to_a_crash_is_paid_by_the_next_reaper_pass(setup_database):
@@ -101,7 +101,7 @@ async def test_a_training_refund_lost_to_a_crash_is_paid_by_the_next_reaper_pass
     await reap_stale_jobs(timeout_seconds=60)
 
     assert await _units("training_runs", period) == 0
-    assert (await TrainingJob.get(job.id)).refund_owed is None
+    assert (await TrainingJob.get(job.id)).refunds_owed == []
 
 
 async def test_a_retry_in_a_later_month_is_refunded_against_that_month(setup_database):
@@ -144,3 +144,25 @@ async def test_a_cancelled_runs_remainder_lost_to_a_crash_is_paid_by_the_reaper(
     await reap_stale_jobs(timeout_seconds=60)
 
     assert await _units("predictions", period) == 2
+
+
+async def test_a_retry_settled_again_before_the_first_refund_is_paid_pays_both(setup_database):
+    """A settle crashes, the tenant retries, and the retry is reaped before any pass has
+    paid the first refund: the second settle must not replace the first."""
+    period = metering.period_key_for()
+    await _reserve("predictions", 10, period)
+    job = await _stale_batch("crash-batch-4").insert()
+
+    with patch("app.billing.owed_refunds.metering.refund", side_effect=RuntimeError("worker died")):
+        with pytest.raises(RuntimeError):
+            await reap_stale_jobs(timeout_seconds=60)
+    with patch.object(BatchPredictionService, "_spawn_processing"):
+        assert await BatchPredictionService().retry_job("crash-batch-4", USER) is True
+    await BatchJob.get_motor_collection().update_one(
+        {"job_id": "crash-batch-4"}, {"$set": {"last_heartbeat": utcnow() - timedelta(hours=2)}}
+    )
+
+    await reap_stale_jobs(timeout_seconds=60)
+
+    assert await _units("predictions", period) == 0
+    assert (await BatchJob.get(job.id)).refunds_owed == []

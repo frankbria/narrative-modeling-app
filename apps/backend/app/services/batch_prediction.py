@@ -749,12 +749,12 @@ class BatchPredictionService:
         }
         if job.output_path is not None:
             set_fields["output_path"] = job.output_path
+        update: dict[str, Any] = {"$set": set_fields}
         if refund_owed is not None:
             set_fields["remainder_refunded"] = True
-            set_fields["refund_owed"] = refund_owed
+            update["$push"] = {"refunds_owed": refund_owed}
         result = await BatchJob.get_motor_collection().update_one(
-            {"job_id": job.job_id, "status": JobStatus.RUNNING.value},
-            {"$set": set_fields},
+            {"job_id": job.job_id, "status": JobStatus.RUNNING.value}, update
         )
         return result.modified_count == 1
 
@@ -785,7 +785,7 @@ class BatchPredictionService:
         in the same write (#1032)."""
         result = await BatchJob.get_motor_collection().update_one(
             {"job_id": job_id, "remainder_refunded": {"$ne": True}},
-            {"$set": {"remainder_refunded": True, "refund_owed": refund}},
+            {"$set": {"remainder_refunded": True}, "$push": {"refunds_owed": refund}},
         )
         return result.modified_count == 1
 
