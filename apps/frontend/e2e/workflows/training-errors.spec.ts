@@ -68,15 +68,13 @@ test.describe('Training errors', () => {
     await expect(page.getByRole('combobox')).toHaveValue('purchased');
   });
 
-  // App bug: the problem detector answers `unknown` ("Not enough samples") for a
-  // five-row file, the engine fits anyway, feature selection raises a numpy TypeError
-  // on the text target, and job_failures does not classify that, so the user reads
-  // "The job failed due to an unexpected error" instead of why.
-  test.fixme('a dataset too small to train says why', async ({ authenticatedPage: page }) => {
+  // A five-row file stops before feature engineering and says why (#1055); it used to
+  // fail inside feature selection with "an unexpected error".
+  test('a dataset too small to train says why', async ({ authenticatedPage: page }) => {
     await chooseTarget(page, 'purchased');
     await page.getByRole('button', { name: /Start Training/ }).click();
 
     await expect(page.getByText('Training failed').first()).toBeVisible({ timeout: 90000 });
-    await expect(page.getByText(/too few|Not enough samples/i).first()).toBeVisible();
+    await expect(page.getByText(/has 5 rows; training needs at least 10/).first()).toBeVisible();
   });
 });
