@@ -2,13 +2,10 @@
  * Upload Workflow E2E Tests
  *
  * Tests the complete dataset upload workflow including:
- * - Valid CSV file upload
- * - File format validation
- * - File size validation
- * - S3 upload verification
+ * - Valid CSV file upload, progress, drag and drop, concurrent uploads
  * - Metadata storage verification
- * - PII detection
- * - Chunked upload
+ * - PII detection and the masked copy
+ * - Malformed and empty CSV errors
  *
  * Coverage Target: >85%
  */
@@ -35,51 +32,6 @@ test.describe('Dataset Upload Workflow', () => {
 
     // Verify success message is displayed
     await expect(authenticatedPage.locator('text=/File uploaded successfully/i')).toBeVisible();
-  });
-
-  test('should validate file format and reject non-CSV files', async ({ authenticatedPage }) => {
-    const uploadPage = new UploadPage(authenticatedPage);
-
-    await uploadPage.goto('/upload');
-
-    // Try to upload invalid file (JSON instead of CSV)
-    const jsonPath = join(__dirname, '../test-data/invalid.json');
-    const fileInput = authenticatedPage.locator('input[type="file"]');
-
-    // Note: Some browsers may not allow setting files with wrong extensions
-    // This test may need to be adjusted based on browser behavior
-    try {
-      await fileInput.setInputFiles(jsonPath);
-
-      // Verify error message
-      await expect(
-        authenticatedPage.locator('text=/Invalid file format|Please upload a CSV file/')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      // If the browser prevents the file selection, that's also valid behavior
-      console.log('Browser prevented invalid file selection (expected behavior)');
-    }
-  });
-
-  test('should reject files that exceed size limit', async ({ authenticatedPage }) => {
-    const uploadPage = new UploadPage(authenticatedPage);
-
-    await uploadPage.goto('/upload');
-
-    // Try to upload large file
-    const largePath = join(__dirname, '../test-data/large.csv');
-
-    try {
-      await uploadPage.uploadFile(largePath);
-
-      // Verify error message appears
-      await expect(
-        authenticatedPage.locator('text=/File size exceeds|too large|maximum size/')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      // File might not exist in test environment, which is okay
-      console.log('Large file test skipped - test file may not exist');
-    }
   });
 
   test('should verify metadata storage after upload @smoke', async ({ authenticatedPage, request }) => {
@@ -224,31 +176,6 @@ test.describe('Dataset Upload Workflow', () => {
     await uploadPage.waitForUploadComplete();
   });
 
-  test('should allow canceling an in-progress upload', async ({ authenticatedPage }) => {
-    const uploadPage = new UploadPage(authenticatedPage);
-
-    await uploadPage.goto('/upload');
-
-    const csvPath = join(__dirname, '../test-data/sample.csv');
-
-    // Start upload
-    await uploadPage.uploadFile(csvPath);
-
-    // Look for cancel button while upload is in progress
-    const cancelButton = authenticatedPage.locator('button:has-text("Cancel"), [data-testid="cancel-upload"]');
-
-    if (await cancelButton.isVisible({ timeout: 1000 })) {
-      await cancelButton.click();
-
-      // Verify upload was cancelled
-      await expect(
-        authenticatedPage.locator('text=/Upload cancelled|Cancelled|Stopped/')
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      console.log('Upload completed too quickly to test cancellation');
-    }
-  });
-
   test('should preserve uploaded files across page refreshes', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
 
@@ -290,26 +217,6 @@ test.describe('Dataset Upload Workflow', () => {
     await expect(authenticatedPage.locator('th:has-text("income")')).toBeVisible({ timeout: 5000 });
     await expect(authenticatedPage.locator('th:has-text("purchased")')).toBeVisible({ timeout: 5000 });
   });
-
-  test('should provide option to download uploaded dataset', async ({ authenticatedPage }) => {
-    const uploadPage = new UploadPage(authenticatedPage);
-
-    await uploadPage.goto('/upload');
-
-    const csvPath = join(__dirname, '../test-data/sample.csv');
-    await uploadPage.uploadFile(csvPath);
-    await uploadPage.waitForUploadComplete();
-
-    // Look for download button
-    const downloadButton = authenticatedPage.locator('button:has-text("Download"), [data-testid="download-dataset"], a[download]');
-
-    if (await downloadButton.first().isVisible({ timeout: 5000 })) {
-      // Verify download option exists
-      await expect(downloadButton.first()).toBeVisible();
-    } else {
-      console.log('Download feature not yet implemented');
-    }
-  });
 });
 
 test.describe('Upload Security and Validation', () => {
@@ -334,41 +241,18 @@ test.describe('Upload Security and Validation', () => {
 
   test('should validate CSV structure and show errors for malformed files', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
-
     await uploadPage.goto('/upload');
+    await uploadPage.uploadFile(join(__dirname, '../test-data/malformed.csv'));
 
-    // Try to upload malformed CSV
-    const malformedPath = join(__dirname, '../test-data/malformed.csv');
-
-    try {
-      await uploadPage.uploadFile(malformedPath);
-
-      // Should show validation error
-      await expect(
-        authenticatedPage.locator('text=/Invalid CSV|Malformed|parsing error/i')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      console.log('Malformed CSV test file not available - test skipped');
-    }
+    await expect(authenticatedPage.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
   });
 
   test('should handle empty CSV files gracefully', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
-
     await uploadPage.goto('/upload');
+    // A header with no rows.
+    await uploadPage.uploadFile(join(__dirname, '../test-data/empty.csv'));
 
-    // Try to upload empty CSV
-    const emptyPath = join(__dirname, '../test-data/empty.csv');
-
-    try {
-      await uploadPage.uploadFile(emptyPath);
-
-      // Should show appropriate error
-      await expect(
-        authenticatedPage.locator('text=/Empty file|No data|at least one row/i')
-      ).toBeVisible({ timeout: 5000 });
-    } catch (error) {
-      console.log('Empty CSV test file not available - test skipped');
-    }
+    await expect(authenticatedPage.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
   });
 });

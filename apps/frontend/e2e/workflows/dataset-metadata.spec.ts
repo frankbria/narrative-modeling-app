@@ -7,6 +7,8 @@
 
 import { test, expect } from '../fixtures';
 import type { Page } from '@playwright/test';
+import { join } from 'path';
+import { UploadPage } from '../pages/UploadPage';
 
 /** The value on the explore page's stat card with this label. */
 const statCard = (page: Page, label: string) =>
@@ -62,14 +64,20 @@ test.describe('Dataset metadata', () => {
     }
   });
 
-  // large-dataset.csv carries emails and phone numbers, so /upload stops at the high-risk
-  // PII warning, which crashes the page today (app/upload/page.tsx reads
-  // `affected_columns`, a field the backend does not send). #1054 fixes the warning;
-  // this test then needs to confirm it before it can wait for the upload.
-  test.fixme('reads a 10,000-row dataset', async ({ authenticatedPage: page, uploadTestDataset }) => {
-    created.push(await uploadTestDataset('large-dataset.csv'));
+  test('reads a 10,000-row dataset', async ({ authenticatedPage: page }) => {
+    // large-dataset.csv carries emails and phone numbers, so the upload stops at the
+    // high-risk PII warning until the masked copy is chosen.
+    const uploadPage = new UploadPage(page);
+    await uploadPage.goto('/upload');
+    await uploadPage.uploadFile(join(__dirname, '../test-data/large-dataset.csv'));
+    await expect(page.getByText('Sensitive Data Detected')).toBeVisible({ timeout: 60000 });
+    await page.getByRole('button', { name: /upload with data masking/i }).click();
+    await uploadPage.waitForUploadComplete();
+    const text = (await page.getByTestId('file-id').textContent()) ?? '';
+    created.push(text.replace('File ID:', '').trim());
+    await uploadPage.continueToExplore();
 
-    await expect(statCard(page, 'Rows')).toContainText('10,000');
+    await expect(statCard(page, 'Rows')).toContainText('10,000', { timeout: 15000 });
     await expect(statCard(page, 'Columns')).toContainText('16');
   });
 
