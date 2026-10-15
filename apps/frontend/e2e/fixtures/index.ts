@@ -18,8 +18,45 @@ export interface AIMockFixtures {
   aiMock: AIMockProvider;
 }
 
+/** Automatic: erases every dataset the test's browser context uploaded. */
+export interface UploadCleanupFixtures {
+  eraseUploads: void;
+}
+
+// The three routes that store a dataset, each answering its `file_id`.
+const STORING_UPLOAD = /\/upload\/(secure|confirm-pii-upload|chunked\/[^/]+\/complete)$/;
+
 // Merge all fixtures
-export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
+export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures & UploadCleanupFixtures>({
+  // A dataset a test uploads is erased after it, pass or fail, however it was uploaded
+  // (the fixture, a page object, or a second page of the context). The erasure cascade
+  // takes its models and jobs with it (#943). A dataset the test already erased answers 404.
+  eraseUploads: [
+    async ({ context, request }, use) => {
+      const ids: Promise<string | undefined>[] = [];
+      context.on('response', (response) => {
+        if (response.request().method() !== 'POST' || !response.ok()) return;
+        if (!STORING_UPLOAD.test(new URL(response.url()).pathname)) return;
+        ids.push(
+          response
+            .json()
+            .then((body: { file_id?: string }) => body.file_id)
+            .catch(() => undefined)
+        );
+      });
+      await use();
+      const stored = (await Promise.all(ids)).filter((id): id is string => Boolean(id));
+      if (stored.length === 0) return;
+      const headers = await apiAuthHeaders(request);
+      for (const id of stored) {
+        await request
+          .delete(`${API_BASE}/user_data/${id}`, { headers, timeout: 10000, maxRetries: 2 })
+          .catch((error) => console.warn(`Failed to erase uploaded dataset ${id}:`, error));
+      }
+    },
+    { auto: true },
+  ],
+
   // AI Mock fixture
   aiMock: async ({}, use) => {
     const mock = new AIMockProvider();
@@ -274,6 +311,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         await request.delete(`${API_BASE}/${path}/${datasetId}`, {
           headers: await apiAuthHeaders(request),
           timeout: 5000,
+          // A kept-alive connection the backend closed while a test ran answers ECONNRESET.
+          maxRetries: 2,
         });
       } catch (error) {
         console.warn(`Failed to cleanup dataset ${datasetId}:`, error);

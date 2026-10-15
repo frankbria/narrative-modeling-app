@@ -19,7 +19,8 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:800
 export async function apiAuthHeaders(
   request: APIRequestContext,
 ): Promise<{ Authorization: string }> {
-  const session = await request.get('/api/auth/session');
+  // A kept-alive connection the dev server closed between tests answers ECONNRESET.
+  const session = await request.get('/api/auth/session', { maxRetries: 2 });
   const body = (await session.json().catch(() => null)) as { apiToken?: unknown } | null;
   const token = body?.apiToken;
   if (typeof token !== 'string' || token.length === 0) {

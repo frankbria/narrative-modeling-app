@@ -1,4 +1,4 @@
-import type { Page, APIRequestContext } from '@playwright/test';
+import { expect, type Page, type APIRequestContext } from '@playwright/test';
 import { apiAuthHeaders } from './apiAuth';
 
 /**
@@ -117,6 +117,13 @@ export async function seedTrainingWorkflow(
     'data_preparation',
     'feature_engineering',
   ]);
+}
+
+/** Pick the target on the `/model` form once the dataset's columns have loaded into it. */
+export async function chooseTarget(page: Page, column: string): Promise<void> {
+  const target = page.getByRole('combobox');
+  await expect(target.getByRole('option', { name: column })).toBeAttached({ timeout: 30000 });
+  await target.selectOption(column);
 }
 
 /**

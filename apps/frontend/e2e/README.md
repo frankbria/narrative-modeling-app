@@ -123,10 +123,10 @@ Comprehensive E2E testing that runs on main branch:
   records latencies, **never blocks**; results in the `performance-results` artifact
 - Browser: Chromium only
 
-**Main Branch** → Full suite
-- Workflow: `.github/workflows/e2e-tests.yml`
-- Duration: ~20-30 minutes per browser
-- Browsers: Chromium, Firefox, WebKit
+**Nightly on main** → Full suite
+- Workflow: `.github/workflows/e2e-tests.yml` (schedule + manual dispatch)
+- Browser: Chromium
+- A failure opens or comments on a "The nightly full e2e suite is failing" issue; the next green run closes it
 
 ## Test Fixtures
 
@@ -319,7 +319,6 @@ Story 9.1 Acceptance Criteria:
 
 ## Next Steps
 
-1. Add more page objects (TransformPage, TrainPage, etc.)
-2. Implement critical workflow tests (Story 9.2)
-3. Add integration with test services (Story 9.3)
-4. Expand CI/CD pipeline (Story 9.4)
+1. Implement critical workflow tests (Story 9.2)
+2. Add integration with test services (Story 9.3)
+3. Expand CI/CD pipeline (Story 9.4)
