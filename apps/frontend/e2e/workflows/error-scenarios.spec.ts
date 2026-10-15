@@ -12,25 +12,31 @@ import type { Page } from '@playwright/test';
 
 const isList = (name: string) => (url: URL) => url.pathname.endsWith(`/api/v1/${name}`);
 
+/** Fail one list; returns the matcher, since unroute removes only the same reference. */
 async function failList(page: Page, name: string) {
-  await page.route(isList(name), (route) =>
+  const matcher = isList(name);
+  await page.route(matcher, (route) =>
     route.fulfill({
       status: 500,
       contentType: 'application/json',
       body: JSON.stringify({ detail: 'Internal server error' }),
     })
   );
+  return matcher;
 }
 
 test.describe('Dashboard error handling', () => {
   test('a failed list offers a retry that loads it', async ({ authenticatedPage: page }) => {
     const datasets = page.getByTestId('recent-datasets');
-    await failList(page, 'datasets');
+    const failing = await failList(page, 'datasets');
     await page.reload();
     await expect(datasets.getByText('Unable to load datasets')).toBeVisible();
 
-    await page.unroute(isList('datasets'));
+    await page.unroute(failing);
+    const reloaded = page.waitForResponse((r) => isList('datasets')(new URL(r.url())));
     await datasets.getByRole('button', { name: 'Retry' }).click();
+    // The retry reaches the real backend, not the mock.
+    expect((await reloaded).status()).toBe(200);
     await expect(datasets.getByText('Unable to load datasets')).toBeHidden();
   });
 

@@ -4,6 +4,8 @@ name: E2E Full Suite
 # gate, so a nightly run is what keeps them honest: a failure on main opens (or
 # comments on) a tracking issue, and the next green run closes it. A suite that
 # nothing runs rots, and every spec found that way this year could not pass.
+# Wall-clock budgets (@perf, @concurrency) are left out: a shared runner makes them
+# noise here, and @perf has its own non-blocking job in perf-tests.yml.
 on:
   schedule:
     - cron: '17 6 * * *'
@@ -83,7 +85,7 @@ jobs:
       - name: Run E2E Full Suite
         id: suite
         working-directory: apps/frontend
-        run: npm run test:e2e:full
+        run: npm run test:e2e:full -- --grep-invert "@perf|@concurrency"
         env:
           # The same environment as ci.yml's e2e-smoke job.
           CI: true

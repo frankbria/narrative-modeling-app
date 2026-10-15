@@ -12,7 +12,6 @@
  */
 
 import { test, expect } from '../fixtures';
-import type { Page } from '@playwright/test';
 import { PerformanceMonitor } from '../helpers';
 import { UploadPage } from '../pages/UploadPage';
 import { EvaluatePage } from '../pages/EvaluatePage';
@@ -27,14 +26,6 @@ import { API_BASE, mlAuth } from '../helpers/mlApi';
 import { join } from 'path';
 
 let perfMonitor: PerformanceMonitor;
-
-/** The id the upload page's success panel shows for the file it just stored. */
-async function uploadedFileId(page: Page): Promise<string> {
-  const text = (await page.getByTestId('file-id').textContent()) ?? '';
-  const id = text.match(/File ID:\s*([a-zA-Z0-9-]+)/)?.[1];
-  if (!id) throw new Error(`no file id in the upload panel: "${text}"`);
-  return id;
-}
 
 test.beforeEach(() => {
   perfMonitor = new PerformanceMonitor();
@@ -65,7 +56,7 @@ test.describe('Performance - Page Load', () => {
 });
 
 test.describe('Performance - API Response Times', () => {
-  test('should upload a dataset within 5s', async ({ authenticatedPage, cleanupDataset }) => {
+  test('should upload a dataset within 5s', async ({ authenticatedPage }) => {
     const uploadPage = new UploadPage(authenticatedPage);
     await uploadPage.goto('/upload');
 
@@ -80,7 +71,6 @@ test.describe('Performance - API Response Times', () => {
       'Dataset Upload',
       5000
     );
-    await cleanupDataset(await uploadedFileId(authenticatedPage));
 
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(5000);
@@ -89,7 +79,6 @@ test.describe('Performance - API Response Times', () => {
   test('should preview a transformation within 3s', async ({
     request,
     uploadTestDataset,
-    cleanupDataset,
   }) => {
     const auth = await mlAuth(request);
     const datasetId = await uploadTestDataset();
@@ -109,7 +98,6 @@ test.describe('Performance - API Response Times', () => {
       'Transformation Preview',
       3000
     );
-    await cleanupDataset(datasetId);
 
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(3000);
@@ -118,7 +106,6 @@ test.describe('Performance - API Response Times', () => {
   test('should accept a training request within 30s', async ({
     request,
     uploadTestDataset,
-    cleanupDataset,
   }) => {
     // Fetched once, outside the timed callbacks, so the session round-trip is
     // never billed against the endpoint budget (claude-review).
@@ -145,7 +132,6 @@ test.describe('Performance - API Response Times', () => {
       'Model Training Submit',
       30000
     );
-    await cleanupDataset(datasetId);
 
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(30000);
@@ -406,8 +392,7 @@ test.describe('Performance - Frontend Rendering', () => {
 });
 
 test.describe('Performance - Concurrent Load @concurrency', () => {
-  test('should handle 5 concurrent uploads within 10s each', async ({ context, cleanupDataset }) => {
-    const uploaded: string[] = [];
+  test('should handle 5 concurrent uploads within 10s each', async ({ context }) => {
     const uploadOperations = Array.from({ length: 5 }, () => async () => {
       const page = await context.newPage();
       const uploadPage = new UploadPage(page);
@@ -418,7 +403,6 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
         const csvPath = join(__dirname, '../test-data/sample.csv');
         await uploadPage.uploadFile(csvPath);
         await uploadPage.waitForUploadComplete();
-        uploaded.push(await uploadedFileId(page));
       } finally {
         await page.close();
       }
@@ -431,7 +415,6 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
       10000
     );
 
-    for (const id of uploaded) await cleanupDataset(id);
     // Each upload should be at most 2x slower than single upload (10s vs 5s)
     expect(metric.value).toBeLessThanOrEqual(10000);
   });
