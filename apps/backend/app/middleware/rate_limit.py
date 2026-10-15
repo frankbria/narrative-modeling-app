@@ -34,6 +34,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
+from app.middleware.metrics import security_control_failures
 from app.services.rate_limit import RateLimitResult, RateLimitStore
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             # Defence in depth: the stores already fail open internally, but a store
             # that unexpectedly raises must never 500 a request — fail open here too.
-            logger.warning("Rate-limit store raised (%s); failing open.", exc)
+            # Failing open removes the limiter, so it is an ERROR and a counter (#590).
+            security_control_failures.labels(control="rate_limit_store").inc()
+            logger.error("Rate-limit store raised (%s); failing open.", type(exc).__name__)
             return await call_next(request)
 
         if not result.allowed:

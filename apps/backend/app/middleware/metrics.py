@@ -88,6 +88,15 @@ quota_denials = Counter(
     registry=metrics_registry,
 )
 
+# A best-effort security control that failed and let the request through (#590):
+# an alert source that does not need log aggregation. `control` is a bounded enum.
+security_control_failures = Counter(
+    name="security_control_failures_total",
+    documentation="Best-effort security controls that failed (and failed open)",
+    labelnames=["control"],
+    registry=metrics_registry,
+)
+
 # Label for requests that matched no route (404s, scans). Using the raw path here
 # would let an attacker mint unbounded time series, so collapse them to one.
 UNMATCHED_ENDPOINT = "__unmatched__"
