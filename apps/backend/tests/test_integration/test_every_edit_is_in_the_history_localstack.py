@@ -150,4 +150,14 @@ async def test_a_feature_column_added_in_place_is_a_step_and_can_be_undone(clien
     assert [h["transformation_type"] for h in history["history"]] == ["trim_whitespace", "feature_column"]
     assert history["history"][1]["description"] == "Added feature column score_copy"
     assert history["history"][1]["affected_columns"] == ["score_copy"]
+    assert "score_copy" in await _schema_names(dataset_id)
     await _undo_restores(client, dataset_id, before)
+    # #1061: the restored file has no such column, so neither does its schema.
+    assert "score_copy" not in await _schema_names(dataset_id)
+
+
+async def _schema_names(dataset_id: str) -> list[str]:
+    from app.models.dataset import DatasetMetadata
+
+    stored = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)
+    return [f.field_name for f in stored.data_schema]
