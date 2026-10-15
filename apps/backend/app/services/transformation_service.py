@@ -25,6 +25,7 @@ from app.services.data_processing.quality_assessment import QualityAssessmentSer
 from app.services.dataset_lease import LeaseBusy
 from app.services.dataset_link import (
     DATASET_BUSY,
+    close_history,
     ensure_metadata_twin,
     holding_the_dataset,
     record_new_file,
@@ -60,6 +61,12 @@ class _RanStep:
 
 class _StepFailed(Exception):
     """A transformation reported failure; the message is the one the caller is shown."""
+
+
+#: The change was applied but its steps could not be recorded, so it cannot be undone (#1060).
+STEPS_NOT_RECORDED = (
+    "The change was applied, but it could not be added to the undo history, so it cannot be undone."
+)
 
 
 def _failed(dataset_id: str, started: float, error: str) -> dict[str, Any]:
@@ -835,7 +842,12 @@ class TransformationService(BaseService[TransformationConfig]):
         self, dataset: Any, dataset_id: str, user_id: str, recorded: list[dict[str, Any]],
         last: pd.DataFrame, done: dict[str, Any], timestamp: float,
     ) -> None:
-        """Upload the final frame, record the steps, and move the dataset to it."""
+        """Upload the final frame, move the dataset to it, then record the steps.
+
+        The move comes first (#1060): recorded first, a move that then failed left a
+        history whose steps and `current_file_path` named a file the dataset was never
+        on, and the upload cleanup kept that file as owned. Now a failed move records
+        nothing, and the cleanup deletes the file."""
         from app.services.transformation_engine.data_utils import upload_dataframe_to_s3
 
         new_file_path = await upload_dataframe_to_s3(
@@ -843,14 +855,21 @@ class TransformationService(BaseService[TransformationConfig]):
         )
         done["schema"] = {str(col): str(dtype) for col, dtype in last.dtypes.items()}
         done["file_path"] = new_file_path
-        for step_fields in recorded:
-            await self.add_transformation_step(config_id=done["transformation_id"], **step_fields)
-        await self.mark_transformations_applied(config_id=done["transformation_id"], file_path=new_file_path)
         # Move the dataset AND its dual-written UserData twin to the transformed
         # artifact (#276, #467): leaving s3_url stale served pre-transform data, and
         # moving only this side severed the (user_id, s3_url) join the twin lives on.
         # in_history: this move has its steps, so it must not close the history (#851).
         await record_new_file(dataset, new_file_path, in_history=True)
+        try:
+            for step_fields in recorded:
+                await self.add_transformation_step(config_id=done["transformation_id"], **step_fields)
+            await self.mark_transformations_applied(config_id=done["transformation_id"], file_path=new_file_path)
+        except Exception:
+            # The dataset is on the new file, so the change happened: say so, and close
+            # the history behind it as for any edit no step describes (#851).
+            logger.exception("Could not record the steps of an applied transformation on %s", dataset_id)
+            await close_history(dataset)
+            done["warnings"].append(STEPS_NOT_RECORDED)
 
     async def _versioned(
         self, dataset: Any, dataset_id: str, user_id: str, step: "_RanStep", done: dict[str, Any],

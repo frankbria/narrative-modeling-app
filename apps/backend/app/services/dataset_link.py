@@ -158,6 +158,12 @@ async def _close_history(docs: list[Dataset]) -> None:
     )
 
 
+async def close_history(doc: Dataset) -> None:
+    """Close the history of `doc` and its twin behind the file they are on now (#1060):
+    for a move whose steps could not be recorded after it."""
+    await _close_history(_erasure_order(doc, await _find_twin(doc, doc.s3_url)))
+
+
 def _current_url(current: Dataset | None, doc: Dataset) -> str | None:
     return (current.s3_url if current is not None else None) or doc.s3_url
 

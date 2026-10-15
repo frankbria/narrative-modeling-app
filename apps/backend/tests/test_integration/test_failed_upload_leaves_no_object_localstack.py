@@ -143,7 +143,8 @@ async def test_an_object_a_document_points_at_survives_a_failed_request(
 
 MESSY = b"id,color,score\n1, red ,10\n2,blue,\n2,blue,\n4,green,\n5,red,45\n6,red,45\n"
 T = "/api/v1/transformations"
-STEP = "app.services.transformation_service.TransformationService.add_transformation_step"
+# The move is the last write before the apply succeeds (#1060).
+STEP = "app.services.transformation_service.record_new_file"
 
 
 def _transformed(s3_client, bucket: str) -> set[str]:
@@ -234,3 +235,46 @@ async def test_a_bulk_job_that_fails_after_the_put_leaves_no_object(client, s3_c
 
     assert status == "failed"
     assert _transformed(s3_client, real_s3_env) == set()
+
+
+async def test_a_move_that_fails_records_no_step(client, s3_client, real_s3_env):
+    """#1060: the steps used to be recorded before the move, so a failed move left a
+    history naming a file the dataset was never on, and that file was kept as owned."""
+    from app.models.transformation import TransformationConfig
+
+    dataset_id, _ = await _dataset(client)
+
+    with _the_database_goes_away(STEP):
+        response = await client.post(f"{T}/apply", json={
+            "dataset_id": dataset_id, "transformation_type": "remove_duplicates", "parameters": {}})
+
+    assert response.json()["success"] is False, response.text
+    configs = await TransformationConfig.find(TransformationConfig.user_id == USER).to_list()
+    # The history keeps the file it started on: the upload, not the file never moved to.
+    assert configs and all(not c.transformation_steps and "/transformed/" not in (c.current_file_path or "") for c in configs)
+    assert _transformed(s3_client, real_s3_env) == set()
+
+
+async def test_steps_that_fail_after_the_move_are_reported_and_close_the_history(client, s3_client, real_s3_env):
+    """The dataset is on the new file, so the apply succeeded; it says the change cannot
+    be undone, and nothing earlier can be restored over it."""
+    from app.models.dataset import DatasetMetadata
+
+    dataset_id, _ = await _dataset(client)
+    first = await client.post(f"{T}/apply", json={
+        "dataset_id": dataset_id, "transformation_type": "trim_whitespace", "parameters": {}})
+    assert first.json()["success"] is True, first.text
+
+    with _the_database_goes_away(
+        "app.services.transformation_service.TransformationService.add_transformation_step"
+    ):
+        response = await client.post(f"{T}/apply", json={
+            "dataset_id": dataset_id, "transformation_type": "remove_duplicates", "parameters": {}})
+
+    body = response.json()
+    assert body["success"] is True, response.text
+    assert any("cannot be undone" in w for w in body["warnings"])
+    moved = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)
+    assert moved.s3_url.endswith(max(_transformed(s3_client, real_s3_env)))
+    undo = await client.post(f"{T}/datasets/{dataset_id}/history/undo")
+    assert undo.status_code == 400, undo.text
