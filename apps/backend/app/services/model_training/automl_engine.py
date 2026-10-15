@@ -71,6 +71,25 @@ class TrainingCancelledError(Exception):
     """Raised when a training run is cancelled via the ``cancel_check`` hook."""
 
 
+class TrainingNotPossible(Exception):
+    """The problem detector could not place the dataset, so nothing is trained (#1055).
+    Its message is user-facing: `job_failures.user_safe_failure_reason` passes it on."""
+
+
+def _why_not(detection: Any, min_samples: int) -> str:
+    """The user-facing reason for an undetermined problem: a count, never a value."""
+    rows = detection.metadata.get("sample_count")
+    if rows is not None:
+        return (
+            f"The dataset has {rows} rows; training needs at least {min_samples}. "
+            "Add more rows and try again."
+        )
+    return (
+        "Could not determine a prediction task from the target column — it may have "
+        "too few or too uniform values. Pick a different target and try again."
+    )
+
+
 @dataclass
 class TrainingEvent:
     """A monitoring event emitted while the AutoML pipeline runs.
@@ -329,6 +348,14 @@ class AutoMLEngine:
         self.feature_engineer = FeatureEngineer()
         self._tuner = HyperparameterTuner()
 
+    async def _detected(self, df: pd.DataFrame, target_column: str) -> Any:
+        """The detected problem; TrainingNotPossible when there is none to train."""
+        detection = await self.problem_detector.detect_problem_type(df, target_column)
+        if detection.problem_type == ProblemType.UNKNOWN:
+            raise TrainingNotPossible(_why_not(detection, self.problem_detector.min_samples))
+        logger.info(f"Detected problem type: {detection.problem_type.value}")
+        return detection
+
     async def run(
         self,
         df: pd.DataFrame,
@@ -369,11 +396,8 @@ class AutoMLEngine:
         hooks = _RunHooks(progress_callback, event_callback, cancel_check)
 
         await self._say(hooks, "Preparing data and engineering features", "preprocessing")
-        detection_result = await self.problem_detector.detect_problem_type(
-            df, target_column
-        )
+        detection_result = await self._detected(df, target_column)
         problem_type = detection_result.problem_type
-        logger.info(f"Detected problem type: {problem_type.value}")
 
         data = await self._prepare_data(df, target_column, problem_type, feature_config, hooks)
         candidates = self._get_candidate_models(

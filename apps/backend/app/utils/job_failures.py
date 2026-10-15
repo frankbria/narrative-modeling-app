@@ -167,8 +167,9 @@ _RULES: tuple[tuple[Callable[[BaseException, str], bool], str], ...] = (
 
 def user_safe_failure_reason(exc: BaseException) -> str:
     """A plain, non-sensitive, actionable reason for a failed job (#518)."""
-    # Plan wall-clock limit: already a controlled, user-facing message (#500).
-    if type(exc).__name__ == "TrainingWallClockExceeded":
+    # A plan wall-clock limit (#500) or an untrainable dataset (#1055): already a
+    # controlled, user-facing message.
+    if type(exc).__name__ in ("TrainingWallClockExceeded", "TrainingNotPossible"):
         return str(exc)
     low = str(exc).lower()
     return next((message for matches, message in _RULES if matches(exc, low)), _GENERIC)
