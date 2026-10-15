@@ -271,6 +271,22 @@ async def refund(
     if amount <= 0:
         return True
 
+    try:
+        await UsageRecord.get_motor_collection().update_one(
+            *_refund_update(user_id, metric, amount, period_key, refund_id)
+        )
+    except Exception:
+        logger.exception(
+            "failed to refund quota", extra={"user_id": user_id, "metric": metric}
+        )
+        return False
+    return True
+
+
+def _refund_update(
+    user_id: str, metric: str, amount: int, period_key: str | None, refund_id: str | None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The filter and update for `refund`: clamped at zero, and once per `refund_id`."""
     match: dict[str, Any] = {
         "user_id": user_id,
         "period_key": period_key or period_key_for(),
@@ -283,14 +299,7 @@ async def refund(
         # period's record is never read whole on a hot path; prune it if that changes.
         match["applied_refunds"] = {"$ne": refund_id}
         change["$push"] = {"applied_refunds": refund_id}
-    try:
-        await UsageRecord.get_motor_collection().update_one(match, change)
-    except Exception:
-        logger.exception(
-            "failed to refund quota", extra={"user_id": user_id, "metric": metric}
-        )
-        return False
-    return True
+    return match, change
 
 
 async def usage_for(

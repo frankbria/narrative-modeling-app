@@ -13,21 +13,24 @@ A worker that dies in between leaves `refund_owed` on the row, and the reaper's
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.billing import metering
 
 
-def owed(user_id: str, metric: str, amount: int, period_key: str, refund_id: str) -> dict[str, Any]:
-    """The `refund_owed` value for a job whose settling write owes this refund."""
-    return {"user_id": user_id, "metric": metric, "amount": amount, "period_key": period_key, "id": refund_id}
+def owed(user_id: str, metric: str, amount: int, period_key: str) -> dict[str, Any]:
+    """The `refund_owed` value for a job whose settling write owes this refund. Its id
+    is its own: the settling write is exclusive, so only a re-pay of this record can
+    meet it again."""
+    return {"user_id": user_id, "metric": metric, "amount": amount, "period_key": period_key, "id": uuid4().hex}
 
 
 async def settle(collection: AsyncIOMotorCollection, row: dict[str, Any], refund: dict[str, Any]) -> None:
     """Pay `refund`, then clear it from the row `row` matches, unless a newer one
     replaced it there."""
-    paid = await metering.refund(
+    paid = refund["amount"] <= 0 or await metering.refund(
         refund["user_id"], refund["metric"], refund["amount"], refund["period_key"], refund_id=refund["id"]
     )
     if paid:

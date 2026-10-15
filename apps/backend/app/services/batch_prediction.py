@@ -770,11 +770,10 @@ class BatchPredictionService:
     @staticmethod
     def _remainder_owed(job: BatchJob, processed: int) -> dict[str, Any]:
         """The refund for the records a run never reached, against the reservation's
-        period, under an id unique to this run of the job."""
+        period."""
         return owed_refunds.owed(
             job.user_id, "predictions", max(0, job.progress.total_records - processed),
             reservation_period({"reserved_period": job.reserved_period, "created_at": job.created_at}),
-            f"remainder:{job.job_id}:{job.retry_count}",
         )
 
     @staticmethod

@@ -110,7 +110,7 @@ async def _reap_training(cutoff: datetime) -> int:
 def _training_failure(doc: dict) -> dict:
     """FAILED, owing the one `training_runs` unit reserved at creation."""
     refund = owed_refunds.owed(
-        doc["user_id"], "training_runs", 1, period_key_for(as_utc(doc["created_at"])), f"reap:{doc['_id']}"
+        doc["user_id"], "training_runs", 1, period_key_for(as_utc(doc["created_at"]))
     )
     return {
         "status": JobStatus.FAILED.value,
@@ -132,8 +132,7 @@ def _batch_failure(doc: dict) -> dict:
     the period the latest reservation was taken from."""
     reserved = int((doc.get("progress") or {}).get("total_records") or 0)
     refund = owed_refunds.owed(
-        doc["user_id"], "predictions", reserved, reservation_period(doc),
-        f"reap:{doc['job_id']}:{doc.get('retry_count', 0)}",
+        doc["user_id"], "predictions", reserved, reservation_period(doc)
     )
     return {
         "status": JobStatus.FAILED.value,
