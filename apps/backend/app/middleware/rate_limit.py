@@ -116,28 +116,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return self._store
         return getattr(request.app.state, "rate_limit_store", None)
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
-        if not self._should_limit(request):
-            return await call_next(request)
-
+    async def _hit(self, request: Request) -> RateLimitResult | None:
+        """Count the request against its bucket; None (fail open) when no store is
+        wired up (e.g. lifespan not run) or the store raised."""
         store = self._resolve_store(request)
         if store is None:
-            # No backend wired up — fail open (e.g. lifespan not run).
-            return await call_next(request)
-
+            return None
         bucket_key, limit, window = await self._resolve_identity(request)
         try:
-            result = await store.hit(bucket_key, limit, window)
+            return await store.hit(bucket_key, limit, window)
         except Exception as exc:
             # Defence in depth: the stores already fail open internally, but a store
             # that unexpectedly raises must never 500 a request — fail open here too.
             # Failing open removes the limiter, so it is an ERROR and a counter (#590).
             security_control_failures.labels(control="rate_limit_store").inc()
             logger.error("Rate-limit store raised (%s); failing open.", type(exc).__name__)
+            return None
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        if not self._should_limit(request):
             return await call_next(request)
 
+        result = await self._hit(request)
+        if result is None:
+            return await call_next(request)
         if not result.allowed:
             return self._too_many_requests(result)
 
