@@ -40,6 +40,9 @@ class UsageRecord(Document):
     # so a field of that name shadows the method — mypy rejects it outright, and
     # `ColumnStats` carries a runtime warning for exactly this clash.
     units: int = Field(default=0, description="Units consumed in this period")
+    # Ids of the crash-safe refunds already applied to this record (#1032), so
+    # `metering.refund(refund_id=...)` applies each at most once.
+    applied_refunds: list[str] = Field(default_factory=list)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

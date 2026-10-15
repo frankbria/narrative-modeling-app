@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.billing import metering
 from app.models.batch_job import BatchPredictionConfig
 from app.services.batch_prediction import BatchPredictionService
 
@@ -1322,7 +1323,7 @@ async def test_a_run_that_never_returns_is_failed_at_the_wall_clock_and_frees_it
     monkeypatch.setattr(bp, "MAX_CONCURRENT_BATCH_JOBS", 1)
     monkeypatch.setattr(bp, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.2)
     refunds = AsyncMock()
-    monkeypatch.setattr(bp.metering, "refund", refunds)
+    monkeypatch.setattr(metering, "refund", refunds)
     svc, user = _service(), "hung_user_653"
     svc._fire_webhook = AsyncMock()
 
@@ -1357,7 +1358,7 @@ async def test_a_cancelled_job_too_stuck_to_notice_is_refunded_at_the_wall_clock
 
     monkeypatch.setattr(bp, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.2)
     refunds = AsyncMock()
-    monkeypatch.setattr(bp.metering, "refund", refunds)
+    monkeypatch.setattr(metering, "refund", refunds)
     svc, user = _service(), "cancelled_hung_653"
     svc._fire_webhook = AsyncMock()
 
@@ -1384,10 +1385,9 @@ async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_da
     """The run's own cancel check and the wall clock can both reach the refund within
     the same instant. Whichever marks the job first refunds; a retry reserves again
     and so may be refunded again."""
-    from app.services import batch_prediction as bp
 
     refunds = AsyncMock()
-    monkeypatch.setattr(bp.metering, "refund", refunds)
+    monkeypatch.setattr(metering, "refund", refunds)
     svc, user = _service(), "refund_once_653"
     svc._spawn_processing = MagicMock()
     job = await _running_job(user, "batch_refund_once_653")
@@ -1416,11 +1416,10 @@ async def test_a_runs_remainder_is_refunded_once_however_many_paths_try(setup_da
 async def test_a_job_cancelled_while_queued_gets_its_whole_reservation_back(setup_database, monkeypatch):
     """It reserved its records at creation and never ran one. The queue skipped it
     without a refund."""
-    from app.services import batch_prediction as bp
 
     _batch_semaphores.clear()
     refunds = AsyncMock()
-    monkeypatch.setattr(bp.metering, "refund", refunds)
+    monkeypatch.setattr(metering, "refund", refunds)
     svc, user = _service(), "queued_cancel_653"
     svc._run_batch_job = AsyncMock(side_effect=AssertionError("a cancelled job ran"))
     job = await _running_job(user, "batch_queued_cancel_653")

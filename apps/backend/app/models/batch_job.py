@@ -133,6 +133,12 @@ class BatchJob(Document):
     # Set by whichever path refunds this run's unprocessed records, so a cancel and
     # the wall clock cannot both do it (#653). A retry clears it with its new reservation.
     remainder_refunded: bool = False
+    # The period the latest reservation was taken from: creation's, or a retry's
+    # (#1032). Rows written before it fall back to `created_at`'s period.
+    reserved_period: str | None = None
+    # Refunds the writes that settled this job owe and have not yet paid (#1032): see
+    # app/billing/owed_refunds.py. A list, so a second settle never replaces an unpaid one.
+    refunds_owed: list[dict[str, Any]] = Field(default_factory=list)
 
     # Results
     results: dict[str, Any] = Field(default_factory=dict)
