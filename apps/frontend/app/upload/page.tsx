@@ -8,6 +8,7 @@ import { WorkflowStage } from '@/lib/types/workflow';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { apiError } from '@/lib/services/apiError';
+import type { PIIReport } from '@/lib/types/api';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -30,23 +31,6 @@ interface SchemaField {
   example_values: string[];
   is_constant: boolean;
   is_high_cardinality: boolean;
-}
-
-interface PIIDetection {
-  column: string;
-  field: string;
-  type: string;
-  confidence: number;
-  start?: number;
-  end?: number;
-}
-
-interface PIIReport {
-  has_pii: boolean;
-  detections: PIIDetection[];
-  risk_level: string;
-  total_detections: number;
-  affected_columns: string[];
 }
 
 interface PreviewData {
@@ -374,16 +358,16 @@ export default function UploadPage() {
             <div className="bg-card rounded-md p-4 mb-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{piiData.total_detections}</div>
-                  <div className="text-sm text-muted-foreground">Total Detections</div>
+                  <div className="text-2xl font-bold text-amber-600">{piiData.total_pii_columns}</div>
+                  <div className="text-sm text-muted-foreground">Columns With PII</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-red-600">{piiData.risk_level.toUpperCase()}</div>
                   <div className="text-sm text-muted-foreground">Risk Level</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">{piiData.affected_columns.length}</div>
-                  <div className="text-sm text-muted-foreground">Affected Columns</div>
+                  <div className="text-2xl font-bold text-blue-600">{piiData.high_risk_columns}</div>
+                  <div className="text-sm text-muted-foreground">High-Risk Columns</div>
                 </div>
               </div>
 

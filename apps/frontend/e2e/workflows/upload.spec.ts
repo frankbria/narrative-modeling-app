@@ -313,25 +313,23 @@ test.describe('Dataset Upload Workflow', () => {
 });
 
 test.describe('Upload Security and Validation', () => {
-  test('should detect and warn about PII in uploaded data', async ({ authenticatedPage }) => {
+  test('warns about high-risk PII and stores the masked copy once chosen', async ({
+    authenticatedPage,
+    cleanupDataset,
+  }) => {
+    // The page crashed on this warning for every high-risk file (#1054).
     const uploadPage = new UploadPage(authenticatedPage);
-
     await uploadPage.goto('/upload');
+    await uploadPage.uploadFile(join(__dirname, '../test-data/data-with-pii.csv'));
 
-    // Upload file with potential PII (if exists)
-    const piiPath = join(__dirname, '../test-data/data-with-pii.csv');
+    await expect(authenticatedPage.getByText('Sensitive Data Detected')).toBeVisible({ timeout: 30000 });
+    await expect(authenticatedPage.getByText('Columns With PII')).toBeVisible();
+    await authenticatedPage.getByRole('button', { name: /upload with data masking/i }).click();
 
-    try {
-      await uploadPage.uploadFile(piiPath);
-      await uploadPage.waitForUploadComplete();
-
-      // Look for PII warning
-      await expect(
-        authenticatedPage.locator('text=/PII detected|personal information|sensitive data/i')
-      ).toBeVisible({ timeout: 10000 });
-    } catch (error) {
-      console.log('PII test file not available - test skipped');
-    }
+    await uploadPage.waitForUploadComplete();
+    const datasetId = ((await authenticatedPage.getByTestId('file-id').textContent()) ?? '').replace('File ID:', '').trim();
+    expect(datasetId).toMatch(/^[a-f0-9]{24}$/);
+    await cleanupDataset(datasetId);
   });
 
   test('should validate CSV structure and show errors for malformed files', async ({ authenticatedPage }) => {

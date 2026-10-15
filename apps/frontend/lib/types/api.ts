@@ -61,20 +61,24 @@ export interface ChunkedUploadResponse {
   pii_report?: PIIReport
 }
 
-/** PII detection summary attached to upload responses. */
+/**
+ * PII summary attached to upload responses: `PIIDetector.generate_pii_report`.
+ * A dataset with no PII carries only `has_pii`, `risk_level`, `summary` and
+ * `recommendations`; the warning renders only a flagged one.
+ */
 export interface PIIReport {
   has_pii: boolean
+  risk_level: string
+  summary: string
+  recommendations: string[]
+  total_pii_columns: number
+  high_risk_columns: number
   detections: Array<{
     column: string
-    field: string
     type: string
     confidence: number
-    start?: number
-    end?: number
+    recommendation: string
   }>
-  risk_level: string
-  total_detections: number
-  affected_columns: string[]
 }
 
 /** Distribution of prediction values for the monitoring view. */
