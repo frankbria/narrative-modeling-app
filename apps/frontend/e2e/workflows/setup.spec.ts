@@ -16,14 +16,15 @@ test.describe('E2E Testing Setup', () => {
     expect(page.url()).toContain('localhost');
   });
 
-  test('should navigate to authentication page', async ({ page }) => {
+  test('should navigate to authentication page', async ({ browser, baseURL }) => {
+    // Signed out: the sign-in page sends a signed-in visitor on to the app.
+    const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+    const page = await context.newPage();
     await page.goto('/auth/signin');
 
-    // Wait for page to load
-    await page.waitForLoadState('networkidle');
-
-    // Verify we're on the signin page
-    expect(page.url()).toContain('/auth/signin');
+    await expect(page).toHaveURL(/\/auth\/signin/);
+    await expect(page.locator('button:has-text("Sign In with Test User")')).toBeVisible();
+    await context.close();
   });
 
   test('should have working authenticated page fixture @smoke', async ({ authenticatedPage }) => {

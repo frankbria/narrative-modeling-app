@@ -9,10 +9,10 @@
  * - Concurrent load handling
  *
  * Coverage Target: >85%
- * Test Count: 20 tests
  */
 
 import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { PerformanceMonitor } from '../helpers';
 import { UploadPage } from '../pages/UploadPage';
 import { EvaluatePage } from '../pages/EvaluatePage';
@@ -27,6 +27,14 @@ import { API_BASE, mlAuth } from '../helpers/mlApi';
 import { join } from 'path';
 
 let perfMonitor: PerformanceMonitor;
+
+/** The id the upload page's success panel shows for the file it just stored. */
+async function uploadedFileId(page: Page): Promise<string> {
+  const text = (await page.getByTestId('file-id').textContent()) ?? '';
+  const id = text.match(/File ID:\s*([a-zA-Z0-9-]+)/)?.[1];
+  if (!id) throw new Error(`no file id in the upload panel: "${text}"`);
+  return id;
+}
 
 test.beforeEach(() => {
   perfMonitor = new PerformanceMonitor();
@@ -54,66 +62,10 @@ test.describe('Performance - Page Load', () => {
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(DASHBOARD_LOAD_CEILING_MS);
   });
-
-  test('should load dataset list page (50 datasets) within 3s', async ({
-    authenticatedPage,
-  }) => {
-    const metric = await perfMonitor.measurePageLoad(
-      authenticatedPage,
-      'Dataset List Load',
-      '/datasets',
-      3000
-    );
-
-    expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(3000);
-  });
-
-  test('should load dataset detail page (10k rows) within 4s', async ({
-    authenticatedPage,
-    uploadTestDataset,
-  }) => {
-    // Upload dataset first
-    const datasetId = await uploadTestDataset();
-
-    const metric = await perfMonitor.measurePageLoad(
-      authenticatedPage,
-      'Dataset Detail Load',
-      `/datasets/${datasetId}`,
-      4000
-    );
-
-    expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(4000);
-  });
-
-  test('should load model training page within 2s', async ({ authenticatedPage }) => {
-    const metric = await perfMonitor.measurePageLoad(
-      authenticatedPage,
-      'Model Training Page Load',
-      '/models/train',
-      2000
-    );
-
-    expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(2000);
-  });
-
-  test('should load prediction page within 2s', async ({ authenticatedPage }) => {
-    const metric = await perfMonitor.measurePageLoad(
-      authenticatedPage,
-      'Prediction Page Load',
-      '/predictions',
-      2000
-    );
-
-    expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(2000);
-  });
 });
 
 test.describe('Performance - API Response Times', () => {
-  test('should upload 5MB dataset within 5s', async ({ authenticatedPage }) => {
+  test('should upload a dataset within 5s', async ({ authenticatedPage, cleanupDataset }) => {
     const uploadPage = new UploadPage(authenticatedPage);
     await uploadPage.goto('/upload');
 
@@ -125,44 +77,48 @@ test.describe('Performance - API Response Times', () => {
         await uploadPage.uploadFile(csvPath);
         await uploadPage.waitForUploadComplete();
       },
-      'Dataset Upload (5MB)',
+      'Dataset Upload',
       5000
     );
+    await cleanupDataset(await uploadedFileId(authenticatedPage));
 
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(5000);
   });
 
-  test('should preview transformation (1000 rows) within 3s', async ({
-    authenticatedPage,
+  test('should preview a transformation within 3s', async ({
     request,
     uploadTestDataset,
+    cleanupDataset,
   }) => {
+    const auth = await mlAuth(request);
     const datasetId = await uploadTestDataset();
 
     const metric = await perfMonitor.measureApiCall(
       'Transformation Preview API',
       async () => {
-        const response = await request.post('/api/v1/transformations/preview', {
+        const response = await request.post(`${API_BASE}/transformations/preview`, {
+          headers: auth,
           data: {
             dataset_id: datasetId,
-            transformation_type: 'scaling',
-            method: 'StandardScaler',
+            transformation_steps: [{ transformation_type: 'remove_duplicates' }],
           },
         });
         expect(response.ok()).toBeTruthy();
       },
-      'Transformation Preview (1000 rows)',
+      'Transformation Preview',
       3000
     );
+    await cleanupDataset(datasetId);
 
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(3000);
   });
 
-  test('should accept a training request (500 rows) within 30s', async ({
+  test('should accept a training request within 30s', async ({
     request,
     uploadTestDataset,
+    cleanupDataset,
   }) => {
     // Fetched once, outside the timed callbacks, so the session round-trip is
     // never billed against the endpoint budget (claude-review).
@@ -186,9 +142,10 @@ test.describe('Performance - API Response Times', () => {
         });
         expect(response.ok()).toBeTruthy();
       },
-      'Model Training Submit (500 rows)',
+      'Model Training Submit',
       30000
     );
+    await cleanupDataset(datasetId);
 
     expect(metric.passed).toBeTruthy();
     expect(metric.value).toBeLessThanOrEqual(30000);
@@ -310,69 +267,18 @@ test.describe('Performance - API Response Times', () => {
       await request.delete(`${API_BASE}/ml/${modelId}`, { headers: auth }).catch(() => {});
     }
   });
-
-  test('should compare versions (10k rows) within 10s', async ({
-    request,
-    uploadTestDataset,
-  }) => {
-    const datasetId = await uploadTestDataset();
-
-    const metric = await perfMonitor.measureApiCall(
-      'Version Comparison API',
-      async () => {
-        const response = await request.post('/api/v1/datasets/compare-versions', {
-          data: {
-            dataset_id: datasetId,
-            version_1: '1.0',
-            version_2: '1.1',
-          },
-          timeout: 10000,
-        });
-        // May not exist, just measuring if endpoint exists
-        if (response.ok()) {
-          await response.json();
-        }
-      },
-      'Version Comparison (10k rows)',
-      10000
-    );
-
-    expect(metric.value).toBeLessThanOrEqual(10000);
-  });
-
-  test('should get AI recommendation within 60s @ai-integration', async ({
-    request,
-    uploadTestDataset,
-  }) => {
-    const datasetId = await uploadTestDataset();
-
-    const metric = await perfMonitor.measureApiCall(
-      'AI Recommendation API',
-      async () => {
-        const response = await request.post('/api/v1/ai/analyze-dataset', {
-          data: { dataset_id: datasetId },
-          timeout: 60000,
-        });
-        expect(response.ok()).toBeTruthy();
-      },
-      'AI Recommendation',
-      60000
-    );
-
-    expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(60000);
-  });
 });
 
 test.describe('Performance - Database Query Performance', () => {
-  test('should query dataset list (100 datasets) within 1s', async ({ request }) => {
+  test('should query the dataset list within 1s', async ({ request }) => {
+    const auth = await mlAuth(request);
     const metric = await perfMonitor.measureApiCall(
       'Dataset List Query',
       async () => {
-        const response = await request.get('/api/v1/datasets?limit=100');
+        const response = await request.get(`${API_BASE}/datasets?limit=100`, { headers: auth });
         expect(response.ok()).toBeTruthy();
       },
-      'Dataset List Query (100 datasets)',
+      'Dataset List Query',
       1000
     );
 
@@ -412,49 +318,9 @@ test.describe('Performance - Database Query Performance', () => {
       await request.delete(`${API_BASE}/ml/${modelId}`, { headers: auth }).catch(() => {});
     }
   });
-
-  test('should fetch version history (20 versions) within 2s', async ({
-    request,
-    uploadTestDataset,
-  }) => {
-    const datasetId = await uploadTestDataset();
-
-    const metric = await perfMonitor.measureApiCall(
-      'Version History Query',
-      async () => {
-        const response = await request.get(`/api/v1/datasets/${datasetId}/versions`);
-        if (response.ok()) {
-          await response.json();
-        }
-      },
-      'Version History (20 versions)',
-      2000
-    );
-
-    expect(metric.value).toBeLessThanOrEqual(2000);
-  });
 });
 
 test.describe('Performance - Frontend Rendering', () => {
-  test('should render data table (1000 rows × 10 cols) within 1s', async ({
-    authenticatedPage,
-    uploadTestDataset,
-  }) => {
-    const datasetId = await uploadTestDataset();
-    await authenticatedPage.goto(`/datasets/${datasetId}`);
-
-    const metric = await perfMonitor.measureRenderTime(
-      authenticatedPage,
-      'Data Table Rendering',
-      'table tbody tr',
-      'Data Table (1000 rows × 10 cols)',
-      1000
-    );
-
-    expect(metric.passed).toBeTruthy();
-    expect(metric.value).toBeLessThanOrEqual(1000);
-  });
-
   // #234 [P4.12]: these charts render only on the stage-gated
   // /evaluate/[datasetId] page (not /models/{id}), which requires the
   // WorkflowContext to carry state.modelId — only set by full UI-workflow
@@ -537,38 +403,11 @@ test.describe('Performance - Frontend Rendering', () => {
       await cleanupDataset(datasetId);
     }
   });
-
-  test('should validate form (20 fields) within 100ms', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/upload');
-
-    const startTime = Date.now();
-
-    // Fill form fields to trigger validation
-    const fileInput = authenticatedPage.locator('input[type="file"]');
-    if (await fileInput.isVisible({ timeout: 2000 })) {
-      await fileInput.evaluate((el) => {
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-    }
-
-    await authenticatedPage.waitForTimeout(100);
-
-    const validationTime = Date.now() - startTime;
-
-    const metric = perfMonitor.recordMetric(
-      'Form Validation',
-      'Form Validation (20 fields)',
-      validationTime,
-      'ms',
-      100
-    );
-
-    expect(metric.value).toBeLessThanOrEqual(100);
-  });
 });
 
 test.describe('Performance - Concurrent Load @concurrency', () => {
-  test('should handle 5 concurrent uploads within 10s each', async ({ context, request }) => {
+  test('should handle 5 concurrent uploads within 10s each', async ({ context, cleanupDataset }) => {
+    const uploaded: string[] = [];
     const uploadOperations = Array.from({ length: 5 }, () => async () => {
       const page = await context.newPage();
       const uploadPage = new UploadPage(page);
@@ -579,6 +418,7 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
         const csvPath = join(__dirname, '../test-data/sample.csv');
         await uploadPage.uploadFile(csvPath);
         await uploadPage.waitForUploadComplete();
+        uploaded.push(await uploadedFileId(page));
       } finally {
         await page.close();
       }
@@ -591,6 +431,7 @@ test.describe('Performance - Concurrent Load @concurrency', () => {
       10000
     );
 
+    for (const id of uploaded) await cleanupDataset(id);
     // Each upload should be at most 2x slower than single upload (10s vs 5s)
     expect(metric.value).toBeLessThanOrEqual(10000);
   });

@@ -274,6 +274,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures>({
         await request.delete(`${API_BASE}/${path}/${datasetId}`, {
           headers: await apiAuthHeaders(request),
           timeout: 5000,
+          // A kept-alive connection the backend closed while a test ran answers ECONNRESET.
+          maxRetries: 2,
         });
       } catch (error) {
         console.warn(`Failed to cleanup dataset ${datasetId}:`, error);

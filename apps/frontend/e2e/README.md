@@ -319,7 +319,6 @@ Story 9.1 Acceptance Criteria:
 
 ## Next Steps
 
-1. Add more page objects (TransformPage, TrainPage, etc.)
-2. Implement critical workflow tests (Story 9.2)
-3. Add integration with test services (Story 9.3)
-4. Expand CI/CD pipeline (Story 9.4)
+1. Implement critical workflow tests (Story 9.2)
+2. Add integration with test services (Story 9.3)
+3. Expand CI/CD pipeline (Story 9.4)
