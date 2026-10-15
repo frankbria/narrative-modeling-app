@@ -11,7 +11,6 @@ import re
 import time
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from datetime import UTC, datetime
 from threading import Thread
 from typing import Any
 
@@ -37,17 +36,14 @@ from app.services.dataset_link import (
     DATASET_BUSY,
     ensure_metadata_twin,
     holding_the_dataset,
-    record_new_file,
 )
 from app.services.exceptions import NotFoundError, OperationError, ValidationError
-from app.services.transformation_engine.data_utils import (
-    get_dataframe_from_s3,
-    upload_dataframe_to_s3,
-)
+from app.services.transformation_engine.data_utils import get_dataframe_from_s3
 from app.services.transformation_engine.transformation_engine import (
     TransformationEngine,
     TransformationType,
 )
+from app.services.transformation_service import TransformationService
 from app.utils.s3 import downloadable_url, record_request_uploads
 from app.utils.schema_inference import infer_schema
 
@@ -575,7 +571,7 @@ class BulkTransformationService:
         df = await get_dataframe_from_s3(downloadable_url(dataset.file_path, dataset.s3_url))
         run = await self._run_columns(job, df)
         if run is not None:
-            await self._finish_job(job, dataset, run, start_time)
+            await self._finish_job(job, dataset, df, run, start_time)
 
     async def _run_columns(self, job: BulkTransformationJob, df: pd.DataFrame) -> _ColumnRun | None:
         """Transform the job's columns in order, each on the frame the one before left.
@@ -628,14 +624,15 @@ class BulkTransformationService:
             await self._write_if_running(job, "progress")
 
     async def _finish_job(
-        self, job: BulkTransformationJob, dataset: DatasetMetadata, run: _ColumnRun, start_time: float
+        self, job: BulkTransformationJob, dataset: DatasetMetadata, before: pd.DataFrame, run: _ColumnRun,
+        start_time: float,
     ) -> None:
         """Write the result, move the dataset to it if any column worked, and close the job."""
         result = _result_of(run, start_time)
         if not await self._still_running(job):
             return  # cancelled after its last column: the dataset is not moved
         if run.succeeded:
-            job.output_file_path = await self._move_dataset(job, dataset, run.df)
+            job.output_file_path = await self._move_dataset(job, dataset, before, run)
         if run.failed:
             job.mark_partially_completed(result)
         else:
@@ -649,21 +646,18 @@ class BulkTransformationService:
         stored = await BulkTransformationJob.find_one({"job_id": job.job_id})
         return stored is not None and stored.status == BulkJobStatus.RUNNING
 
-    async def _move_dataset(self, job: BulkTransformationJob, dataset: DatasetMetadata, df: pd.DataFrame) -> str:
-        """Upload the transformed frame and point the dataset at it; the new file's URL."""
-        timestamp = datetime.now(UTC).timestamp()
-        new_file_path = await upload_dataframe_to_s3(
-            df, f"transformed/{job.user_id}/{job.dataset_id}_bulk_{timestamp}.parquet"
+    async def _move_dataset(
+        self, job: BulkTransformationJob, dataset: DatasetMetadata, before: pd.DataFrame, run: _ColumnRun
+    ) -> str:
+        """Record the job's columns as one history step and move the dataset to the
+        result (#923), so it can be undone; the new file's URL. The columns that failed
+        are not in it and are not named."""
+        return await TransformationService().record_edit(
+            dataset, job.user_id, (before, run.df), kind=job.transformation_type,
+            parameters={**job.global_parameters, "columns": run.succeeded, "per_column_params": job.per_column_params},
+            description=f"Bulk {job.transformation_type.replace('_', ' ')} on {', '.join(run.succeeded)}",
+            rows_affected=sum(r.affected_rows for r in run.results if r.success),
         )
-        # Update dataset — and its dual-written twin (#467, #627). No transaction spans
-        # the two documents: if this raises after one side moved, the job is marked
-        # failed while the dataset is half-moved (logged at ERROR by the helper;
-        # scripts/inventory_dataset_links.py finds it). Accepted, see dataset_link.py.
-        dataset.num_rows = len(df)
-        dataset.num_columns = len(df.columns)
-        dataset.columns = df.columns.tolist()
-        await record_new_file(dataset, new_file_path)
-        return new_file_path
 
     async def _apply_column_transformation(
         self,

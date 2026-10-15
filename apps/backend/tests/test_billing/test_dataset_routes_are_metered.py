@@ -417,31 +417,30 @@ class TestTheFeatureApplyContractIsComplete:
     """
 
     def test_every_return_reports_whether_the_dataset_was_committed(self):
+        """Every answer is built by `_apply_result`, which takes `committed` with no
+        default, and no method of the apply path returns a dict of its own."""
         import ast
         import inspect
         import textwrap
 
-        from app.services.feature_builder_service import FeatureBuilderService
+        from app.services import feature_builder_service as fbs
 
-        source = textwrap.dedent(
-            inspect.getsource(FeatureBuilderService.apply_feature_to_dataset)
-        )
-        tree = ast.parse(source)
+        committed = inspect.signature(fbs._apply_result).parameters["committed"]
+        assert committed.default is inspect.Parameter.empty
+        assert "dataset_committed" in fbs._apply_result(committed=False, dataset_id="d", column_name="c")
 
-        missing = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
-                continue
-            keys = {
-                k.value for k in node.value.keys if isinstance(k, ast.Constant)
-            }
-            if "dataset_committed" not in keys:
-                missing.append(node.lineno)
-
-        assert not missing, (
-            "apply_feature_to_dataset returns a dict without `dataset_committed` at "
-            f"relative line(s) {missing}. The quota release on "
-            "`datasets/{id}/features/{fid}/apply` reads that key (#459)."
+        service = fbs.FeatureBuilderService
+        apply_path = (service.apply_feature_to_dataset, service._apply_in_place,
+                      service._apply_as_new_dataset, service._applied)
+        literal = [
+            f"{method.__name__}:{node.lineno}"
+            for method in apply_path
+            for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(method))))
+            if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict)
+        ]
+        assert not literal, (
+            f"{literal} return a dict of their own. The quota release on "
+            "`datasets/{id}/features/{fid}/apply` reads `dataset_committed` (#459): build it with `_apply_result`."
         )
 
 

@@ -74,13 +74,13 @@ def mock_transformation_config():
     config.current_position = 2
     config.transformation_steps = [
         MagicMock(transformation_type="encode", version_id="v1",
-                  column="col1", columns=None, rows_affected=10,
+                  column="col1", columns=None, description=None, rows_affected=10,
                   applied_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)),
         MagicMock(transformation_type="scale", version_id="v2",
-                  column="col2", columns=None, rows_affected=10,
+                  column="col2", columns=None, description=None, rows_affected=10,
                   applied_at=datetime(2026, 1, 1, 0, 1, 0, tzinfo=UTC)),
         MagicMock(transformation_type="remove_duplicates", version_id="v3",
-                  column=None, columns=None, rows_affected=5,
+                  column=None, columns=None, description=None, rows_affected=5,
                   applied_at=datetime(2026, 1, 1, 0, 2, 0, tzinfo=UTC))
     ]
     config.can_undo = MagicMock(return_value=True)
@@ -390,7 +390,7 @@ class TestHistoryServiceGetHistory:
 
         step = MagicMock(
             transformation_type=TransformationType.REMOVE_DUPLICATES,
-            column=None, columns=None,
+            column=None, columns=None, description=None,
         )
 
         assert HistoryService._describe_step(step) == "Applied remove duplicates"

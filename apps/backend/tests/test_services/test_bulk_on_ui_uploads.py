@@ -49,7 +49,8 @@ def storage():
         return _frame()
 
     with patch(f"{MODULE}.get_dataframe_from_s3", side_effect=read), \
-         patch(f"{MODULE}.upload_dataframe_to_s3", new_callable=AsyncMock, return_value=MOVED) as written:
+         patch("app.services.transformation_engine.data_utils.upload_dataframe_to_s3", new_callable=AsyncMock,
+               return_value=MOVED) as written:
         yield written
 
 

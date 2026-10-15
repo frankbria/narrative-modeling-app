@@ -108,8 +108,10 @@ async def test_a_bulk_job_fails_with_that_reason_while_another_writer_holds_the_
     assert (stored.status, stored.error_message) == (BulkJobStatus.FAILED, DATASET_BUSY)
 
 
-#: Each module that moves a dataset through `record_new_file`, and the module whose code
-#: takes the dataset's lease around that move. A new call site fails here until listed.
+#: Each module that moves a dataset through `record_new_file`, or through
+#: `TransformationService.record_edit` (an edit recorded as a history step, #923), and the
+#: module whose code takes the dataset's lease around that move. A new call site fails
+#: here until listed.
 LEASE_TAKEN_IN = {
     "services/transformation_service.py": "services/transformation_service.py",
     "services/history_service.py": "services/history_service.py",
@@ -130,7 +132,7 @@ def test_every_writer_that_moves_a_dataset_takes_its_lease():
     movers = {
         str(path.relative_to(APP))
         for path in APP.rglob("*.py")
-        if path.name != "dataset_link.py" and _calls(path, "record_new_file")
+        if path.name != "dataset_link.py" and (_calls(path, "record_new_file") or _calls(path, "record_edit"))
     }
 
     assert movers == set(LEASE_TAKEN_IN), "a new record_new_file call site: list it, with where it takes the lease"

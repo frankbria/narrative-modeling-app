@@ -55,6 +55,7 @@ class _RanStep:
     after: pd.DataFrame
     result: Any
     elapsed_ms: int
+    description: str | None = None
 
 
 class _StepFailed(Exception):
@@ -390,7 +391,8 @@ class TransformationService(BaseService[TransformationConfig]):
         column: str | None = None,
         columns: list[str] | None = None,
         parameters: dict[str, Any] | None = None,
-        version_id: str | None = None
+        version_id: str | None = None,
+        description: str | None = None,
     ) -> TransformationConfig:
         """
         Add a transformation step to configuration.
@@ -402,6 +404,7 @@ class TransformationService(BaseService[TransformationConfig]):
             columns: Multiple columns to transform (optional)
             parameters: Transformation parameters (optional)
             version_id: Dataset version ID after this transformation (optional)
+            description: What the history lists for the step (optional)
 
         Returns:
             Updated TransformationConfig
@@ -417,7 +420,8 @@ class TransformationService(BaseService[TransformationConfig]):
             column=column,
             columns=columns,
             parameters=parameters,
-            version_id=version_id
+            version_id=version_id,
+            description=description,
         )
 
         await config.save()
@@ -838,6 +842,7 @@ class TransformationService(BaseService[TransformationConfig]):
             last, f"transformed/{user_id}/{dataset_id}_{timestamp}.parquet"
         )
         done["schema"] = {str(col): str(dtype) for col, dtype in last.dtypes.items()}
+        done["file_path"] = new_file_path
         for step_fields in recorded:
             await self.add_transformation_step(config_id=done["transformation_id"], **step_fields)
         await self.mark_transformations_applied(config_id=done["transformation_id"], file_path=new_file_path)
@@ -867,7 +872,36 @@ class TransformationService(BaseService[TransformationConfig]):
             "columns": step.parameters.get("columns") or step.result.affected_columns or None,
             "parameters": step.parameters,
             "version_id": version_id,
+            "description": step.description,
         }
+
+    async def record_edit(
+        self, dataset: Any, user_id: str, frames: tuple[pd.DataFrame, pd.DataFrame], *,
+        kind: str, parameters: dict[str, Any], description: str, rows_affected: int = 0,
+    ) -> str:
+        """Record an edit made outside the engine as one history step, and move the
+        dataset to its result (#923); the new file's URL.
+
+        A bulk transformation, a data-issue fix and a feature column added in place used
+        to move the dataset with no step, which closed the history behind them (#851).
+        Each is now written exactly as an engine step is: a version, a step listed with
+        `description`, and a move that keeps the history open, so undo restores the step
+        before it. Undo restores versions and never re-runs a step, so `kind` need not be
+        one the engine executes. `parameters["columns"]` names the columns it changed.
+
+        `dataset` is the `DatasetMetadata` (`ensure_metadata_twin`), and the caller holds
+        its lease (#853) and has run the edit: `frames` is the file before and after.
+        """
+        import time
+
+        before, after = frames
+        dataset.num_rows, dataset.num_columns, dataset.columns = len(after), len(after.columns), after.columns.tolist()
+        result = TransformationResult(
+            success=True, affected_rows=rows_affected, affected_columns=list(parameters.get("columns") or [])
+        )
+        step = _RanStep(kind, parameters, before, after, result, 0, description)
+        done = await self._record_steps(dataset, dataset.dataset_id, user_id, iter([step]), time.time())
+        return str(done["file_path"])
 
     async def get_transformation_history(
         self,

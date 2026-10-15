@@ -32,7 +32,8 @@ def _user_data() -> MagicMock:
 
 def _record() -> MagicMock:
     fix = MagicMock(fix_id="fx", is_safe=True)
-    issue = MagicMock(issue_id="i1", suggested_fixes=[fix])
+    issue = MagicMock(issue_id="i1", suggested_fixes=[fix], description="Missing values in a",
+                      affected_column="a", affected_columns=[])
     return MagicMock(issues=[issue])
 
 
@@ -84,58 +85,117 @@ async def test_a_dataset_with_no_stored_location_is_a_400_not_a_swallowed_error(
     download.assert_not_called()
 
 
-async def test_batch_apply_moves_the_dataset_and_its_twin():
-    """#467/#627: after applying fixes the handler used to set `user_data.file_path` alone;
-    it must move both twins through `record_new_file` with the uploaded URL."""
+def _recorded_on(twin):
+    """The fix routes' history recorder, stubbed: the twin they resolve and the recording."""
+    return (
+        patch.object(routes, "ensure_metadata_twin", new_callable=AsyncMock, return_value=twin),
+        patch.object(routes.TransformationService, "record_edit", new_callable=AsyncMock,
+                     return_value=f"s3://test-bucket/transformed/{USER}/ds_fixed.parquet"),
+    )
+
+
+async def test_batch_apply_records_one_history_step_on_the_twin():
+    """#923: the fixes are one history step, recorded on the upload's twin, so undo
+    restores the dataset as it was before them (#467/#627 moved both twins; #851 closed
+    the history behind the move)."""
     import pandas as pd
 
     applied = MagicMock(issue_id="i1", fix_id="fx", success=True, rows_affected=1, error_message=None)
     engine = MagicMock()
-    engine.apply_batch_fixes = AsyncMock(return_value=(pd.DataFrame({"a": [1, 2]}), [applied], []))
+    before, after = pd.DataFrame({"a": [1, None]}), pd.DataFrame({"a": [1, 2]})
+    engine.apply_batch_fixes = AsyncMock(return_value=(after, [applied], []))
     record = _record()
     record.save = AsyncMock()
-    user_data = _user_data()
-    new_url = f"s3://test-bucket/transformed/{USER}/ds_fixed.parquet"
+    twin = MagicMock()
+    twin_patch, record_patch = _recorded_on(twin)
 
-    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=user_data), \
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=_user_data()), \
          patch.object(routes.DataIssueRecord, "find_one", new_callable=AsyncMock, return_value=record), \
-         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2]})), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=before), \
          patch.object(routes, "FixSuggestionEngine", return_value=engine), \
-         patch.object(routes, "upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
-         patch.object(routes, "record_new_file", new_callable=AsyncMock) as move, \
-         patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+         twin_patch, record_patch as recorded:
         response = await routes.batch_apply_fixes(
             BatchFixRequest(dataset_id=DS, issue_ids=["i1"], preview_mode=False), USER
         )
 
     assert response.success is True, response
-    move.assert_awaited_once_with(user_data, new_url)
-    assert user_data.num_rows == 2
+    assert response.new_version_id == f"s3://test-bucket/transformed/{USER}/ds_fixed.parquet"
+    (dataset, user_id, frames), kwargs = recorded.await_args
+    assert (dataset, user_id, frames) == (twin, USER, (before, after))
+    assert kwargs["kind"] == "data_issue_fix" and kwargs["parameters"]["columns"] == ["a"]
+    assert kwargs["description"] == "Fixed data issue: Missing values in a"
+    record.save.assert_awaited_once()
 
 
-async def test_apply_fix_moves_the_dataset_and_its_twin():
-    """#467/#627: the non-preview apply path must move both twins through `record_new_file`."""
+async def test_apply_fix_records_one_history_step_on_the_twin():
     import pandas as pd
 
     applied = MagicMock(issue_id="i1", fix_id="fx", success=True, rows_affected=1, error_message=None)
     engine = MagicMock()
-    engine.apply_fix = MagicMock(return_value=(pd.DataFrame({"a": [1, 2, 3]}), applied))
+    before, after = pd.DataFrame({"a": [1, None, 3]}), pd.DataFrame({"a": [1, 2, 3]})
+    engine.apply_fix = MagicMock(return_value=(after, applied))
     record = _record()
     record.save = AsyncMock()
-    user_data = _user_data()
-    new_url = f"s3://test-bucket/transformed/{USER}/ds_fixed.parquet"
+    twin = MagicMock()
+    twin_patch, record_patch = _recorded_on(twin)
 
-    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=user_data), \
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=_user_data()), \
          patch.object(routes.DataIssueRecord, "find_one", new_callable=AsyncMock, return_value=record), \
-         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2, 3]})), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=before), \
          patch.object(routes, "FixSuggestionEngine", return_value=engine), \
-         patch.object(routes, "upload_dataframe_to_s3", new_callable=AsyncMock, return_value=new_url), \
-         patch.object(routes, "record_new_file", new_callable=AsyncMock) as move, \
-         patch.dict("os.environ", {"AWS_S3_BUCKET": "test-bucket"}):
+         twin_patch, record_patch as recorded:
         response = await routes.apply_fix(
             FixApplicationRequest(dataset_id=DS, issue_id="i1", preview_mode=False), USER
         )
 
     assert response.success is True, response
-    move.assert_awaited_once_with(user_data, new_url)
-    assert user_data.num_rows == 3
+    (dataset, user_id, frames), kwargs = recorded.await_args
+    assert (dataset, user_id, frames) == (twin, USER, (before, after))
+    assert kwargs["description"] == "Fixed data issue: Missing values in a"
+
+
+async def test_a_fix_on_a_file_a_transformation_cannot_read_says_so():
+    """The twin is refused for a type a transformation would misread (#857): the fix
+    reports that reason instead of moving the dataset."""
+    import pandas as pd
+
+    from app.services.exceptions import NotFoundError
+
+    engine = MagicMock()
+    engine.apply_fix = MagicMock(return_value=(pd.DataFrame({"a": [1]}), MagicMock(rows_affected=1)))
+    refused = NotFoundError(resource_type="Dataset", resource_id=DS, message="this upload is tsv")
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=_user_data()), \
+         patch.object(routes.DataIssueRecord, "find_one", new_callable=AsyncMock, return_value=_record()), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1]})), \
+         patch.object(routes, "FixSuggestionEngine", return_value=engine), \
+         patch.object(routes, "ensure_metadata_twin", new_callable=AsyncMock, side_effect=refused):
+        single = await routes.apply_fix(FixApplicationRequest(dataset_id=DS, issue_id="i1", preview_mode=False), USER)
+        engine.apply_batch_fixes = AsyncMock(return_value=(pd.DataFrame({"a": [1]}), [MagicMock(issue_id="i1")], []))
+        batch = await routes.batch_apply_fixes(BatchFixRequest(dataset_id=DS, issue_ids=["i1"], preview_mode=False), USER)
+
+    assert (single.success, single.error) == (False, "this upload is tsv")
+    assert (batch.success, batch.error) == (False, "this upload is tsv")
+
+
+async def test_a_batch_preview_lists_each_issues_first_fix_and_moves_nothing():
+    safe = MagicMock(fix_id="safe", is_safe=True, estimated_rows_affected=2)
+    risky = MagicMock(fix_id="risky", is_safe=False, estimated_rows_affected=5)
+    record = MagicMock(issues=[
+        MagicMock(issue_id="i1", suggested_fixes=[safe]),
+        MagicMock(issue_id="i2", suggested_fixes=[risky]),
+        MagicMock(issue_id="i3", suggested_fixes=[]),
+    ])
+
+    def preview(safe_only: bool):
+        return routes.batch_apply_fixes(BatchFixRequest(
+            dataset_id=DS, issue_ids=["i1", "i2", "i3"], preview_mode=True, auto_apply_safe=safe_only), USER)
+
+    with patch.object(routes.UserData, "find_one", new_callable=AsyncMock, return_value=_user_data()), \
+         patch.object(routes.DataIssueRecord, "find_one", new_callable=AsyncMock, return_value=record), \
+         patch.object(routes, "get_dataframe_from_s3", new_callable=AsyncMock) as download:
+        everything, safe_only = await preview(False), await preview(True)
+
+    assert [(r.fix_id, r.affected_rows) for r in everything.results] == [("safe", 2), ("risky", 5)]
+    assert [r.fix_id for r in safe_only.results] == ["safe"]
+    assert everything.warnings == ["Preview mode - fixes not applied"]
+    download.assert_not_called()
