@@ -123,10 +123,10 @@ Comprehensive E2E testing that runs on main branch:
   records latencies, **never blocks**; results in the `performance-results` artifact
 - Browser: Chromium only
 
-**Main Branch** → Full suite
-- Workflow: `.github/workflows/e2e-tests.yml`
-- Duration: ~20-30 minutes per browser
-- Browsers: Chromium, Firefox, WebKit
+**Nightly on main** → Full suite
+- Workflow: `.github/workflows/e2e-tests.yml` (schedule + manual dispatch)
+- Browser: Chromium
+- A failure opens or comments on a "The nightly full e2e suite is failing" issue; the next green run closes it
 
 ## Test Fixtures
 
