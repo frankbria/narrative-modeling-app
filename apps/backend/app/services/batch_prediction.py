@@ -25,7 +25,7 @@ from beanie import PydanticObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from app.billing import metering
+from app.billing import owed_refunds
 from app.billing.metering import period_key_for
 from app.billing.plans import _env_positive_int
 from app.models.batch_job import (
@@ -38,10 +38,10 @@ from app.models.batch_job import (
 from app.models.ml_model import MLModel
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import InterpretabilityService
+from app.services.job_reaper import reservation_period
 from app.services.model_storage import ModelStorageService, run_locked_inference
 from app.services.prediction_explainer_service import PredictionExplainerService
 from app.services.s3_service import S3Service
-from app.utils.datetime import as_utc
 from app.utils.heartbeat import heartbeat_pump
 from app.utils.job_failures import user_safe_failure_reason
 
@@ -520,10 +520,12 @@ class BatchPredictionService:
         )
         # `job` is the object the run itself updates, so its progress is current.
         processed = job.progress.processed_records
-        if await self._finalize_if_running(job, settle_refund=True):
-            # FAILED and the refund marker were one write (#904): a retry landing after
-            # it resets the marker for its own reservation, which this must not consume.
-            await self._refund_unprocessed(job, processed)
+        refund = self._remainder_owed(job, processed)
+        if await self._finalize_if_running(job, refund_owed=refund):
+            # FAILED, the refund marker and the refund owed were one write (#904,
+            # #1032): a retry landing after it resets the marker for its own
+            # reservation, which this must not consume.
+            await owed_refunds.settle(BatchJob.get_motor_collection(), {"job_id": job.job_id}, refund)
             return
         stored = await BatchJob.find_one(BatchJob.job_id == job.job_id)
         if stored is not None:
@@ -728,11 +730,13 @@ class BatchPredictionService:
             },
         )
 
-    async def _finalize_if_running(self, job: BatchJob, *, settle_refund: bool = False) -> bool:
+    async def _finalize_if_running(
+        self, job: BatchJob, *, refund_owed: dict[str, Any] | None = None
+    ) -> bool:
         """Write the terminal state ONLY if the job is still RUNNING (#485 AC2):
         a cancel that already set CANCELLED wins; returns whether it was written.
-        `settle_refund` marks the run's remainder refunded in the same write, for a
-        caller that then refunds it itself.
+        `refund_owed` marks the run's remainder refunded, and records the refund, in
+        the same write, for a caller that then pays it (#1032).
         Atomic + conditional; explicit
         BSON-safe fields (a raw motor $set can't encode the enum objects a whole
         model_dump would produce)."""
@@ -745,8 +749,9 @@ class BatchPredictionService:
         }
         if job.output_path is not None:
             set_fields["output_path"] = job.output_path
-        if settle_refund:
+        if refund_owed is not None:
             set_fields["remainder_refunded"] = True
+            set_fields["refund_owed"] = refund_owed
         result = await BatchJob.get_motor_collection().update_one(
             {"job_id": job.job_id, "status": JobStatus.RUNNING.value},
             {"$set": set_fields},
@@ -758,28 +763,30 @@ class BatchPredictionService:
         processed (#485 AC3), against the period the reservation was taken from."""
         # Claimed even when nothing is owed, so "this run's remainder is settled" does
         # not depend on every caller computing the same remainder.
-        if await self._claim_refund(job.job_id):
-            await self._refund_unprocessed(job, processed)
+        refund = self._remainder_owed(job, processed)
+        if await self._claim_refund(job.job_id, refund):
+            await owed_refunds.settle(BatchJob.get_motor_collection(), {"job_id": job.job_id}, refund)
 
     @staticmethod
-    async def _refund_unprocessed(job: BatchJob, processed: int) -> None:
-        """Return the records a run never reached, against the reservation's period.
-        The caller has settled the run's marker."""
-        remainder = max(0, job.progress.total_records - processed)
-        if remainder > 0:
-            await metering.refund(
-                job.user_id, "predictions", remainder, period_key_for(as_utc(job.created_at))
-            )
+    def _remainder_owed(job: BatchJob, processed: int) -> dict[str, Any]:
+        """The refund for the records a run never reached, against the reservation's
+        period, under an id unique to this run of the job."""
+        return owed_refunds.owed(
+            job.user_id, "predictions", max(0, job.progress.total_records - processed),
+            reservation_period({"reserved_period": job.reserved_period, "created_at": job.created_at}),
+            f"remainder:{job.job_id}:{job.retry_count}",
+        )
 
     @staticmethod
-    async def _claim_refund(job_id: str) -> bool:
+    async def _claim_refund(job_id: str, refund: dict[str, Any]) -> bool:
         """Whether this caller is the one to refund the run's remainder (#653). A
         cancel is refunded by the run that notices it, by the queue that skips it,
         or by the wall clock when the run is too stuck to notice; the first to set
-        the marker refunds and the others do nothing."""
+        the marker refunds and the others do nothing. The refund it owes is recorded
+        in the same write (#1032)."""
         result = await BatchJob.get_motor_collection().update_one(
             {"job_id": job_id, "remainder_refunded": {"$ne": True}},
-            {"$set": {"remainder_refunded": True}},
+            {"$set": {"remainder_refunded": True, "refund_owed": refund}},
         )
         return result.modified_count == 1
 
@@ -1471,6 +1478,8 @@ class BatchPredictionService:
                     "status": JobStatus.PENDING.value,
                     "admission_slot": slot,
                     "remainder_refunded": False,
+                    # The route reserved this retry's units just now, in this period (#1032).
+                    "reserved_period": period_key_for(),
                     "started_at": None,
                     "completed_at": None,
                     "error_message": None,
