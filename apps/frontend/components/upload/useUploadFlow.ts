@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import type { PIIReport } from '@/lib/types/api';
+import type { FlaggedPIIReport } from '@/lib/types/api';
 import useChunkedUpload from '@/lib/hooks/useChunkedUpload';
 import {
   CHUNKED_UPLOAD_THRESHOLD,
@@ -35,7 +35,7 @@ export function useUploadFlow() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
   const [showPIIWarning, setShowPIIWarning] = useState(false);
-  const [piiData, setPiiData] = useState<PIIReport | null>(null);
+  const [piiData, setPiiData] = useState<FlaggedPIIReport | null>(null);
   const [useChunkedUploadMode, setUseChunkedUploadMode] = useState(false);
   const [isLargeFile, setIsLargeFile] = useState(false);
 
@@ -119,7 +119,7 @@ export function useUploadFlow() {
   function secureAnswered(answer: UploadAnswer) {
     if (answer.status === 'pii_detected' && answer.requires_confirmation) {
       // High-risk PII: nothing is stored until the user chooses.
-      setPiiData(answer.pii_report as PIIReport);
+      setPiiData(answer.pii_report as FlaggedPIIReport);
       setShowPIIWarning(true);
       setUploadStatus('idle');
     } else if (answer.status === 'success') {

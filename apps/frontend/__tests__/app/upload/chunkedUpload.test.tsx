@@ -83,7 +83,7 @@ it('a completed chunked upload shows its preview and completes the stage', async
       filename: 'big.csv',
       status: 'success',
       preview: [{ name: 'Ada' }],
-      pii_report: { has_pii: false, risk_level: 'low', summary: '', recommendations: [], total_pii_columns: 0, high_risk_columns: 0, detections: [] },
+      pii_report: { has_pii: false, risk_level: 'low', summary: '', recommendations: [] },
     }),
   );
 

@@ -1,10 +1,10 @@
 import React from 'react';
 import { Eye, EyeOff, Shield } from 'lucide-react';
-import type { PIIReport } from '@/lib/types/api';
+import type { FlaggedPIIReport } from '@/lib/types/api';
 
 const SHOWN_DETECTIONS = 5;
 
-function PIISummary(props: { report: PIIReport }) {
+function PIISummary(props: { report: FlaggedPIIReport }) {
   const { report } = props;
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -24,7 +24,7 @@ function PIISummary(props: { report: PIIReport }) {
   );
 }
 
-function PIIDetections(props: { detections: PIIReport['detections'] }) {
+function PIIDetections(props: { detections: FlaggedPIIReport['detections'] }) {
   const { detections } = props;
   if (detections.length === 0) return null;
   const hidden = detections.length - SHOWN_DETECTIONS;
@@ -106,7 +106,7 @@ function PIIChoices(props: ChoiceProps) {
 /** The high-risk PII warning: nothing is stored until the user picks one of its choices. */
 interface WarningProps extends ChoiceProps {
   show: boolean;
-  report: PIIReport | null;
+  report: FlaggedPIIReport | null;
 }
 
 export default function PIIWarning(props: WarningProps) {
