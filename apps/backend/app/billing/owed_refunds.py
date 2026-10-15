@@ -38,7 +38,10 @@ async def settle(collection: AsyncIOMotorCollection, row: dict[str, Any], refund
 
 
 async def settle_pending(collection: AsyncIOMotorCollection) -> int:
-    """Pay every refund a crash left owed in `collection`; how many were paid."""
+    """Pay every refund a crash left owed in `collection`; how many it tried to pay.
+
+    shortcut: an unindexed scan of the job collection on each reaper pass, cheap while
+    job rows number in the thousands; add a partial index on `refunds_owed` if they grow."""
     count = 0
     async for row in collection.find({"refunds_owed.0": {"$exists": True}}, {"refunds_owed": 1}):
         for refund in row["refunds_owed"]:

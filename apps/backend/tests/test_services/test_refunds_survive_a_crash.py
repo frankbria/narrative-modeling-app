@@ -51,12 +51,13 @@ def _stale_batch(job_id: str, **fields) -> BatchJob:
 
 
 async def test_a_refund_id_is_applied_once(setup_database):
-    await _reserve("predictions", 5, "2026-10")
+    # More reserved than refunded, so only the id can stop the second refund.
+    await _reserve("predictions", 10, "2026-10")
 
     for _ in range(2):
         assert await metering.refund(USER, "predictions", 5, "2026-10", refund_id="r1") is True
 
-    assert await _units("predictions", "2026-10") == 0
+    assert await _units("predictions", "2026-10") == 5
 
 
 async def test_a_storage_failure_says_the_refund_was_not_paid(setup_database):
