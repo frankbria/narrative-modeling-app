@@ -11,6 +11,8 @@ import UploadPage from '@/app/upload/page';
 import { API_URL } from '@/lib/constants';
 import { planLimit } from '@/lib/billing/planLimit';
 import { QuotaExceededError } from '@/lib/services/apiError';
+// The real `/upload/secure` answer for a high-risk file (#1054), captured by the backend.
+import HIGH_RISK from '@/__tests__/fixtures/secureUploadHighRiskPii.json';
 
 const completeStage = jest.fn();
 jest.mock('@/lib/contexts/WorkflowContext', () => ({
@@ -31,13 +33,6 @@ const QUOTA_DETAIL = {
   resets_at: '2026-11-01T00:00:00+00:00',
   message: QUOTA_SENTENCE,
   upgrade_available: true,
-};
-const PII_REPORT = {
-  has_pii: true,
-  total_detections: 3,
-  risk_level: 'high',
-  affected_columns: ['ssn'],
-  detections: [{ column: 'ssn', type: 'ssn', confidence: 0.95 }],
 };
 const STORED = {
   status: 'success',
@@ -148,7 +143,7 @@ describe('UploadPage: POST /upload/secure', () => {
 });
 
 describe('UploadPage: POST /upload/confirm-pii-upload', () => {
-  const WARNED = ok({ status: 'pii_detected', requires_confirmation: true, pii_report: PII_REPORT });
+  const WARNED = ok(HIGH_RISK);
 
   async function reachTheWarning(confirm: Answer) {
     const calls = backend({ '/upload/secure': WARNED, '/upload/confirm-pii-upload': confirm });
@@ -160,6 +155,15 @@ describe('UploadPage: POST /upload/confirm-pii-upload', () => {
   const confirmWith = (label: RegExp) => fireEvent.click(screen.getByRole('button', { name: label }));
   const maskFlag = (calls: Array<{ path: string; init: RequestInit }>) =>
     (calls.find((c) => c.path === '/upload/confirm-pii-upload')!.init.body as FormData).get('mask_pii');
+
+  it('the warning shows what the backend found (#1054)', async () => {
+    await reachTheWarning(ok(STORED));
+
+    expect(screen.getByText('Columns With PII').previousSibling).toHaveTextContent('3');
+    expect(screen.getByText('High-Risk Columns').previousSibling).toHaveTextContent('1');
+    expect(screen.getByText('HIGH')).toBeInTheDocument();
+    for (const column of ['name', 'email', 'phone']) expect(screen.getAllByText(column).length).toBeGreaterThan(0);
+  });
 
   it('nothing is stored until the user chooses, and masking is sent as chosen', async () => {
     const masked = await reachTheWarning(ok(STORED));

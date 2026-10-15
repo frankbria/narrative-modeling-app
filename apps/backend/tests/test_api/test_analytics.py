@@ -180,8 +180,8 @@ async def test_get_nonexistent_result(async_authorized_client, mock_user_id, set
     nonexistent_id = PydanticObjectId()
     response = await async_authorized_client.get(f"/api/v1/analytics/{nonexistent_id}")
     print_debug_info(response)
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Access denied"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Result not found"
 
 
 @pytest.mark.asyncio
@@ -200,8 +200,8 @@ async def test_unauthorized_access(
             f"/api/v1/analytics/{sample_analytics_result.id}"
         )
         print_debug_info(response)
-        assert response.status_code == 403
-        assert response.json()["detail"] == "Access denied"
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Result not found"
     finally:
         # Restore the original override so other tests are not affected.
         if original_override is not None:

@@ -122,7 +122,7 @@ class TestARecipesOwnerIdGoesToItsOwnerOnly:
         assert seen.status_code == 200 and seen.json()["user_id"] is None
         assert OTHER not in seen.text
         assert own.status_code == 200 and own.json()["user_id"] == ME
-        assert refused.status_code == 403
+        assert refused.status_code == 404
 
     async def test_an_unknown_recipe_is_not_found(self, async_authorized_client, setup_database):
         from bson import ObjectId

@@ -432,7 +432,7 @@ class TestRecipeImportExportEndpoints:
         )
 
         # ASSERT
-        assert response.status_code == 403
+        assert response.status_code == 404  # as an unknown id (#985)
 
     @pytest.mark.asyncio
     async def test_export_recipe_public_allowed(self, async_authorized_client, setup_database):

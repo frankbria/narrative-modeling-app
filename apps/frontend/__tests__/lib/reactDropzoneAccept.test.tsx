@@ -5,7 +5,7 @@
  * test the issue asks for (AC5) so a future dropzone bump that silently rejects a
  * valid .csv fails a unit test instead of only the e2e suite.
  *
- * The accept map is a copy of app/upload/page.tsx's — keep them in sync.
+ * The accept map is a copy of components/upload/UploadDropzone.tsx's — keep them in sync.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useDropzone, type Accept } from 'react-dropzone'

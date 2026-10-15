@@ -62,7 +62,6 @@ from app.services.bulk_transformation_service import BulkTransformationService
 from app.services.exceptions import (
     NotFoundError,
     OperationError,
-    PermissionDeniedError,
     ValidationError,
 )
 from app.services.history_service import HistoryService
@@ -537,16 +536,15 @@ def _recipe_response(recipe: TransformationRecipe, viewer_id: str) -> RecipeResp
 
 
 def _require_readable(recipe: TransformationRecipe | None, viewer_id: str) -> TransformationRecipe:
-    """404 for no recipe, 403 for another account's private one."""
-    if not recipe:
+    """The recipe, or 404 for no recipe and for another account's private one alike: a
+    403 there told any signed-in caller which recipe ids exist (#985)."""
+    if not recipe or (not recipe.is_public and recipe.user_id != viewer_id):
         raise HTTPException(status_code=404, detail="Recipe not found")
-    if not recipe.is_public and recipe.user_id != viewer_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     return recipe
 
 
 async def _readable_recipe(recipe_id: str, viewer_id: str) -> TransformationRecipe:
-    """The recipe, if ``viewer_id`` may read it; the 404 or 403 otherwise."""
+    """The recipe, if ``viewer_id`` may read it; 404 otherwise."""
     return _require_readable(await RecipeManager.get_recipe(recipe_id), viewer_id)
 
 
@@ -670,14 +668,7 @@ async def apply_recipe(
         start_time = time.time()
         
         # Get recipe
-        recipe = await RecipeManager.get_recipe(recipe_id)
-        
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-        
-        # Check access
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+        recipe = await _readable_recipe(recipe_id, current_user_id)
         
         # Apply transformations
         pipeline_request = TransformationPipelineRequest(
@@ -775,18 +766,7 @@ async def check_recipe_compatibility(
     """Check if recipe can be applied to a dataset"""
     try:
         # Fetch recipe to check authorization
-        recipe = await RecipeManager.get_recipe(recipe_id)
-
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-
-        # Check access - user must own the recipe or it must be public
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            logger.warning(
-                f"Access denied: User {current_user_id} attempted to check compatibility "
-                f"for recipe {recipe_id} owned by {recipe.user_id}"
-            )
-            raise HTTPException(status_code=403, detail="Access denied")
+        await _readable_recipe(recipe_id, current_user_id)
 
         # Only proceed with compatibility check if authorized
         compatibility = await RecipeCompatibilityChecker.check_compatibility(
@@ -845,18 +825,7 @@ async def get_recipe_version_history(
     """Get version history for a recipe"""
     try:
         # Fetch recipe to check authorization
-        recipe = await RecipeManager.get_recipe(recipe_id)
-
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-
-        # Check access - user must own the recipe or it must be public
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            logger.warning(
-                f"Access denied: User {current_user_id} attempted to view version history "
-                f"for recipe {recipe_id} owned by {recipe.user_id}"
-            )
-            raise HTTPException(status_code=403, detail="Not authorized to view recipe versions")
+        await _readable_recipe(recipe_id, current_user_id)
 
         # Only proceed with fetching version history if authorized
         versions = await RecipeManager.get_version_history(recipe_id)
@@ -947,14 +916,7 @@ async def export_recipe_json(
 ):
     """Export recipe as JSON for portability"""
     try:
-        recipe = await RecipeManager.get_recipe(recipe_id)
-
-        if not recipe:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-
-        # Check access
-        if not recipe.is_public and recipe.user_id != current_user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+        recipe = await _readable_recipe(recipe_id, current_user_id)
 
         json_data = RecipeManager.export_recipe_to_json(recipe)
 
@@ -1013,11 +975,8 @@ async def get_transformation_history(
         from app.services.transformation_service import TransformationService
         service = TransformationService()
 
-        history = await service.get_transformation_history(config_id)
-
-        # Verify user has access to this transformation config
-        if history["user_id"] != current_user_id:
-            raise HTTPException(status_code=403, detail="Access denied to this transformation config")
+        # Another account's config answers as an unknown one (#985).
+        history = await service.get_transformation_history(config_id, current_user_id)
 
         return TransformationHistoryResponse(
             config_id=history["config_id"],
@@ -1096,8 +1055,6 @@ async def undo_transformation(
         return result
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
@@ -1121,8 +1078,6 @@ async def redo_transformation(
         return result
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
@@ -1150,8 +1105,6 @@ async def jump_to_position(
         return result
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
@@ -1173,8 +1126,6 @@ async def get_history(
     try:
         result = await history_service.get_history(dataset_id, current_user_id)
         return result
-    except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
@@ -1196,8 +1147,6 @@ async def clear_history(
     try:
         result = await history_service.clear_history(dataset_id, current_user_id)
         return {"success": result}
-    except PermissionDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e)) from e
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
