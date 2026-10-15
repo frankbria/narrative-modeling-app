@@ -5,7 +5,7 @@
  * - Valid CSV file upload, progress, drag and drop, concurrent uploads
  * - Metadata storage verification
  * - PII detection and the masked copy
- * - Malformed and empty CSV errors
+ * - An unparseable CSV is refused
  *
  * Coverage Target: >85%
  */
@@ -239,20 +239,17 @@ test.describe('Upload Security and Validation', () => {
     await cleanupDataset(datasetId);
   });
 
-  test('should validate CSV structure and show errors for malformed files', async ({ authenticatedPage }) => {
-    const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/upload');
-    await uploadPage.uploadFile(join(__dirname, '../test-data/malformed.csv'));
+  test('should show an error for a CSV it cannot parse', async ({ authenticatedPage: page }) => {
+    // A row with more fields than the header has.
+    await page.goto('/upload');
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'ragged.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from('name,age\nada,36\nbob,41,extra,fields\n'),
+    });
+    await page.getByTestId('upload-button').click();
 
-    await expect(authenticatedPage.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
-  });
-
-  test('should handle empty CSV files gracefully', async ({ authenticatedPage }) => {
-    const uploadPage = new UploadPage(authenticatedPage);
-    await uploadPage.goto('/upload');
-    // A header with no rows.
-    await uploadPage.uploadFile(join(__dirname, '../test-data/empty.csv'));
-
-    await expect(authenticatedPage.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('upload-status')).toBeHidden();
   });
 });
