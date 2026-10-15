@@ -36,6 +36,8 @@ test.describe('Training errors', () => {
   });
 
   test('a refused start is shown and the form keeps its choice', async ({ authenticatedPage: page }) => {
+    // The page, not the dev server's error overlay, which repeats the logged error.
+    const main = page.locator('#main-content');
     // The UI's reaction to the backend refusing the run, so this one route is mocked.
     await page.route(
       (url) => url.pathname.endsWith('/ml/train'),
@@ -49,8 +51,8 @@ test.describe('Training errors', () => {
     await chooseTarget(page, 'purchased');
     await page.getByRole('button', { name: /Start Training/ }).click();
 
-    await expect(page.getByText('Training failed')).toBeVisible();
-    await expect(page.getByText('Target column has a single value')).toBeVisible();
+    await expect(main.getByText('Training failed')).toBeVisible();
+    await expect(main.getByText('Target column has a single value')).toBeVisible();
     await expect(page.getByRole('combobox')).toHaveValue('purchased');
   });
 
