@@ -622,8 +622,8 @@ class TestErrorHandling:
                 f"/api/v1/transformations/recipes/{recipe_id}"
             )
             
-            assert response.status_code == 403
-            assert response.json()["detail"] == "Access denied"
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Recipe not found"
 
 
 if __name__ == "__main__":

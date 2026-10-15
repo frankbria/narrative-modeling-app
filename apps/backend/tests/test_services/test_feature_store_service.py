@@ -153,9 +153,9 @@ class TestFeatureStoreServiceCRUD:
 
     @pytest.mark.asyncio
     async def test_get_feature_permission_denied(self):
-        """🔴 RED: Test retrieving private feature raises PermissionDeniedError."""
+        """🔴 RED: Test retrieving private feature raises NotFoundError, as an unknown id does (#985)."""
         # ARRANGE
-        from app.services.exceptions import PermissionDeniedError
+        from app.services.exceptions import NotFoundError
 
         feature_id = "feat_private"
         owner_id = "user_owner"
@@ -171,7 +171,7 @@ class TestFeatureStoreServiceCRUD:
         with patch.object(self.service, 'get_by_id_or_raise', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_feature
 
-            with pytest.raises(PermissionDeniedError):
+            with pytest.raises(NotFoundError):
                 await self.service.get_feature(feature_id, other_user_id)
 
     @pytest.mark.asyncio
@@ -308,7 +308,9 @@ class TestFeatureStoreServiceCRUD:
         user_id = "user_123"
 
         # ACT & ASSERT
-        with patch.object(self.service, 'delete', new_callable=AsyncMock) as mock_delete:
+        owned = MagicMock(user_id=user_id, feature_id=feature_id)
+        with patch.object(self.service, 'get_by_id_or_raise', AsyncMock(return_value=owned)), \
+                patch.object(self.service, 'delete', new_callable=AsyncMock) as mock_delete:
             mock_delete.return_value = True
 
             result = await self.service.delete_feature(feature_id, user_id, soft_delete=True)

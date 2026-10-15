@@ -54,22 +54,20 @@ router = APIRouter()
 ALLOWED_FILE_TYPES = {'csv', 'xlsx', 'xls', 'json', 'parquet'}
 
 
-async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame:
-    """Load dataset as DataFrame from S3"""
-    service = DatasetService()
-    dataset = await service.get_dataset(dataset_id=dataset_id)
-
-    if not dataset:
+async def _callers_dataset(dataset_id: str, user_id: str):
+    """The caller's dataset; another account's answers as an unknown one (#985)."""
+    dataset = await DatasetService().get_dataset(dataset_id=dataset_id)
+    if not dataset or dataset.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Dataset {dataset_id} not found"
         )
+    return dataset
 
-    if dataset.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this dataset"
-        )
+
+async def _load_dataset_dataframe(dataset_id: str, user_id: str) -> pd.DataFrame:
+    """Load dataset as DataFrame from S3"""
+    dataset = await _callers_dataset(dataset_id, user_id)
 
     # Explicit whitelist validation for security (before any download)
     file_type = dataset.file_type.lower()

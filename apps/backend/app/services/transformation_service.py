@@ -871,21 +871,23 @@ class TransformationService(BaseService[TransformationConfig]):
 
     async def get_transformation_history(
         self,
-        config_id: str
+        config_id: str,
+        user_id: str,
     ) -> dict[str, Any]:
         """
         Get transformation history with lineage.
 
         Args:
             config_id: Configuration identifier
+            user_id: The caller; another account's config is not found (#985)
 
         Returns:
             Transformation history with steps, timestamps, and lineage
 
         Raises:
-            NotFoundError: If config not found
+            NotFoundError: If config not found, or not the caller's
         """
-        config = await self.get_by_id_or_raise(config_id, check_ownership=False)
+        config = await self.get_by_id_or_raise(config_id, user_id)
 
         # Build transformation steps response
         steps = [

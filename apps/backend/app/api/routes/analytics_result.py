@@ -36,7 +36,7 @@ async def get_results_for_user(user_id: str = Depends(get_current_user_id)):
 async def get_result(id: PydanticObjectId, user_id: str = Depends(get_current_user_id)):
     result = await AnalyticsResult.get(id)
     if not result or result.userId != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Result not found")
     return AnalyticsResultOut.model_validate(result.model_dump())
 
 
@@ -48,7 +48,7 @@ async def update_result(
 ):
     existing = await AnalyticsResult.get(id)
     if not existing or existing.userId != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Result not found")
     # Build the updated persistence model from validated input data
     updated = AnalyticsResult(**updated_in.model_dump(), id=id, userId=user_id)
     await updated.save()
@@ -61,6 +61,6 @@ async def delete_result(
 ):
     result = await AnalyticsResult.get(id)
     if not result or result.userId != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Result not found")
     await result.delete()
     return {"success": True}

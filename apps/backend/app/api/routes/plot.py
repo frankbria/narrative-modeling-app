@@ -26,7 +26,7 @@ async def get_plots_for_user(user_id: str = Depends(get_current_user_id)):
 async def get_plot(id: PydanticObjectId, user_id: str = Depends(get_current_user_id)):
     plot = await Plot.get(id)
     if not plot or plot.userId != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Plot not found")
     return plot
 
 
@@ -36,7 +36,7 @@ async def update_plot(
 ):
     existing = await Plot.get(id)
     if not existing or existing.userId != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Plot not found")
     updated.id = id
     updated.userId = user_id
     await updated.save()
@@ -49,6 +49,6 @@ async def delete_plot(
 ):
     plot = await Plot.get(id)
     if not plot or plot.userId != user_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Plot not found")
     await plot.delete()
     return {"success": True}
