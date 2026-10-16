@@ -15,6 +15,7 @@ import logging
 
 from app.billing import metering
 from app.billing.plans import api_key_rate_limit_ceiling
+from app.middleware.metrics import security_control_failures
 from app.models.api_key import APIKey
 from app.models.subscription import PlanTier
 
@@ -76,7 +77,16 @@ async def reconcile_user_api_keys(user_id: str, tier: PlanTier) -> int:
             ],
         )
     except Exception:
-        logger.warning("Failed to reconcile API keys after a plan change", exc_info=True)
+        # Not raised: the subscription change is already recorded, and raising would
+        # make Stripe retry it. But a key left above its tier's ceiling is a degraded
+        # security control, so it is an ERROR and a counter, with the repair (#590).
+        security_control_failures.labels(control="api_key_reclamp").inc()
+        logger.error(
+            "Failed to re-clamp API keys after a plan change; repair with "
+            "scripts/fix_api_key_rate_limits.py --apply",
+            extra={"user_id": user_id, "tier": tier.value},
+            exc_info=True,
+        )
         return 0
     if result.modified_count:
         logger.info(
