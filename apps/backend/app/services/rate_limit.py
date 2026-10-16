@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Protocol
 
+from app.middleware.metrics import security_control_failures
+
 logger = logging.getLogger(__name__)
 
 
@@ -188,14 +190,19 @@ class RedisRateLimitStore:
             count, ttl = await client.eval(
                 _INCR_WINDOW_LUA, 1, redis_key, window_seconds
             )
-            return _build_result(int(count), limit, int(ttl))
-        except Exception as exc:  # pragma: no cover - exercised via fail-open test
-            # Availability over strict enforcement: never block on a limiter outage.
+            result = _build_result(int(count), limit, int(ttl))
+            self._failed_open_logged = False  # a later outage logs again
+            return result
+        except Exception as exc:
+            # Availability over strict enforcement, but failing open removes the
+            # limiter: every failed hit is counted, each outage is one ERROR (#590).
+            # The class only: a connection error's message can carry the Redis URL.
+            security_control_failures.labels(control="rate_limit_store").inc()
             if not self._failed_open_logged:
-                logger.warning(
+                logger.error(
                     "Rate-limit Redis unavailable (%s); failing open — requests "
                     "are not being limited.",
-                    exc,
+                    type(exc).__name__,
                 )
                 self._failed_open_logged = True
             return _allow_unlimited(limit)
