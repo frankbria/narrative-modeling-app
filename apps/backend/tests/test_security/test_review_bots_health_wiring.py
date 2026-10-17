@@ -65,3 +65,12 @@ def test_claude_review_runs_only_where_its_token_exists():
     job = _workflow("claude-code-review.yml")["jobs"]["claude-review"]
 
     assert job["if"] == "github.event.pull_request.user.type == 'User'"
+
+
+def test_claude_review_names_every_per_app_claude_md():
+    """#1074: the root CLAUDE.md was split and the prompt kept naming only the root."""
+    steps = _workflow("claude-code-review.yml")["jobs"]["claude-review"]["steps"]
+    prompt = next(s["with"]["prompt"] for s in steps if "prompt" in s.get("with", {}))
+
+    for path in REPO.glob("apps/*/CLAUDE.md"):
+        assert str(path.relative_to(REPO)) in prompt, f"{path.relative_to(REPO)} is missing from the review prompt"
