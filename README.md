@@ -1,131 +1,104 @@
-# 🧠 SheetPredict
+# SheetPredict
 
-[![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
+SheetPredict turns a spreadsheet into a validated, explained, deployable model in minutes — and shows its work.
 
-An intuitive, AI-guided modeling platform that helps non-expert analysts build, explore, and deploy machine learning models—without writing a line of code.
+It is an AI-guided platform for analysts who are not ML engineers: upload a CSV or Excel file, and a guided workflow takes it through profiling, preparation, feature selection, AutoML training, evaluation, prediction and deployment, without writing code.
 
-This project aims to **democratize modeling** by combining powerful ML automation, storytelling-driven user experience, and visual workflows, wrapped in a seamless SaaS front end. The long-term vision includes a fully open-source deployment engine and intelligent model lifecycle management.
+## What it does
 
----
+Eight guided stages (`apps/frontend/lib/types/workflow.ts`):
 
-## 🚀 Phase 1: MVP SaaS Modeling Platform
+1. **Data loading.** CSV/XLSX upload (100 MB cap, chunked for large files), PII scanning with masking before anything reaches a language model, and sample datasets for onboarding.
+2. **Data profiling.** Column statistics, charts, data-quality issues with suggested fixes, and an AI summary.
+3. **Data preparation.** A visual pipeline of the four transformations the engine runs (remove duplicates, trim whitespace, drop missing, fill missing), with preview, undo/redo, version history and exportable Python code.
+4. **Feature engineering.** Choose features, with identifiers, dates and empty columns detected and excluded automatically.
+5. **Model training.** AutoML over several algorithms with optional tuning, bounded per plan tier.
+6. **Model evaluation.** Leaderboard against a baseline, metrics, SHAP explanations and a model report that states only what was recorded.
+7. **Prediction.** Single-record and batch predictions that warn on unseen or missing inputs.
+8. **Deployment.** A REST endpoint secured by API keys and rate limits, drift monitoring, a generated SDK, and self-contained Python/Docker exports.
 
-### ✨ Key Features
-- **Drag-and-drop data ingestion** (CSV/XLSX)
-- **Automated EDA & visual insights**
-- **AI-powered model recommendations**
-- **Narrative-driven workflow guidance**
-- **Feature engineering & preprocessing**
-- **Feature Store** - Centralized feature repository with versioning and reusability
-- **Model training and explainability tools**
+Every AI feature has a rule-based fallback, so the app works without an OpenAI key. Billing (Stripe) is optional: without keys every account runs on the free tier.
 
-Future phases will include:
-- **Open-source deployment layer**
-- **Automated model monitoring & retraining**
-- **Data integration & streaming pipelines**
+**Not supported yet:** database or cloud-storage connectors, multi-file joins, uploads above 100 MB.
 
----
-
-## 🏗️ Project Structure
+## Repository layout
 
 ```
-narrative-modeling-app/
-├── apps/
-│   ├── frontend/         # Next.js + Tailwind UI
-│   ├── backend/          # FastAPI backend for ML orchestration
-│   └── mcp/              # MCP server for advanced data processing
-├── scripts/              # Utility scripts for development
-├── docs/                 # Project documentation
-├── .github/              # GitHub Actions / CI workflows
-├── README.md
-└── .gitignore
+apps/
+  backend/    FastAPI API: datasets, transformations, training, serving, billing
+  frontend/   Next.js app (App Router, NextAuth v5, Tailwind v4)
+  mcp/        MCP server exposing the EDA summary tool to the backend
+docs/
+  adr/        Architecture decision records (billing, plan limits and pricing)
+  dev/        Local development, backend test infrastructure, E2E testing
+  ops/        Staging deployment, credential rotation, erasure/backup, artifact integrity
+  product/    Positioning and public-surface decisions
+scripts/      Local setup, deploy, CI and ops scripts
 ```
 
----
+## Tech stack
 
-## 📦 Tech Stack
+- **Frontend:** Next.js 16, React 19, TypeScript, Tailwind CSS 4, NextAuth v5 (Google and GitHub sign-in), Jest, Playwright
+- **Backend:** Python 3.13, FastAPI, Pydantic, Beanie (MongoDB ODM), pandas, scikit-learn, XGBoost, LightGBM, SHAP, Optuna
+- **Data:** MongoDB, Redis (cache and rate limiting), S3 (LocalStack locally)
+- **AI:** OpenAI, behind a circuit breaker, per-tenant quotas and a global daily ceiling
+- **Tooling:** uv, npm, Docker, GitHub Actions
 
-- **Frontend:** Next.js, Tailwind CSS, NextAuth v5 (Auth), React Flow
-- **Backend:** FastAPI, Python, Pydantic, Beanie ODM
-- **Modeling:** scikit-learn, pandas, XGBoost, SHAP
-- **Database:** MongoDB Atlas (cloud-hosted) with Redis caching
-- **Storage:** AWS S3
-- **Auth:** NextAuth with Google/GitHub providers
-- **Dev Tools:** GitHub (issues + Actions CI/CD), uv (Python), Docker
+## Getting started
 
----
+Prerequisites: Docker, Python 3.13 with [uv](https://docs.astral.sh/uv/), and Node `^22.13.0 || >=24`.
 
-## 🧪 Getting Started
-
-> ⚠️ Project is in active solo development. Contributions and deployment tooling will be part of Phase 2+.
-
-### To run the backend (FastAPI):
 ```bash
+# MongoDB on :27017 and LocalStack S3 on :4566, with the dev bucket created
+./scripts/local-setup.sh
+
+# Backend on :8000
 cd apps/backend
-uv sync  # Install dependencies
-uvicorn app.main:app --reload
-```
+cp .env.example .env          # then apply the Mongo overrides in docs/dev/LOCAL_DEVELOPMENT.md
+uv sync
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
-### To run the frontend:
-```bash
+# Frontend on :3000 (in a second shell)
 cd apps/frontend
+cp .env.local.example .env.local   # NEXTAUTH_SECRET must equal the backend's
 npm install
 npm run dev
 ```
 
-### Environment Setup:
-- **Backend**: Copy `.env.example` to `.env` and configure
-  - MongoDB Atlas connection required (no local MongoDB needed)
-  - Set `MONGODB_URI` to your Atlas connection string
-  - Configure AWS S3 credentials for file storage
-- **Frontend**: Copy `.env.local.example` to `.env.local` and configure
-  - Set `NEXT_PUBLIC_API_URL` to backend URL
-- **Development**: Set `SKIP_AUTH=true` to bypass authentication (requires `ENVIRONMENT=development` or `test` — backend startup fails hard otherwise)
+`apps/backend/.env.example` sets `SKIP_AUTH=true`, which maps every request to a single dev user. The backend refuses to start with it unless `ENVIRONMENT` is `development` or `test`. [docs/dev/LOCAL_DEVELOPMENT.md](docs/dev/LOCAL_DEVELOPMENT.md) has the full setup, including real sign-in locally.
 
----
+## Testing
 
-## 📌 Status
+```bash
+# Backend: the PR gate (needs MongoDB on :27017)
+cd apps/backend && PYTHONPATH=. uv run pytest tests/ -m "not integration and not performance"
 
-Actively developed. Core platform is functional end-to-end: data ingestion,
-automated EDA, feature engineering, model training/explainability, and a
-production inference surface.
+# Frontend
+cd apps/frontend && npm test && npm run type-check && npm run lint
 
-- ✅ **Test suite** — 1,400+ backend tests passing at 85%+ coverage
-- ✅ **CI/CD** — GitHub Actions is the merge gate (backend lint/typecheck/tests,
-  frontend lint/build/jest, MCP, integration, and an e2e smoke run)
-- ✅ **Model training & explainability** — real trained-model surface under
-  `/api/v1/ml/`, with SHAP-based interpretability
-- ✅ **Production deployment** — model deploy + inference API
-- ✅ **MongoDB Atlas** — cloud-hosted, with Redis caching and AWS S3 storage
+# E2E against the real stack
+cd apps/frontend && npm run test:e2e:smoke
 
----
+# MCP server
+cd apps/mcp && uv run pytest tests/
+```
 
-## 📚 Documentation
+`.github/workflows/ci.yml` runs all of these on every pull request; `CI Success` is the required check. See [docs/dev/TEST_INFRASTRUCTURE.md](docs/dev/TEST_INFRASTRUCTURE.md) and [docs/dev/E2E_TESTING_GUIDE.md](docs/dev/E2E_TESTING_GUIDE.md).
 
-For comprehensive documentation, see **[DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)**
+## Deployment
 
-Quick links:
-- [Local Development Setup](docs/development/LOCAL_DEVELOPMENT.md)
-- [Current Sprint (Sprint 12)](docs/sprints/sprint-12/SPRINT_12.md)
-- [Sprint History](docs/sprints/)
-- [User Stories](USER_STORIES.md)
-- [Production Deployment](docs/deployment/PRODUCTION_DEPLOYMENT.md)
-- [Production API Guide](docs/deployment/PRODUCTION_API_GUIDE.md)
+`main` deploys to staging with `.github/workflows/deploy.yml`, using `docker-compose.staging.yml` behind nginx (`nginx-staging.conf`). The environment templates are `.env.staging.example` and `.env.production.example` at the repo root. Runbooks are in [docs/ops/](docs/ops/), starting with [STAGING_DEPLOYMENT_GUIDE.md](docs/ops/STAGING_DEPLOYMENT_GUIDE.md).
 
-## 📚 License
+## Contributing
 
-This project is licensed under the **GNU Affero General Public License v3.0 or later** (`AGPL-3.0-or-later`).
+Conventions, architecture rules and the guard tests that enforce them are in [CLAUDE.md](CLAUDE.md). Work on a feature branch and open a pull request against `main`.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
 
 Copyright © 2025-2026 Noatak Enterprises, LLC, dba Bria Strategy Group
 
-Because the AGPL covers network use (§13), the complete corresponding source code
-of the deployed service is available at
-<https://github.com/frankbria/narrative-modeling-app>. See [LICENSE](LICENSE) for the full terms.
+## Author
 
----
-
-## ✍️ Author
-
-**Frank Bria**  
-Building solo with help from ChatGPT & GitHub Copilot  
-[frankbria.com](https://frankbria.com)
+**Frank Bria** · [frankbria.com](https://frankbria.com) · [@FrankBria18044](https://x.com/FrankBria18044)

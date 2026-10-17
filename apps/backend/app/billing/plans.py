@@ -1,7 +1,7 @@
 """Plan limits (#366/#368), product values per ADR-003 (#474).
 
 The numbers below are the decided tiers, sized against measured unit economics
-(`docs/architecture/ADR-003-plan-limits-and-pricing.md`); the ADR table and these
+(`docs/adr/ADR-003-plan-limits-and-pricing.md`); the ADR table and these
 defaults are held equal by `tests/test_billing/test_plan_limits_are_the_product_values.py`.
 They are the deployed values too — no deploy surface sets a `PLAN_*` override —
 so change the ADR and this file together.

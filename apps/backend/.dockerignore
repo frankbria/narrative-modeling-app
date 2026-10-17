@@ -27,7 +27,6 @@ Dockerfile
 # a build input here: pyproject.toml, uv.lock, app/, main.py, README.md
 # (referenced by [project].readme — there is no [build-system] section).
 docs/
-claudedocs/
 tests/
 tasks/
 scripts/

@@ -10,7 +10,7 @@ set -euo pipefail
 MONGO_IMAGE="mongo:7"
 LOCALSTACK_IMAGE="localstack/localstack:3"
 MONGO_USER="admin"
-MONGO_PASS="localpassword"   # local-only dev credentials (see docs/development/LOCAL_DEVELOPMENT.md)
+MONGO_PASS="localpassword"   # local-only dev credentials (see docs/dev/LOCAL_DEVELOPMENT.md)
 BUCKET="narrative-modeling-local"
 
 echo "Setting up local development infrastructure"
@@ -103,7 +103,7 @@ echo "Local infrastructure ready:"
 echo "  - MongoDB:      localhost:27017 (user: $MONGO_USER)"
 echo "  - LocalStack S3: localhost:4566 (bucket: $BUCKET)"
 echo ""
-echo "Next: run the apps locally (see docs/development/LOCAL_DEVELOPMENT.md):"
+echo "Next: run the apps locally (see docs/dev/LOCAL_DEVELOPMENT.md):"
 echo "  cd apps/backend  && source .venv/bin/activate && uvicorn app.main:app --reload"
 echo "  cd apps/frontend && npm run dev"
 echo ""

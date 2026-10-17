@@ -25,8 +25,8 @@ from app.billing.plans import PLAN_LIMITS
 from app.config import SUPPORT_EMAIL, settings
 
 _LICENSE = {
-    "name": "AGPL-3.0-or-later",
-    "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+    "name": "Apache-2.0",
+    "url": "https://www.apache.org/licenses/LICENSE-2.0",
 }
 
 

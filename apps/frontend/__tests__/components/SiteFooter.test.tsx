@@ -4,14 +4,14 @@ import '@testing-library/jest-dom'
 import { SiteFooter } from '@/components/SiteFooter'
 
 describe('SiteFooter', () => {
-  it('renders a visible link to the corresponding source (AGPL-3.0 §13)', () => {
+  it('renders a visible link to the source code, naming the licence', () => {
     render(<SiteFooter />)
     const link = screen.getByRole('link', { name: /source/i })
     expect(link).toHaveAttribute(
       'href',
       'https://github.com/frankbria/narrative-modeling-app'
     )
-    expect(link).toHaveTextContent(/AGPL-3\.0/i)
+    expect(link).toHaveTextContent(/Apache-2\.0/i)
     // External link opened safely.
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })

@@ -1,6 +1,6 @@
 name: Integration Tests
 
-# Service requirements (encoded below; see apps/backend/docs/TEST_INFRASTRUCTURE.md):
+# Service requirements (encoded below; see docs/dev/TEST_INFRASTRUCTURE.md):
 #   - MongoDB: Atlas test cluster via TEST_MONGODB_URI/TEST_MONGODB_DB secrets
 #   - Redis:   localhost:6380 via docker-compose.test.yml (narrative-redis-test)
 #   - S3:      LocalStack on localhost:4566 via docker-compose.test.yml

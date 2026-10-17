@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.models.subscription import PlanTier
 
-ADR = Path(__file__).resolve().parents[3] / "docs" / "architecture" / "ADR-003-plan-limits-and-pricing.md"
+ADR = Path(__file__).resolve().parents[3] / "docs" / "adr" / "ADR-003-plan-limits-and-pricing.md"
 
 
 def decision_rows(text: str | None = None) -> dict[PlanTier, list[str]]:

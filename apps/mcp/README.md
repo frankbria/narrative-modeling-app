@@ -1,13 +1,14 @@
-# MCP Server - SheetPredict
+# SheetPredict MCP Server
 
-Model Context Protocol (MCP) server exposing data-analysis tools for the
-SheetPredict over an SSE transport.
+Model Context Protocol (MCP) server exposing SheetPredict's data-analysis tools to the
+backend over an SSE transport.
 
 ## Architecture
 
-- **Framework**: `MCPServer` from the [`mcp`](https://pypi.org/project/mcp/) SDK, 2.x
-  (`mcp.server.mcpserver`; it was `FastMCP` in 1.x) — there is no separately-installed
-  `fastmcp` package.
+- **Framework**: `MCPServer` from the [`mcp`](https://pypi.org/project/mcp/) SDK, pinned
+  `mcp>=2,<3` (`mcp.server.mcpserver`; it was `FastMCP` in 1.x). There is no
+  separately-installed `fastmcp` package. The backend's client pins the same range, so a
+  new major migrates both together.
 - **Transport**: SSE (Starlette + uvicorn), bound to `127.0.0.1` by default.
 - **Language**: Python 3.10+
 - **Package Manager**: uv
@@ -32,6 +33,11 @@ MCP_API_KEY=<secret> uv run python main.py
 The server refuses to start without `MCP_API_KEY` (fails closed). It listens on
 `127.0.0.1:$PORT` (`PORT` defaults to `10000`; `MCP_HOST` overrides the bind
 address).
+
+The backend reaches it through `app/services/mcp_integration.py`, configured by
+`MCP_HOST` (default `localhost`), `MCP_PORT` (default `10000`), `MCP_TIMEOUT` (seconds,
+default `30`) and the same `MCP_API_KEY`. When the call fails, the backend falls back
+instead of fabricating a result.
 
 ## Available Tools
 
@@ -77,16 +83,18 @@ enforces the following — **all must hold before any deploy**:
 lookup would hit the wrong database and deny legitimate requests (#540). The server
 fails fast at startup if it is unset.
 
-**Trust boundary (beta):** the bearer token is a single shared secret, so the
-MCP trusts the (localhost, authenticated) backend to assert the correct
-`user_id`. Per-user MCP tokens are a future hardening.
+**Trust boundary:** the bearer token is a single shared secret, so the MCP server
+trusts the (localhost, authenticated) backend to assert the correct `user_id`.
 
 ## Testing
 
 ```bash
-# Run the MCP test suite
+cd apps/mcp
 uv run pytest tests/
 ```
+
+The backend's `backend-integration` CI job also syncs this project (`uv sync --frozen`)
+and runs a real SSE round trip against it.
 
 ## Project Structure
 
@@ -104,6 +112,8 @@ apps/mcp/
 ├── models/
 │   └── user_data.py   # read-only UserData mirror (ownership check)
 ├── tests/             # pytest suite
+├── Dockerfile.dev
+├── render.yaml
 ├── pyproject.toml
 └── README.md
 ```
@@ -118,5 +128,8 @@ apps/mcp/
 
 ## Related Documentation
 
-- [Backend API](../backend/README.md)
-- [Product Requirements](../../PRODUCT_REQUIREMENTS.md)
+- [Backend](../backend/README.md)
+
+## License
+
+Apache 2.0. See [LICENSE](../../LICENSE) in the repo root.

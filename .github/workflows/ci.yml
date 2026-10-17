@@ -5,7 +5,7 @@ name: CI
 # integration tests, and exposes a single aggregate `CI Success` status that
 # branch protection on `main` requires.
 #
-# Service requirements (see apps/backend/docs/TEST_INFRASTRUCTURE.md):
+# Service requirements (see docs/dev/TEST_INFRASTRUCTURE.md):
 #   - backend-lint / backend-typecheck: NONE (no external services).
 #   - backend-tests: MongoDB (GitHub service container on 27017). Redis and
 #     LocalStack are deliberately NOT provisioned here — the suites that need

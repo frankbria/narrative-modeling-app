@@ -28,8 +28,9 @@ export default function TermsPage() {
           confirm you are authorised to bind it.
         </p>
         <p>
-          The software behind this service is published under the GNU AGPL v3, and you may run your
-          own copy under that licence. These terms apply only to the hosted service we operate.
+          The software behind this service is published under the Apache License 2.0, and you may
+          run your own copy under that licence. These terms apply only to the hosted service we
+          operate.
         </p>
       </section>
 

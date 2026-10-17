@@ -1,6 +1,6 @@
 """Shared fixtures for load tests.
 
-Prerequisites (see apps/backend/docs/TEST_INFRASTRUCTURE.md):
+Prerequisites (see docs/dev/TEST_INFRASTRUCTURE.md):
 - MongoDB running locally — the dataset-ownership document that
   generate_preview's security check requires is seeded into the test database.
 - S3 is stubbed at the get_dataframe_from_s3 seam with a locally generated

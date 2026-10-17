@@ -6,7 +6,7 @@ optional OpenAI pass enhances the plain-language summary when a key is present.
 
 Deliberately lean vs the CodeRabbit plan: one module instead of seven, heuristics
 encoded inline instead of an external practices.json/KnowledgeBase, simple
-feedback-count personalization instead of a learning loop. See tasks/todo.md.
+feedback-count personalization instead of a learning loop.
 """
 
 import asyncio

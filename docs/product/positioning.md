@@ -2,11 +2,11 @@
 
 - **Status:** Signed 2026-10-02 (D1/D4); D2, D3, D5 signed 2026-09-18 (decisions D1–D5 of [#765](https://github.com/frankbria/narrative-modeling-app/issues/765); clearance in #793)
 - **Date:** drafted 2026-09-16, signed 2026-10-02
-- **Follows:** [public-surface-gtm.md](./public-surface-gtm.md) (§4 decisions D1–D8) and [ADR-003](../architecture/ADR-003-plan-limits-and-pricing.md)
+- **Follows:** [public-surface-gtm.md](./public-surface-gtm.md) (§4 decisions D1–D8) and [ADR-003](../adr/ADR-003-plan-limits-and-pricing.md)
 - **Feeds:** #766 landing page, #475 pricing page, #770 onboarding copy, #772 trust pages
 - **Location:** `docs/product/positioning.md`
 
-Every claim below is either traceable to code (file or issue cited) or listed under "do not claim." Copy on any public page is written from this document, not from `USER_STORIES.md` or `PRODUCT_REQUIREMENTS.md`.
+Every claim below is either traceable to code (file or issue cited) or listed under "do not claim." Copy on any public page is written from this document, not from the retired planning documents (`USER_STORIES.md`, `PRODUCT_REQUIREMENTS.md`; removed, see git history).
 
 ## 1. Product name (D1)
 
@@ -42,7 +42,7 @@ Tagline for `<title>` and OG: **Explained predictions from your spreadsheet.**
 |---|---|---|
 | Validated, not vibes | "About ten algorithms, cross-validated, with an explanation of why the winner won." | `automl_engine.py`, `algorithm_selector.py` |
 | Explained and reproducible | "SHAP explanations for every model, a full version history, and a self-contained Python or Docker export you own." | SHAP surface under `/api/v1/ml/`; #629 history/undo; #632 exports |
-| Safe with real data | "PII is scanned and masked before anything reaches a language model; every AI feature works without an AI key; one-click erasure; AGPL source you can read and self-host." | #608/#490 PII; #461 fallbacks; #480/#497 erasure; `LICENSE`, `README.md` §License |
+| Safe with real data | "PII is scanned and masked before anything reaches a language model; every AI feature works without an AI key; one-click erasure; Apache 2.0 source you can read and self-host." | #608/#490 PII; #461 fallbacks; #480/#497 erasure; `LICENSE`, `README.md` §License |
 
 Supporting claims that may also be used, with evidence: eight guided stages (`lib/types/workflow.ts`); secured REST prediction endpoint with API keys and rate limits (#455); drift monitoring (#488); 14-day refund from first payment (#602); free tier sized for one complete run (ADR-003).
 
