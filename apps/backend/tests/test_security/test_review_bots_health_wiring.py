@@ -72,5 +72,6 @@ def test_claude_review_names_every_per_app_claude_md():
     steps = _workflow("claude-code-review.yml")["jobs"]["claude-review"]["steps"]
     prompt = next(s["with"]["prompt"] for s in steps if "prompt" in s.get("with", {}))
 
-    for path in REPO.glob("apps/*/CLAUDE.md"):
+    for path in [*REPO.glob("apps/*/CLAUDE.md"), REPO / ".claude/skills/staging-ops/SKILL.md"]:
+        assert path.exists(), f"{path.relative_to(REPO)} was renamed or removed: update the review prompt"
         assert str(path.relative_to(REPO)) in prompt, f"{path.relative_to(REPO)} is missing from the review prompt"
