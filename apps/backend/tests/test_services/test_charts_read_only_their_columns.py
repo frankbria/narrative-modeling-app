@@ -239,7 +239,7 @@ async def test_a_chart_already_computed_is_served_without_reading_the_file(
     async def put(key, value, ttl=None):
         kept[key] = value
 
-    # Through the shared cache's own dict, which is cleaned up on undo (tasks/lessons.md, #683).
+    # Through the shared cache's own dict, which is cleaned up on undo (#683).
     monkeypatch.setitem(vars(visualizations.cache_service), "get", get)
     monkeypatch.setitem(vars(visualizations.cache_service), "set", put)
     url = f"/api/v1/visualizations/scatter/{doc.id}/visits/spend"

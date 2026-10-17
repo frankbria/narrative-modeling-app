@@ -165,7 +165,7 @@ fi
 echo
 if [[ $FAILED -eq 0 ]]; then
   echo "RESULT: the documented S3 restore procedure works."
-  echo "Record this run in docs/deployment/DATA_ERASURE_AND_BACKUP_RUNBOOK.md section 5."
+  echo "Record this run in docs/ops/DATA_ERASURE_AND_BACKUP_RUNBOOK.md section 5."
 else
   echo "RESULT: the S3 restore procedure DID NOT work as documented." >&2
 fi

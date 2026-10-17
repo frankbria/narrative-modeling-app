@@ -118,7 +118,10 @@ def test_no_server_is_named(spec):
 def test_the_licence_and_contact_are_the_projects(spec):
     from app.config import SUPPORT_EMAIL
 
-    assert spec["info"]["license"]["name"] == "AGPL-3.0-or-later"
+    assert spec["info"]["license"] == {
+        "name": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+    }
     assert spec["info"]["contact"]["email"] == SUPPORT_EMAIL
 
 

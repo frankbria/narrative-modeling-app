@@ -212,7 +212,7 @@ fi
 echo "checked: S3=$( ((CHECKED_S3)) && echo yes || echo no ), Atlas=$( ((CHECKED_ATLAS)) && echo yes || echo no )"
 if [[ $FAILED -eq 0 ]]; then
   echo "Backup posture OK. Record the run in the drill log:"
-  echo "  docs/deployment/DATA_ERASURE_AND_BACKUP_RUNBOOK.md section 4"
+  echo "  docs/ops/DATA_ERASURE_AND_BACKUP_RUNBOOK.md section 4"
 else
   echo "Backup posture INCOMPLETE — see FAIL lines above." >&2
 fi

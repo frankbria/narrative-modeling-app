@@ -90,7 +90,7 @@ async def test_processing_does_not_drop_a_summary_written_while_it_ran(
 
     # Through the shared service's own dict, which is cleaned up on undo. A setattr
     # on the instance leaves the original behind as an instance attribute, and every
-    # later test that patches the class is then bypassed (tasks/lessons.md, #683).
+    # later test that patches the class is then bypassed (#683).
     monkeypatch.setitem(
         vars(data_processing.s3_service), "download_file_bytes", download_during_which_the_summary_lands
     )

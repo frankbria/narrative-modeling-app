@@ -171,7 +171,7 @@ jobs:
           state=$(cat /tmp/state.txt 2>/dev/null); [ -n "$state" ] || state='(not collected)'
           stderr=$(tail -n 20 /tmp/probe.err 2>/dev/null); [ -n "$stderr" ] || stderr='(empty)'
           # shellcheck disable=SC2016 # the backticks are literal markdown fences
-          body=$(printf 'Run: %s\n\n%s\n\n## Probe\n```\n%s\n```\n\n## Backend container state\n```\n%s\n```\n\n<details><summary>probe stderr (last 20 lines)</summary>\n\n```\n%s\n```\n</details>\n\nSee docs/operations/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' \
+          body=$(printf 'Run: %s\n\n%s\n\n## Probe\n```\n%s\n```\n\n## Backend container state\n```\n%s\n```\n\n<details><summary>probe stderr (last 20 lines)</summary>\n\n```\n%s\n```\n</details>\n\nSee docs/ops/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' \
             "$RUN_URL" "$verdict" "$probe" "$state" "$stderr")
           # `// empty`: on no match jq would print the 4-char string "null", which
           # is non-empty and would send the very first failure to `gh issue comment null`.

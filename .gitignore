@@ -79,20 +79,12 @@ test.csv
 # Claude Code local settings
 .claude/settings.local.json
 
-# Claude Flow
-memory/claude-flow-data.json
+# Claude Code logs
 .claude/logs/
-.swarm/
-.claude-flow/
 
-# Local demo / scratch artifacts (per-issue demo docs, screenshots, scratch
-# notes). These are generated locally and can embed environment-specific data
-# such as presigned S3 URLs with credentials, so they are not committed by
-# default. The two files the issue workflow writes are re-included below; force
-# an intentional commit of anything else with `git add -f`.
-/tasks/*
-!/tasks/lessons.md
-!/tasks/todo.md
+# Local plans, demo docs and scratch notes. They can embed environment-specific
+# data such as presigned S3 URLs with credentials, so none of it is committed.
+/tasks/
 apps/backend/tasks/
 # Screenshots dropped at the repo root by a demo or an e2e run (#532).
 /*.png
@@ -104,10 +96,3 @@ apps/backend/mypy_out.txt
 # Local scratch scripts (a broad `git add apps/backend` swept one into two PRs)
 apps/backend/_demo_*.py
 /_demo_*.py
-
-# Beads runtime state: the daemon's lock and log (they carry local paths), the SQLite
-# database and its journals, and merge scratch. issues.jsonl is the tracked export (#532).
-.beads/daemon.*
-.beads/*.db
-.beads/*.db-*
-.beads/beads.*

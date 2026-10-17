@@ -34,7 +34,7 @@ export const COMPANY = {
   /**
    * Longest a deleted record can survive in backups: Atlas keeps weekly
    * snapshots for 4 weeks and S3 purges noncurrent versions at 30 days
-   * (docs/deployment/DATA_ERASURE_AND_BACKUP_RUNBOOK.md), so 35 days is the
+   * (docs/ops/DATA_ERASURE_AND_BACKUP_RUNBOOK.md), so 35 days is the
    * honest ceiling rather than a round number.
    */
   backupHorizonDays: 35,

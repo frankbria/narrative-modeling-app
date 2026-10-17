@@ -3,7 +3,7 @@
  *
  * `plans.json` is the single source for every price and limit shown on the
  * public /pricing page, the landing page (#766) and the billing settings page.
- * It is a copy of the product decision in `docs/architecture/ADR-003` and of
+ * It is a copy of the product decision in `docs/adr/ADR-003` and of
  * `apps/backend/app/billing/plans.py`, held equal by
  * `apps/backend/tests/test_billing/test_pricing_source_matches_plans.py` —
  * a limit advertised here that enforcement does not implement fails the backend

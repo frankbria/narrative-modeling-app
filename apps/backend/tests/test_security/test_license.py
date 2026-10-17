@@ -1,10 +1,9 @@
-"""Legal/config guard tests for the project license (issue #260).
+"""Legal/config guard tests for the project license (issues #260, Apache-2.0 relicense).
 
-The committed ``LICENSE`` used to be a wrong-product copy-paste (CodeFRAME,
-AGPL-3.0) that contradicted the README. These static guards keep the AGPL-3.0
-declaration correct and self-consistent, mirroring the deploy-config guards in
-``test_cors_config.py`` / ``test_staging_ports.py``. They read files only (no
-services) so they run in the service-free CI lane.
+The committed ``LICENSE`` once was a wrong-product copy-paste that contradicted the
+README. These static guards keep the Apache-2.0 declaration correct and
+self-consistent across LICENSE, NOTICE, README and every place the code states it.
+They read files only (no services) so they run in the service-free CI lane.
 """
 
 import re
@@ -15,10 +14,12 @@ import pytest
 # apps/backend/tests/test_security/test_license.py -> repo root is 4 parents up.
 REPO_ROOT = Path(__file__).resolve().parents[4]
 LICENSE = REPO_ROOT / "LICENSE"
+NOTICE = REPO_ROOT / "NOTICE"
 README = REPO_ROOT / "README.md"
 
 HOLDER = "Noatak Enterprises, LLC"
 SOURCE_URL = "https://github.com/frankbria/narrative-modeling-app"
+SPDX = "Apache-2.0"
 
 
 @pytest.fixture(scope="module")
@@ -26,44 +27,52 @@ def license_text() -> str:
     return LICENSE.read_text(encoding="utf-8")
 
 
-def test_license_is_agpl3(license_text: str) -> None:
-    assert "GNU AFFERO GENERAL PUBLIC LICENSE" in license_text
-    assert "Version 3" in license_text
-    # Full license text, not just the 15-line notice the wrong file shipped.
-    assert "How to Apply These Terms to Your New Programs" in license_text
-
-
-def test_license_names_correct_product_and_holder(license_text: str) -> None:
-    assert "SheetPredict" in license_text
-    assert HOLDER in license_text
-    # The wrong-product leftovers must be gone.
+def test_license_is_the_full_apache_2_text(license_text: str) -> None:
+    assert "Apache License" in license_text
+    assert "Version 2.0, January 2004" in license_text
+    # The whole licence, not a short notice: both ends of the terms are present.
+    assert "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION" in license_text
+    assert "END OF TERMS AND CONDITIONS" in license_text
+    # A previous licence must not survive alongside it.
+    assert "GNU" not in license_text
     assert "CodeFRAME" not in license_text
-    assert "Fully Remote Autonomous Multi-Agent Environment" not in license_text
 
 
-def test_license_surfaces_source_offer(license_text: str) -> None:
-    # AGPL §13: the corresponding-source location must be discoverable.
-    assert SOURCE_URL in license_text
+def test_notice_names_the_product_holder_and_source() -> None:
+    notice = NOTICE.read_text(encoding="utf-8")
+    assert "SheetPredict" in notice
+    assert HOLDER in notice
+    assert SOURCE_URL in notice
+    assert "Apache License, Version 2.0" in notice
 
 
-def test_readme_reconciled_to_agpl() -> None:
+def test_readme_states_the_same_license() -> None:
     readme = README.read_text(encoding="utf-8")
-    assert "MIT or Apache 2.0 TBD" not in readme
-    assert "AGPL" in readme
+    assert "Apache" in readme
+    assert "AGPL" not in readme
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    ["apps/backend/pyproject.toml", "apps/mcp/pyproject.toml", "apps/frontend/package.json"],
+)
+def test_every_package_manifest_declares_the_license(manifest: str) -> None:
+    text = (REPO_ROOT / manifest).read_text(encoding="utf-8")
+    assert re.search(rf'license"?\s*[=:]\s*"{re.escape(SPDX)}"', text), (
+        f"{manifest} must declare license {SPDX!r}"
+    )
 
 
 @pytest.mark.asyncio
-async def test_root_endpoint_offers_source() -> None:
-    """The deployed API root offers the corresponding source (AGPL §13)."""
+async def test_root_endpoint_states_license_and_source() -> None:
     from app.main import root
 
     payload = await root()
-    assert payload["license"] == "AGPL-3.0-or-later"
+    assert payload["license"] == SPDX
     assert payload["source_code"] == SOURCE_URL
-    assert "source" in payload["source_offer"].lower()
 
 
-# ── The legal pages must name the same entity as the licence ──────────────────
+# ── The legal pages must name the same entity as NOTICE ──────────────────
 # `company.ts` is the single source for what the Terms and Privacy pages say the
 # contracting party IS, and it had "Noaysk Enterprises" — an entity that does not
 # exist — while the LICENSE and README correctly said "Noatak". The published legal
@@ -89,7 +98,7 @@ def test_legal_pages_name_the_same_entity_as_the_license() -> None:
     # would pass on the class of typo it exists to catch. The entity is either
     # exactly the holder, or the holder followed by the `, dba …` trading name.
     assert entity == HOLDER or entity.startswith(HOLDER + ","), (
-        f"company.ts names '{entity}', but the LICENSE and README name "
+        f"company.ts names '{entity}', but NOTICE names "
         f"'{HOLDER}'. The Terms and Privacy pages render this string, so the two "
         f"must agree — change both or neither."
     )

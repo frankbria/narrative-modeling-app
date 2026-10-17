@@ -19,15 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 # leaves the test-user address's domain alone, which noDeadDomains.test.ts confines.
 RETIRED = re.compile(r"narrative modeling|modeling app\b|narrativeml(?!\\?\.com)", re.IGNORECASE)
 
-# The historical record keeps the name things had when they were written.
-_HISTORY = (
-    "tasks/",
-    "claudedocs/",
-    "apps/backend/claudedocs/",
-    "docs/archive/",
-    "docs/deployment/archive/",
-    "docs/sprints/",
-)
 _NAMES_THEM_ON_PURPOSE = {
     # Records which names were retired, and why.
     "docs/product/positioning.md",
@@ -49,7 +40,7 @@ def _tracked_files() -> list[str]:
 
 
 def _in_scope(name: str) -> bool:
-    return not name.startswith(_HISTORY) and name not in _NAMES_THEM_ON_PURPOSE
+    return name not in _NAMES_THEM_ON_PURPOSE
 
 
 def _retired_names_in(name: str) -> list[str]:

@@ -6,11 +6,9 @@ version: '3.8'
 # DO NOT use these configurations in production or cloud environments
 # DO NOT expose these ports to the internet
 
-# 📝 MongoDB Configuration Note
-# MongoDB has been removed from this Docker Compose file as the application
-# now connects to MongoDB Atlas (cloud-hosted). Integration tests use the
-# TEST_MONGODB_URI environment variable to connect to Atlas test database.
-# Local MongoDB is no longer required for integration tests.
+# MongoDB is not in this file: the tests need one on localhost:27017 (pytest
+# connects with TEST_MONGODB_URI / TEST_MONGODB_DB). CI runs it as a service
+# container; locally, run any mongod or scripts/local-setup.sh.
 
 services:
   # Redis for background job testing

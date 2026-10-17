@@ -5,7 +5,7 @@ every child document. Provides GDPR/CCPA right-to-erasure across BOTH dataset
 id-spaces (the ``DatasetMetadata`` string-``dataset_id`` system and the legacy
 ``UserData`` ObjectId system).
 
-Design (user-confirmed, see tasks/259-cascade-erasure.md):
+Design (user-confirmed in issue #259):
 - **Best-effort, not ACID.** Real Mongo transactions need a replica set, which
   local/CI single-node Mongo lacks (the codebase already avoids them). Instead
   the cascade is ordered (children -> S3 -> parent last) and idempotent: a

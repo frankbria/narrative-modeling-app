@@ -18,7 +18,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 COMPOSE = REPO_ROOT / "docker-compose.staging.yml"
-RUNBOOK = REPO_ROOT / "docs" / "operations" / "CREDENTIAL_ROTATION.md"
+RUNBOOK = REPO_ROOT / "docs" / "ops" / "CREDENTIAL_ROTATION.md"
 HEALTH_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "staging-health.yml"
 DEPLOY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 
@@ -45,7 +45,7 @@ def test_runbook_names_every_secret_the_compose_file_interpolates():
     assert secrets, "expected the compose file to interpolate at least one secret"
     runbook = RUNBOOK.read_text()
     missing = [v for v in secrets if f"`{v}`" not in runbook]
-    assert not missing, f"docs/operations/CREDENTIAL_ROTATION.md must name: {missing}"
+    assert not missing, f"docs/ops/CREDENTIAL_ROTATION.md must name: {missing}"
 
 
 def test_scheduled_probe_runs_independently_of_deploys():

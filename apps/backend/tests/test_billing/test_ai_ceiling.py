@@ -79,7 +79,7 @@ def test_the_default_is_the_budget_in_adr_003():
 
     adr = (
         Path(__file__).resolve().parents[4]
-        / "docs/architecture/ADR-003-plan-limits-and-pricing.md"
+        / "docs/adr/ADR-003-plan-limits-and-pricing.md"
     ).read_text()
     assert f"AI_CALLS_DAILY_CEILING` = {ai_ceiling.DEFAULT_DAILY_CEILING}" in adr
 

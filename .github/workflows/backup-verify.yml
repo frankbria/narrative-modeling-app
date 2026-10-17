@@ -134,6 +134,6 @@ jobs:
             echo "### Quarterly restore drill due"
             echo
             echo "Config verification does not prove a restore works. Run both drills"
-            echo "from \`docs/deployment/DATA_ERASURE_AND_BACKUP_RUNBOOK.md\` and record"
+            echo "from \`docs/ops/DATA_ERASURE_AND_BACKUP_RUNBOOK.md\` and record"
             echo "RTO/RPO in the drill log."
           } >> "$GITHUB_STEP_SUMMARY"

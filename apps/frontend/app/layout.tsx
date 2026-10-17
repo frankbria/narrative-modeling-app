@@ -91,7 +91,7 @@ export default async function RootLayout({
                 {children}
               </main>
             )}
-            {/* Source offer (AGPL-3.0 §13) plus the Terms/Privacy links, visible
+            {/* Licence and source link plus the Terms/Privacy links, visible
                 to all network users, authenticated or not. */}
             <SiteFooter withSidebar={!!session} />
           </WorkflowProvider>

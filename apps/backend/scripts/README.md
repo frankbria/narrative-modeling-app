@@ -1,121 +1,73 @@
 # Backend Scripts
 
-This directory contains utility scripts for database seeding, migrations, and other backend operations.
+Operational scripts. Run them from `apps/backend` with `uv run python scripts/<name>.py`,
+with `MONGODB_URI` + `MONGODB_DB` (and the S3 settings where noted) for the environment
+you mean. Scripts that change data are read-only unless given `--apply`; most accept
+`--json` for machine-readable output. Each script's docstring is its full manual.
 
-## E2E Test Data Seeding
+`scripts/` is not copied into the backend image; on staging, see
+[docs/ops/STAGING_DEPLOYMENT_GUIDE.md](../../../docs/ops/STAGING_DEPLOYMENT_GUIDE.md).
 
-### `seed_e2e_data.py`
+## Index
 
-Seeds MongoDB with test data required for E2E testing.
+| Script | What it does | Flags |
+|---|---|---|
+| `seed_e2e_data.py` | Seeds the e2e users, the admin's PRO subscription and the test bucket (below) | `--clear`, `--with-data` |
+| `generate_sample_datasets.py` | Regenerates the onboarding samples in `app/sample_datasets/` | |
+| `audit_dataset_file_types.py` | Finds dataset rows whose `file_type` disagrees with the extension of the object it points at | `--apply`, `--json` |
+| `backfill_dataset_file_sizes.py` | Sets `file_size` on dataset rows written before it was recorded | `--apply`, `--json` |
+| `check_s3_url_ownership.py` | Reports `UserData` rows whose `s3_url` points outside the deployment's bucket; exit 1 if any | |
+| `check_ab_test_duplicates.py` | Pre-deploy check for the unique `experiment_id` index on `ab_tests` | `--drop-legacy-index`, `--json` |
+| `dedupe_column_stats.py` | Pre-deploy dedupe for the unique `(dataset_id, column_name)` index on `column_stats` | `--apply`, `--drop-legacy-index`, `--json` |
+| `fix_api_key_rate_limits.py` | Finds and corrects `APIKey` rows with an out-of-range `rate_limit` | `--apply` |
+| `inventory_dataset_links.py` | Inventories dual-written dataset twins whose link is broken | `--json` |
+| `inventory_orphaned_s3_objects.py` | Counts and sizes dataset/transformation S3 objects no row owns | `--dump`, `--json`, `--min-age-seconds` |
+| `reconcile_model_artifacts.py` | Reports S3 objects under `models/` that no `MLModel` owns | `--dump`, `--json`, `--min-age-seconds` |
+| `reconcile_subscriptions.py` | Re-reads every `Subscription` from Stripe and rewrites what drifted | `--apply` |
+| `reconcile_unprefixed_s3_keys.py` | Moves bucket-root dataset objects under their owner's prefix (below) | `--apply` |
+| `demo_*.py` | Evidence scripts for the issue in their name | |
 
-**What it does:**
-- Creates NextAuth test user compatible with MongoDB adapter schema
-- Optionally seeds sample datasets for testing workflows
-- Verifies seeded data integrity
+## `seed_e2e_data.py`
 
-**Usage:**
+Run by `apps/frontend/test-e2e.sh` before every e2e run; you rarely call it by hand.
 
-```bash
-# Basic seeding (test user only)
-cd apps/backend
-uv run python scripts/seed_e2e_data.py
+- Creates the NextAuth test user (`users` collection) and puts the admin identity on an
+  active PRO subscription, so `plan-limit.spec.ts` can hit a real limit.
+- Creates the test bucket when `AWS_ENDPOINT_URL` is set (LocalStack/MinIO only, never
+  real AWS); exits 1 if it cannot.
+- `--clear` first deletes the test user from `users`; `--with-data` also seeds a sample dataset
+  owned by `TEST_USER_ID`.
 
-# Clear existing test data before seeding
-uv run python scripts/seed_e2e_data.py --clear
+| Variable | Default |
+|---|---|
+| `MONGODB_URI` | `mongodb://localhost:27017` |
+| `MONGODB_DB` | `narrative-modeling-test` |
+| `TEST_USER_EMAIL` | `test@narrativeml.com` |
+| `TEST_USER_ID` | `test-user-12345` (the credentials provider's id, the token's `sub`) |
+| `TEST_ADMIN_ID` | `test-admin-12345` |
+| `AWS_ENDPOINT_URL`, `AWS_BUCKET_NAME` | unset, `test-bucket` |
 
-# Seed with sample datasets
-uv run python scripts/seed_e2e_data.py --with-data
-
-# Clear and seed everything
-uv run python scripts/seed_e2e_data.py --clear --with-data
-```
-
-**Environment Variables:**
-
-```bash
-# MongoDB connection (default: mongodb://localhost:27017/narrative-modeling-test)
-export MONGODB_URI="mongodb://localhost:27017/your-test-db"
-
-# Test user credentials (default: test@narrativeml.com)
-export TEST_USER_EMAIL="test@example.com"
-export TEST_USER_ID="test-user-12345"
-```
-
-**Prerequisites:**
-
-1. MongoDB must be running:
-   ```bash
-   # Local MongoDB
-   mongod --dbpath /path/to/data
-
-   # Or Docker
-   docker run -d -p 27017:27017 --name mongodb mongo:latest
-   ```
-
-2. Python dependencies installed:
-   ```bash
-   cd apps/backend
-   uv sync
-   ```
-
-**Integration with E2E Tests:**
-
-The seed script is automatically run by `test-e2e.sh` before starting E2E tests:
-
-```bash
-cd apps/frontend
-npm run test:e2e:smoke
-```
-
-**Database Schema:**
-
-The script creates data compatible with:
-- **NextAuth MongoDB Adapter**: `users`, `accounts`, `sessions` collections
-- **Backend Models**: `user_data` collection for datasets
-
-**Troubleshooting:**
-
-**MongoDB Connection Failed:**
-```
-❌ Failed to connect to MongoDB at mongodb://localhost:27017
-```
-Solution: Ensure MongoDB is running and accessible at the specified URI.
-
-**User Already Exists:**
-```
-ℹ️  User test@narrativeml.com already exists
-```
-This is normal - the script will update the existing user. Use `--clear` to start fresh.
-
-**Import Errors:**
-```
-ModuleNotFoundError: No module named 'pymongo'
-```
-Solution: Run `uv sync` in the backend directory to install dependencies.
-
-## S3 key reconciliation
-
-### `reconcile_unprefixed_s3_keys.py`
+## `reconcile_unprefixed_s3_keys.py`
 
 Moves dataset objects written at the bucket root as bare `{uuid}.{ext}` (every
-non-chunked upload before #581) under their owner's `datasets/{user_id}/` prefix,
-where the strict downloader, erasure and lifecycle rules can find them. Each move is
-copy → verify (ETag + length) → rewrite the owning `UserData`/`DatasetMetadata`
-rows → delete the original. Objects with no owning row are reported and never
-touched. Read-only by default; counts only in the output.
+non-chunked upload before #581) under their owner's `datasets/{user_id}/` prefix, where
+the downloader, erasure and lifecycle rules can find them. Each move is copy, verify
+(ETag + length), rewrite the owning `UserData`/`DatasetMetadata` rows, delete the
+original. Objects with no owning row are reported and never touched. Output is counts
+only.
 
 ```bash
-cd apps/backend
 MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... \
-  uv run python scripts/reconcile_unprefixed_s3_keys.py          # dry run
-  uv run python scripts/reconcile_unprefixed_s3_keys.py --apply  # move them
+  uv run python scripts/reconcile_unprefixed_s3_keys.py           # dry run
+# same environment:
+  uv run python scripts/reconcile_unprefixed_s3_keys.py --apply   # move them
 ```
 
-Exit status is 1 while any object remains unreconciled (planned-but-not-applied,
-orphaned, conflicting owners, or a failed step). Attribution scans every
-`user_data` and `dataset_metadata` row (there is no server-side filter by key), so
-runtime scales with total row count, not with the number of unprefixed objects —
-a dry run followed by `--apply` is two full scans. Run one instance at a time — there is no lock against a concurrent run. Unknown flags are an error, not a dry run. Tested end-to-end against
-LocalStack in `tests/test_scripts/test_reconcile_unprefixed_s3_keys.py`.
-
+- Exit 1 while any object remains unreconciled (planned but not applied, orphaned,
+  conflicting owners, or a failed step).
+- Attribution scans every `user_data` and `dataset_metadata` row, so runtime scales with
+  total rows; a dry run then `--apply` is two full scans.
+- Run one instance at a time: there is no lock against a concurrent run.
+- Unknown flags are an error, not a dry run.
+- Tested against LocalStack in `tests/test_scripts/test_reconcile_unprefixed_s3_keys.py`.

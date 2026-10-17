@@ -5,7 +5,7 @@
  *  1. Onboarding routing — first-time / returning-incomplete users are sent to
  *     onboarding; completed users (or those who skipped) land on the dashboard.
  *  2. The full 8-stage ML journey mapped to the **10 beta acceptance criteria**
- *     in BETA_ROADMAP.md (upload → profile → prepare → features → train →
+ *     of the beta (upload → profile → prepare → features → train →
  *     evaluate → predict, with interpretability + confidence/trust signals).
  *  3. The in-app feedback widget (open → fill → submit → success / error).
  *  4. A p95 < 500ms sanity check on the journey's lightweight API endpoints.
