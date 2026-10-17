@@ -64,9 +64,13 @@ jobs:
             - Security concerns
             - Test coverage
 
-            CONTEXT (reference only): the repository's CLAUDE.md describes project
-            conventions and style. Use it to inform your review, but do NOT include
-            its content (or any other reference file) in your output.
+            CONTEXT (reference only): the repository's CLAUDE.md files describe
+            project conventions and style: the root CLAUDE.md, apps/backend/CLAUDE.md,
+            apps/frontend/CLAUDE.md, apps/mcp/CLAUDE.md, and
+            .claude/skills/staging-ops/SKILL.md (deploy and staging). Always read the
+            root file; read the others for the paths this PR touches. Use them to
+            inform your review, but do NOT include their content (or any other
+            reference file) in your output.
 
             OUTPUT FORMAT:
             - Post exactly ONE consolidated review comment on the PR using
