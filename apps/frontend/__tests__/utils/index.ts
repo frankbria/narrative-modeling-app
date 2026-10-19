@@ -5,7 +5,7 @@
  * Import from here instead of individual files
  *
  * @example
- * import { renderWithProviders, waitForAsync, createMockRecipe } from '@/__tests__/utils';
+ * import { renderWithProviders, waitForAsync } from '@/__tests__/utils';
  */
 
 // Async helpers
