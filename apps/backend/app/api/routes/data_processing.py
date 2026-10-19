@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.models.user_data import UserData
 from app.schemas.quality import QualityReportResponse
-from app.services.data_processing.data_processor import DataProcessor
+from app.services.data_processing.data_processor import DataProcessor, EmptyFileError
 from app.services.data_processing.quality_assessment import ActionableRecommendation
 from app.services.quality_gate_service import evaluate_gates, overall_score
 from app.services.s3_service import read_dataframe_from_bytes, s3_service
@@ -295,6 +295,9 @@ async def process_uploaded_file(
     except HTTPException:
         # Re-raise HTTP exceptions without wrapping
         raise
+    except EmptyFileError as e:
+        # A 0-row dataset stored before uploads refused them (#1062).
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Error processing dataset")
         raise HTTPException(status_code=500, detail=f"Error processing dataset: {str(e)}")

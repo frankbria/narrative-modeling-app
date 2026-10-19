@@ -449,3 +449,20 @@ class TestDataProcessingAPI:
         assert body["detail"] == "Internal server error"
         assert body.get("request_id")
         assert "Failed to retrieve file" not in response.text
+
+    @pytest.mark.asyncio
+    async def test_processing_a_stored_header_only_file_is_a_400(self, async_authorized_client, setup_database):
+        """A 0-row dataset stored before #1062 refuses processing with the upload's sentence, not a 500."""
+        from app.utils.upload_limits import NO_DATA_ROWS
+
+        user_data = await seed_user_data(is_processed=False)
+
+        with patch('app.services.s3_service.s3_service.download_file_bytes',
+                   new_callable=AsyncMock, return_value=b"name,age\n"):
+            response = await async_authorized_client.post(
+                "/api/v1/data/process",
+                json={"file_id": str(user_data.id)}
+            )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == NO_DATA_ROWS

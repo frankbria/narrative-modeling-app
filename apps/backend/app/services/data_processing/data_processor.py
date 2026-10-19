@@ -196,7 +196,7 @@ class DataProcessor:
             df = await self._read_file_object(file_obj, file_type, encoding, delimiter)
         except Exception as e:
             raise UnreadableFileError(str(e)) from e
-        if df.empty:
+        if len(df) == 0:
             raise EmptyFileError(NO_DATA_ROWS)
 
         # Create file metadata

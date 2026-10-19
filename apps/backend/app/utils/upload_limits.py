@@ -60,5 +60,5 @@ def require_rows(df: pd.DataFrame) -> None:
     Call it after the parse and before the S3 put, so nothing is stored and the
     refund middleware gives the `uploads` unit back.
     """
-    if df.empty:
+    if len(df) == 0:
         raise HTTPException(status_code=400, detail=NO_DATA_ROWS)
