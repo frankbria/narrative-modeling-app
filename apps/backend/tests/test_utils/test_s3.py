@@ -516,7 +516,7 @@ class TestValidateObjectKey:
             "datasets/user1/ds1_my data.csv",
             "datasets/user1/ds1_data (1).csv",
             "datasets/user1/ds1_r\u00e9sum\u00e9.xlsx",
-            # The versioning layout, feature-builder outputs — any depth under the tenant.
+            # The versioning layout, derived-dataset outputs — any depth under the tenant.
             "datasets/user1/ds1/versions/v1/data.csv",
             "datasets/user1/ds1/data_1700000000.parquet",
             # ".." inside a filename is a name, not a traversal (codex review).

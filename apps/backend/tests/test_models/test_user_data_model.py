@@ -43,7 +43,7 @@ def test_schema_field_validation():
     """Test SchemaField validation against the current model contract.
 
     field_type is a plain `str`: schema inference legitimately produces values
-    beyond the documented set (e.g. feature_builder emits 'string'/'unknown'),
+    beyond the documented set (e.g. 'string'/'unknown'),
     so arbitrary strings are accepted. Only type violations raise.
     """
     # Inference-produced extension values are accepted

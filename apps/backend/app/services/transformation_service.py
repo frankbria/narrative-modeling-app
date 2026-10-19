@@ -18,7 +18,6 @@ import pandas as pd
 from app.models.transformation import (
     TransformationConfig,
     TransformationStep,
-    TransformationValidation,
 )
 from app.services.base_service import BaseService
 from app.services.data_processing.quality_assessment import QualityAssessmentService
@@ -343,21 +342,6 @@ class TransformationService(BaseService[TransformationConfig]):
         )
         return config_id
 
-    async def get_transformation_config(
-        self,
-        config_id: str
-    ) -> TransformationConfig | None:
-        """
-        Retrieve transformation configuration by config ID.
-
-        Args:
-            config_id: Configuration identifier
-
-        Returns:
-            TransformationConfig instance or None if not found
-        """
-        return await self.get_by_id(config_id, check_ownership=False)
-
     async def get_dataset_config(
         self, dataset_id: str, user_id: str
     ) -> TransformationConfig | None:
@@ -371,25 +355,6 @@ class TransformationService(BaseService[TransformationConfig]):
             TransformationConfig.dataset_id == dataset_id,
             TransformationConfig.user_id == user_id,
         ).sort("-created_at").first_or_none()
-
-    async def list_transformation_configs(
-        self,
-        dataset_id: str
-    ) -> list[TransformationConfig]:
-        """
-        List all transformation configurations for a dataset, sorted chronologically.
-
-        Optimization: Uses compound index (dataset_id, created_at).
-
-        Args:
-            dataset_id: Dataset identifier
-
-        Returns:
-            List of TransformationConfig instances sorted by created_at descending
-        """
-        return await TransformationConfig.find(
-            TransformationConfig.dataset_id == dataset_id
-        ).sort("-created_at").to_list()
 
     async def add_transformation_step(
         self,
@@ -433,30 +398,6 @@ class TransformationService(BaseService[TransformationConfig]):
 
         await config.save()
         return config
-
-    async def validate_transformation_config(
-        self,
-        config_id: str
-    ) -> TransformationValidation:
-        """
-        Validate all transformation steps in configuration.
-
-        Args:
-            config_id: Configuration identifier
-
-        Returns:
-            TransformationValidation result
-
-        Raises:
-            NotFoundError: If config not found
-        """
-        config = await self.get_by_id_or_raise(config_id, check_ownership=False)
-
-        # Validate using model method
-        validation_result = config.validate_transformations()
-
-        await config.save()
-        return validation_result
 
     async def mark_transformations_applied(
         self,
@@ -503,46 +444,6 @@ class TransformationService(BaseService[TransformationConfig]):
         config.clear_transformations()
         await config.save()
         return config
-
-    async def delete_transformation_config(
-        self,
-        config_id: str,
-        user_id: str
-    ) -> bool:
-        """
-        Delete transformation configuration.
-
-        Args:
-            config_id: Configuration identifier
-            user_id: User identifier for ownership check
-
-        Returns:
-            True when deleted
-
-        Raises:
-            NotFoundError: If the resource doesn't exist or isn't the caller's (#985)
-        """
-        return await self.delete(config_id, user_id, soft_delete=False)
-
-    async def get_applied_configs(
-        self,
-        dataset_id: str
-    ) -> list[TransformationConfig]:
-        """
-        Get all applied transformation configurations for a dataset, sorted chronologically.
-
-        Optimization: Uses compound index (dataset_id, is_applied, created_at).
-
-        Args:
-            dataset_id: Dataset identifier
-
-        Returns:
-            List of applied TransformationConfig instances sorted by created_at descending
-        """
-        return await TransformationConfig.find(
-            TransformationConfig.dataset_id == dataset_id,
-            TransformationConfig.is_applied
-        ).sort("-created_at").to_list()
 
     async def preview_transformation(
         self,
@@ -893,34 +794,6 @@ class TransformationService(BaseService[TransformationConfig]):
             "version_id": version_id,
             "description": step.description,
         }
-
-    async def record_edit(
-        self, dataset: Any, user_id: str, frames: tuple[pd.DataFrame, pd.DataFrame], *,
-        kind: str, parameters: dict[str, Any], description: str, rows_affected: int = 0,
-    ) -> str:
-        """Record an edit made outside the engine as one history step, and move the
-        dataset to its result (#923); the new file's URL.
-
-        A data-issue fix and a feature column added in place used
-        to move the dataset with no step, which closed the history behind them (#851).
-        Each is now written exactly as an engine step is: a version, a step listed with
-        `description`, and a move that keeps the history open, so undo restores the step
-        before it. Undo restores versions and never re-runs a step, so `kind` need not be
-        one the engine executes. `parameters["columns"]` names the columns it changed.
-
-        `dataset` is the `DatasetMetadata` (`ensure_metadata_twin`), and the caller holds
-        its lease (#853) and has run the edit: `frames` is the file before and after.
-        """
-        import time
-
-        before, after = frames
-        dataset.num_rows, dataset.num_columns, dataset.columns = len(after), len(after.columns), after.columns.tolist()
-        result = TransformationResult(
-            success=True, affected_rows=rows_affected, affected_columns=list(parameters.get("columns") or [])
-        )
-        step = _RanStep(kind, parameters, before, after, result, 0, description)
-        done = await self._record_steps(dataset, dataset.dataset_id, user_id, iter([step]), time.time())
-        return str(done["file_path"])
 
     async def get_transformation_history(
         self,

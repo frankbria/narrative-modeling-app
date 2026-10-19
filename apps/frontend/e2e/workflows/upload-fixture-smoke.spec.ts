@@ -49,15 +49,14 @@ test.describe('Upload fixture smoke', () => {
 
     const fileInput = page.getByTestId('file-input');
     await fileInput.waitFor({ state: 'attached', timeout: 10000 });
-    await fileInput.setInputFiles(join(__dirname, '../test-data/invalid.json'));
+    await fileInput.setInputFiles(join(__dirname, '../test-data/header-only.csv'));
 
     const uploadButton = page.getByTestId('upload-button');
     await uploadButton.waitFor({ state: 'visible', timeout: 5000 });
     await uploadButton.click();
 
-    // The dropzone advertises .json, but the secure upload endpoint only
-    // accepts CSV/Excel content types and returns 400 — a deterministic
-    // backend rejection that must surface as the inline error panel
+    // A header with no data rows passes the dropzone and the backend answers 400
+    // (#1062) — a deterministic rejection that must surface as the inline error panel
     await expect(page.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId('upload-error-message')).toBeVisible();
 

@@ -42,30 +42,11 @@ def test_a_handler_the_lease_cannot_be_named_for_is_refused_when_decorated():
         holds_the_dataset(lambda a: "d", lambda a: None)(lambda request, user_id: None)
 
 
-@pytest.mark.asyncio
-async def test_a_feature_added_in_place_is_refused_while_another_writer_holds_the_dataset(
-    setup_database, async_authorized_client, held
-):
-    async with held("ds_1022"):
-        response = await async_authorized_client.post(
-            "/api/v1/datasets/ds_1022/features/f1/apply", json={"feature_id": "f1", "output_column_name": "ratio"}
-        )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "success": False, "dataset_id": "ds_1022", "column_name": "ratio", "rows_computed": 0,
-        "null_values": 0, "error": DATASET_BUSY, "warnings": [],
-    }
-
-
-#: Each module that moves a dataset through `record_new_file`, or through
-#: `TransformationService.record_edit` (an edit recorded as a history step, #923), and the
-#: module whose code takes the dataset's lease around that move. A new call site fails
-#: here until listed.
+#: Each module that moves a dataset through `record_new_file`, and the module whose code
+#: takes the dataset's lease around that move. A new call site fails here until listed.
 LEASE_TAKEN_IN = {
     "services/transformation_service.py": "services/transformation_service.py",
     "services/history_service.py": "services/history_service.py",
-    "services/feature_builder_service.py": "api/routes/features.py",  # the in-place apply route
 }
 
 
@@ -80,7 +61,7 @@ def test_every_writer_that_moves_a_dataset_takes_its_lease():
     movers = {
         str(path.relative_to(APP))
         for path in APP.rglob("*.py")
-        if path.name != "dataset_link.py" and (_calls(path, "record_new_file") or _calls(path, "record_edit"))
+        if path.name != "dataset_link.py" and _calls(path, "record_new_file")
     }
 
     assert movers == set(LEASE_TAKEN_IN), "a new record_new_file call site: list it, with where it takes the lease"

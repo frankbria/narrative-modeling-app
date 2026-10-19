@@ -1,6 +1,6 @@
 """#898: a route that reports failure in a 200 deletes what it uploaded and nothing owns.
 
-The transformation and feature apply routes write the new file to S3 first
+The transformation apply routes write the new file to S3 first
 and then move the dataset to it. When the move, or the bookkeeping before it, failed,
 they answered 200 with `success: false`, and the cleanup that acts on a 4xx or 5xx
 (#735) never ran: the file stayed in the bucket with no row pointing at it.
@@ -143,30 +143,3 @@ class TestTransformationApply:
         assert (await UserData.get(upload.id)).s3_url.endswith(written[0])
 
 
-class TestFeatureApply:
-    async def test_a_new_dataset_that_is_never_committed_deletes_its_file(
-        self, async_authorized_client, setup_database, written, deleted, monkeypatch
-    ):
-        """The service writes the derived dataset's file, then fails to create its rows,
-        and reports that by returning `dataset_committed: False`."""
-        from types import SimpleNamespace
-
-        from app.api.routes import features
-        from app.services.transformation_engine.data_utils import upload_parquet_bytes
-
-        key = f"datasets/{USER}/derived/data.parquet"
-
-        async def uploads_then_fails(**_kwargs):
-            await upload_parquet_bytes(b"PAR1", key)
-            return {"success": False, "dataset_committed": False, "dataset_id": "ds1", "column_name": "ratio",
-                    "rows_computed": 0, "null_values": 0, "error": "could not create the dataset", "warnings": []}
-
-        monkeypatch.setattr(features.feature_builder_service, "get_feature",
-                            AsyncMock(return_value=SimpleNamespace(dataset_id="ds1")))
-        monkeypatch.setattr(features.feature_builder_service, "apply_feature_to_dataset", uploads_then_fails)
-
-        response = await async_authorized_client.post(
-            "/api/v1/datasets/ds1/features/f1/apply", json={"feature_id": "f1", "create_new_dataset": True})
-
-        assert response.status_code == 200 and response.json()["success"] is False, response.text
-        deleted.assert_awaited_once_with(key)

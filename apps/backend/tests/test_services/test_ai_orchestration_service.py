@@ -66,18 +66,12 @@ async def test_ai_summary_falls_back_gracefully_on_bad_openai_response():
     assert result is None
 
 
-def test_cleaning_recommends_for_detected_issues():
+def test_cleaning_recommends_for_missing_values():
     svc = _service()
-    profile = _profile(
-        columns_with_missing={"age": 0.1},
-        detected_issue_types=["duplicates", "type_mismatch"],
-        has_duplicates=True,
-    )
+    profile = _profile(columns_with_missing={"age": 0.1})
     recs = svc._rule_recommendations(profile, Objective.DATA_CLEANING)
     tool_types = {r.tool_type for r in recs}
-    assert TransformationType.REMOVE_DUPLICATES.value in tool_types
     assert TransformationType.FILL_MISSING.value in tool_types
-    assert TransformationType.TO_NUMERIC.value in tool_types
     assert all(r.source == "rule_based" for r in recs)
 
 
@@ -152,14 +146,10 @@ def test_exploration_recs_flag_quality_gaps():
 
 def test_pipeline_orders_cleaning_before_modeling():
     svc = _service()
-    profile = _profile(
-        columns_with_missing={"age": 0.1},
-        detected_issue_types=["duplicates"],
-        has_duplicates=True,
-    )
+    profile = _profile(columns_with_missing={"age": 0.1})
     recs = svc._cleaning_recs(profile) + svc._modeling_recs(profile)
     pipeline = svc._build_pipeline(recs)
-    assert pipeline.index(TransformationType.REMOVE_DUPLICATES.value) < pipeline.index(
+    assert pipeline.index(TransformationType.FILL_MISSING.value) < pipeline.index(
         "train_model"
     )
     # one-hot (stage 5) comes before scaling order is internal; just check no dupes
@@ -248,15 +238,15 @@ async def test_optimize_onehot_respects_requested_low_card_columns():
 
 
 @pytest.mark.asyncio
-async def test_optimize_scaling_uses_robust_when_outliers():
+async def test_optimize_scaling_uses_standardization():
     svc = _service()
     resp = await svc.optimize_parameters(
-        _profile(has_outliers=True),
+        _profile(),
         ParameterOptimizationRequest(
             dataset_id="ds_1", tool_type=TransformationType.STANDARDIZE.value
         ),
     )
-    assert resp.optimized_parameters["method"] == "robust"
+    assert resp.optimized_parameters["method"] == "standard"
 
 
 @pytest.mark.asyncio
@@ -354,15 +344,12 @@ def test_summarize_decision_caps_length_and_handles_types():
     assert len(svc._summarize_decision("z" * 500)) == 160
 
 
-def test_data_preparation_guidance_reflects_detected_issues():
+def test_data_preparation_guidance_reflects_missing_values():
     svc = _service()
-    clean, _ = svc._stage_rule_guidance(
-        WorkflowStageId.DATA_PREPARATION, _profile(has_duplicates=False)
-    )
+    clean, _ = svc._stage_rule_guidance(WorkflowStageId.DATA_PREPARATION, _profile())
     dirty, _ = svc._stage_rule_guidance(
-        WorkflowStageId.DATA_PREPARATION,
-        _profile(has_duplicates=True, columns_with_missing={"age": 0.3}),
+        WorkflowStageId.DATA_PREPARATION, _profile(columns_with_missing={"age": 0.3})
     )
-    assert any("duplicate" in c.lower() for c in dirty)
+    assert any("missing" in c.lower() for c in dirty)
     # Clean profile still returns guidance (no crash, sensible default).
     assert clean

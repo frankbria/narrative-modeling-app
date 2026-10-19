@@ -65,15 +65,6 @@ _MUST_BE_METERED = {
     "/api/v1/onboarding/sample-datasets/{dataset_id}/load",
 }
 
-#: Routes that create a dataset only on a branch, so they reserve inside the handler
-#: rather than through a route dependency. Charging every call would bill work that is
-#: not an upload.
-_CONDITIONALLY_METERED = {
-    # `create_new_dataset` defaults to false; when true this calls the same
-    # `DatasetService.create_dataset` as `/datasets/upload`.
-    "/api/v1/datasets/{dataset_id}/features/{feature_id}/apply",
-}
-
 #: In-scope POST routes that create no dataset. Each carries the reason, because
 #: "it looked fine" is how the original gap survived review.
 _EXEMPT = {
@@ -83,7 +74,6 @@ _EXEMPT = {
     ),
     "/api/v1/datasets/{dataset_id}/erase": "Deletes.",
     "/api/v1/datasets/{dataset_id}/process": "Processes the dataset in place.",
-    "/api/v1/datasets/{dataset_id}/features": "Defines a Feature, not a dataset.",
     # Onboarding bookkeeping. All three reach `_save_user_progress`, which touches a
     # UserData used purely as a progress carrier — no s3_url, no rows, no dataset.
     "/api/v1/onboarding/steps/{step_id}/complete": "Records progress.",
@@ -253,7 +243,7 @@ class TestEveryDatasetRouteIsMetered:
         A new POST route on these routers is unmetered the moment it exists, and
         nothing else in the suite would notice.
         """
-        known = _MUST_BE_METERED | _CONDITIONALLY_METERED | set(_EXEMPT)
+        known = _MUST_BE_METERED | set(_EXEMPT)
         unaccounted = set(_post_routes()) - known
 
         assert not unaccounted, (
@@ -261,8 +251,6 @@ class TestEveryDatasetRouteIsMetered:
             "Decide which this is and record it here:\n"
             '  * always creates a dataset -> add dependencies=[Depends(quota("uploads"))]'
             " and add the path to _MUST_BE_METERED;\n"
-            "  * creates one on a branch -> reserve inside the handler and add it to "
-            "_CONDITIONALLY_METERED;\n"
             "  * creates none -> add it to _EXEMPT with the reason."
         )
 
@@ -275,7 +263,7 @@ class TestEveryDatasetRouteIsMetered:
 
     def test_no_route_on_any_prefix_that_can_create_a_dataset_is_unaccounted_for(self):
         """#609: scope by what a handler can do, wherever it is mounted."""
-        known = _MUST_BE_METERED | _CONDITIONALLY_METERED | set(_EXEMPT) | set(_EXEMPT_BY_REACH)
+        known = _MUST_BE_METERED | set(_EXEMPT) | set(_EXEMPT_BY_REACH)
         found = _routes_that_can_create_a_dataset()
         unaccounted = {path: " -> ".join(chain) for path, chain in found.items() if path not in known}
 
@@ -286,8 +274,6 @@ class TestEveryDatasetRouteIsMetered:
             + "\nDecide which each is and record it here:\n"
             '  * always creates a dataset -> add dependencies=[Depends(quota("uploads"))]'
             " and add the path to _MUST_BE_METERED;\n"
-            "  * creates one on a branch -> reserve inside the handler and add it to "
-            "_CONDITIONALLY_METERED;\n"
             "  * creates none (the chain is a twin of an existing upload, or only a shared "
             "function name) -> add it to _EXEMPT_BY_REACH with the reason."
         )
@@ -302,21 +288,12 @@ class TestEveryDatasetRouteIsMetered:
         """A stale entry reads to the next person as evidence the question was
         considered for a route that no longer exists."""
         live = set(_post_routes())
-        stale = (_MUST_BE_METERED | _CONDITIONALLY_METERED | set(_EXEMPT)) - live
+        stale = (_MUST_BE_METERED | set(_EXEMPT)) - live
         assert not stale, f"registry names routes that no longer exist: {sorted(stale)}"
 
-    def test_the_three_categories_do_not_overlap(self):
-        assert not (_MUST_BE_METERED & _CONDITIONALLY_METERED)
+    def test_the_categories_do_not_overlap(self):
         assert not (_MUST_BE_METERED & set(_EXEMPT))
-        assert not (_CONDITIONALLY_METERED & set(_EXEMPT))
-        assert not (set(_EXEMPT_BY_REACH) & (_MUST_BE_METERED | _CONDITIONALLY_METERED | set(_EXEMPT)))
-
-    @pytest.mark.parametrize("path", sorted(_CONDITIONALLY_METERED))
-    def test_a_conditional_route_does_not_also_carry_a_route_dependency(self, path):
-        """Both would charge twice on the branch that creates a dataset."""
-        routes = _post_routes()
-        assert path in routes
-        assert _metered_metric(routes[path]) is None
+        assert not (set(_EXEMPT_BY_REACH) & (_MUST_BE_METERED | set(_EXEMPT)))
 
 
 class TestEveryUploadEnforcesTheStorageCeiling:
@@ -342,7 +319,7 @@ class TestEveryUploadEnforcesTheStorageCeiling:
 
         routes = _post_routes()
         missing = []
-        for path in _MUST_BE_METERED | _CONDITIONALLY_METERED:
+        for path in _MUST_BE_METERED:
             if path in self._VIA:
                 module, qualname = self._VIA[path]
                 target = importlib.import_module(module)
@@ -376,115 +353,6 @@ class TestNoRouteDoubleCounts:
             f"{offenders} both reserve (via quota) and record. Enforcement already "
             f"counted the unit; recording again double-charges."
         )
-
-
-class TestTheFeatureApplyContractIsComplete:
-    """`features/{id}/apply` meters on `dataset_committed`, so it must always be there.
-
-    The route asks the service whether a dataset was actually persisted, because
-    `success` alone cannot distinguish "nothing happened" from "the dataset was written
-    and something after it failed" — the service's catch-all spans both. If a return
-    path ever omits the key, the route's default silently decides for it, and which way
-    it defaults is a choice between overcharging the tenant and giving datasets away.
-    Neither should be reachable by forgetting a dict key.
-    """
-
-    def test_every_return_reports_whether_the_dataset_was_committed(self):
-        """Every answer is built by `_apply_result`, which takes `committed` with no
-        default, and no method of the apply path returns a dict of its own."""
-        import ast
-        import inspect
-        import textwrap
-
-        from app.services import feature_builder_service as fbs
-
-        committed = inspect.signature(fbs._apply_result).parameters["committed"]
-        assert committed.default is inspect.Parameter.empty
-        assert "dataset_committed" in fbs._apply_result(committed=False, dataset_id="d", column_name="c")
-
-        service = fbs.FeatureBuilderService
-        apply_path = (service.apply_feature_to_dataset, service._apply_in_place,
-                      service._apply_as_new_dataset, service._applied)
-        literal = [
-            f"{method.__name__}:{node.lineno}"
-            for method in apply_path
-            for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(method))))
-            if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict)
-        ]
-        assert not literal, (
-            f"{literal} return a dict of their own. The quota release on "
-            "`datasets/{id}/features/{fid}/apply` reads `dataset_committed` (#459): build it with `_apply_result`."
-        )
-
-
-@pytest.mark.asyncio
-class TestTheServiceActuallySetsCommitted:
-    """The real service must set `dataset_committed` when it creates a dataset.
-
-    Every route-level test above monkeypatches `apply_feature_to_dataset`, so deleting
-    the `dataset_committed = True` line in the service leaves all of them green while
-    every successful create silently refunds its unit — free datasets. This one drives
-    the real method, stubbing only the two S3 boundaries so the create path runs against
-    the real `DatasetService` and the test database.
-    """
-
-    async def test_a_real_create_reports_dataset_committed(
-        self, setup_database, monkeypatch
-    ):
-        import pandas as pd
-
-        from app.models.dataset import DatasetMetadata
-        from app.models.feature import ExpressionNode, FeatureDefinition, NodeType
-        from app.services import feature_builder_service as fbs
-        from app.services.feature_builder_service import FeatureBuilderService
-
-        user_id, dataset_id = "committed-user", "ds-commit"
-        await DatasetMetadata(
-            dataset_id=dataset_id,
-            user_id=user_id,
-            filename="d.parquet",
-            original_filename="d.csv",
-            file_type="csv",
-            file_path=f"datasets/{user_id}/{dataset_id}/d.parquet",
-            s3_url=f"s3://bucket/datasets/{user_id}/{dataset_id}/d.parquet",
-            num_rows=3,
-            num_columns=1,
-            columns=["amount"],
-        ).save()
-        await FeatureDefinition(
-            user_id=user_id,
-            dataset_id=dataset_id,
-            feature_id="feat-commit",
-            name="doubled",
-            expression_tree=ExpressionNode(
-                node_id="n1", node_type=NodeType.COLUMN, value="amount"
-            ),
-            is_valid=True,
-        ).insert()
-
-        async def _load(_url):
-            return pd.DataFrame({"amount": [1, 2, 3]})
-
-        async def _upload(_content, key):
-            return f"s3://bucket/{key}"
-
-        monkeypatch.setattr(fbs, "get_dataframe_from_s3", _load)
-        monkeypatch.setattr(fbs, "upload_parquet_bytes", _upload)
-
-        result = await FeatureBuilderService().apply_feature_to_dataset(
-            feature_id="feat-commit", user_id=user_id, create_new_dataset=True
-        )
-
-        assert result["success"] is True, result.get("error")
-        assert result["dataset_committed"] is True
-
-    async def test_the_derived_dataset_records_its_size(self, setup_database, monkeypatch):
-        """#768: the storage ceiling sums `UserData.file_size`; a derived dataset
-        that recorded None would be free storage forever."""
-        from app.billing.storage import stored_bytes
-
-        await self.test_a_real_create_reports_dataset_committed(setup_database, monkeypatch)
-        assert await stored_bytes("committed-user") > 0
 
 
 class TestBatchRetryMetersTheRightMetric:

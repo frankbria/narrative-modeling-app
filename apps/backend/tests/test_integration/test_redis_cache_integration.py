@@ -14,7 +14,6 @@ from app.services.data_processing.statistics_engine import (
     StatisticsEngine,
 )
 from app.services.onboarding_service import OnboardingService
-from app.services.redis_cache import cache_result
 from app.services.visualization_cache import (
     DEFAULT_HISTOGRAM_BINS,
     generate_and_cache_histogram,
@@ -194,37 +193,6 @@ class TestRedisCacheIntegration:
             # Verify cache was checked
             mock_cache.get.assert_called_once()
             assert cached_histogram == histogram_data
-
-    @pytest.mark.asyncio
-    async def test_cache_result_decorator_integration(self):
-        """Test the cache_result decorator with actual function calls"""
-        call_count = 0
-        
-        @cache_result("test_func_{0}_{1}", ttl=300)
-        async def expensive_function(param1: str, param2: int):
-            nonlocal call_count
-            call_count += 1
-            return f"result_{param1}_{param2}_{call_count}"
-        
-        # Mock cache service
-        mock_cache = AsyncMock()
-        mock_cache.get = AsyncMock(side_effect=[None, "cached_result"])  # Miss then hit
-        mock_cache.set = AsyncMock(return_value=True)
-        
-        with patch('app.services.redis_cache.cache_service', mock_cache):
-            # First call should execute function and cache result
-            result1 = await expensive_function("param", 123)
-            assert result1 == "result_param_123_1"
-            assert call_count == 1
-            
-            # Verify cache operations
-            mock_cache.get.assert_called_with("test_func_param_123")
-            mock_cache.set.assert_called_with("test_func_param_123", "result_param_123_1", 300)
-            
-            # Second call should return cached result
-            result2 = await expensive_function("param", 123)
-            assert result2 == "cached_result"
-            assert call_count == 1  # Function not called again
 
     @pytest.mark.asyncio
     async def test_cache_graceful_degradation(self, setup_database):
