@@ -69,3 +69,12 @@ def test_no_service_the_suite_builds_holds_a_client():
     for singleton in SINGLETONS:
         assert singleton.client is None, type(singleton).__name__
     assert get_openai_client() is None
+
+
+def test_the_startup_summary_client_stays_unset():
+    """`app/main.py` initializes `ai_summary`'s module-global client at startup."""
+    from app.utils import ai_summary
+
+    ai_summary.initialize_openai_client()
+
+    assert ai_summary.client is None
