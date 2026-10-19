@@ -38,8 +38,10 @@ jobs:
     # policy, see claude-code-review.yml). The pinned callee bounds a review by turns
     # and by a step timeout shorter than the job's, uploads the agent transcript as an
     # artifact, and rewrites its tracking comment into "GLM review did not complete"
-    # rather than leaving a spinner that reads like a clean review.
-    uses: frankbria/glm-review/.github/workflows/review.yml@77dfa9c6633712256edab41fd0db42663a9416b7 # main @ 2026-09-06
+    # rather than leaving a spinner that reads like a clean review. Since 777f02e9 it
+    # also fails the check, with that notice, when the provider rejects the model call
+    # (a `success` result with `is_error: true`, #955) instead of reporting success.
+    uses: frankbria/glm-review/.github/workflows/review.yml@777f02e9bbb1b8b98f0d043809abe2bce3fa35fe # main @ 2026-10-13
     permissions:
       contents: read
       pull-requests: write
