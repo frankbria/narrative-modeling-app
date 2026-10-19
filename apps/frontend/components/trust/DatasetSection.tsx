@@ -1,14 +1,12 @@
 import Link from 'next/link'
 import {
   AI_SAMPLE_ROWS,
+  CHUNKED_UPLOAD_MB,
   DATASET_KEY_TEMPLATE,
   MASKED_KEY_TEMPLATE,
   PII_SCAN_SAMPLE_ROWS,
   SUMMARY_EXAMPLE_VALUES,
 } from '@/lib/trust/datasetFacts'
-import { CHUNKED_UPLOAD_THRESHOLD } from '@/components/upload/uploadFlow'
-
-const CHUNKED_UPLOAD_MB = CHUNKED_UPLOAD_THRESHOLD / (1024 * 1024)
 
 /**
  * What the code does with an uploaded file. Each step names its source:
