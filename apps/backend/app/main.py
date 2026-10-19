@@ -71,7 +71,6 @@ from app.api.routes import (
     production,
     secure_upload,
     transformations,
-    upload,
     user_data,
     versions,
     visualizations,
@@ -298,9 +297,6 @@ app.include_router(
     health.liveness_router, prefix=settings.API_V1_STR, tags=["health"]
 )
 
-app.include_router(
-    upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
-)
 app.include_router(
     secure_upload.router, prefix=f"{settings.API_V1_STR}/upload", tags=["upload"]
 )

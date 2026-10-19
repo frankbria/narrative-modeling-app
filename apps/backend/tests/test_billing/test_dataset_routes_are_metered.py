@@ -50,7 +50,6 @@ _MUST_BE_METERED = {
     "/api/v1/upload/secure",
     "/api/v1/upload/confirm-pii-upload",
     "/api/v1/upload/chunked/{session_id}/complete",
-    "/api/v1/upload/",
     # A sample load creates a real UserData row — rows, columns, schema, preview — and
     # the insert is unconditional: the `sample_datasets_loaded` check afterwards only
     # guards a bookkeeping list, so calling it N times creates N rows. Unmetered that

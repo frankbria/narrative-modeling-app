@@ -18,7 +18,6 @@ import pytest
 
 from app.api.routes import datasets as datasets_module
 from app.api.routes import secure_upload as secure_upload_module
-from app.api.routes import upload as upload_module
 from app.billing import metering
 from app.models.dataset import DatasetMetadata
 from app.models.user_data import UserData
@@ -40,11 +39,8 @@ def s3_puts(monkeypatch, tmp_path):
         puts.append(s3_filename)
         return True, f"s3://test-bucket/{s3_filename}"
 
-    for module in (datasets_module, secure_upload_module, upload_module):
+    for module in (datasets_module, secure_upload_module):
         monkeypatch.setattr(module, "upload_file_to_s3", fake_upload)
-    # `/upload/` refuses without AWS settings before it would reach the put.
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
     monkeypatch.setenv("AWS_S3_BUCKET", "test-bucket")
     monkeypatch.setattr(
         secure_upload_module,
@@ -74,7 +70,6 @@ async def _multipart(client, route: str, filename: str, content: bytes, mime: st
 _MULTIPART_ROUTES = [
     "/api/v1/upload/secure",
     "/api/v1/upload/confirm-pii-upload",
-    "/api/v1/upload/",
     "/api/v1/datasets/upload",
 ]
 
