@@ -1,8 +1,8 @@
 import React from 'react';
-import { CheckCircle, Database, FileText } from 'lucide-react';
+import { CheckCircle, FileText } from 'lucide-react';
 
 export const FILE_TYPE_CARDS = (
-  <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
     <div className="p-4 bg-muted rounded-lg">
       <FileText className="w-8 h-8 text-blue-600 mb-2" />
       <h3 className="font-semibold mb-1">CSV Files</h3>
@@ -15,13 +15,6 @@ export const FILE_TYPE_CARDS = (
       <h3 className="font-semibold mb-1">Excel Files</h3>
       <p className="text-sm text-muted-foreground">
         .xls and .xlsx formats supported
-      </p>
-    </div>
-    <div className="p-4 bg-muted rounded-lg">
-      <Database className="w-8 h-8 text-purple-600 mb-2" />
-      <h3 className="font-semibold mb-1">Connect Database</h3>
-      <p className="text-sm text-muted-foreground">
-        Coming soon: Direct database connections
       </p>
     </div>
   </div>

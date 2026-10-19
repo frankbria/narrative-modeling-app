@@ -5,19 +5,12 @@
  * test the issue asks for (AC5) so a future dropzone bump that silently rejects a
  * valid .csv fails a unit test instead of only the e2e suite.
  *
- * The accept map is a copy of components/upload/UploadDropzone.tsx's — keep them in sync.
+ * The accept map is the one UploadDropzone passes to useDropzone (#1109): CSV and Excel,
+ * the formats the upload routes read.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useDropzone, type Accept } from 'react-dropzone'
-
-// The exact accept map the upload page passes to useDropzone.
-const ACCEPT: Accept = {
-  'text/csv': ['.csv'],
-  'text/plain': ['.txt'],
-  'application/vnd.ms-excel': ['.xls'],
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-  'application/json': ['.json'],
-}
+import { useDropzone } from 'react-dropzone'
+import { ACCEPT } from '@/components/upload/UploadDropzone'
 
 function Dropzone({ onDrop }: { onDrop: (a: File[]) => void }) {
   const { getRootProps, getInputProps } = useDropzone({ onDrop, accept: ACCEPT, multiple: false })
@@ -63,8 +56,18 @@ describe('react-dropzone 19.3.0 accepts the upload page file types (#442)', () =
     ).toBe(true)
   })
 
-  it('accepts a .json', async () => {
-    expect(await accepts(new File(['{}'], 'data.json', { type: 'application/json' }))).toBe(true)
+  it('accepts an .xls', async () => {
+    expect(
+      await accepts(new File(['x'], 'data.xls', { type: 'application/vnd.ms-excel' })),
+    ).toBe(true)
+  })
+
+  it('refuses a .json, which the upload routes answer 400 (#1109)', async () => {
+    expect(await accepts(new File(['{}'], 'data.json', { type: 'application/json' }))).toBe(false)
+  })
+
+  it('refuses a .txt, which the upload routes answer 400 (#1109)', async () => {
+    expect(await accepts(new File(['a,b\n1,2\n'], 'data.txt', { type: 'text/plain' }))).toBe(false)
   })
 
   it('rejects an unsupported type (.png)', async () => {

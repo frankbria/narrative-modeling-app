@@ -5,7 +5,7 @@
  * job and nowhere in jest.
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import UploadPage from '@/app/upload/page';
 import { API_URL } from '@/lib/constants';
@@ -218,5 +218,28 @@ describe('UploadPage: POST /upload/confirm-pii-upload', () => {
     confirmWith(/upload with data masking/i);
     expect(await errorMessage()).toHaveTextContent('Failed to upload with PII');
     expect(planLimit.get()).toBeNull();
+  });
+});
+
+describe('UploadPage: only what the upload routes read (#1109)', () => {
+  it('refuses a .json before any request, leaving the dropzone empty', async () => {
+    const calls = backend({});
+    render(<UploadPage />);
+    const json = new File(['{"a": 1}'], 'data.json', { type: 'application/json' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [json] } });
+    // react-dropzone reads the chosen files asynchronously; give an accepted file time to land.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(screen.queryByText('data.json')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('upload-button')).not.toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+
+  it('says CSV and Excel, and offers no format or connector it cannot read', () => {
+    render(<UploadPage />);
+    expect(screen.getByText(/Supports CSV and Excel \(XLS, XLSX\) files up to 100MB/)).toBeInTheDocument();
+    expect(screen.getByText(/Drag a \.csv, \.xls, or \.xlsx file/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/json|txt|connect database/i);
   });
 });

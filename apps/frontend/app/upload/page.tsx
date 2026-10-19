@@ -27,7 +27,7 @@ export default function UploadPage() {
       <div className="bg-card rounded-lg shadow-md p-8">
         <h1 className="text-3xl font-bold mb-2 text-center">Upload Your Data</h1>
         <p className="text-muted-foreground text-center mb-8">
-          Start by uploading a CSV, Excel, or JSON file containing your data
+          Start by uploading a CSV or Excel file containing your data
         </p>
 
         <UploadSuccess show={flow.showSuccessMessage} fileId={flow.uploadedFileId} onNext={flow.handleNextStep} />
