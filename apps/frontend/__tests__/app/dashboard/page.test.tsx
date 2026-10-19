@@ -652,6 +652,25 @@ describe('DashboardPage', () => {
 
       expect(mockPush).toHaveBeenCalledWith('/explore/test-dataset-123');
     });
+
+    it('opens a stage whose page reads the dataset from the workflow at its plain route (#1094)', async () => {
+      mockWorkflowContext.state = createMockWorkflowState({
+        datasetId: 'test-dataset-123',
+        completedStages: new Set([WorkflowStage.DATA_LOADING, WorkflowStage.DATA_PROFILING]),
+        currentStage: WorkflowStage.DATA_PREPARATION,
+      });
+      mockCanAccessStage.mockReturnValue(true);
+      mockFetch.mockImplementation(api());
+
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByRole('button', { name: /^Data Preparation/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^Model Training/i }));
+
+      expect(mockPush).toHaveBeenCalledWith('/prepare');
+      expect(mockPush).toHaveBeenCalledWith('/model');
+      expect(mockPush).not.toHaveBeenCalledWith('/model/test-dataset-123');
+    });
   });
 
   describe('Quick Action Button States', () => {

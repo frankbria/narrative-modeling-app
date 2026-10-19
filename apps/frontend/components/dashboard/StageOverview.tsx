@@ -4,6 +4,7 @@ import React, { type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, type StageConfig } from '@/lib/types/workflow';
+import { buildStageUrl } from '@/lib/utils/stageValidation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -65,12 +66,6 @@ function toneOf(completed: boolean, current: boolean): Tone {
   if (completed) return 'done';
   if (current) return 'current';
   return 'pending';
-}
-
-// Stages past the upload carry the dataset they work on in the URL.
-function stageHref(route: string, datasetId: string | undefined): string {
-  if (datasetId && route !== '/upload') return `${route}/${datasetId}`;
-  return route;
 }
 
 export function QuickActions(props: QuickActionsProps) {
@@ -183,7 +178,7 @@ function StageCard(props: StageCardProps) {
 export function StageCards() {
   const router = useRouter();
   const { state, canAccessStage } = useWorkflow();
-  const open = (stage: StageConfig) => router.push(stageHref(stage.route, state.datasetId));
+  const open = (stage: StageConfig) => router.push(buildStageUrl(stage.id, state.datasetId));
   const card = (stage: StageConfig) => (
     <StageCard
       key={stage.id}
