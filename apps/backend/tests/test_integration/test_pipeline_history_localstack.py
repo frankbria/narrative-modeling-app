@@ -120,7 +120,7 @@ async def test_undo_stops_at_an_edit_the_history_does_not_list(client, real_s3_e
     )
     assert jump.status_code == 400 and "not in this history" in jump.text, jump.text
     current = await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)
-    assert current.s3_url == edited, "the bulk fill must still be the dataset's current file"
+    assert current.s3_url == edited, "the outside edit must still be the dataset's current file"
 
     # A step recorded after the edit can be undone, back to the edit and no further.
     again = await client.post(

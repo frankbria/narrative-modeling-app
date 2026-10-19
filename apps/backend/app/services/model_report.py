@@ -27,7 +27,7 @@ A model trained before #801 has none of these, and says so.
 What is still deliberately NOT claimed:
 
 * **the preprocessing actually applied** — no complete ordered list exists to
-  record. `pipeline/apply`, bulk transformations and data-issue fixes move a dataset
+  record. `pipeline/apply` and data-issue fixes move a dataset
   without writing a history step (#851), so a list taken from the history would be
   incomplete and stated as fact. The dataset version pins the content that was
   trained on; the steps that produced it wait on #851.

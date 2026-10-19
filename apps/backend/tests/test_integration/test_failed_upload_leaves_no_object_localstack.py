@@ -198,27 +198,6 @@ async def test_a_transformation_that_works_keeps_its_file(client, s3_client, rea
     assert (await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)).s3_url.endswith(kept.pop())
 
 
-async def test_a_bulk_job_that_fails_after_the_put_leaves_no_object(client, s3_client, real_s3_env):
-    import asyncio
-
-    dataset_id, _ = await _dataset(client)
-    base = f"{T}/datasets/{dataset_id}"
-
-    with _the_database_goes_away(STEP):
-        job = await client.post(f"{base}/bulk-apply", json={
-            "selected_columns": ["score"], "transformation_type": "fill_missing",
-            "global_parameters": {"method": "mean"}})
-        assert job.status_code == 200, job.text
-        for _ in range(200):
-            status = (await client.get(f"{base}/bulk-jobs/{job.json()['job_id']}")).json()["status"]
-            if status not in ("pending", "running"):
-                break
-            await asyncio.sleep(0.05)
-
-    assert status == "failed"
-    assert _transformed(s3_client, real_s3_env) == set()
-
-
 async def test_a_move_that_fails_records_no_step(client, s3_client, real_s3_env):
     """#1060: the steps used to be recorded before the move, so a failed move left a
     history naming a file the dataset was never on, and that file was kept as owned."""

@@ -1,4 +1,4 @@
-import { sanitizeForDisplay, validateDatasetId } from '@/lib/utils/sanitize'
+import { sanitizeForDisplay } from '@/lib/utils/sanitize'
 
 describe('sanitizeForDisplay', () => {
   it.each([
@@ -35,18 +35,5 @@ describe('sanitizeForDisplay', () => {
   it('cuts to maxLength and marks the cut', () => {
     expect(sanitizeForDisplay('abcdef', 3)).toBe('abc...')
     expect(sanitizeForDisplay('abc', 3)).toBe('abc')
-  })
-})
-
-describe('validateDatasetId', () => {
-  it.each([
-    ['abc-123_X', 'abc-123_X'],
-    ['', null],
-    ['has space', null],
-    ['../etc', null],
-    ['a'.repeat(101), null],
-    ['a'.repeat(100), 'a'.repeat(100)],
-  ])('%j gives %j', (input, expected) => {
-    expect(validateDatasetId(input)).toBe(expected)
   })
 })

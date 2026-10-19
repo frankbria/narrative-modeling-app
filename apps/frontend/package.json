@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --max-warnings 88",
+    "lint": "eslint . --max-warnings 87",
     "type-check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -64,7 +64,6 @@
     "react-dom": "^19.3.0",
     "react-dropzone": "^19.3.0",
     "react-markdown": "^10.1.0",
-    "react-window": "2.3.3",
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.7.0"
   },

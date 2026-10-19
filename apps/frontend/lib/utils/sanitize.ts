@@ -41,30 +41,3 @@ export function sanitizeForDisplay(value: unknown, maxLength: number = 1000): st
 
   return stringValue;
 }
-
-/**
- * Validate and sanitize a dataset ID
- * Only allows alphanumeric characters, hyphens, and underscores
- *
- * @param datasetId - The dataset ID to validate
- * @returns Validated dataset ID or null if invalid
- */
-export function validateDatasetId(datasetId: string): string | null {
-  if (!datasetId || typeof datasetId !== 'string') {
-    return null;
-  }
-
-  // Only allow alphanumeric, hyphens, and underscores
-  const validPattern = /^[a-zA-Z0-9_-]+$/;
-
-  if (!validPattern.test(datasetId)) {
-    return null;
-  }
-
-  // Limit length to prevent abuse
-  if (datasetId.length > 100) {
-    return null;
-  }
-
-  return datasetId;
-}

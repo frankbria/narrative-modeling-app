@@ -26,7 +26,6 @@ from beanie import Document, PydanticObjectId
 
 from app.models.ai_feedback import AIRecommendationFeedback
 from app.models.analytics_result import AnalyticsResult
-from app.models.bulk_transformation import BulkTransformationJob
 from app.models.column_stats import ColumnStats
 from app.models.dataset import DatasetMetadata
 from app.models.erasure_audit import ErasureAuditLog
@@ -57,17 +56,18 @@ _STRING_KEYED_MODELS = [
     DatasetVersion,
     TransformationLineage,
     WorkflowState,
-    BulkTransformationJob,
     ModelConfig,
     TrainingJob,
     AIRecommendationFeedback,
 ]
 
 # Collections no model maps to any more: the features that wrote them were removed
-# (data issues #635, feature store #738, feature definitions #1103). Raw names, so rows written before the
-# removal are still erased with their owner.
-_RETIRED_DATASET_KEYED = ("data_issues", "feature_definitions")
-_RETIRED_USER_KEYED = ("data_issues", "feature_definitions", "feature_store", "feature_collections")
+# (data issues #635, feature store #738, feature definitions #1103, bulk transformation #1112).
+# Raw names, so rows written before the removal are still erased with their owner.
+_RETIRED_DATASET_KEYED = ("data_issues", "feature_definitions", "bulk_transformation_jobs")
+_RETIRED_USER_KEYED = (
+    "data_issues", "feature_definitions", "feature_store", "feature_collections", "bulk_transformation_jobs",
+)
 # Feature-store rows other tenants were granted access to.
 _RETIRED_ACL = ("feature_store", "feature_collections")
 

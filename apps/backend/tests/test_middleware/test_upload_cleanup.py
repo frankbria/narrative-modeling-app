@@ -12,7 +12,6 @@ from httpx import ASGITransport, AsyncClient
 
 from app.middleware import upload_cleanup
 from app.middleware.upload_cleanup import UnownedUploadCleanupMiddleware
-from app.models.bulk_transformation import BulkTransformationJob
 from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
@@ -140,12 +139,11 @@ async def test_the_metadata_twin_alone_is_enough_to_keep_it(setup_database, dele
     deleted.assert_not_awaited()
 
 
-@pytest.mark.parametrize("model, field", [
-    (TransformationConfig, "current_file_path"),  # written before the dataset moves
-    (BulkTransformationJob, "output_file_path"),
-])
-async def test_a_transformation_record_naming_the_object_keeps_it(setup_database, deleted, model, field):
-    await model.get_motor_collection().insert_one({"user_id": "tenant-735", field: URL})
+async def test_a_transformation_record_naming_the_object_keeps_it(setup_database, deleted):
+    # `current_file_path` is written before the dataset moves.
+    await TransformationConfig.get_motor_collection().insert_one(
+        {"user_id": "tenant-735", "current_file_path": URL}
+    )
 
     assert await _post("/fails-after-the-put") == 500
 
@@ -321,17 +319,3 @@ async def test_outside_a_request_there_is_nothing_to_discard(deleted):
     await discard_unowned_uploads()
 
     deleted.assert_not_awaited()
-
-
-async def test_a_background_job_discards_what_it_recorded_itself(setup_database, deleted):
-    """A bulk job runs after its request has answered, so it keeps its own list."""
-    from app.middleware.upload_cleanup import discard_unowned_uploads
-    from app.utils.s3 import record_request_uploads
-
-    uploads = record_request_uploads()
-    put(b"rows", KEY)
-
-    await discard_unowned_uploads(uploads)
-
-    deleted.assert_awaited_once_with(KEY)
-
