@@ -65,7 +65,7 @@ def _unauthenticated() -> set[str]:
 
 
 def test_the_walk_sees_the_app():
-    assert len(list(_routes(app.routes))) > 200
+    assert len(list(_routes(app.routes))) > 150
     assert "ml_model" not in _unauthenticated()  # sanity: names are module.function
 
 

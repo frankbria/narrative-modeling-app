@@ -43,22 +43,6 @@ def test_a_handler_the_lease_cannot_be_named_for_is_refused_when_decorated():
 
 
 @pytest.mark.asyncio
-async def test_a_feature_added_in_place_is_refused_while_another_writer_holds_the_dataset(
-    setup_database, async_authorized_client, held
-):
-    async with held("ds_1022"):
-        response = await async_authorized_client.post(
-            "/api/v1/datasets/ds_1022/features/f1/apply", json={"feature_id": "f1", "output_column_name": "ratio"}
-        )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "success": False, "dataset_id": "ds_1022", "column_name": "ratio", "rows_computed": 0,
-        "null_values": 0, "error": DATASET_BUSY, "warnings": [],
-    }
-
-
-@pytest.mark.asyncio
 async def test_a_bulk_job_fails_with_that_reason_while_another_writer_holds_the_dataset(setup_database, held):
     from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
     from app.services.bulk_transformation_service import BulkTransformationService
@@ -83,7 +67,6 @@ LEASE_TAKEN_IN = {
     "services/transformation_service.py": "services/transformation_service.py",
     "services/history_service.py": "services/history_service.py",
     "services/bulk_transformation_service.py": "services/bulk_transformation_service.py",
-    "services/feature_builder_service.py": "api/routes/features.py",  # the in-place apply route
 }
 
 

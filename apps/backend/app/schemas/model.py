@@ -10,33 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.models.model import ProblemType
-
 # Request Schemas
-
-
-class ModelTrainRequest(BaseModel):
-    """Request schema for model training."""
-
-    dataset_id: str = Field(..., description="Dataset to train on")
-    name: str = Field(..., description="Human-readable model name")
-    description: str | None = Field(None, description="Model description")
-    problem_type: ProblemType = Field(..., description="ML problem type")
-    algorithm: str = Field(..., description="Algorithm to use")
-    target_column: str = Field(..., description="Target column name")
-    feature_columns: list[str] = Field(..., description="Feature column names")
-
-    # Training configuration
-    train_test_split: float = Field(default=0.8, gt=0.0, lt=1.0)
-    cv_folds: int = Field(default=5, ge=2)
-    validation_strategy: str = Field(default="k-fold")
-
-    # Hyperparameters (optional)
-    hyperparameters: dict[str, Any] | None = None
-
-    # Advanced options
-    early_stopping: bool = Field(default=False)
-    optimization_metric: str = Field(default="accuracy")
 
 
 class ModelUpdateRequest(BaseModel):
@@ -52,14 +26,6 @@ class ModelDeployRequest(BaseModel):
     """Request schema for deploying a model."""
 
     endpoint: str | None = Field(None, description="Deployment endpoint URL")
-
-
-class ModelPredictionRequest(BaseModel):
-    """Request schema for making predictions."""
-
-    input_data: list[dict[str, Any]] = Field(
-        ..., description="Input data for prediction"
-    )
 
 
 # Response Schemas
@@ -196,16 +162,6 @@ class ModelListResponse(BaseModel):
     total: int = Field(..., ge=0, description="Total number of models")
 
 
-class ModelTrainResponse(BaseModel):
-    """Response schema for model training operation."""
-
-    model_id: str = Field(..., description="Unique model identifier")
-    status: str = Field(..., description="Training status")
-    message: str = Field(..., description="Status message")
-    training_time: float = Field(..., description="Training duration in seconds")
-    performance_metrics: PerformanceMetricsResponse
-
-
 class ModelDeployResponse(BaseModel):
     """Response schema for model deployment operation."""
 
@@ -216,41 +172,9 @@ class ModelDeployResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 
-class ModelPredictionResponse(BaseModel):
-    """Response schema for model predictions."""
-
-    model_id: str = Field(..., description="Model used for prediction")
-    predictions: list[Any] = Field(..., description="Prediction results")
-    prediction_time_ms: float = Field(
-        ..., description="Prediction time in milliseconds"
-    )
-
-
 # Confidence & explainability schemas (issue #83). All fields on the
 # prediction responses that carry these are optional, so older clients and
 # pre-#83 models keep working unchanged.
-
-
-class PredictionConfidence(BaseModel):
-    """Confidence metadata for a single prediction."""
-
-    confidence_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Confidence in [0, 1] (max class probability)"
-    )
-    is_calibrated: bool = Field(
-        ..., description="Whether the score comes from a calibrated model"
-    )
-    calibration_method: str | None = Field(
-        None, description="Calibration method used ('sigmoid' or 'isotonic')"
-    )
-    is_low_confidence: bool = Field(
-        ...,
-        description="True when confidence is strictly below the threshold "
-        "(a value equal to the threshold is NOT flagged)",
-    )
-    confidence_threshold: float = Field(
-        ..., description="Threshold used to flag low confidence (strict less-than)"
-    )
 
 
 class FeatureContribution(BaseModel):
@@ -280,35 +204,3 @@ class PredictionExplanation(BaseModel):
         "tree_importance, or stored_importance",
     )
 
-
-class ModelDeleteResponse(BaseModel):
-    """Response schema for model delete endpoint."""
-
-    status: str = Field(..., description="Delete status")
-    model_id: str = Field(..., description="Deleted model ID")
-    message: str = Field(..., description="Success message")
-
-
-class ModelPerformanceSummaryResponse(BaseModel):
-    """Response schema for model performance summary."""
-
-    model_id: str
-    cv_score: float
-    test_score: float
-    problem_type: str
-
-    # Problem-specific metrics
-    classification_metrics: dict[str, float] | None = None
-    regression_metrics: dict[str, float] | None = None
-
-    # Feature importance
-    top_features: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class ModelStatusUpdateResponse(BaseModel):
-    """Response schema for model status update."""
-
-    model_id: str
-    status: str
-    updated_at: datetime
-    message: str

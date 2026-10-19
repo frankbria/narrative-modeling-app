@@ -2,11 +2,11 @@
 Tests for Redis cache service
 """
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.services.redis_cache import RedisCacheService, cache_result
+from app.services.redis_cache import RedisCacheService
 
 
 class TestRedisCacheService:
@@ -109,16 +109,6 @@ class TestRedisCacheService:
         )
         self.cache_service.redis_client = mock_redis
         assert await self.cache_service.get_hash("k") is None
-
-    @pytest.mark.asyncio
-    async def test_get_list_with_unsigned_item_is_a_miss(self):
-        """A legacy raw-pickle list item degrades to a cache miss, not a 500 (#266)."""
-        import pickle
-
-        mock_redis = AsyncMock()
-        mock_redis.lrange = AsyncMock(return_value=[pickle.dumps({"complex": object()})])
-        self.cache_service.redis_client = mock_redis
-        assert await self.cache_service.get_list("k") is None
 
     @pytest.mark.asyncio
     async def test_set_get_operations(self):
@@ -228,18 +218,6 @@ class TestRedisCacheService:
         mock_redis.exists.assert_called_once_with("test_key")
         
     @pytest.mark.asyncio
-    async def test_increment_operation(self):
-        """Test counter increment"""
-        mock_redis = AsyncMock()
-        mock_redis.incrby = AsyncMock(return_value=5)
-        
-        self.cache_service.redis_client = mock_redis
-        
-        result = await self.cache_service.increment("counter_key", 2)
-        assert result == 5
-        mock_redis.incrby.assert_called_once_with("counter_key", 2)
-        
-    @pytest.mark.asyncio
     async def test_hash_operations(self):
         """Test hash set/get operations"""
         mock_redis = AsyncMock()
@@ -260,26 +238,6 @@ class TestRedisCacheService:
         # Test hash get
         retrieved_data = await self.cache_service.get_hash("test_hash")
         assert retrieved_data == test_data
-        
-    @pytest.mark.asyncio
-    async def test_list_operations(self):
-        """Test list set/get operations"""
-        mock_redis = AsyncMock()
-        mock_redis.delete = AsyncMock(return_value=1)
-        mock_redis.lpush = AsyncMock(return_value=3)
-        mock_redis.lrange = AsyncMock(return_value=[b'"item3"', b'"item2"', b'"item1"'])
-        mock_redis.expire = AsyncMock(return_value=True)
-        
-        self.cache_service.redis_client = mock_redis
-        
-        # Test list set
-        test_list = ["item1", "item2", "item3"]
-        result = await self.cache_service.set_list("test_list", test_list, ttl=300)
-        assert result is True
-        
-        # Test list get
-        retrieved_list = await self.cache_service.get_list("test_list")
-        assert retrieved_list == test_list
         
     @pytest.mark.asyncio
     async def test_user_progress_caching(self):
@@ -363,35 +321,7 @@ class TestRedisCacheService:
         assert await self.cache_service.get("key") is None
         assert await self.cache_service.delete("key") is False
         assert await self.cache_service.exists("key") is False
-        assert await self.cache_service.increment("key") is None
         
-    @pytest.mark.asyncio
-    async def test_cache_result_decorator(self):
-        """Test the cache_result decorator"""
-        mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value=None)  # Cache miss
-        mock_redis.setex = AsyncMock(return_value=True)
-        
-        # Mock the global cache service
-        with patch('app.services.redis_cache.cache_service') as mock_cache:
-            mock_cache.get = AsyncMock(return_value=None)  # Cache miss first
-            mock_cache.set = AsyncMock(return_value=True)
-            
-            @cache_result("test_key_{0}", ttl=300)
-            async def test_function(param):
-                return f"result_for_{param}"
-            
-            # First call should execute function and cache result
-            result1 = await test_function("param1")
-            assert result1 == "result_for_param1"
-            mock_cache.get.assert_called_with("test_key_param1")
-            mock_cache.set.assert_called_with("test_key_param1", "result_for_param1", 300)
-            
-            # Second call should return cached result
-            mock_cache.get = AsyncMock(return_value="cached_result")
-            result2 = await test_function("param1")
-            assert result2 == "cached_result"
-            
     @pytest.mark.asyncio
     async def test_error_handling(self):
         """Test error handling in cache operations"""

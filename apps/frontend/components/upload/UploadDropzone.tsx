@@ -3,13 +3,11 @@ import { useDropzone } from 'react-dropzone';
 import { FileText, HardDrive, Upload } from 'lucide-react';
 import { formatFileSize } from './uploadFlow';
 
-/** The file types the dropzone accepts (`__tests__/lib/reactDropzoneAccept.test.tsx` holds a copy). */
-const ACCEPT = {
+/** The formats the upload routes read (`_READERS`): CSV and Excel, nothing else (#1109). */
+export const ACCEPT = {
   'text/csv': ['.csv'],
-  'text/plain': ['.txt'],
   'application/vnd.ms-excel': ['.xls'],
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-  'application/json': ['.json']
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
 };
 
 const DRAG_ACTIVE = 'border-blue-500 bg-blue-50 dark:bg-blue-950/40';
@@ -40,7 +38,7 @@ function ChosenFile(props: { file: File; isLargeFile: boolean }) {
 
 function DropPrompt(props: { isDragActive: boolean }) {
   const { isDragActive } = props;
-  const prompt = isDragActive ? 'Drop it here...' : 'Drag a .csv, .txt, .xlsx, or .json file or click to browse';
+  const prompt = isDragActive ? 'Drop it here...' : 'Drag a .csv, .xls, or .xlsx file or click to browse';
   return (
     <div className="flex flex-col items-center space-y-2">
       <Upload className="w-12 h-12 text-gray-400" />
@@ -48,7 +46,7 @@ function DropPrompt(props: { isDragActive: boolean }) {
         {prompt}
       </p>
       <p className="text-sm text-muted-foreground">
-        Supports CSV, Excel (XLS, XLSX), TXT, and JSON files up to 100MB
+        Supports CSV and Excel (XLS, XLSX) files up to 100MB
       </p>
     </div>
   );
