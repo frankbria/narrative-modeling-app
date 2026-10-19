@@ -361,6 +361,10 @@ class TestEveryUploadEnforcesTheStorageCeiling:
             # The loader's upload step (split out of load_sample_dataset in #808).
             "app.services.onboarding_service", "_upload_sample",
         ),
+        # Split out of the handler in #1062.
+        "/api/v1/upload/chunked/{session_id}/complete": (
+            "app.api.routes.secure_upload", "_admit_assembled",
+        ),
     }
 
     def test_each_metered_upload_calls_the_check(self):

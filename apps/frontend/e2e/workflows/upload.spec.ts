@@ -6,6 +6,7 @@
  * - Metadata storage verification
  * - PII detection and the masked copy
  * - An unparseable CSV is refused
+ * - A CSV with a header and no rows is refused, with the backend's sentence (#1062)
  *
  * Coverage Target: >85%
  */
@@ -250,6 +251,19 @@ test.describe('Upload Security and Validation', () => {
     await page.getByTestId('upload-button').click();
 
     await expect(page.getByTestId('upload-error')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('upload-status')).toBeHidden();
+  });
+
+  test('should refuse a CSV with a header and no rows, saying so', async ({ authenticatedPage: page }) => {
+    await page.goto('/upload');
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'header-only.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from('name,age\n'),
+    });
+    await page.getByTestId('upload-button').click();
+
+    await expect(page.getByTestId('upload-error-message')).toContainText('no data rows', { timeout: 30000 });
     await expect(page.getByTestId('upload-status')).toBeHidden();
   });
 });
