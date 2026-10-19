@@ -349,6 +349,15 @@ describe('TransformationConfigDialog multi-select', () => {
     await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ type: 't', parameters: { cols: ['age'] } }));
   });
 
+  it('links an invalid multi-select to its error text', async () => {
+    renderWith({ cols: { type: 'array', items: { type: 'string' } } }, { cols: [] });
+    await submit();
+    await screen.findByText('Cols is required');
+    const trigger = screen.getByRole('button', { name: /select columns/i });
+    expect(trigger).toHaveAttribute('aria-invalid', 'true');
+    expect(trigger).toHaveAttribute('aria-describedby', 'cols-error');
+  });
+
   it('says so when the search matches no column', async () => {
     const user = userEvent.setup();
     renderWith(schema, {});

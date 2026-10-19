@@ -455,14 +455,17 @@ interface MultiSelectProps {
   'aria-describedby'?: string;
 }
 
-function MultiSelect({
-  id,
-  options,
-  value,
-  onChange,
-  placeholder = 'Select items...',
-  error,
-}: MultiSelectProps) {
+function MultiSelect(props: MultiSelectProps) {
+  const {
+    id,
+    options,
+    value,
+    onChange,
+    placeholder = 'Select items...',
+    error,
+    'aria-invalid': ariaInvalid,
+    'aria-describedby': ariaDescribedBy,
+  } = props;
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -504,6 +507,8 @@ function MultiSelect({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={`${id}-listbox`}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
       >
         <div className="flex items-center justify-between">
           <span className={value.length > 0 ? 'text-foreground' : 'text-muted-foreground'}>
