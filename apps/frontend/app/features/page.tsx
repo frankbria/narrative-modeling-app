@@ -193,6 +193,11 @@ interface Edited {
   names: string[];
 }
 
+interface EditedSwitch {
+  datasetId: string | undefined;
+  on: boolean;
+}
+
 interface Selection {
   selected: string[];
   toggle(column: string): void;
@@ -208,14 +213,16 @@ function useSelection(
   recordedInteractions: boolean,
 ): Selection {
   const [edited, setEdited] = useState<Edited | null>(null);
-  const [interactionsEdit, setInteractions] = useState<boolean | null>(null);
+  const [switchEdit, setSwitchEdit] = useState<EditedSwitch | null>(null);
   const mine = edited !== null && edited.datasetId === datasetId;
   const current = mine ? edited.names : startingSelection(columns, recorded);
   const toggle = (column: string) => {
     const names = current.includes(column) ? current.filter((name) => name !== column) : [...current, column];
     setEdited({ datasetId, names });
   };
-  const interactions = interactionsEdit ?? recordedInteractions;
+  const switchIsMine = switchEdit !== null && switchEdit.datasetId === datasetId;
+  const interactions = switchIsMine ? switchEdit.on : recordedInteractions;
+  const setInteractions = (on: boolean) => setSwitchEdit({ datasetId, on });
   return { selected: columns.filter((column) => current.includes(column)), toggle, interactions, setInteractions };
 }
 

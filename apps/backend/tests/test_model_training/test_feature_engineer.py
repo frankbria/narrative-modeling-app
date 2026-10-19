@@ -1432,5 +1432,7 @@ class TestInteractionFeaturesSwitch:
 
         result = await fe.fit_transform(df.drop(columns="churned"), df["churned"], "binary_classification")
 
-        built = result.metadata["interaction_features"]
-        assert built == [name for name in built if name in result.feature_names]
+        built = fe.transformers["interaction_features"]
+        reported = result.metadata["interaction_features"]
+        assert built and set(built) - set(result.feature_names), "the selector should drop some"
+        assert reported == [name for name in built if name in result.feature_names]

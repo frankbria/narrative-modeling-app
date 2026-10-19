@@ -185,6 +185,19 @@ describe('Feature Engineering page', () => {
       expect(screen.getByRole('switch', { name: SWITCH })).not.toBeChecked();
       expect(screen.getByTestId('stage-navigation')).toHaveAttribute('data-ready', 'false');
     });
+
+    it('starts from what was recorded when the dataset changes, not from the last dataset’s flip', async () => {
+      const { rerender } = render(<FeaturesPage />);
+      await loaded();
+      fireEvent.click(screen.getByRole('switch', { name: SWITCH }));
+      expect(screen.getByRole('switch', { name: SWITCH })).toBeChecked();
+
+      mockWorkflow.state.datasetId = 'ds-2';
+      rerender(<FeaturesPage />);
+      await loaded();
+
+      expect(screen.getByRole('switch', { name: SWITCH })).not.toBeChecked();
+    });
   });
 
   it('says so when the columns cannot be read, and reads them again on retry', async () => {
