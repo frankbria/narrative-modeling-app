@@ -693,4 +693,5 @@ class ModelStorageService:
         if deployed is not None:
             query["is_deployed"] = deployed
 
-        return await MLModel.find(query).sort("-created_at").limit(limit).to_list()
+        # _id breaks created_at ties, so a limit cuts at the same row on every read.
+        return await MLModel.find(query).sort("-created_at", "-_id").limit(limit).to_list()
