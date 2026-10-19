@@ -1,7 +1,7 @@
 'use client'
 
 import { Activity, AlertCircle, CheckCircle2, Clock, Server, WifiOff } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
@@ -44,23 +44,53 @@ interface HealthMonitorProps {
   refreshInterval?: number
 }
 
-export function HealthMonitor({
-  backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
-  refreshInterval = 30000,
-}: HealthMonitorProps) {
+type HealthState = 'loading' | 'unreachable' | 'erroring' | 'alive'
+
+const STATE_ICONS: Record<HealthState, ReactNode> = {
+  loading: <Activity className="h-5 w-5 animate-pulse" data-testid="health-icon-loading" />,
+  unreachable: <WifiOff className="h-5 w-5 text-red-500" data-testid="health-icon-unreachable" />,
+  erroring: <AlertCircle className="h-5 w-5 text-yellow-500" data-testid="health-icon-erroring" />,
+  alive: <CheckCircle2 className="h-5 w-5 text-green-500" data-testid="health-icon-alive" />,
+}
+
+const STATE_LABELS: Record<HealthState, string> = {
+  loading: 'Checking…',
+  unreachable: 'Cannot reach the backend',
+  erroring: 'Backend reachable but reporting a problem',
+  alive: 'Backend reachable',
+}
+
+async function fetchHealth(backendUrl: string): Promise<HealthResult> {
+  // A thrown fetch (network/CORS) becomes useAsyncData's `error` → unreachable.
+  // A non-2xx is a *reached* backend answering unwell → `liveness: null`, no throw.
+  // NEXT_PUBLIC_API_URL already carries /api/v1, which nginx proxies to the
+  // backend; health is mounted there too (#479), so append only the path.
+  const response = await fetch(`${backendUrl}/health`)
+  if (!response.ok) {
+    return { liveness: null, lastUpdate: new Date() }
+  }
+  const liveness: Liveness = await response.json()
+  return { liveness, lastUpdate: new Date() }
+}
+
+/** Three states: unreachable (fetch threw), reachable-but-erroring (non-2xx, no liveness body), and alive. */
+function healthState(loading: boolean, error: string | null | undefined, liveness: Liveness | null | undefined): HealthState {
+  if (loading) return 'loading'
+  if (error) return 'unreachable'
+  return liveness ? 'alive' : 'erroring'
+}
+
+function updateTime(lastUpdate: Date | undefined): string {
+  return lastUpdate ? lastUpdate.toLocaleTimeString() : '—'
+}
+
+export function HealthMonitor(props: HealthMonitorProps) {
+  const {
+    backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
+    refreshInterval = 30000,
+  } = props
   const { data, loading, error, reload } = useAsyncData(
-    async (): Promise<HealthResult> => {
-      // A thrown fetch (network/CORS) becomes useAsyncData's `error` → unreachable.
-      // A non-2xx is a *reached* backend answering unwell → reachable:false but no throw.
-      // NEXT_PUBLIC_API_URL already carries /api/v1, which nginx proxies to the
-      // backend; health is mounted there too (#479), so append only the path.
-      const response = await fetch(`${backendUrl}/health`)
-      if (!response.ok) {
-        return { liveness: null, lastUpdate: new Date() }
-      }
-      const liveness: Liveness = await response.json()
-      return { liveness, lastUpdate: new Date() }
-    },
+    () => fetchHealth(backendUrl),
     [backendUrl],
     { errorMessage: 'Cannot reach the backend.' },
   )
@@ -70,31 +100,10 @@ export function HealthMonitor({
     return () => clearInterval(interval)
   }, [reload, refreshInterval])
 
-  const liveness = data?.liveness ?? null
-  const lastUpdate = data?.lastUpdate ?? null
-  // Three states: unreachable (fetch threw), reachable-but-erroring (non-2xx,
-  // no liveness body), and alive.
-  const state: 'loading' | 'unreachable' | 'erroring' | 'alive' = loading
-    ? 'loading'
-    : error
-      ? 'unreachable'
-      : liveness
-        ? 'alive'
-        : 'erroring'
-
-  const icon = {
-    loading: <Activity className="h-5 w-5 animate-pulse" data-testid="health-icon-loading" />,
-    unreachable: <WifiOff className="h-5 w-5 text-red-500" data-testid="health-icon-unreachable" />,
-    erroring: <AlertCircle className="h-5 w-5 text-yellow-500" data-testid="health-icon-erroring" />,
-    alive: <CheckCircle2 className="h-5 w-5 text-green-500" data-testid="health-icon-alive" />,
-  }[state]
-
-  const label = {
-    loading: 'Checking…',
-    unreachable: 'Cannot reach the backend',
-    erroring: 'Backend reachable but reporting a problem',
-    alive: 'Backend reachable',
-  }[state]
+  const liveness = data?.liveness
+  const state = healthState(loading, error, liveness)
+  const icon = STATE_ICONS[state]
+  const label = STATE_LABELS[state]
 
   return (
     <div className="space-y-4">
@@ -122,7 +131,7 @@ export function HealthMonitor({
                 <p className="text-sm text-muted-foreground">Last Update</p>
                 <p className="text-sm font-medium flex items-center justify-end gap-1">
                   <Clock className="h-3 w-3" />
-                  {lastUpdate ? lastUpdate.toLocaleTimeString() : '—'}
+                  {updateTime(data?.lastUpdate)}
                 </p>
               </div>
             </div>

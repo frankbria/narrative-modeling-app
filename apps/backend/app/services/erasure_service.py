@@ -93,6 +93,33 @@ _URL_SCHEMES = ("s3://", "http://", "https://")
 _ERASED_OWNER_TOMBSTONE = "erased-user"
 
 
+def _note_foreign_bucket(
+    manifest: DeletionManifest | None, url: str, bucket: str, bucket_name: str
+) -> None:
+    """Record, when a manifest is given, that ``url`` names a bucket erasure does not delete from."""
+    if manifest is not None:
+        # "s3 delete" prefix on purpose: _delete_parent_if_clean treats S3
+        # failures as non-blocking (Mongo stays the source of truth), and the
+        # URL never changes between runs, so a blocking failure would make the
+        # dataset permanently un-erasable.
+        manifest.failures.append(
+            f"s3 delete skipped {url}: URL names bucket {bucket!r} but "
+            f"erasure runs against {bucket_name!r}"
+        )
+
+
+def _key_from_url(url: str, bucket_name: str, manifest: DeletionManifest | None) -> str | None:
+    """The object key a stored URL points at in ``bucket_name``, or None (see ``_s3_key``)."""
+    try:
+        bucket, key = parse_s3_url(url)
+    except ValueError:
+        return None
+    if bucket is not None and bucket != bucket_name:
+        _note_foreign_bucket(manifest, url, bucket, bucket_name)
+        return None
+    return key.split("#", 1)[0] or None
+
+
 def _s3_key(
     url_or_key: str | None, bucket_name: str, manifest: DeletionManifest | None = None
 ) -> str | None:
@@ -115,28 +142,14 @@ def _s3_key(
     if not url_or_key:
         return None
     if not url_or_key.startswith(_URL_SCHEMES):
-        # Already a key (e.g. file_path): pass it through UNCHANGED. Keys are built
-        # from client filenames in places (datasets.py), so "notes http://x.csv" and
-        # "what?.csv" are legitimate keys — a prefix test keeps the first out of the
-        # URL parser, and no query-string trimming keeps the second whole. Either
-        # mistake makes delete_object miss and the erasure report success anyway.
+        # Already a key (e.g. file_path): pass it through UNCHANGED. New keys are
+        # uuid-based (#464), but rows written before that hold keys built from client
+        # filenames, so "notes http://x.csv" and "what?.csv" are legitimate keys: a
+        # prefix test keeps the first out of the URL parser, and no query-string
+        # trimming keeps the second whole. Either mistake makes delete_object miss
+        # and the erasure report success anyway.
         return url_or_key
-    try:
-        bucket, key = parse_s3_url(url_or_key)
-    except ValueError:
-        return None
-    if bucket is not None and bucket != bucket_name:
-        if manifest is not None:
-            # "s3 delete" prefix on purpose: _delete_parent_if_clean treats S3
-            # failures as non-blocking (Mongo stays the source of truth), and the
-            # URL never changes between runs, so a blocking failure would make the
-            # dataset permanently un-erasable.
-            manifest.failures.append(
-                f"s3 delete skipped {url_or_key}: URL names bucket {bucket!r} but "
-                f"erasure runs against {bucket_name!r}"
-            )
-        return None
-    return key.split("#", 1)[0] or None
+    return _key_from_url(url_or_key, bucket_name, manifest)
 
 
 def _id_of(parent: DatasetMetadata | UserData) -> str:

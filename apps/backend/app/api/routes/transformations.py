@@ -1272,6 +1272,25 @@ async def preview_bulk_transformation(
         )
 
 
+_BULK_APPLY_STATUS: tuple[tuple[type[Exception], int], ...] = (
+    (NotFoundError, 404),
+    (ValidationError, 400),
+    (OperationError, 400),
+    (ValueError, 400),
+)
+
+
+def _bulk_apply_http_error(e: Exception) -> HTTPException:
+    """The HTTP answer for a failed bulk-apply; an unexpected error is logged and not echoed."""
+    if isinstance(e, OperationError) and "Maximum concurrent" in str(e.message):
+        return HTTPException(status_code=429, detail=e.message)  # rate limit exceeded
+    for kind, status_code in _BULK_APPLY_STATUS:
+        if isinstance(e, kind):
+            return HTTPException(status_code=status_code, detail=str(e))
+    logger.error(f"Error creating bulk transformation job: {e}", exc_info=e)
+    return HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.post(
     "/datasets/{dataset_id}/bulk-apply",
     response_model=BulkTransformationJobResponse
@@ -1285,7 +1304,8 @@ async def apply_bulk_transformation(
     """
     Apply a bulk transformation to multiple columns.
 
-    Creates an async job that processes columns in parallel with progress tracking.
+    Creates an async job that transforms the columns one after another, each on the
+    frame the one before left, with progress tracking.
     Returns immediately with job ID for status polling.
 
     Raises:
@@ -1313,20 +1333,8 @@ async def apply_bulk_transformation(
             message=f"Bulk transformation job created with {len(job.selected_columns)} columns"
         )
 
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=e.message) from e
-    except OperationError as e:
-        # Rate limit exceeded returns 429
-        if "Maximum concurrent" in str(e.message):
-            raise HTTPException(status_code=429, detail=e.message) from e
-        raise HTTPException(status_code=400, detail=e.message) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.exception(f"Error creating bulk transformation job: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error") from e
+        raise _bulk_apply_http_error(e) from e
 
 
 @router.get(

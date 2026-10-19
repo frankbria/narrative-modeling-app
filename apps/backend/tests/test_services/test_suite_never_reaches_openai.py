@@ -26,8 +26,6 @@ from app.services.evaluation_explanation_service import (
     EvaluationExplanationService,
     evaluation_explanation_service,
 )
-from app.services.feature_engineering_service import get_openai_client
-from app.utils.ai_issue_analyzer import AIIssueAnalyzer
 
 SERVICES = (
     AIChatService,
@@ -35,7 +33,6 @@ SERVICES = (
     DatasetSummarizationService,
     ErrorAnalysisService,
     EvaluationExplanationService,
-    AIIssueAnalyzer,
 )
 SINGLETONS = (
     ai_chat_service,
@@ -68,7 +65,6 @@ def test_no_service_the_suite_builds_holds_a_client():
         assert service().client is None, service.__name__
     for singleton in SINGLETONS:
         assert singleton.client is None, type(singleton).__name__
-    assert get_openai_client() is None
 
 
 def test_the_startup_summary_client_stays_unset():
