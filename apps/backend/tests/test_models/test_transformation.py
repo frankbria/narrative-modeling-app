@@ -4,7 +4,6 @@ Tests for TransformationConfig model - Unit tests only (no database required).
 Tests cover:
 - TransformationStep validation
 - TransformationPreview model
-- TransformationValidation model
 - TransformationConfig model
 - Helper methods
 - Edge cases and error conditions
@@ -20,7 +19,6 @@ from app.models.transformation import (
     TransformationPreview,
     TransformationStep,
     TransformationType,
-    TransformationValidation,
     get_current_time,
 )
 
@@ -190,55 +188,6 @@ class TestTransformationPreview:
         assert preview.generated_at.tzinfo == UTC
 
 
-class TestTransformationValidation:
-    """Tests for TransformationValidation model."""
-
-    def test_create_validation_valid(self):
-        """Test creating TransformationValidation for valid config."""
-        validation = TransformationValidation(
-            is_valid=True,
-            errors=[],
-            warnings=["Consider data backup"]
-        )
-
-        assert validation.is_valid is True
-        assert validation.errors == []
-        assert len(validation.warnings) == 1
-
-    def test_create_validation_invalid(self):
-        """Test creating TransformationValidation for invalid config."""
-        validation = TransformationValidation(
-            is_valid=False,
-            errors=["Column 'age' not found", "Invalid parameter"],
-            warnings=[]
-        )
-
-        assert validation.is_valid is False
-        assert len(validation.errors) == 2
-
-    def test_validation_with_detailed_checks(self):
-        """Test TransformationValidation with detailed validation checks."""
-        validation = TransformationValidation(
-            is_valid=True,
-            parameter_validation={"step_0": True, "step_1": True},
-            data_type_compatibility={"age": True, "income": False},
-            dependency_validation=True
-        )
-
-        assert validation.parameter_validation["step_0"] is True
-        assert validation.data_type_compatibility["income"] is False
-        assert validation.dependency_validation is True
-
-    def test_validation_auto_timestamp(self):
-        """Test that validated_at auto-generates."""
-        validation = TransformationValidation(
-            is_valid=True
-        )
-
-        assert isinstance(validation.validated_at, datetime)
-        assert validation.validated_at.tzinfo == UTC
-
-
 class TestTransformationConfig:
     """Tests for TransformationConfig model."""
 
@@ -396,77 +345,6 @@ class TestTransformationConfigHelperMethods:
         assert history[1]["type"] == "drop_missing"
         assert history[1]["data_loss_percentage"] == 5.0
 
-    def test_validate_transformations_method(self):
-        """Test validate_transformations() method."""
-        step1 = TransformationStep(
-            transformation_type="encode",
-            column="category",
-            parameters={}
-        )
-        step2 = TransformationStep(
-            transformation_type="scale",
-            column="age",
-            parameters={}
-        )
-
-        config = TransformationConfig.model_construct(
-            user_id="user_123",
-            dataset_id="dataset_456",
-            config_id="config_789",
-            transformation_steps=[step1, step2],
-            total_data_loss=0.0
-        )
-
-        validation = config.validate_transformations()
-
-        assert isinstance(validation, TransformationValidation)
-        assert validation.is_valid is True
-        assert len(validation.errors) == 0
-
-    def test_validate_transformations_with_high_data_loss(self):
-        """Test validation warns about high data loss."""
-        step = TransformationStep(
-            transformation_type="drop_missing",
-            parameters={},
-            data_loss_percentage=60.0
-        )
-
-        config = TransformationConfig.model_construct(
-            user_id="user_123",
-            dataset_id="dataset_456",
-            config_id="config_789",
-            transformation_steps=[step],
-            total_data_loss=60.0
-        )
-
-        validation = config.validate_transformations()
-
-        assert len(validation.warnings) > 0
-        assert any("data loss" in warning.lower() for warning in validation.warnings)
-
-    def test_validate_transformations_detects_errors(self):
-        """Test validation detects invalid steps."""
-        # Create step with validation errors
-        step = TransformationStep(
-            transformation_type="remove_duplicates",
-            parameters={},
-            is_valid=False,
-            validation_errors=["Parameter X is invalid"]
-        )
-
-        config = TransformationConfig.model_construct(
-            user_id="user_123",
-            dataset_id="dataset_456",
-            config_id="config_789",
-            transformation_steps=[step],
-            total_data_loss=0.0
-        )
-
-        validation = config.validate_transformations()
-
-        assert validation.is_valid is False
-        assert len(validation.errors) > 0
-
     def test_clear_transformations_method(self):
         """Test clear_transformations() method."""
         step1 = TransformationStep(
@@ -498,7 +376,6 @@ class TestTransformationConfigHelperMethods:
         assert config.total_data_loss == 0.0
         assert config.is_applied is False
         assert config.applied_at is None
-        assert config.validation_result is None
 
     def test_get_affected_columns_method(self):
         """Test get_affected_columns() method."""
@@ -552,26 +429,6 @@ class TestTransformationConfigHelperMethods:
         assert len(config.last_preview.sample_before) == 1
         assert config.last_preview.estimated_rows_affected == 100
 
-    def test_config_with_validation_result(self):
-        """Test TransformationConfig with validation result."""
-        validation = TransformationValidation(
-            is_valid=True,
-            errors=[],
-            warnings=["Consider data backup"]
-        )
-
-        config = TransformationConfig.model_construct(
-            user_id="user_123",
-            dataset_id="dataset_456",
-            config_id="config_789",
-            validation_result=validation,
-            last_validated_at=get_current_time()
-        )
-
-        assert config.validation_result is not None
-        assert config.validation_result.is_valid is True
-        assert isinstance(config.last_validated_at, datetime)
-
     def test_config_versioning(self):
         """Test versioning fields."""
         config = TransformationConfig.model_construct(
@@ -617,47 +474,3 @@ class TestTransformationConfigEdgeCases:
 
         affected = config.get_affected_columns()
         assert affected == []
-
-    def test_multiple_validations(self):
-        """Test running validate_transformations multiple times."""
-        step = TransformationStep(
-            transformation_type="encode",
-            column="category",
-            parameters={}
-        )
-
-        config = TransformationConfig.model_construct(
-            user_id="user_123",
-            dataset_id="dataset_456",
-            config_id="config_789",
-            transformation_steps=[step],
-            total_data_loss=0.0
-        )
-
-        validation1 = config.validate_transformations()
-        first_validated_at = config.last_validated_at
-
-        import time
-        time.sleep(0.01)
-
-        validation2 = config.validate_transformations()
-        second_validated_at = config.last_validated_at
-
-        assert validation1.is_valid == validation2.is_valid
-        assert second_validated_at > first_validated_at
-
-    def test_cumulative_data_loss_warning(self):
-        """Test that cumulative data loss triggers warning."""
-        config = TransformationConfig.model_construct(
-            user_id="user_123",
-            dataset_id="dataset_456",
-            config_id="config_789",
-            transformation_steps=[],
-            total_data_loss=55.0  # Over 50%
-        )
-
-        validation = config.validate_transformations()
-
-        # Should have warning about total data loss
-        assert any("Total data loss" in warning or "50%" in warning
-                  for warning in validation.warnings)

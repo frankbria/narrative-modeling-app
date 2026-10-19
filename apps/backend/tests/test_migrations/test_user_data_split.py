@@ -191,8 +191,6 @@ class TestMigrationLogic:
             current_file_path=user_data.file_path,
             is_applied=len(transformation_steps) > 0,
             applied_at=user_data.updated_at if transformation_steps else None,
-            validation_result=None,
-            last_validated_at=None,
             last_preview=None,
             total_transformations=len(transformation_steps),
             total_data_loss=0.0,
