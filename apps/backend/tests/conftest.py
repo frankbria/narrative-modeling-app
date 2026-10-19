@@ -36,6 +36,13 @@ os.environ["AWS_ENDPOINT_URL"] = os.environ.get("S3_ENDPOINT_URL") or "http://lo
 os.environ["AWS_ACCESS_KEY_ID"] = ""
 os.environ["AWS_SECRET_ACCESS_KEY"] = ""
 os.environ["AWS_SESSION_TOKEN"] = ""
+# A test run never reaches api.openai.com (#1089). Same mechanism as the AWS pin above: the
+# developer's .env, loaded without override, would otherwise hand every AI service a live
+# key, so route tests would spend real calls and fail on the answer; CI has no .env. With
+# no key each service holds no client and takes its rule-based path. A test that wants a
+# client injects its own (`vars(service)["client"]`); `test_suite_never_reaches_openai.py`
+# guards this.
+os.environ["OPENAI_API_KEY"] = ""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
