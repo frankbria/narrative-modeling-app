@@ -324,7 +324,7 @@ DATASET_BUSY = "Another change to this dataset is still being applied. Try again
 @contextlib.asynccontextmanager
 async def holding_the_dataset(dataset_id: str, user_id: str) -> AsyncIterator[None]:
     """The dataset's apply lease (#853), for every writer that moves it to a new file
-    (#1022): an apply, an undo, redo or jump, a bulk job, a data-issue fix, a feature
+    (#1022): an apply, an undo, redo or jump, a data-issue fix, a feature
     added in place. Held for the whole read-modify-write, so a writer reads the file the
     one before it left. Keyed by `history_key`, so both id spaces take the same lease.
 

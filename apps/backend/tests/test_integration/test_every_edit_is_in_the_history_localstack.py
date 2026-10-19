@@ -1,14 +1,13 @@
-"""#923: a bulk transformation and an added feature column are history steps.
+"""#923: an added feature column is a history step.
 
-They used to move the dataset with no step, which closed the history behind them (#851):
+It used to move the dataset with no step, which closed the history behind them (#851):
 the edit was not listed and could not be undone, and every earlier step became
-unreachable. Each now records a step and a version like an engine transformation, so
+unreachable. It now records a step and a version like an engine transformation, so
 the history lists it and undo restores the dataset to the step before it.
 
 Real routes, real documents, real objects (LocalStack): undo restores a version's own
 object, which only a real bucket holds.
 """
-import asyncio
 import io
 
 import pandas as pd
@@ -68,29 +67,6 @@ async def _undo_restores(client, dataset_id: str, before: pd.DataFrame) -> None:
     history = await _history(client, dataset_id)
     assert history["can_undo"] is True, "the step before the edit is still undoable"
     assert history["can_redo"] is True, "and the edit can be redone"
-
-
-async def test_a_bulk_transformation_is_a_step_and_can_be_undone(client, real_s3_env):
-    dataset_id, _ = await _trimmed_dataset(client)
-    before = await _frame(dataset_id)
-    base = f"{T}/datasets/{dataset_id}"
-
-    job = await client.post(f"{base}/bulk-apply", json={
-        "selected_columns": ["score"], "transformation_type": "fill_missing", "global_parameters": {"method": "mean"}})
-    assert job.status_code == 200, job.text
-    for _ in range(200):
-        status = (await client.get(f"{base}/bulk-jobs/{job.json()['job_id']}")).json()["status"]
-        if status not in ("pending", "running"):
-            break
-        await asyncio.sleep(0.05)
-    assert status == "completed"
-    assert (await _frame(dataset_id))["score"].isna().sum() == 0
-
-    history = await _history(client, dataset_id)
-    assert [h["transformation_type"] for h in history["history"]] == ["trim_whitespace", "fill_missing"]
-    assert history["history"][1]["description"] == "Bulk fill missing on score"
-    assert history["history"][1]["affected_columns"] == ["score"]
-    await _undo_restores(client, dataset_id, before)
 
 
 async def test_a_feature_column_added_in_place_is_a_step_and_can_be_undone(client, real_s3_env):

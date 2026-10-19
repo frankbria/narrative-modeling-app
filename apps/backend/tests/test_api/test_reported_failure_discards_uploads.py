@@ -8,7 +8,6 @@ they answered 200 with `success: false`, and the cleanup that acts on a 4xx or 5
 Real routes and real documents. The S3 put is replaced by one that records what it
 writes exactly as the real one does; the LocalStack suite checks a real bucket.
 """
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pandas as pd
@@ -46,7 +45,6 @@ def written():
 
     with patch("app.services.transformation_engine.data_utils.upload_file_to_s3", put), \
          patch("app.services.transformation_engine.data_utils.get_dataframe_from_s3", side_effect=read), \
-         patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=read), \
          patch("app.services.versioning_service.versioning_service.s3_client"):
         yield keys
 
@@ -172,57 +170,3 @@ class TestFeatureApply:
 
         assert response.status_code == 200 and response.json()["success"] is False, response.text
         deleted.assert_awaited_once_with(key)
-
-
-class TestBulkJob:
-    async def test_a_job_that_fails_after_the_put_deletes_the_file(self, setup_database, written, deleted):
-        from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
-        from app.services.bulk_transformation_service import BulkTransformationService
-
-        upload = await _upload()
-        service = BulkTransformationService()
-
-        with _fails(STEP):
-            job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
-            await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
-
-        stored = await BulkTransformationJob.find_one({"job_id": job.job_id})
-        assert stored.status == BulkJobStatus.FAILED and stored.output_file_path is None
-        assert len(written) == 1 and written[0].startswith(f"transformed/{USER}/")
-        deleted.assert_awaited_once_with(written[0])
-
-    async def test_the_file_is_gone_by_the_time_the_job_says_it_failed(self, setup_database, written, monkeypatch):
-        """A client polls the job's status; "failed" with the file still there is a
-        window in which it looks like nothing cleaned up."""
-        from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
-        from app.services.bulk_transformation_service import BulkTransformationService
-
-        upload = await _upload()
-        service = BulkTransformationService()
-        status_when_deleted: list[BulkJobStatus] = []
-
-        async def delete(_key: str) -> bool:
-            job = await BulkTransformationJob.find_one({"user_id": USER})
-            status_when_deleted.append(job.status)
-            return True
-
-        monkeypatch.setattr(upload_cleanup.s3_service, "delete_file", delete)
-        with _fails(STEP):
-            job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
-            await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
-
-        assert status_when_deleted == [BulkJobStatus.RUNNING]
-
-    async def test_a_job_that_finishes_keeps_its_file(self, setup_database, written, deleted):
-        from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
-        from app.services.bulk_transformation_service import BulkTransformationService
-
-        upload = await _upload()
-        service = BulkTransformationService()
-
-        job = await service.apply_bulk_transformation(USER, str(upload.id), ["age"], "fill_missing", {"method": "mean"})
-        await asyncio.wait_for(service._active_tasks[job.job_id], timeout=10)
-
-        stored = await BulkTransformationJob.find_one({"job_id": job.job_id})
-        assert stored.status == BulkJobStatus.COMPLETED, stored.error_message
-        deleted.assert_not_awaited()

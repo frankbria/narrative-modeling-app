@@ -901,7 +901,7 @@ class TransformationService(BaseService[TransformationConfig]):
         """Record an edit made outside the engine as one history step, and move the
         dataset to its result (#923); the new file's URL.
 
-        A bulk transformation, a data-issue fix and a feature column added in place used
+        A data-issue fix and a feature column added in place used
         to move the dataset with no step, which closed the history behind them (#851).
         Each is now written exactly as an engine step is: a version, a step listed with
         `description`, and a move that keeps the history open, so undo restores the step

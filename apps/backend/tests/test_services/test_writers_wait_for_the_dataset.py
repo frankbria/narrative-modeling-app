@@ -58,23 +58,6 @@ async def test_a_feature_added_in_place_is_refused_while_another_writer_holds_th
     }
 
 
-@pytest.mark.asyncio
-async def test_a_bulk_job_fails_with_that_reason_while_another_writer_holds_the_dataset(setup_database, held):
-    from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
-    from app.services.bulk_transformation_service import BulkTransformationService
-
-    job = BulkTransformationJob(
-        job_id="bulk_1022", user_id=USER, dataset_id="ds_1022", selected_columns=["a"],
-        transformation_type="fill_missing", global_parameters={},
-    )
-    await job.insert()
-    async with held("ds_1022"):
-        await BulkTransformationService()._process_bulk_job(job)
-
-    stored = await BulkTransformationJob.find_one(BulkTransformationJob.job_id == "bulk_1022")
-    assert (stored.status, stored.error_message) == (BulkJobStatus.FAILED, DATASET_BUSY)
-
-
 #: Each module that moves a dataset through `record_new_file`, or through
 #: `TransformationService.record_edit` (an edit recorded as a history step, #923), and the
 #: module whose code takes the dataset's lease around that move. A new call site fails
@@ -82,7 +65,6 @@ async def test_a_bulk_job_fails_with_that_reason_while_another_writer_holds_the_
 LEASE_TAKEN_IN = {
     "services/transformation_service.py": "services/transformation_service.py",
     "services/history_service.py": "services/history_service.py",
-    "services/bulk_transformation_service.py": "services/bulk_transformation_service.py",
     "services/feature_builder_service.py": "api/routes/features.py",  # the in-place apply route
 }
 

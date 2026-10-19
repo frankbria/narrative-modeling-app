@@ -87,85 +87,19 @@ class TestTransformations:
         assert data["success"] is False, data
         _assert_sanitized(r, data["error"])
 
-    @pytest.mark.parametrize("path,body", [
-        ("auto-clean", {}),
-        ("datasets/{id}/bulk-preview", {"selected_columns": ["a"], "transformation_type": "trim_whitespace"}),
-    ])
-    async def test_lookup_failure_hits_the_handlers_own_generic_branch(self, async_authorized_client, setup_database, path, body):
-        """auto-clean and bulk-preview delegate the work (and its failures) to code that
-        already answers success:false; their own generic branch is reached when the
-        dataset lookup itself blows up."""
+    async def test_lookup_failure_hits_the_handlers_own_generic_branch(self, async_authorized_client, setup_database):
+        """auto-clean delegates the work (and its failures) to code that already answers
+        success:false; its own generic branch is reached when the dataset lookup itself
+        blows up."""
         ds = self._dataset()
         with patch("app.models.dataset.DatasetMetadata.find_one", new_callable=AsyncMock, side_effect=SECRET), \
              patch("app.models.user_data.UserData.find_one", new_callable=AsyncMock, side_effect=SECRET):
             r = await async_authorized_client.post(
-                f"{self.BASE}/{path.replace('{id}', ds.dataset_id)}", json={"dataset_id": ds.dataset_id, **body}
+                f"{self.BASE}/auto-clean", json={"dataset_id": ds.dataset_id}
             )
         data = r.json()
         assert data["success"] is False, data
         _assert_sanitized(r, data["error"])
-
-    async def test_bulk_preview(self, async_authorized_client, setup_database):
-        ds = self._dataset()
-        with patch("app.models.dataset.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=ds), \
-             patch("app.models.user_data.UserData.find_one", new_callable=AsyncMock, return_value=ds), \
-             patch("app.services.s3_service.download_file_from_s3", side_effect=SECRET):
-            r = await async_authorized_client.post(
-                f"{self.BASE}/datasets/{ds.dataset_id}/bulk-preview",
-                json={"selected_columns": ["a"], "transformation_type": "trim_whitespace"},
-            )
-        data = r.json()
-        assert data["success"] is False, data
-        # The service wraps the failure in an OperationError; its message carries the
-        # reference too, so the domain branch answers the same shape as the generic one.
-        _assert_sanitized(r, data["error"])
-
-    async def test_bulk_preview_per_column_failure(self, async_authorized_client, setup_database):
-        """Inside BulkTransformationService's per-column loop the engine blows up; the
-        column's error used to be str(e) inside an otherwise-200 body."""
-        ds = self._dataset()
-        frame = pd.DataFrame({"a": [" x ", "y "]})
-        with patch("app.models.dataset.DatasetMetadata.find_one", new_callable=AsyncMock, return_value=ds), \
-             patch("app.models.user_data.UserData.find_one", new_callable=AsyncMock, return_value=ds), \
-             patch("app.services.bulk_transformation_service.get_dataframe_from_s3", new_callable=AsyncMock, return_value=frame), \
-             patch(
-                 "app.services.transformation_engine.transformation_engine.TransformationEngine.preview_transformation",
-                 side_effect=SECRET,
-             ):
-            r = await async_authorized_client.post(
-                f"{self.BASE}/datasets/{ds.dataset_id}/bulk-preview",
-                json={"selected_columns": ["a"], "transformation_type": "trim_whitespace"},
-            )
-        assert r.status_code == 200, r.text
-        assert "secret-bucket" not in r.text and "boom" not in r.text
-        column = r.json()["column_previews"][0]
-        assert column["success"] is False
-        assert r.headers["X-Request-ID"] in column["error"]
-
-    async def test_bulk_apply_column_and_job_failures(self, setup_database):
-        """The apply-side twins: ColumnResult.error and the job's error_message."""
-        from app.models.bulk_transformation import BulkTransformationJob
-        from app.services.bulk_transformation_service import BulkTransformationService
-
-        service = BulkTransformationService()
-        with patch.object(service.engine, "preview_transformation", side_effect=SECRET), \
-             patch.object(service.engine, "apply_transformation", side_effect=SECRET):
-            _, result = await service._apply_column_transformation(
-                pd.DataFrame({"a": [" x "]}), "a", "trim_whitespace", {}, {}
-            )
-        assert result.success is False
-        assert "secret-bucket" not in result.error and "boom" not in result.error
-
-        # A real job: its writes are conditional on its stored status (#925).
-        job = await BulkTransformationJob(
-            job_id="bulk_j1", user_id="u1", dataset_id="d1", transformation_type="trim_whitespace", selected_columns=["a"],
-        ).insert()
-        with patch("app.services.bulk_transformation_service.ensure_metadata_twin", new_callable=AsyncMock, return_value=MagicMock(file_path="datasets/u1/d.csv", s3_url="s3://test-bucket/datasets/u1/d.csv")), \
-             patch("app.services.bulk_transformation_service.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET):
-            await service._process_bulk_job(job)
-        message = (await BulkTransformationJob.find_one({"job_id": "bulk_j1"})).error_message
-        assert "secret-bucket" not in message and "boom" not in message
-        assert "internal error" in message
 
     async def test_validate_errors_list(self, async_authorized_client, setup_database):
         ds = self._dataset()
