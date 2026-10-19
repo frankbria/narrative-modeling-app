@@ -44,7 +44,6 @@ import { planOrder } from './runOrder';
 interface TransformationPipelineProps {
   datasetId: string;
   onComplete?: (transformedDatasetId: string) => void;
-  onUnsavedChanges?: (hasChanges: boolean) => void;
 }
 
 
@@ -196,7 +195,7 @@ function RecipeModal(props: RecipeModalProps) {
 }
 
 export default function TransformationPipeline(props: TransformationPipelineProps) {
-  const { datasetId, onComplete, onUnsavedChanges } = props;
+  const { datasetId, onComplete } = props;
   const [nodes, setNodes, onNodesChange] = useNodesState<TransformationFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -217,7 +216,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
   // dev double-mount) so an identical snapshot is never appended twice.
   const lastRecordedSignatureRef = useRef<string | null>(null);
   const [showRecipeManager, setShowRecipeManager] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Default to the accessible Chain view so keyboard-only users get a fully
   // operable path (add/reorder/edit/delete) without touching the drag-only
   // React Flow canvas (issue #275, WCAG 2.1.1). The Visual canvas stays one
@@ -264,13 +262,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
     nodeIdCounterRef.current = 0;
   }, [datasetId]);
 
-  // Notify parent of unsaved changes
-  useEffect(() => {
-    if (onUnsavedChanges) {
-      onUnsavedChanges(hasUnsavedChanges);
-    }
-  }, [hasUnsavedChanges, onUnsavedChanges]);
-
   // The order the steps run in (#862): the arrows drawn on the canvas when there are
   // any, the listed order when there are none. Both views and every request read it.
   const plan = useMemo(() => {
@@ -288,7 +279,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
         },
       };
       setEdges((eds) => addEdge(edge, eds));
-      setHasUnsavedChanges(true);
     },
     [setEdges]
   );
@@ -319,7 +309,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
       // it would be "not connected", refused by a user who may never open the canvas.
       const tail = plan.problem ? undefined : plan.nodes.at(-1);
       setEdges((eds) => (tail && eds.length > 0 ? eds.concat(chainEdges([tail, { id }])) : eds));
-      setHasUnsavedChanges(true);
     },
     [setNodes, setEdges, plan]
   );
@@ -359,7 +348,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
     (next: TransformationFlowNode[]) => {
       setNodes(next);
       setEdges((eds) => (eds.length > 0 ? chainEdges(next) : eds));
-      setHasUnsavedChanges(true);
     },
     [setNodes, setEdges]
   );
@@ -413,7 +401,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
         )
       );
       setEditingIndex(null);
-      setHasUnsavedChanges(true);
     },
     [editingNode, setNodes]
   );
@@ -431,7 +418,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
     setNodes((nds) =>
       nds.map((node) => (node.id === nodeId ? { ...node, data } : node))
     );
-    setHasUnsavedChanges(true);
   }, [setNodes]);
 
   /** The steps in run order. Throws, inside an action so the page shows it, when the
@@ -478,7 +464,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
         await refresh();
         throw err;
       });
-      setHasUnsavedChanges(false);
       await refresh();
       // Transformations move the same dataset to a new file; there is no new id.
       onComplete?.(datasetId);
@@ -571,7 +556,6 @@ export default function TransformationPipeline(props: TransformationPipelineProp
         })
       );
       setEdges(target.edges);
-      setHasUnsavedChanges(true);
     },
     [nodes, setNodes, setEdges]
   );
