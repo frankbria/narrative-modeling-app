@@ -737,6 +737,19 @@ describe('DashboardPage', () => {
       expect(deployButton).not.toBeDisabled();
     });
 
+    it('enables View Deployments when the deployed model is older than the five listed', async () => {
+      const deployed = trainedModels.find((model) => model.is_deployed)!;
+      const trained = trainedModels.find((model) => !model.is_deployed)!;
+      const newer = Array.from({ length: 5 }, (_, i) => ({ ...trained, model_id: `m${i}`, name: `Model ${i}` }));
+      mockFetch.mockImplementation(api({ models: [...newer, deployed] }));
+
+      render(<DashboardPage />);
+
+      await screen.findByText('Model 0');
+      expect(screen.queryByText(deployed.name)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /View Deployments/i })).not.toBeDisabled();
+    });
+
     it('navigates when clicking Upload New Dataset button', async () => {
       mockFetch.mockImplementation(api());
 

@@ -1,7 +1,7 @@
 [
   {
     "algorithm": "XGBoost",
-    "created_at": "2026-10-02T00:00:00",
+    "created_at": "2026-10-02T00:00:00Z",
     "cv_score": 0.8,
     "description": null,
     "is_active": true,
@@ -15,7 +15,7 @@
   },
   {
     "algorithm": "Random Forest",
-    "created_at": "2026-10-01T00:00:00",
+    "created_at": "2026-10-01T00:00:00Z",
     "cv_score": 0.8,
     "description": null,
     "is_active": true,

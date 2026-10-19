@@ -117,6 +117,7 @@ from app.services.training_admission import (
     enforce_training_per_user_cap,
     training_semaphore,
 )
+from app.utils.datetime import as_utc
 from app.utils.filenames import attachment_disposition
 from app.utils.heartbeat import heartbeat_pump
 from app.utils.job_failures import user_safe_failure_reason
@@ -316,6 +317,12 @@ class ModelInfo(BaseModel):
     last_used_at: datetime | None
     is_active: bool
     is_deployed: bool
+
+    # Mongo drops tzinfo on read-back; without an offset a browser parses these as local time.
+    @field_validator("created_at", "last_used_at")
+    @classmethod
+    def _utc(cls, value: datetime | None) -> datetime | None:
+        return as_utc(value) if value else value
 
 
 class PredictRequest(BaseModel):

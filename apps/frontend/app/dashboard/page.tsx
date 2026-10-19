@@ -68,13 +68,14 @@ function modelItem(model: TrainedModel): ModelItem {
   return { model_id, name, algorithm, test_score, created_at, status: model.is_deployed ? 'deployed' : 'trained' };
 }
 
-// `/ml/` answers a bare list, newest first.
+// `/ml/` answers a bare list, newest first. All of it is kept: View Deployments
+// must see a deployed model older than the five Recent Models shows.
 async function fetchModels() {
   const body = await getJson('ml/', 'models');
   if (!Array.isArray(body)) {
     throw new Error('Invalid models format: expected array');
   }
-  return (body as TrainedModel[]).slice(0, 5).map(modelItem);
+  return (body as TrainedModel[]).map(modelItem);
 }
 
 function isDeployed(model: ModelItem): boolean {
@@ -137,7 +138,7 @@ export default function DashboardPage() {
           onTrySample={openSamples}
         />
         <RecentModels
-          models={recentModels}
+          models={recentModels.slice(0, 5)}
           loading={models.loading}
           error={models.error}
           onRetry={models.reload}
