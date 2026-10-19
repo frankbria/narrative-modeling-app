@@ -19,7 +19,6 @@ from app.middleware.api_version import (
     DEFAULT_VERSION,
     SUPPORTED_VERSIONS,
     APIVersionMiddleware,
-    get_api_version,
 )
 
 
@@ -35,7 +34,7 @@ class TestAPIVersionMiddleware:
 
         @app.get("/test")
         async def test_endpoint(request: Request):
-            version = get_api_version(request)
+            version = request.state.api_version
             return {"version": version}
 
         return app
@@ -72,7 +71,7 @@ class TestAPIVersionMiddleware:
 
         @app.get("/api/v1/test")
         async def versioned_endpoint(request: Request):
-            version = get_api_version(request)
+            version = request.state.api_version
             return {"version": version}
 
         client = TestClient(app)
@@ -104,7 +103,7 @@ class TestAPIVersionMiddleware:
 
         @app.get("/api/v99/test")
         async def versioned_endpoint(request: Request):
-            return {"version": get_api_version(request)}
+            return {"version": request.state.api_version}
 
         client = TestClient(app)
         response = client.get("/api/v99/test")
@@ -171,7 +170,7 @@ class TestAPIVersionMiddleware:
         @app.get("/api/v1/users")
         @app.get("/api/v1/data/process")
         async def versioned_endpoint(request: Request):
-            return {"version": get_api_version(request)}
+            return {"version": request.state.api_version}
 
         client = TestClient(app)
 
@@ -209,47 +208,6 @@ class TestAPIVersionMiddleware:
 
 
 @pytest.mark.unit
-class TestGetAPIVersion:
-    """Test get_api_version helper function."""
-
-    def test_returns_version_from_state(self):
-        """Test helper returns version from request state."""
-        from starlette.requests import Request
-
-        # Create mock request with state
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/test",
-            "headers": [],
-            "query_string": b"",
-            "state": {}
-        }
-
-        request = Request(scope)
-        request.state.api_version = "v1"
-
-        assert get_api_version(request) == "v1"
-
-    def test_returns_default_when_no_state(self):
-        """Test helper returns default when state not set."""
-        from starlette.requests import Request
-
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/test",
-            "headers": [],
-            "query_string": b"",
-            "state": {}
-        }
-
-        request = Request(scope)
-
-        assert get_api_version(request) == DEFAULT_VERSION
-
-
-@pytest.mark.unit
 class TestVersionConstants:
     """Test version configuration constants."""
 
@@ -279,7 +237,7 @@ class TestVersionNegotiation:
 
         @app.get("/api/v1/test")
         async def endpoint(request: Request):
-            return {"version": get_api_version(request)}
+            return {"version": request.state.api_version}
 
         client = TestClient(app)
         response = client.get(
@@ -297,7 +255,7 @@ class TestVersionNegotiation:
 
         @app.get("/test")
         async def endpoint(request: Request):
-            return {"version": get_api_version(request)}
+            return {"version": request.state.api_version}
 
         client = TestClient(app)
         response = client.get(
@@ -320,7 +278,7 @@ class TestErrorHandling:
 
         @app.get("/test")
         async def endpoint(request: Request):
-            return {"version": get_api_version(request)}
+            return {"version": request.state.api_version}
 
         client = TestClient(app)
 
@@ -340,7 +298,7 @@ class TestErrorHandling:
 
         @app.get("/test")
         async def endpoint(request: Request):
-            return {"version": get_api_version(request)}
+            return {"version": request.state.api_version}
 
         client = TestClient(app)
         response = client.get("/test")

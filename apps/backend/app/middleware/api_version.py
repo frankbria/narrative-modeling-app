@@ -115,15 +115,3 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
 
         return None
 
-
-def get_api_version(request: Request) -> str:
-    """
-    Helper function to get API version from request state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        API version string (e.g., "v1")
-    """
-    return getattr(request.state, "api_version", DEFAULT_VERSION)

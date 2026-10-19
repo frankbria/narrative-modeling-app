@@ -6,19 +6,24 @@ Following strict TDD methodology:
 2. GREEN: Implement minimal code to pass
 3. REFACTOR: Improve code quality
 
-Tests cover model lifecycle endpoints using ModelService.
+Tests cover model lifecycle endpoints.
 """
 
 import uuid
 
 import pytest
 
-from app.models.model import ProblemType
+from app.models.model import ModelConfig, ModelStatus, ProblemType
+
+
+async def _seed_model(**fields) -> ModelConfig:
+    """Insert a ModelConfig, as a training run would have left it."""
+    return await ModelConfig(**fields).insert()
 
 
 @pytest.mark.integration
 class TestModelRoutes:
-    """Integration tests for Model API routes using ModelService."""
+    """Integration tests for Model API routes."""
 
     # =====================================================================
     # POST /api/v1/models/train - Train Model (Create ModelConfig)
@@ -44,22 +49,20 @@ class TestModelRoutes:
     @pytest.mark.asyncio
     async def test_get_model_success(self, async_authorized_client, setup_database):
         """
-        🔴 RED: Test successful model retrieval using ModelService.
+        🔴 RED: Test successful model retrieval.
         Should return complete ModelConfig details.
         """
-        # ARRANGE: Create model using ModelService
+        # ARRANGE: Insert a model
         from app.models.model import (
             FeatureConfig,
             HyperparameterConfig,
             PerformanceMetrics,
             TrainingConfig,
         )
-        from app.services.model_service import ModelService
 
-        model_service = ModelService()
         model_id = f"model_{uuid.uuid4().hex[:8]}"
 
-        await model_service.create_model_config(
+        await _seed_model(
             user_id="test_user_123",
             dataset_id="test_dataset",
             model_id=model_id,
@@ -136,18 +139,15 @@ class TestModelRoutes:
     @pytest.mark.asyncio
     async def test_list_models_success(self, async_authorized_client, setup_database):
         """
-        🔴 RED: Test successful model listing using ModelService.
+        🔴 RED: Test successful model listing.
         Should return list of models for authenticated user.
         """
         # ARRANGE: Create multiple models
         from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
-        from app.services.model_service import ModelService
-
-        model_service = ModelService()
 
         # Create 3 test models
         for i in range(3):
-            await model_service.create_model_config(
+            await _seed_model(
                 user_id="test_user_123",
                 dataset_id=f"dataset_{i}",
                 model_id=f"model_{uuid.uuid4().hex[:8]}",
@@ -201,14 +201,12 @@ class TestModelRoutes:
         """
         # ARRANGE: Create models for different datasets
         from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
-        from app.services.model_service import ModelService
 
-        model_service = ModelService()
         target_dataset = "target_dataset_123"
 
         # Create 2 models for target dataset
         for i in range(2):
-            await model_service.create_model_config(
+            await _seed_model(
                 user_id="test_user_123",
                 dataset_id=target_dataset,
                 model_id=f"target_model_{uuid.uuid4().hex[:8]}",
@@ -233,7 +231,7 @@ class TestModelRoutes:
             )
 
         # Create 1 model for different dataset
-        await model_service.create_model_config(
+        await _seed_model(
             user_id="test_user_123",
             dataset_id="other_dataset",
             model_id=f"other_model_{uuid.uuid4().hex[:8]}",
@@ -280,15 +278,12 @@ class TestModelRoutes:
         """
         # ARRANGE: Create models and mark some as trained
         from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
-        from app.services.model_service import ModelService
-
-        model_service = ModelService()
 
         # Create 2 training models
         training_ids = []
         for i in range(2):
             model_id = f"training_model_{uuid.uuid4().hex[:8]}"
-            await model_service.create_model_config(
+            await _seed_model(
                 user_id="test_user_123",
                 dataset_id="test_dataset",
                 model_id=model_id,
@@ -315,10 +310,11 @@ class TestModelRoutes:
 
         # Create 1 trained model
         trained_id = f"trained_model_{uuid.uuid4().hex[:8]}"
-        await model_service.create_model_config(
+        await _seed_model(
             user_id="test_user_123",
             dataset_id="test_dataset",
             model_id=trained_id,
+            status=ModelStatus.TRAINED,
             name="Trained Model",
             problem_type=ProblemType.CLASSIFICATION,
             algorithm="XGBoost",
@@ -338,7 +334,6 @@ class TestModelRoutes:
             model_path="models/trained.pkl",
             model_size=2048000
         )
-        await model_service.mark_model_trained(trained_id)
 
         # ACT: List models filtered by status=trained
         response = await async_authorized_client.get("/api/v1/models?status=trained")
@@ -359,12 +354,9 @@ class TestModelRoutes:
         """
         # ARRANGE: Create 25 models
         from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
-        from app.services.model_service import ModelService
-
-        model_service = ModelService()
 
         for i in range(25):
-            await model_service.create_model_config(
+            await _seed_model(
                 user_id="test_user_123",
                 dataset_id="pagination_dataset",
                 model_id=f"pagination_model_{i}_{uuid.uuid4().hex[:8]}",
@@ -405,17 +397,15 @@ class TestModelRoutes:
     @pytest.mark.asyncio
     async def test_update_model_success(self, async_authorized_client, setup_database):
         """
-        🔴 RED: Test successful model update using ModelService.
+        🔴 RED: Test successful model update.
         Should update metadata fields and return updated model.
         """
         # ARRANGE: Create model
         from app.models.model import FeatureConfig, PerformanceMetrics, TrainingConfig
-        from app.services.model_service import ModelService
 
-        model_service = ModelService()
         model_id = f"update_model_{uuid.uuid4().hex[:8]}"
 
-        await model_service.create_model_config(
+        await _seed_model(
             user_id="test_user_123",
             dataset_id="test_dataset",
             model_id=model_id,

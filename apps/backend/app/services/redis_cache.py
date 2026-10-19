@@ -6,7 +6,6 @@ import logging
 import os
 import pickle
 from collections.abc import Awaitable
-from functools import wraps
 from typing import Any, cast
 
 import redis.asyncio as redis
@@ -213,17 +212,6 @@ class RedisCacheService:
             logger.error(f"Failed to set expiry for key {key}: {e}")
             return False
             
-    async def increment(self, key: str, amount: int = 1) -> int | None:
-        """Increment a counter"""
-        if not self.redis_client:
-            return None
-            
-        try:
-            return await self.redis_client.incrby(key, amount)
-        except Exception as e:
-            logger.error(f"Failed to increment key {key}: {e}")
-            return None
-            
     async def set_hash(self, key: str, mapping: dict[str, Any], ttl: int | None = None) -> bool:
         """Set a hash in cache"""
         if not self.redis_client:
@@ -273,47 +261,6 @@ class RedisCacheService:
             logger.error(f"Failed to get hash {key}: {e}")
             return None
             
-    async def set_list(self, key: str, values: list[Any], ttl: int | None = None) -> bool:
-        """Set a list in cache"""
-        if not self.redis_client:
-            return False
-            
-        try:
-            # Clear existing list and set new values
-            await self.redis_client.delete(key)
-            if values:
-                serialized_values = [self._serialize_value(v) for v in values]
-                await cast(
-                    Awaitable[int],
-                    self.redis_client.lpush(key, *serialized_values),
-                )
-                
-            if ttl:
-                await self.redis_client.expire(key, ttl)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to set list {key}: {e}")
-            return False
-            
-    async def get_list(self, key: str) -> list[Any] | None:
-        """Get a list from cache"""
-        if not self.redis_client:
-            return None
-            
-        try:
-            data = await cast(
-                Awaitable[list[Any]], self.redis_client.lrange(key, 0, -1)
-            )
-            if not data:
-                return []
-            return [self._deserialize_value(item) for item in reversed(data)]
-        except ValueError as e:
-            logger.warning("List %s treated as miss: %s", key, e)
-            return None
-        except Exception as e:
-            logger.error(f"Failed to get list {key}: {e}")
-            return None
-            
     async def cache_user_progress(self, user_id: str, progress_data: dict[str, Any]) -> bool:
         """Cache user onboarding progress"""
         key = f"user_progress:{user_id}"
@@ -344,31 +291,6 @@ class RedisCacheService:
 
 # Global cache service instance
 cache_service = RedisCacheService()
-
-
-def cache_result(key_pattern: str, ttl: int | None = None):
-    """Decorator for caching function results"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            # Generate cache key from pattern and arguments
-            key = key_pattern.format(*args, **kwargs)
-            
-            # Try to get from cache first
-            cached_result = await cache_service.get(key)
-            if cached_result is not None:
-                logger.debug(f"Cache hit for key: {key}")
-                return cached_result
-                
-            # Execute function and cache result
-            result = await func(*args, **kwargs)
-            if result is not None:
-                await cache_service.set(key, result, ttl)
-                logger.debug(f"Cache set for key: {key}")
-                
-            return result
-        return wrapper
-    return decorator
 
 
 async def init_cache():
