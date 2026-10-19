@@ -86,8 +86,12 @@ async def test_a_job_the_reaper_ended_while_it_queued_does_not_train(setup_datab
         # Wait for the task to mark the job running (a loaded CI runner can take longer
         # than any fixed sleep), then outlast the timeout. The default beat is 60s, so no
         # heartbeat lands in this time.
-        while (await _stored("model_901_reaped")).status != JobStatus.RUNNING:
+        for _ in range(250):  # bounded at 5s: a task that never runs fails, it does not hang
+            if (await _stored("model_901_reaped")).status == JobStatus.RUNNING:
+                break
             await asyncio.sleep(0.02)
+        else:
+            pytest.fail("the queued task never marked its job running")
         await asyncio.sleep(0.3)
         reaped = await reap_stale_jobs(timeout_seconds=0.1)
         assert reaped.training == 1, "precondition: the reaper ended the queued job"
