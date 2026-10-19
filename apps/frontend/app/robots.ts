@@ -7,8 +7,9 @@ export const dynamic = 'force-dynamic'
 export default function robots(): MetadataRoute.Robots {
   if (!isProduction()) return { rules: { userAgent: '*', disallow: '/' } }
   return {
-    // `$` anchors the root and pricing; the legal pages are a subtree. Everything else is the app.
-    rules: { userAgent: '*', allow: ['/$', '/pricing$', '/legal/'], disallow: '/' },
+    // Pages need their assets (/_next/static, /logo.svg, /og-image.png) to render, and the
+    // app pages a crawler could reach only redirect to sign-in.
+    rules: { userAgent: '*', allow: '/', disallow: ['/api/', '/auth/'] },
     sitemap: new URL('/sitemap.xml', siteUrl()).href,
   }
 }

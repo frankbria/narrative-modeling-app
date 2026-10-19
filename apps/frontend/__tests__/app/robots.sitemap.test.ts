@@ -28,13 +28,15 @@ describe('robots.txt', () => {
     expect(result.sitemap).toBeUndefined()
   })
 
-  it('in production allows the public pages, disallows the app and names the sitemap', () => {
+  it('in production allows the site and its assets, keeps crawlers off the API and auth, and names the sitemap', () => {
     process.env.ENVIRONMENT = 'production'
     process.env.NEXTAUTH_URL = 'https://www.sheetpredict.app'
     const result = robots()
     const [rule] = rulesOf(result)
-    expect(rule.allow).toEqual(['/$', '/pricing$', '/legal/'])
-    expect(rule.disallow).toBe('/')
+    // A crawler that renders / must also fetch /_next/static, /logo.svg and /og-image.png;
+    // the app pages it could reach only redirect to sign-in.
+    expect(rule.allow).toBe('/')
+    expect(rule.disallow).toEqual(['/api/', '/auth/'])
     expect(result.sitemap).toBe('https://www.sheetpredict.app/sitemap.xml')
   })
 })
