@@ -18,7 +18,14 @@ const SECURE_COOKIE_VARIANTS = [true, false] as const;
 
 // Exact paths only. `/robots.txt` and `/sitemap.xml` are here because the matcher
 // excludes by file extension and `.txt`/`.xml` are not in its list.
-const PUBLIC_PATHS = new Set(['/', '/pricing', '/robots.txt', '/sitemap.xml']);
+const PUBLIC_PATHS = new Set([
+  '/',
+  '/pricing',
+  '/security',
+  '/how-it-works',
+  '/robots.txt',
+  '/sitemap.xml',
+]);
 
 async function readSessionToken(request: NextRequest) {
   const secret = process.env.NEXTAUTH_SECRET;
@@ -52,7 +59,7 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Public marketing pages (issues #475, #766): a prospective customer reads the
+  // Public marketing pages (issues #475, #766, #772): a prospective customer reads the
   // landing page and the price before they have an account; `/` sends a signed-in
   // user to the dashboard itself (app/page.tsx). An EXACT-path allowlist, not a
   // prefix — a prefix makes every future file under it public by construction (the /legal/ caveat
@@ -132,7 +139,7 @@ export default async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|docx?|xlsx?|zip|webmanifest)).*)',
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|webm|png|gif|svg|ttf|woff2?|ico|docx?|xlsx?|zip|webmanifest)).*)',
     '/(api|trpc)(.*)',
   ],
 };

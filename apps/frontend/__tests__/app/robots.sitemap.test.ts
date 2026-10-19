@@ -42,14 +42,20 @@ describe('robots.txt', () => {
 })
 
 describe('sitemap.xml', () => {
-  it('lists the landing page, pricing and every legal page on the runtime host', () => {
+  it('lists the landing page, every public page and every legal page on the runtime host', () => {
     process.env.NEXTAUTH_URL = 'https://dev.sheetpredict.app'
     const legal = readdirSync(join(__dirname, '../../app/legal'), { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => `https://dev.sheetpredict.app/legal/${e.name}`)
     expect(legal.length).toBeGreaterThan(0)
     expect(sitemap().map((entry) => entry.url).sort()).toEqual(
-      ['https://dev.sheetpredict.app/', 'https://dev.sheetpredict.app/pricing', ...legal].sort(),
+      [
+        'https://dev.sheetpredict.app/',
+        'https://dev.sheetpredict.app/pricing',
+        'https://dev.sheetpredict.app/security',
+        'https://dev.sheetpredict.app/how-it-works',
+        ...legal,
+      ].sort(),
     )
   })
 

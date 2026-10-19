@@ -80,7 +80,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.DATA_LOADING,
     name: 'Data Loading',
-    description: 'Upload and connect your data sources',
+    description: 'Upload your data file',
     icon: 'Upload',
     route: '/upload',
     requiredStages: []
