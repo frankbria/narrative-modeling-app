@@ -11,7 +11,10 @@ except where a test says so.
 import copy
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import httpx
+import openai
 import pytest
 
 from app.billing import metering
@@ -142,3 +145,56 @@ async def test_saving_the_summary_keeps_what_was_written_while_it_was_made(
     stored = await UserData.get(doc.id)
     assert stored.num_rows == 999
     assert stored.aiSummary is not None
+
+
+def _rejected_key_client() -> MagicMock:
+    """The one allowed fake: the paid OpenAI API, answering 401 with the real exception type."""
+    response = httpx.Response(401, request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"))
+    client = MagicMock()
+    client.chat.completions.create.side_effect = openai.AuthenticationError(
+        "Incorrect API key provided", response=response, body=None
+    )
+    return client
+
+
+@pytest.mark.usefixtures("ai_ceiling_open")
+@pytest.mark.asyncio
+async def test_a_rejected_api_key_falls_back_to_the_rule_based_summary(
+    setup_database, async_authorized_client, monkeypatch
+):
+    """#1076: a revoked or mistyped key must not turn every summary into a 500."""
+    client = _rejected_key_client()
+    monkeypatch.setitem(SUMMARIZER, "client", client)
+    earlier = AISummary(overview="Written at upload.", issues=[], relationships=[], suggestions=[], rawMarkdown="# ok")
+    doc = await _dataset(aiSummary=earlier)
+
+    response = await async_authorized_client.post(f"/api/v1/ai/summarize/{doc.id}")
+
+    body = response.json()
+    assert response.status_code == 200, response.text
+    assert client.chat.completions.create.called  # the model was really asked first
+    assert body["model_used"] == "fallback"
+    assert body["overview"].startswith("Dataset contains 5 rows and 3 columns")
+    assert (await UserData.get(doc.id)).aiSummary.overview == body["overview"]
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 0  # released: no model wrote it
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_route_failure_is_logged_with_its_traceback_not_echoed(
+    setup_database, async_authorized_client, monkeypatch, caplog
+):
+    """#1076: the route used to answer `f"...{str(e)}"` and log no traceback, so the
+    one 500 this endpoint ever gave was undiagnosable."""
+    from app.api.routes import ai_analysis
+
+    async def exploding(*_args):
+        raise RuntimeError("s3://narrative-prod/datasets/u/secret.csv unreadable")
+
+    monkeypatch.setattr(ai_analysis, "_settle", exploding)
+    doc = await _dataset()
+
+    response = await async_authorized_client.post(f"/api/v1/ai/summarize/{doc.id}")
+
+    assert response.status_code == 500
+    assert "secret.csv" not in response.text and "RuntimeError" not in response.text
+    assert any(r.exc_info and "secret.csv" in str(r.exc_info[1]) for r in caplog.records)

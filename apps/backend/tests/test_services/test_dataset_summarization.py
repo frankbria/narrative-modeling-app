@@ -240,3 +240,27 @@ class TestDatasetSummarizationService:
         
         assert summary.processing_time > 0
         assert isinstance(summary.generated_at, datetime)
+
+    def test_fallback_reads_stored_nulls_as_defaults(self, summarization_service):
+        """#1076: processing stores explicit nulls; the rule-based summary must not trip on them."""
+        context = {
+            "dataset_overview": {"row_count": None, "column_count": None, "file_type": None},
+            "data_quality": {
+                "overall_score": None, "critical_issues": None, "warnings": None, "recommendations": None,
+            },
+            "statistical_summary": {"correlations": None},
+        }
+
+        summary = summarization_service._generate_fallback_summary(context)
+
+        assert summary.model_used == "fallback"
+        assert summary.overview == "Dataset contains 0 rows and 0 columns."
+        assert summary.suggestions == []
+        assert "**File Type**: unknown" in summary.rawMarkdown
+
+    def test_fallback_reads_missing_sections_as_empty(self, summarization_service):
+        summary = summarization_service._generate_fallback_summary(
+            {"dataset_overview": None, "data_quality": None, "statistical_summary": None}
+        )
+
+        assert summary.model_used == "fallback"
