@@ -8,6 +8,7 @@ same bytes but aborts with HTTP 413 the moment the cap is crossed.
 
 import os
 
+import pandas as pd
 from fastapi import HTTPException, UploadFile
 
 # 100 MB default — matches nginx `client_max_body_size 100M` and
@@ -45,3 +46,19 @@ async def read_upload_capped(
         if len(buffer) > max_bytes:
             raise _too_large(max_bytes)
     return bytes(buffer)
+
+
+#: The one sentence every dataset-creating route answers a header-only file with (#1062).
+NO_DATA_ROWS = (
+    "The file has no data rows. Add at least one row below the header and upload it again."
+)
+
+
+def require_rows(df: pd.DataFrame) -> None:
+    """Refuse a parsed upload with a header and no data rows (#1062): 400.
+
+    Call it after the parse and before the S3 put, so nothing is stored and the
+    refund middleware gives the `uploads` unit back.
+    """
+    if df.empty:
+        raise HTTPException(status_code=400, detail=NO_DATA_ROWS)

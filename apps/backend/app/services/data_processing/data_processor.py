@@ -11,6 +11,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from app.utils.upload_limits import NO_DATA_ROWS
+
 from .quality_assessment import QualityAssessmentService, QualityReport
 from .schema_inference import SchemaDefinition, SchemaInferenceService
 from .statistics_engine import DatasetStatistics, StatisticsEngine
@@ -25,6 +27,10 @@ def _reader_type(file_type: str | None) -> str | None:
 
 class UnreadableFileError(ValueError):
     """The bytes could not be read as the declared type: the caller's file, not our fault."""
+
+
+class EmptyFileError(UnreadableFileError):
+    """The file parsed but holds no data rows (#1062)."""
 
 
 class ProcessedData:
@@ -190,7 +196,9 @@ class DataProcessor:
             df = await self._read_file_object(file_obj, file_type, encoding, delimiter)
         except Exception as e:
             raise UnreadableFileError(str(e)) from e
-        
+        if df.empty:
+            raise EmptyFileError(NO_DATA_ROWS)
+
         # Create file metadata
         file_metadata = {
             "filename": filename,
