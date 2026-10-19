@@ -66,5 +66,6 @@ Keep docs in sync with code: OpenAPI when endpoints change; docstrings/JSDoc on 
   - a named type, not an inline object type as a generic argument (`ComponentType<{…}>` blinds the whole file).
   - `unknown` + a cast at the caller, not a generic function declaration.
   - a component with a statement before `return <JSX>` (a bare return gets no LCOV line); inline JSX arrows named in the component body; `??` counts as two branches; a file not yet `git add`ed reads as absent.
+  - in a multi-line JSX tag, a hyphenated string attribute (`aria-label="…"`) can make lizard drop the whole component; in a large file its line numbers can drift from the real ones. If a changed function is missing from `uvx lizard` output, move it to its own small file (#1116).
   When line ranges look wrong, run `uvx lizard -l typescript <file>`.
 - **CodeRabbit:** max 3 iterations; auto-fix style/types/simple bugs/docs. Escalate on iteration-3 failures, architecture changes, or security decisions.
