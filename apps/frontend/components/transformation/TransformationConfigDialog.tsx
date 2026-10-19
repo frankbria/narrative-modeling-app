@@ -1,7 +1,6 @@
 'use client';
 
 import type { ComponentType, MutableRefObject, RefObject } from 'react';
-import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +31,7 @@ import {
   type ParametersSchema,
 } from './parameterSchema';
 import { useTransformationForm, type TransformationConfig } from './useTransformationForm';
+import { MultiSelect } from './MultiSelect';
 
 export type { TransformationConfig };
 
@@ -440,144 +440,3 @@ export function TransformationConfigDialog(props: TransformationConfigDialogProp
   );
 }
 
-/**
- * MultiSelect component for selecting multiple columns
- * Supports keyboard navigation and search filtering
- */
-interface MultiSelectProps {
-  id: string;
-  options: string[];
-  value: string[];
-  onChange: (selected: string[]) => void;
-  placeholder?: string;
-  error?: string;
-  'aria-invalid'?: boolean;
-  'aria-describedby'?: string;
-}
-
-/** The selection after toggling one option. */
-function toggleOption(value: string[], option: string): string[] {
-  return value.includes(option) ? value.filter((v) => v !== option) : [...value, option];
-}
-
-/** Select every visible option, or clear the selection when all of them are already chosen. */
-function toggleAll(value: string[], visible: string[]): string[] {
-  if (value.length === visible.length) return [];
-  return [...value, ...visible.filter((v) => !value.includes(v))];
-}
-
-function triggerLabel(value: string[], placeholder: string): string {
-  return value.length > 0 ? `${value.length} selected` : placeholder;
-}
-
-function triggerClass(error: string | undefined): string {
-  const border = error ? 'border-red-500' : 'border-input';
-  return `w-full h-9 px-3 py-1 text-sm text-left border rounded-md bg-transparent transition-colors ${border} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`;
-}
-
-interface MultiSelectPanelProps {
-  id: string;
-  options: string[];
-  value: string[];
-  onChange(selected: string[]): void;
-  onClose: VoidFunction;
-  searchTerm: string;
-  onSearch(term: string): void;
-}
-
-function MultiSelectPanel(props: MultiSelectPanelProps) {
-  const { id, options, value, onChange, onClose, searchTerm, onSearch } = props;
-  const filteredOptions = options.filter((option) =>
-    option.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  const search = (e: React.ChangeEvent<HTMLInputElement>) => onSearch(e.target.value);
-  const selectAll = () => onChange(toggleAll(value, filteredOptions));
-  const allChosen = value.length === filteredOptions.length;
-  const row = (option: string) => (
-    <label
-      key={option}
-      className="flex items-center gap-2 p-2 hover:bg-accent cursor-pointer transition-colors"
-      role="option"
-      aria-selected={value.includes(option)}
-    >
-      <input
-        type="checkbox"
-        checked={value.includes(option)}
-        onChange={() => onChange(toggleOption(value, option))}
-        className="w-4 h-4 rounded border border-input"
-      />
-      <span className="text-sm">{option}</span>
-    </label>
-  );
-
-  return (
-    <>
-      <div className="absolute top-0 left-0 right-0 bottom-0" onClick={onClose} />
-      <div
-        className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg z-50 max-h-64 overflow-y-auto"
-        role="listbox"
-        id={`${id}-listbox`}
-        aria-multiselectable="true"
-      >
-        <div className="p-2 border-b sticky top-0 bg-background">
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={search}
-            className="w-full h-8 px-2 text-sm border rounded"
-            aria-label="Search columns"
-          />
-        </div>
-
-        <div className="p-2">
-          <button
-            type="button"
-            onClick={selectAll}
-            className="w-full p-2 text-sm text-left hover:bg-accent rounded transition-colors mb-1"
-          >
-            <span className="font-medium">{allChosen ? 'Deselect' : 'Select'} All</span>
-          </button>
-        </div>
-
-        <div className="border-t">{filteredOptions.map(row)}</div>
-
-        {filteredOptions.length === 0 && (
-          <div className="p-4 text-sm text-center text-muted-foreground">No columns found</div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function MultiSelect(props: MultiSelectProps) {
-  const { id, options, value, onChange, error } = props;
-  const placeholder = props.placeholder ?? 'Select items...';
-  const [isOpen, setIsOpen] = useState(false);
-  // The search text outlives the open list, as it always has.
-  const [searchTerm, setSearchTerm] = useState('');
-  const toggle = () => setIsOpen(!isOpen);
-  const close = () => setIsOpen(false);
-  const textClass = value.length > 0 ? 'text-foreground' : 'text-muted-foreground';
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={toggle}
-        className={triggerClass(error)}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-controls={`${id}-listbox`}
-        aria-describedby={props['aria-describedby']}
-      >
-        <div className="flex items-center justify-between">
-          <span className={textClass}>{triggerLabel(value, placeholder)}</span>
-          <span className="text-xs text-muted-foreground">▼</span>
-        </div>
-      </button>
-
-      {isOpen && <MultiSelectPanel id={id} options={options} value={value} onChange={onChange} onClose={close} searchTerm={searchTerm} onSearch={setSearchTerm} />}
-    </div>
-  );
-}
