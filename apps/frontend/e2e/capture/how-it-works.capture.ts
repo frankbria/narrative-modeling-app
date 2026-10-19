@@ -70,11 +70,13 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
   await page.getByText('Upload Your First Dataset', { exact: true }).first().click();
   await page.getByRole('button', { name: /browse samples/i }).click();
   await expect(page.getByText('Customer Churn Prediction')).toBeVisible({ timeout: 20_000 });
+  // The row exists once the load answers, so take its id from that response, not the URL.
+  const loaded = page.waitForResponse((r) => r.request().method() === 'POST' && /\/sample-datasets\/[^/]+\/load$/.test(r.url()));
   await page.getByRole('button', { name: /^use this$/i }).first().click();
-  await expect(page).toHaveURL(/\/explore\/[0-9a-f]{24}/, { timeout: 30_000 });
-  const datasetId = page.url().match(/\/explore\/([0-9a-f]{24})/)![1];
+  const { dataset_id: datasetId } = (await (await loaded).json()) as { dataset_id: string };
   // Erase the sample on every exit: a failed capture must not leave it on the shared isolated user.
   try {
+    await expect(page).toHaveURL(/\/explore\/[0-9a-f]{24}/, { timeout: 30_000 });
     await expect(page.locator('th', { hasText: 'monthly_charges' }).first()).toBeVisible({ timeout: 30_000 });
     await shoot('data_profiling');
 
@@ -126,6 +128,9 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
       WALKTHROUGH,
     ]);
   } finally {
-    await request.delete(`${API_BASE}/user_data/${datasetId}`, { headers });
+    // Bounded and retried like eraseUploads (e2e/fixtures), and never masking the capture's own error.
+    await request
+      .delete(`${API_BASE}/user_data/${datasetId}`, { headers, timeout: 10_000, maxRetries: 2 })
+      .catch((error) => console.warn(`Failed to erase sample dataset ${datasetId}:`, error));
   }
 });
