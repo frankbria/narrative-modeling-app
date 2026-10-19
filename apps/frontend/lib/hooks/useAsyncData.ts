@@ -1,44 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react'
 
-/**
- * Keyed async loading with a derived `loading` flag (#393).
- *
- * ## Why this exists
- *
- * The app had 46 copies of this shape:
- *
- * ```ts
- * const load = async () => {
- *   setLoading(true)        // synchronous setState inside an effect
- *   setError(null)
- *   const d = await svc.get(id)
- *   setData(d)
- * }
- * useEffect(() => { load() }, [id])
- * ```
- *
- * `react-hooks/set-state-in-effect` is right to flag it: render → effect →
- * `setLoading(true)` → render is a cascading render on every mount and refetch.
- *
- * The naive fix — delete `setLoading(true)` and rely on `useState(true)` — passes
- * lint and quietly removes the spinner on every *refetch*, since the initial value
- * only covers mount. That regression is invisible to a test suite that asserts on
- * resolved states.
- *
- * ## How it avoids both
- *
- * `loading` is **derived during render**, never assigned in an effect. Each result
- * records the deps it was fetched for, and a request is outstanding exactly while
- * the recorded deps do not match the current ones:
- *
- * ```
- * loading = enabled && !(resolved matches current deps)
- * ```
- *
- * So a dep change makes `loading` true in the same render that changed it, with no
- * state update at all. The effect only ever sets state from inside the promise
- * continuation, which the rule permits.
- */
 export interface UseAsyncDataOptions {
   /** Skip the request while false. Mirrors the `if (session && id)` guards at call sites. */
   enabled?: boolean
@@ -82,6 +43,45 @@ function sameDeps(a: DependencyList, b: DependencyList): boolean {
   return a.every((v, i) => Object.is(v, b[i]))
 }
 
+/**
+ * Keyed async loading with a derived `loading` flag (#393).
+ *
+ * ## Why this exists
+ *
+ * The app had 46 copies of this shape:
+ *
+ * ```ts
+ * const load = async () => {
+ *   setLoading(true)        // synchronous setState inside an effect
+ *   setError(null)
+ *   const d = await svc.get(id)
+ *   setData(d)
+ * }
+ * useEffect(() => { load() }, [id])
+ * ```
+ *
+ * `react-hooks/set-state-in-effect` is right to flag it: render → effect →
+ * `setLoading(true)` → render is a cascading render on every mount and refetch.
+ *
+ * The naive fix — delete `setLoading(true)` and rely on `useState(true)` — passes
+ * lint and quietly removes the spinner on every *refetch*, since the initial value
+ * only covers mount. That regression is invisible to a test suite that asserts on
+ * resolved states.
+ *
+ * ## How it avoids both
+ *
+ * `loading` is **derived during render**, never assigned in an effect. Each result
+ * records the deps it was fetched for, and a request is outstanding exactly while
+ * the recorded deps do not match the current ones:
+ *
+ * ```
+ * loading = enabled && !(resolved matches current deps)
+ * ```
+ *
+ * So a dep change makes `loading` true in the same render that changed it, with no
+ * state update at all. The effect only ever sets state from inside the promise
+ * continuation, which the rule permits.
+ */
 export function useAsyncData<T>(
   loader: () => Promise<T>,
   deps: DependencyList,

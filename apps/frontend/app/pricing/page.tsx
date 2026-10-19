@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { PublicNav } from '@/components/PublicNav'
 import { COMPANY } from '@/lib/legal/company'
 import {
   METRIC_LABELS,
@@ -88,7 +89,8 @@ function TierAction({ plan }: { plan: Plan }) {
 export default function PricingPage() {
   return (
     <div className="w-full max-w-5xl mx-auto px-6 pt-10 pb-20 text-foreground">
-      <h1 className="text-3xl font-bold">Pricing</h1>
+      <PublicNav />
+      <h1 className="mt-8 text-3xl font-bold">Pricing</h1>
       <p className="mt-2 max-w-3xl text-muted-foreground">
         Every plan runs the same product: upload a dataset, get it summarised, engineer features
         and train, evaluate and deploy a model without writing code. The tiers differ only in how

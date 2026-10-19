@@ -42,31 +42,11 @@ def test_a_handler_the_lease_cannot_be_named_for_is_refused_when_decorated():
         holds_the_dataset(lambda a: "d", lambda a: None)(lambda request, user_id: None)
 
 
-@pytest.mark.asyncio
-async def test_a_bulk_job_fails_with_that_reason_while_another_writer_holds_the_dataset(setup_database, held):
-    from app.models.bulk_transformation import BulkJobStatus, BulkTransformationJob
-    from app.services.bulk_transformation_service import BulkTransformationService
-
-    job = BulkTransformationJob(
-        job_id="bulk_1022", user_id=USER, dataset_id="ds_1022", selected_columns=["a"],
-        transformation_type="fill_missing", global_parameters={},
-    )
-    await job.insert()
-    async with held("ds_1022"):
-        await BulkTransformationService()._process_bulk_job(job)
-
-    stored = await BulkTransformationJob.find_one(BulkTransformationJob.job_id == "bulk_1022")
-    assert (stored.status, stored.error_message) == (BulkJobStatus.FAILED, DATASET_BUSY)
-
-
-#: Each module that moves a dataset through `record_new_file`, or through
-#: `TransformationService.record_edit` (an edit recorded as a history step, #923), and the
-#: module whose code takes the dataset's lease around that move. A new call site fails
-#: here until listed.
+#: Each module that moves a dataset through `record_new_file`, and the module whose code
+#: takes the dataset's lease around that move. A new call site fails here until listed.
 LEASE_TAKEN_IN = {
     "services/transformation_service.py": "services/transformation_service.py",
     "services/history_service.py": "services/history_service.py",
-    "services/bulk_transformation_service.py": "services/bulk_transformation_service.py",
 }
 
 
@@ -81,7 +61,7 @@ def test_every_writer_that_moves_a_dataset_takes_its_lease():
     movers = {
         str(path.relative_to(APP))
         for path in APP.rglob("*.py")
-        if path.name != "dataset_link.py" and (_calls(path, "record_new_file") or _calls(path, "record_edit"))
+        if path.name != "dataset_link.py" and _calls(path, "record_new_file")
     }
 
     assert movers == set(LEASE_TAKEN_IN), "a new record_new_file call site: list it, with where it takes the lease"

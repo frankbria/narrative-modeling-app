@@ -145,25 +145,11 @@ class TransformationPreview(BaseModel):
     generated_at: datetime = Field(default_factory=get_current_time)
 
 
-class TransformationValidation(BaseModel):
-    """Validation results for transformation configuration."""
-
-    is_valid: bool = Field(..., description="Whether overall transformation configuration is valid")
-    errors: list[str] = Field(default_factory=list, description="Validation errors")
-    warnings: list[str] = Field(default_factory=list, description="Validation warnings")
-    validated_at: datetime = Field(default_factory=get_current_time)
-
-    # Detailed validation checks
-    parameter_validation: dict[str, bool] = Field(default_factory=dict, description="Per-parameter validation results")
-    data_type_compatibility: dict[str, bool] = Field(default_factory=dict, description="Data type compatibility checks")
-    dependency_validation: bool = Field(default=True, description="Whether transformation order dependencies are valid")
-
-
 class TransformationConfig(Document):
     """
     Transformation configuration document.
 
-    Stores transformation history, configuration, and validation results for datasets.
+    Stores transformation history and configuration for datasets.
     This model replaces the transformation-specific fields from the legacy UserData model,
     providing focused responsibility for transformation management.
     """
@@ -187,10 +173,6 @@ class TransformationConfig(Document):
     current_file_path: str | None = Field(None, description="Current file path after transformations")
     is_applied: bool = Field(default=False, description="Whether transformations have been applied")
     applied_at: datetime | None = None
-
-    # Validation
-    validation_result: TransformationValidation | None = None
-    last_validated_at: datetime | None = None
 
     # Preview
     last_preview: TransformationPreview | None = None
@@ -313,54 +295,6 @@ class TransformationConfig(Document):
             for step in self.transformation_steps
         ]
 
-    def validate_transformations(self) -> TransformationValidation:
-        """
-        Validate all transformation steps.
-
-        Returns:
-            Validation results
-        """
-        errors: list[str] = []
-        warnings: list[str] = []
-        parameter_validation: dict[str, bool] = {}
-        data_type_compatibility: dict[str, bool] = {}
-
-        for i, step in enumerate(self.transformation_steps):
-            step_key = f"step_{i}_{step.transformation_type}"
-
-            # Basic parameter validation
-            if step.transformation_type in {'encode', 'scale', 'impute'} and not step.column and not step.columns:
-                errors.append(f"Step {i}: {step.transformation_type} requires column specification")
-                parameter_validation[step_key] = False
-            else:
-                parameter_validation[step_key] = True
-
-            # Data loss warnings
-            if step.data_loss_percentage and step.data_loss_percentage > 50.0:
-                warnings.append(f"Step {i}: High data loss ({step.data_loss_percentage:.1f}%)")
-
-            # Check for validation errors in step
-            if step.validation_errors:
-                errors.extend([f"Step {i}: {err}" for err in step.validation_errors])
-
-        # Cumulative data loss warning
-        if self.total_data_loss > 50.0:
-            warnings.append(f"Total data loss exceeds 50% ({self.total_data_loss:.1f}%)")
-
-        validation_result = TransformationValidation(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            parameter_validation=parameter_validation,
-            data_type_compatibility=data_type_compatibility
-        )
-
-        self.validation_result = validation_result
-        self.last_validated_at = get_current_time()
-        self.update_timestamp()
-
-        return validation_result
-
     def clear_transformations(self) -> None:
         """Clear all transformation steps."""
         self.transformation_steps = []
@@ -373,7 +307,6 @@ class TransformationConfig(Document):
         self.total_data_loss = 0.0
         self.is_applied = False
         self.applied_at = None
-        self.validation_result = None
         self.last_preview = None
         self.update_timestamp()
 

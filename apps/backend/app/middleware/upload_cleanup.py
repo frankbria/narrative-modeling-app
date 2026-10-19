@@ -20,7 +20,6 @@ from urllib.parse import quote
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from app.models.bulk_transformation import BulkTransformationJob
 from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationConfig
 from app.models.user_data import UserData
@@ -35,7 +34,6 @@ _OWNERS = (
     (DatasetMetadata, ("s3_url", "file_path", "source_s3_url", "superseded_s3_urls")),
     # Written before the dataset itself moves to a transformed file.
     (TransformationConfig, ("current_file_path",)),
-    (BulkTransformationJob, ("output_file_path",)),
 )
 
 
@@ -62,16 +60,15 @@ class UnownedUploadCleanupMiddleware(BaseHTTPMiddleware):
         return response
 
 
-async def discard_unowned_uploads(uploads: list[str] | None = None) -> None:
+async def discard_unowned_uploads() -> None:
     """Delete what this request uploaded and nothing ended up owning (#898).
 
     The call for a handler that reports failure in a 2xx, where the middleware keeps
     everything: the counterpart of `enforcement.release(request)` for the quota unit.
     The same ownership lookup decides, so an object a document names is never deleted,
-    whatever the handler reported. A background job passes the list it started with
-    `record_request_uploads()`; its request has long since answered.
+    whatever the handler reported.
     """
-    recorded = request_uploads() if uploads is None else uploads
+    recorded = request_uploads()
     if recorded:
         await _delete_unowned(recorded)
 

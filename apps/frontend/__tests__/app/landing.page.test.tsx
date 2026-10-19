@@ -19,6 +19,7 @@ import HomePage, { metadata } from '@/app/page';
 import { COMPANY } from '@/lib/legal/company';
 import { PERIOD, PLANS, limitLabel, priceLabel } from '@/lib/billing/plans';
 import { WORKFLOW_STAGES } from '@/lib/types/workflow';
+import { STAGE_SHOTS } from '@/components/how-it-works/stageShots';
 
 const mockAuth = auth as unknown as jest.Mock;
 const mockRedirect = redirect as unknown as jest.Mock;
@@ -90,6 +91,20 @@ describe('how it works', () => {
     WORKFLOW_STAGES.forEach((stage, i) => {
       expect(items[i]).toHaveTextContent(stage.name);
     });
+  });
+});
+
+describe('product shots (#772)', () => {
+  it('shows four stage screenshots from the how-it-works set and links to the rest', async () => {
+    await renderLanding();
+    const section = screen.getByRole('region', { name: /see the app/i });
+    const shots = within(section).getAllByRole('img');
+    expect(shots).toHaveLength(4);
+    for (const shot of shots) {
+      expect(Object.values(STAGE_SHOTS)).toContain(shot.getAttribute('src'));
+      expect(shot).toHaveAttribute('alt', expect.stringMatching(/\S/));
+    }
+    expect(within(section).getByRole('link', { name: /every stage/i })).toHaveAttribute('href', '/how-it-works');
   });
 });
 

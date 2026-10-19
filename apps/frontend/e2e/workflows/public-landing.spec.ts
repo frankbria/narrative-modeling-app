@@ -53,7 +53,7 @@ test.describe('landing page is public (#766)', () => {
     const response = await request.get('/sitemap.xml', { maxRedirects: 0 });
     expect(response.status()).toBe(200);
     const body = await response.text();
-    for (const path of ['/pricing', '/legal/terms', '/legal/privacy']) {
+    for (const path of ['/pricing', '/security', '/how-it-works', '/legal/terms', '/legal/privacy']) {
       // Any host: test-e2e.sh starts the dev server without NEXTAUTH_URL, so the
       // host here is the fallback; the runtime host is pinned in the unit tests.
       expect(body).toMatch(new RegExp(`<loc>https?://[^<]+${path}</loc>`));

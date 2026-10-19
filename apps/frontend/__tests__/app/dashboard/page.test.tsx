@@ -571,7 +571,7 @@ describe('DashboardPage', () => {
 
       render(<DashboardPage />);
 
-      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload and connect your data sources/i });
+      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload your data file/i });
       fireEvent.click(uploadCard);
 
       expect(mockPush).toHaveBeenCalledWith('/upload');
@@ -593,7 +593,7 @@ describe('DashboardPage', () => {
 
       render(<DashboardPage />);
 
-      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload and connect your data sources/i });
+      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload your data file/i });
       fireEvent.keyDown(uploadCard, { key: 'Enter' });
 
       expect(mockPush).toHaveBeenCalledWith('/upload');
@@ -625,7 +625,7 @@ describe('DashboardPage', () => {
 
       render(<DashboardPage />);
 
-      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload and connect your data sources/i });
+      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload your data file/i });
       expect(uploadCard).toHaveAttribute('tabIndex', '0');
 
       const profilingCard = screen.getByRole('button', { name: /Data Profiling.*locked/i });

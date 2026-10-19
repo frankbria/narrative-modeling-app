@@ -45,13 +45,13 @@ the `erasure_audit_log` entry exists.
 # ids — the DatasetMetadata dataset_id and str(UserData._id); training keys on the latter.
 mongosh "$MONGODB_URI" --eval '
   ["transformation_configs","dataset_versions","transformation_lineages",
-   "feature_definitions","workflow_states","bulk_transformation_jobs",
-   "ml_models","model_configs","training_jobs","data_issues",
+   "feature_definitions","workflow_states",
+   "ml_models","model_configs","training_jobs","data_issues","bulk_transformation_jobs",
    "ai_recommendation_feedback"].forEach(c =>
     print(c, db[c].countDocuments({dataset_id: "<DATASET_ID>"})))'
 ```
-`data_issues`, `feature_definitions`, `feature_store`, `feature_versions` and `feature_collections`
-belong to features that were removed (#1088, #1103): no model maps them, so erasure reaches them by collection name
+`data_issues`, `feature_definitions`, `feature_store`, `feature_versions`, `feature_collections` and
+`bulk_transformation_jobs` belong to features that were removed (#1088, #1103, #1112): no model maps them, so erasure reaches them by collection name
 (`_RETIRED_*` in `erasure_service.py`) and rows written before the removal are still erased.
 Automated equivalent: `apps/backend/tests/test_integration/test_erasure_cascade.py` and
 `test_erase_retired_collections.py`.

@@ -77,6 +77,7 @@ apps/frontend/e2e/
 ├── isolatedUsers.ts       # users for specs that change account-scoped state
 ├── fixtures/index.ts      # test, expect, authenticatedPage, uploadTestDataset, cleanupDataset, trainModel, aiMock
 ├── helpers/               # apiAuth (apiAuthHeaders, signInAs), seedWorkflow, landing, gluedText, layoutProblems, ...
+├── capture/               # *.capture.ts: re-records public/how-it-works media (not a spec, never in CI)
 ├── pages/                 # page objects: Base, Upload, Evaluate, Predict
 ├── workflows/             # *.spec.ts
 ├── recipes/               # recipe-management.spec.ts
@@ -128,6 +129,18 @@ Rules (enforced by review, and by `__tests__/e2e/noEarlyReturns.test.ts` where n
 - Break the behaviour a new spec covers once, and watch it fail, before trusting it.
 
 `aiMock` serves canned AI responses when `USE_AI_MOCK=true` or `CI=true`.
+
+## Re-recording the /how-it-works media
+
+`npm run capture:how-it-works` (from `apps/frontend`, MongoDB and LocalStack up, `ffmpeg` on the
+path) runs `e2e/capture/how-it-works.capture.ts` through `test-e2e.sh` with
+`playwright.capture.config.ts`, which matches only `*.capture.ts`, so no normal run executes it.
+It walks the real UI as the isolated `onboarding` user (a new account, not an admin) from the churn
+sample to Deployment, writes one `public/how-it-works/<stage>.webp` per stage and the silent
+`churn-walkthrough.webm` (Quick training mode, about a minute), and erases its dataset. The
+signed-in account is named at the bottom of the sidebar, so every frame is cropped above it: look at
+each image before committing, and keep any address out of them. The page is
+`app/how-it-works/page.tsx`; its test checks that every image exists and stays small.
 
 ## When a spec fails
 

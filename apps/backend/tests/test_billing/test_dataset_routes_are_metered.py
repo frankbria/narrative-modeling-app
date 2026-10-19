@@ -74,7 +74,6 @@ _EXEMPT = {
     ),
     "/api/v1/datasets/{dataset_id}/erase": "Deletes.",
     "/api/v1/datasets/{dataset_id}/process": "Processes the dataset in place.",
-    "/api/v1/datasets/{dataset_id}/transformations/preview": "Preview; persists nothing.",
     # Onboarding bookkeeping. All three reach `_save_user_progress`, which touches a
     # UserData used purely as a progress carrier — no s3_url, no rows, no dataset.
     "/api/v1/onboarding/steps/{step_id}/complete": "Records progress.",
@@ -96,17 +95,9 @@ _EXEMPT_BY_REACH = {
     "/api/v1/transformations/pipeline/apply": _TWIN,
     "/api/v1/transformations/auto-clean": _TWIN,
     "/api/v1/transformations/recipes/{recipe_id}/apply": _TWIN,
-    "/api/v1/transformations/datasets/{dataset_id}/bulk-apply": _TWIN,
-    "/api/v1/transformations/datasets/{dataset_id}/bulk-preview": _TWIN,
-    "/api/v1/transformations/datasets/{dataset_id}/bulk-jobs/{job_id}/retry": _TWIN,
-    "/api/v1/transformations/datasets/{dataset_id}/columns/select-pattern": _TWIN,
     "/api/v1/transformations/datasets/{dataset_id}/history/undo": _TWIN,
     "/api/v1/transformations/datasets/{dataset_id}/history/redo": _TWIN,
     "/api/v1/transformations/datasets/{dataset_id}/history/jump": _TWIN,
-    "/api/v1/batch/jobs/{job_id}/retry": (
-        "A name, not a call: `retry_job` is also the bulk transformation service's method, "
-        "which is the chain reported. This one re-runs a batch prediction job."
-    ),
 }
 
 

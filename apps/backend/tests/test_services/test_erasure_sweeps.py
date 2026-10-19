@@ -155,14 +155,14 @@ async def test_the_retired_sweep_deletes_by_owner_and_pulls_from_acls(monkeypatc
     service, manifest = DatasetErasureService.__new__(DatasetErasureService), _manifest()
     collections = {
         name: _Rows([{"feature_id": "f1"}])
-        for name in ("data_issues", "feature_definitions", "feature_store", "feature_versions", "feature_collections")
+        for name in ("data_issues", "feature_definitions", "feature_store", "feature_versions", "feature_collections", "bulk_transformation_jobs")
     }
     _retired(monkeypatch, **collections)
 
     await service._sweep_retired_user_scoped("u", manifest)
 
     assert ("delete_many", {"feature_id": {"$in": ["f1"]}}) in collections["feature_versions"].calls
-    for name in ("data_issues", "feature_definitions", "feature_store", "feature_collections"):
+    for name in ("data_issues", "feature_definitions", "feature_store", "feature_collections", "bulk_transformation_jobs"):
         assert ("delete_many", {"user_id": "u"}) in collections[name].calls
     assert sum("shared_with" in n for n in manifest.notes) == 2
     assert manifest.documents_deleted["feature_versions"] == 1 and manifest.failures == []
@@ -171,7 +171,10 @@ async def test_the_retired_sweep_deletes_by_owner_and_pulls_from_acls(monkeypatc
 async def test_retired_failures_are_recorded_not_raised(monkeypatch):
     service, manifest = DatasetErasureService.__new__(DatasetErasureService), _manifest()
     broken = _Rows([{"feature_id": "f1"}], fail=True)
-    _retired(monkeypatch, data_issues=broken, feature_store=broken, feature_versions=broken, feature_collections=broken)
+    _retired(
+        monkeypatch, data_issues=broken, feature_store=broken, feature_versions=broken,
+        feature_collections=broken, bulk_transformation_jobs=broken,
+    )
 
     await service._sweep_retired_user_scoped("u", manifest)
 

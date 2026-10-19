@@ -3,6 +3,18 @@
  * Provides defense-in-depth even though React escapes by default
  */
 
+/** The text of a value; an object is stringified, or named as one when it cannot be. */
+function stringify(value: unknown): string {
+  if (typeof value !== 'object') {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '[Complex Object]';
+  }
+}
+
 /**
  * Sanitize a value for safe display in the UI
  * Strips HTML tags and limits length to prevent DOM bloat
@@ -16,24 +28,11 @@ export function sanitizeForDisplay(value: unknown, maxLength: number = 1000): st
     return '';
   }
 
-  let stringValue: string;
+  let stringValue = stringify(value);
 
-  // Handle objects by stringifying
-  if (typeof value === 'object') {
-    try {
-      stringValue = JSON.stringify(value);
-    } catch (error) {
-      stringValue = '[Complex Object]';
-    }
-  } else {
-    stringValue = String(value);
-  }
-
-  // Strip HTML tags (defense in depth)
+  // Strip HTML tags (defense in depth). Any `<` left has no `>` after it, so what
+  // remains cannot form a script element; the body of a stripped one stays as text.
   stringValue = stringValue.replace(/<[^>]*>/g, '');
-
-  // Strip script tags specifically
-  stringValue = stringValue.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 
   // Limit length to prevent DOM bloat
   if (stringValue.length > maxLength) {
@@ -41,31 +40,4 @@ export function sanitizeForDisplay(value: unknown, maxLength: number = 1000): st
   }
 
   return stringValue;
-}
-
-/**
- * Validate and sanitize a dataset ID
- * Only allows alphanumeric characters, hyphens, and underscores
- *
- * @param datasetId - The dataset ID to validate
- * @returns Validated dataset ID or null if invalid
- */
-export function validateDatasetId(datasetId: string): string | null {
-  if (!datasetId || typeof datasetId !== 'string') {
-    return null;
-  }
-
-  // Only allow alphanumeric, hyphens, and underscores
-  const validPattern = /^[a-zA-Z0-9_-]+$/;
-
-  if (!validPattern.test(datasetId)) {
-    return null;
-  }
-
-  // Limit length to prevent abuse
-  if (datasetId.length > 100) {
-    return null;
-  }
-
-  return datasetId;
 }

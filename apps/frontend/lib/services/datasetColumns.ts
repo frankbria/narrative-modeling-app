@@ -1,8 +1,6 @@
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 
-/** The names of a dataset's columns, for the stages that let the user pick among them. */
-
 type DatasetRecord = {
   columns?: string[] | null;
   data_schema?: { field_name: string }[] | null;
@@ -21,6 +19,8 @@ async function readColumns(path: string, token: string | null): Promise<string[]
 }
 
 /**
+ * The names of a dataset's columns, for the stages that let the user pick among them.
+ *
  * The upload page hands the workflow a UserData id, which only /user_data answers
  * for; a /datasets upload is the other id-space, and keeps its names in
  * `columns` with data_schema always empty (#919). Empty when neither answers.

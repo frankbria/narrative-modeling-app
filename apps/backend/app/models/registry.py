@@ -11,7 +11,6 @@ from app.models.ai_feedback import AIRecommendationFeedback
 from app.models.analytics_result import AnalyticsResult
 from app.models.api_key import APIKey
 from app.models.batch_job import BatchJob
-from app.models.bulk_transformation import BulkTransformationJob
 from app.models.column_stats import ColumnStats
 from app.models.dataset import DatasetMetadata
 from app.models.dataset_lease import DatasetLease
@@ -45,7 +44,6 @@ DOCUMENT_MODELS = [
     AnalyticsResult,
     APIKey,
     BatchJob,
-    BulkTransformationJob,
     ColumnStats,
     DatasetLease,
     DatasetMetadata,
