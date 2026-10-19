@@ -251,7 +251,7 @@ class DatasetService(BaseService[DatasetMetadata]):
             DatasetMetadata instance or None if not found
 
         Raises:
-            PermissionDeniedError: If user doesn't own the dataset
+            NotFoundError: If the dataset belongs to another user (#985)
         """
         return await self.get_by_id(
             resource_id=dataset_id,
@@ -277,8 +277,7 @@ class DatasetService(BaseService[DatasetMetadata]):
             DatasetMetadata instance
 
         Raises:
-            NotFoundError: If dataset doesn't exist
-            PermissionDeniedError: If user doesn't own the dataset
+            NotFoundError: If the dataset doesn't exist or belongs to another user (#985)
         """
         return await self.get_by_id_or_raise(
             resource_id=dataset_id,
@@ -339,7 +338,7 @@ class DatasetService(BaseService[DatasetMetadata]):
             Updated DatasetMetadata or None if not found
 
         Raises:
-            PermissionDeniedError: If user doesn't own the dataset (when user_id provided)
+            NotFoundError: If the dataset belongs to another user (when user_id provided; #985)
         """
         # For backward compatibility, allow updates without user_id check
         if user_id:
@@ -444,37 +443,3 @@ class DatasetService(BaseService[DatasetMetadata]):
         await dataset.save()
 
         return dataset
-
-    async def get_datasets_with_pii(self, user_id: str) -> list[DatasetMetadata]:
-        """
-        Get all datasets for a user that contain PII.
-
-        Args:
-            user_id: User identifier
-
-        Returns:
-            List of DatasetMetadata instances with PII
-        """
-        all_datasets = await self.list_datasets(user_id)
-        return [dataset for dataset in all_datasets if dataset.has_pii()]
-
-    async def get_unprocessed_datasets(self, user_id: str) -> list[DatasetMetadata]:
-        """
-        Get all unprocessed datasets for a user, sorted chronologically.
-
-        Optimization: Uses compound index (user_id, is_processed, created_at).
-
-        Args:
-            user_id: User identifier
-
-        Returns:
-            List of unprocessed DatasetMetadata instances sorted by created_at descending
-        """
-        return await self.list_for_user(
-            user_id=user_id,
-            skip=0,
-            limit=1000,  # Large limit to get all datasets
-            sort_field="created_at",
-            sort_ascending=False,
-            is_processed=False
-        )

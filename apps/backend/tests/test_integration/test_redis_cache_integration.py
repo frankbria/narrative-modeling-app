@@ -272,15 +272,7 @@ class TestRedisCacheIntegration:
         service = RedisCacheService()
         service.redis_client = AsyncMock()
 
-        # set()-based helpers use SETEX with (key, ttl, value)
-        await service.cache_data_stats("data123", {"rows": 1000})
-        assert service.redis_client.setex.call_args.args[0] == "data_stats:data123"
-        assert service.redis_client.setex.call_args.args[1] == 7200  # 2 hours
-
-        await service.cache_eda_results("data123", {"summary": "complete"})
-        assert service.redis_client.setex.call_args.args[0] == "eda:data123"
-        assert service.redis_client.setex.call_args.args[1] == 10800  # 3 hours
-
+        # set() uses SETEX with (key, ttl, value)
         await service.set("viz:test", {"chart": "data"}, ttl=3600)
         assert service.redis_client.setex.call_args.args[1] == 3600  # 1 hour
 

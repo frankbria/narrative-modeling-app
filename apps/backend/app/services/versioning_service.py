@@ -772,8 +772,7 @@ class VersioningService(BaseService[DatasetVersion]):
             Updated DatasetVersion
 
         Raises:
-            NotFoundError: If version not found
-            PermissionDeniedError: If ownership check fails (via get_version)
+            NotFoundError: If version not found or not owned by user_id (#985)
         """
         version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:
@@ -805,8 +804,7 @@ class VersioningService(BaseService[DatasetVersion]):
             Updated DatasetVersion
 
         Raises:
-            NotFoundError: If version not found
-            PermissionDeniedError: If ownership check fails (via get_version)
+            NotFoundError: If version not found or not owned by user_id (#985)
         """
         version = await self.get_version(version_id, mark_accessed=False, user_id=user_id)
         if not version:

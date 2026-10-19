@@ -10,8 +10,6 @@ import {
   Brain, 
   Rocket,
   Crown,
-  Award,
-  Medal,
   Zap
 } from 'lucide-react';
 
@@ -138,79 +136,6 @@ export function AchievementsBadge({
             {achievement.points} points
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// Component for displaying multiple achievements in a grid
-interface AchievementsGridProps {
-  achievements: Achievement[];
-  maxDisplay?: number;
-  size?: 'sm' | 'md' | 'lg';
-}
-
-export function AchievementsGrid({ 
-  achievements, 
-  maxDisplay = 10,
-  size = 'md' 
-}: AchievementsGridProps) {
-  const displayedAchievements = achievements.slice(0, maxDisplay);
-  const remainingCount = achievements.length - maxDisplay;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {displayedAchievements.map((achievement) => (
-          <AchievementsBadge 
-            key={achievement.id} 
-            achievement={achievement} 
-            size={size}
-          />
-        ))}
-        
-        {remainingCount > 0 && (
-          <Badge variant="outline" className="cursor-pointer hover:bg-muted">
-            +{remainingCount} more
-          </Badge>
-        )}
-      </div>
-
-      {/* Achievement Stats */}
-      {achievements.length > 0 && (
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Award className="h-4 w-4" />
-            <span>{achievements.filter(a => a.type === 'badge').length} badges</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Medal className="h-4 w-4" />
-            <span>{achievements.filter(a => a.type === 'milestone').length} milestones</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Star className="h-4 w-4" />
-            <span>{achievements.reduce((sum, a) => sum + a.points, 0)} total points</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Component for celebration animation
-export function AchievementCelebration({ achievement }: { achievement: Achievement }) {
-  return (
-    <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
-      <div className="bg-card rounded-xl shadow-2xl border-4 border-yellow-300 dark:border-yellow-800 p-6 max-w-sm mx-4 animate-bounce">
-        <div className="text-center space-y-3">
-          <div className="text-4xl">🎉</div>
-          <div className="space-y-1">
-            <div className="text-lg font-bold text-foreground">Achievement Unlocked!</div>
-            <div className="text-yellow-600 font-medium">{achievement.title}</div>
-            <div className="text-sm text-muted-foreground">{achievement.description}</div>
-            <div className="text-lg font-bold text-green-600">+{achievement.points} points!</div>
-          </div>
-        </div>
       </div>
     </div>
   );

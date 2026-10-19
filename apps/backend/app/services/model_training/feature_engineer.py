@@ -722,29 +722,6 @@ class FeatureEngineer:
 
         return df, metadata
 
-    async def apply_multiple_suggestions(
-        self,
-        df: pd.DataFrame,
-        suggestions: list[Any]
-    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-        """
-        Apply multiple feature suggestions to a dataframe.
-
-        Args:
-            df: Input dataframe
-            suggestions: List of FeatureSuggestion objects
-
-        Returns:
-            Tuple of (transformed dataframe, list of metadata dicts)
-        """
-        all_metadata: list[dict[str, Any]] = []
-
-        for suggestion in suggestions:
-            df, metadata = await self.apply_suggestion(df, suggestion)
-            all_metadata.append(metadata)
-
-        return df, all_metadata
-
     def _apply_polynomial(
         self,
         df: pd.DataFrame,

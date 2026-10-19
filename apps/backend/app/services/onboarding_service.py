@@ -756,13 +756,10 @@ class OnboardingService:
     def _calculate_streak(self, progress: OnboardingUserProgress) -> int:
         """Calculate user's current learning streak"""
         
-        # Simple implementation - count consecutive days with activity
-        # In a real implementation, you'd track daily activity
-        
+        # Daily activity is not tracked, so the "streak" is the number of
+        # completed steps, not consecutive days.
         if not progress.completed_steps:
             return 0
-        
-        # For now, return number of completed steps as a proxy
         return len(progress.completed_steps)
     
     async def _get_or_create_user_progress(self, user_id: str) -> OnboardingUserProgress:

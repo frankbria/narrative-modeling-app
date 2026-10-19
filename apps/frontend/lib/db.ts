@@ -1,4 +1,4 @@
-// frontend/app/lib/db.ts
+// frontend/lib/db.ts
 
 // This approach is taken from https://github.com/vercel/next.js/tree/canary/examples/with-mongodb
 import { MongoClient, ServerApiVersion } from "mongodb"
@@ -10,7 +10,7 @@ if (!process.env.MONGODB_URI && !isCI) {
   throw new Error('Invalid/Missing environment variable: "MONGODB_URI"')
 }
 
-// Use a mock URI for CI environments
+// Fallback URI for local runs; CI uses a stub client and never connects
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/test'
 const options = {
   serverApi: {
