@@ -1,6 +1,6 @@
 /**
  * #767 diff-coverage follow-up: every `throw await apiError(response, ...)`
- * swap in model.ts / production.ts / data-issues.ts needs at least one non-OK
+ * swap in model.ts / production.ts needs at least one non-OK
  * response exercised, or the branch is dead in coverage even though it is
  * mechanically identical everywhere. Table-driven over every static method
  * that has an `if (!response.ok)` branch, plus targeted coverage for the two
@@ -10,7 +10,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { ModelService } from '@/lib/services/model'
 import { ProductionService } from '@/lib/services/production'
-import { DataIssuesService } from '@/lib/services/data-issues'
 import { ApiError, QuotaExceededError } from '@/lib/services/apiError'
 import { useFeatureSuggestions } from '@/lib/hooks/useFeatureSuggestions'
 import useChunkedUpload from '@/lib/hooks/useChunkedUpload'
@@ -82,12 +81,6 @@ const productionCases: Case[] = [
 ]
 
 const dataIssuesCases: Case[] = [
-  ['DataIssuesService.detectIssues', () => DataIssuesService.detectIssues('d1', {}, 'tok')],
-  ['DataIssuesService.getDatasetIssues', () => DataIssuesService.getDatasetIssues('d1', 'tok')],
-  ['DataIssuesService.previewFix', () => DataIssuesService.previewFix('d1', 'i1', 'tok')],
-  ['DataIssuesService.applyFix', () => DataIssuesService.applyFix('d1', 'i1', 'tok')],
-  ['DataIssuesService.batchApplyFixes', () => DataIssuesService.batchApplyFixes('d1', ['i1'], 'tok')],
-  ['DataIssuesService.getIssueHistory', () => DataIssuesService.getIssueHistory('d1', 'tok')],
 ]
 
 describe('every metered-service method surfaces a non-OK response as an ApiError', () => {

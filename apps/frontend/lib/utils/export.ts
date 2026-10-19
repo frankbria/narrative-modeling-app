@@ -11,7 +11,7 @@ import {
   type ModelEvaluationResponse
 } from '@/lib/types/evaluation'
 
-/** Escape a CSV field per RFC 4180 (SelectedFeatureSet precedent). */
+/** Escape a CSV field per RFC 4180. */
 function escapeCsvField(field: string): string {
   if (/[,"\n\r]/.test(field)) {
     return `"${field.replace(/"/g, '""')}"`
@@ -118,7 +118,7 @@ export function buildEvaluationCSV(evaluation: ModelEvaluationResponse): string 
   return lines.join('\n')
 }
 
-/** Trigger a browser download of a Blob (SelectedFeatureSet precedent). */
+/** Trigger a browser download of a Blob. */
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')

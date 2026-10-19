@@ -1,9 +1,8 @@
 import React from 'react'
 import { render, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { FeatureImportanceChart } from '@/components/FeatureImportanceChart'
+import { FeatureImportanceChart, type FeatureScore } from '@/components/FeatureImportanceChart'
 import { ScatterPlotChart } from '@/components/ScatterPlotChart'
-import type { FeatureScore } from '@/lib/services/featureSelection'
 
 // The two components recharts 3 actually broke (#346). Neither had any test.
 //

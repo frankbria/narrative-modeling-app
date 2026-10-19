@@ -5,7 +5,6 @@
  */
 import { renderHook, act } from '@testing-library/react'
 import { ModelService } from '@/lib/services/model'
-import { DataIssuesService } from '@/lib/services/data-issues'
 import useChunkedUpload from '@/lib/hooks/useChunkedUpload'
 import { QuotaExceededError } from '@/lib/services/apiError'
 import { planLimit } from '@/lib/billing/planLimit'
@@ -91,16 +90,6 @@ describe('#767 AC5: metered surfaces open the plan-limit dialog on a 402', () =>
 
     await expect(
       ModelService.getErrorAnalysis('m1', 'tok-123')
-    ).rejects.toBeInstanceOf(QuotaExceededError)
-
-    expectDialogOpenedFor('ai_calls')
-  })
-
-  it('DataIssuesService.detectIssues — ai_calls', async () => {
-    ;(global.fetch as jest.Mock).mockResolvedValue(quotaResponse('ai_calls'))
-
-    await expect(
-      DataIssuesService.detectIssues('d1', {}, 'tok-123')
     ).rejects.toBeInstanceOf(QuotaExceededError)
 
     expectDialogOpenedFor('ai_calls')
