@@ -714,16 +714,3 @@ class DataIssueDetectionService:
         )
         await record.insert()
         return record
-
-    async def get_latest_detection(
-        self,
-        dataset_id: str,
-        user_id: str,
-    ) -> DataIssueRecord | None:
-        """Get the most recent detection record for a dataset."""
-        record = await DataIssueRecord.find_one(
-            DataIssueRecord.dataset_id == dataset_id,
-            DataIssueRecord.user_id == user_id,
-            sort=[("detected_at", -1)]
-        )
-        return record

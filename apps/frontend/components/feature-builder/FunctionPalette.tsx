@@ -50,7 +50,7 @@ const functions: Record<string, Function[]> = {
 };
 
 /**
- * FunctionPalette component renders a searchable, categorized palette of functions
+ * FunctionPalette component renders a categorized palette of functions
  * for the Visual Feature Builder.
  *
  * Functions are organized into categories (mathematical, statistical, string, date, utility)

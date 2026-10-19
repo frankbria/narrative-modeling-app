@@ -11,9 +11,10 @@
  * goes, so each entry is traceable to code:
  *   AWS S3          app/services/s3_service.py
  *   MongoDB Atlas   app/main.py (Beanie/Motor)
- *   OpenAI          app/services/dataset_summarization.py:129 (5 sample rows)
+ *   OpenAI          app/services/dataset_summarization.py (5 sample rows)
  *   Stripe          app/api/routes/billing.py
  *   Google/GitHub   apps/frontend/auth.ts
+ *   Sentry          lib/observability/sentry.ts, app/observability.py
  * Redis is deliberately absent: it runs on our own infrastructure, so it is a
  * hosting component rather than a third party receiving customer data.
  */

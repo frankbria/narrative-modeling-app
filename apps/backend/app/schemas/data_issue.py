@@ -185,20 +185,6 @@ class BatchFixResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Warnings")
 
 
-class AppliedFixResponse(BaseModel):
-    """Response schema for an applied fix record."""
-
-    fix_id: str = Field(..., description="Fix ID")
-    issue_id: str = Field(..., description="Issue ID")
-    transformation_type: str = Field(..., description="Type of transformation")
-    parameters: dict[str, Any] = Field(default_factory=dict)
-    applied_at: datetime = Field(..., description="When fix was applied")
-    applied_by: str = Field(..., description="User who applied")
-    rows_affected: int = Field(default=0)
-    success: bool = Field(default=True)
-    error_message: str | None = Field(None)
-
-
 class IssueHistoryResponse(BaseModel):
     """Response schema for issue detection history."""
 

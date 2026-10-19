@@ -20,7 +20,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota, reserve
@@ -38,24 +38,6 @@ _RESULT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 # Initialize service
 batch_service = BatchPredictionService()
-
-
-# Request/Response Models
-class CreateBatchJobRequest(BaseModel):
-    model_id: str = Field(..., description="Model ID to use for predictions")
-    output_format: str = Field(default="csv", description="Output format (csv, json)")
-    include_probabilities: bool = Field(
-        default=True, description="Include prediction probabilities"
-    )
-    include_metadata: bool = Field(default=False, description="Include model metadata")
-    include_explanations: bool = Field(
-        default=False,
-        description="Include per-prediction feature contributions (#83)",
-    )
-    chunk_size: int = Field(
-        default=1000, ge=100, le=10000, description="Records per processing chunk"
-    )
-    priority: int = Field(default=0, description="Job priority")
 
 
 class BatchJobResponse(BaseModel):

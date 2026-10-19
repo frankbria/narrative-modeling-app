@@ -2,7 +2,7 @@
 Bulk transformation job models for MongoDB.
 
 This model handles bulk operations that apply the same transformation
-to multiple columns simultaneously with parallel processing.
+to multiple columns one after another in a background job.
 """
 
 import re

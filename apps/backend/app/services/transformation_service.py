@@ -517,10 +517,10 @@ class TransformationService(BaseService[TransformationConfig]):
             user_id: User identifier for ownership check
 
         Returns:
-            True if deleted, False if not found
+            True when deleted
 
         Raises:
-            PermissionDeniedError: If user doesn't own the resource
+            NotFoundError: If the resource doesn't exist or isn't the caller's (#985)
         """
         return await self.delete(config_id, user_id, soft_delete=False)
 

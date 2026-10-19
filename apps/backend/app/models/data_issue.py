@@ -159,12 +159,6 @@ class DataIssueRecord(Document):
         }
     }
 
-    def add_issue(self, issue: DataIssue) -> None:
-        """Add a detected issue."""
-        self.issues.append(issue)
-        self._update_summary()
-        self.last_updated = get_current_time()
-
     def add_applied_fix(self, fix: AppliedFix) -> None:
         """Record an applied fix."""
         self.applied_fixes.append(fix)
@@ -174,10 +168,6 @@ class DataIssueRecord(Document):
     def get_issues_by_severity(self, severity: IssueSeverity) -> list[DataIssue]:
         """Get issues filtered by severity."""
         return [issue for issue in self.issues if issue.severity == severity]
-
-    def get_issues_by_type(self, issue_type: IssueType) -> list[DataIssue]:
-        """Get issues filtered by type."""
-        return [issue for issue in self.issues if issue.issue_type == issue_type]
 
     def get_auto_fixable_issues(self) -> list[DataIssue]:
         """Get issues that have safe automatic fixes."""

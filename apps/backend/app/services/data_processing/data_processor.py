@@ -128,38 +128,6 @@ class DataProcessor:
         )
         self.quality_service = QualityAssessmentService()
     
-    async def process_file(
-        self,
-        file_path: str,
-        file_type: str | None = None,
-        encoding: str = "utf-8",
-        delimiter: str | None = None
-    ) -> ProcessedData:
-        """
-        Process a file from disk
-        
-        Args:
-            file_path: Path to the file
-            file_type: Type of file (csv, excel, etc.)
-            encoding: File encoding
-            delimiter: CSV delimiter (auto-detected if None)
-            
-        Returns:
-            ProcessedData object with all analysis results
-        """
-        # Detect file type if not provided
-        if not file_type:
-            file_type = self._detect_file_type(file_path)
-        
-        # Read the file into DataFrame
-        df = await self._read_file(file_path, file_type, encoding, delimiter)
-        
-        # Get file metadata
-        file_metadata = self._get_file_metadata(file_path, file_type)
-        
-        # Process the DataFrame
-        return await self.process_dataframe(df, file_metadata)
-    
     async def process_bytes(
         self,
         file_bytes: bytes,

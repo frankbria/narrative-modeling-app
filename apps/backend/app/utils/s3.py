@@ -439,21 +439,17 @@ def object_size(s3_url: str) -> int | None:
 def _allowed_bucket() -> str | None:
     """The single bucket this deployment may read from, or None if unconfigured.
 
-    Deliberately the same expression as
-    `app/services/s3_service.py::download_file_from_s3`, which has enforced its
-    own allowlist since #257. Two allowlists that resolve their allowed bucket
-    differently is how this class of bug quietly reopens — an earlier version of
-    this function accepted *any* of the four historical env names, which was the
-    more permissive of the two. Consolidating them into one helper is a
-    follow-up; agreeing on the answer comes first.
+    Resolves through `app.config.resolve_configured_bucket`, the one resolver that
+    readers (this function, and `s3_service.download_file_from_s3` via
+    `resolve_validated_object`) and writers (`configured_bucket`) all share, so they
+    cannot disagree about which bucket is ours.
 
     Resolved at call time rather than import time so tests and deployments that
     set the environment after import are honoured.
     """
-    # The explicit allowlist variable wins, then every historical name via the
+    # The explicit allowlist variable wins, then every historical name, inside the
     # canonical resolver. Writers (S3Service, upload_file_to_s3) resolve through
-    # configured_bucket() — this same expression — so readers and writers can
-    # never disagree about which bucket is "ours" (#567 AC4, claude-review).
+    # configured_bucket() — the same resolver (#567 AC4, claude-review).
     return resolve_configured_bucket()
 
 

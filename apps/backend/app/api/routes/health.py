@@ -191,7 +191,7 @@ async def readiness_check():
     constantly by load balancers and uptime monitors, so a per-request OpenAI call
     or blocking S3 ``head_bucket`` here was a cost-amplification DoS and an
     event-loop stall (#503). Whole-system upstream health lives behind auth at
-    ``GET /health/dependencies``. 200 if ready, 503 otherwise — the contract the
+    ``GET /api/v1/health/dependencies``. 200 if ready, 503 otherwise — the contract the
     Docker/compose healthchecks depend on.
     """
     # return_exceptions so a raising check is sanitized by _check_or_generic

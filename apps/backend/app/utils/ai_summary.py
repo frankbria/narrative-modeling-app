@@ -36,7 +36,7 @@ logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
 async def generate_dataset_summary(user_data_id: str) -> AISummary | None:
     """
-    Generate an AI summary of a dataset using OpenAI's GPT-4.
+    Generate an AI summary of a dataset using the configured OpenAI model.
 
     Args:
         user_data_id: The ID of the UserData document

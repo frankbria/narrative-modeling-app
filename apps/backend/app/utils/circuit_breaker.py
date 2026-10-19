@@ -229,11 +229,6 @@ class CircuitBreaker:
 
             return False
 
-    def get_state(self) -> CircuitState:
-        """Get current circuit state."""
-        with self._lock:
-            return self.state
-
     def reset(self):
         """
         Reset the breaker to a closed state with cleared counters.
@@ -325,7 +320,8 @@ def with_circuit_breaker(
         failure_threshold: Consecutive failures before opening circuit
         recovery_timeout: Seconds before attempting recovery
         exceptions: Tuple of exceptions to retry on
-        fallback_value: Value to return if all retries fail (None = raise exception)
+        fallback_value: Value returned on the first failure instead of raising; no
+            retries happen when this is set (None = retry, then raise)
 
     Example:
         @with_circuit_breaker("s3", max_attempts=5, fallback_value={})

@@ -381,17 +381,3 @@ class FeatureCollection(Document):
             # Derive from len (issue #285) so the count can't drift or go negative.
             self.feature_count = len(self.feature_ids)
             self.updated_at = get_current_time()
-
-    async def get_features(self) -> list[StoredFeature]:
-        """
-        Retrieve all StoredFeature objects in this collection.
-
-        Returns:
-            List of StoredFeature documents
-        """
-        features = []
-        for feature_id in self.feature_ids:
-            feature = await StoredFeature.find_one(StoredFeature.feature_id == feature_id)
-            if feature:
-                features.append(feature)
-        return features

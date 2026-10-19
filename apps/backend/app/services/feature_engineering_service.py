@@ -1,7 +1,7 @@
 """
 Feature Engineering Service for AI-powered feature suggestions.
 
-Combines rule-based heuristics with GPT-4 intelligence to generate
+Combines rule-based heuristics with LLM suggestions (the configured OpenAI model) to generate
 comprehensive feature suggestions for machine learning tasks.
 """
 
@@ -94,7 +94,7 @@ class FeatureEngineeringService:
     """
     Service for generating AI-powered feature suggestions.
 
-    Combines rule-based heuristics with GPT-4 intelligence to provide
+    Combines rule-based heuristics with LLM suggestions (the configured OpenAI model) to provide
     comprehensive feature engineering recommendations.
     """
 
