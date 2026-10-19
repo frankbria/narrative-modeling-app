@@ -19,6 +19,7 @@
     "test:e2e:all": "./test-e2e.sh --project=chromium-full --project=firefox-full --project=webkit-full",
     "test:e2e:ui": "./test-e2e.sh --ui",
     "test:e2e:debug": "./test-e2e.sh --debug",
+    "capture:how-it-works": "./test-e2e.sh -c playwright.capture.config.ts",
     "test:e2e:report": "playwright show-report",
     "check:adapter": "node scripts/check-auth-adapter.mjs",
     "check:eslint-react": "node scripts/check-eslint-react-rules.mjs"
@@ -63,7 +64,6 @@
     "react-dom": "^19.3.0",
     "react-dropzone": "^19.3.0",
     "react-markdown": "^10.1.0",
-    "react-window": "2.3.3",
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.7.0"
   },
