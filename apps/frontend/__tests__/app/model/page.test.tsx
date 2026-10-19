@@ -143,6 +143,27 @@ describe('ModelPage training wiring', () => {
       });
     });
 
+    it('sends feature_config.create_interactions only when the stage switched it on (#974)', async () => {
+      mockWorkflowContext.state.stageData = {
+        [WorkflowStage.FEATURE_ENGINEERING]: {
+          selectedFeatures: ['x1', 'x2'],
+          excludedFeatures: [],
+          createInteractions: true,
+        },
+      } as Record<WorkflowStage, unknown>;
+      mockTrainModel.mockResolvedValue({ model_id: 'model_1', status: 'training', message: 'ok' });
+      mockGetTrainingStatus.mockResolvedValue({ model_id: 'model_1', status: 'training', progress: 0.1 });
+      render(<ModelPage />);
+      await startTraining();
+
+      expect(mockTrainModel).toHaveBeenCalledWith({
+        dataset_id: 'ds-1',
+        target_column: 'target',
+        training_config: { training_mode: 'comprehensive' },
+        feature_config: { create_interactions: true },
+      });
+    });
+
     it('says nothing and sends nothing when no column was left out', async () => {
       mockTrainModel.mockResolvedValue({ model_id: 'model_1', status: 'training', message: 'ok' });
       mockGetTrainingStatus.mockResolvedValue({ model_id: 'model_1', status: 'training', progress: 0.1 });

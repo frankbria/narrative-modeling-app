@@ -862,6 +862,8 @@ def _record_outcome(training_config: dict[str, Any], result: AutoMLResult, engin
     training_config["algorithms_evaluated"] = result.algorithms_evaluated
     # The columns the engineer left out of the features, by kind.
     training_config.update(_recorded_exclusions(result.metadata))
+    engineering = result.metadata.get("feature_engineering", {})
+    training_config["interaction_features"] = engineering.get("interaction_features", [])
     # What the model report could only call "not recorded" (#801): the seed the
     # engine actually used, and the settings the winning candidate ran with.
     training_config["random_seed"] = engine.random_state

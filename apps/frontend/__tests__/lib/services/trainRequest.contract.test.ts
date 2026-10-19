@@ -37,6 +37,15 @@ describe('the training request matches the API request model', () => {
     expect(violations(body, root, root)).toEqual([]);
   });
 
+  it('with the interaction switch on, and nothing sent when it is off (#974)', () => {
+    const on = trainRequest('ds1', choice, { keep: [], exclude: [], interactions: true });
+    const off = trainRequest('ds1', choice, { keep: [], exclude: [], interactions: false });
+
+    expect(on.feature_config).toEqual({ create_interactions: true });
+    expect(violations(on, root, root)).toEqual([]);
+    expect(off.feature_config).toBeUndefined();
+  });
+
   it('a knob the API does not declare is caught', () => {
     const body = { ...trainRequest('ds1', choice, { keep: [], exclude: [] }), feature_config: { drop_columns: ['region'] } };
 
