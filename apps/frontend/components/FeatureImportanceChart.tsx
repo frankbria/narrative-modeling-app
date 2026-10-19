@@ -12,7 +12,13 @@ import {
   Cell
 } from 'recharts'
 import type { BarRectangleItem } from 'recharts'
-import type { FeatureScore } from '@/lib/services/featureSelection'
+
+export interface FeatureScore {
+  feature_name: string
+  score: number
+  rank: number
+  selected: boolean
+}
 
 export interface FeatureImportanceChartProps {
   features: FeatureScore[]

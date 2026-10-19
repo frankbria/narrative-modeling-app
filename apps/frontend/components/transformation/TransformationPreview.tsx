@@ -154,8 +154,8 @@ export function TransformationPreview({
   };
 
   // Export the current transformed preview as a CSV.
-  // Uses RFC 4180-style field quoting and the Blob/anchor download pattern from
-  // SelectedFeatureSet.tsx (LF line endings, matching that established convention).
+  // Uses RFC 4180-style field quoting and the Blob/anchor download pattern
+  // (LF line endings).
   const transformedData = previewData?.preview_result?.transformed_data;
 
   const handleExport =

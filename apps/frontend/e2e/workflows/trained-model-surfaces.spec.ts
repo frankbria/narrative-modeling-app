@@ -1,9 +1,9 @@
 /**
- * Three surfaces of a trained model, on the real stack (#1063): the Training Jobs
- * history, the feature-importance chart on the evaluation dashboard, and the Versions
- * tab of the model page.
+ * The surfaces of a trained model, on the real stack (#1063, #1069): the Training Jobs
+ * history, the feature-importance chart on the evaluation dashboard, the dashboard's
+ * Recent Models, and the Versions tab of the model page.
  *
- * One training run serves all three (CI has two cores), so they are steps of one test.
+ * One training run serves them all (CI has two cores), so they are steps of one test.
  * The uploaded dataset is erased after the test by the `eraseUploads` fixture, and its
  * model and training job go with it (#943). Nothing here is mocked.
  */
@@ -76,10 +76,16 @@ test.describe('A trained model', () => {
       expect(labels).toEqual(ranked.map(bare).filter((name) => labels.includes(name)));
     });
 
+    await test.step('the dashboard’s Recent Models opens the model page', async () => {
+      // Recent Models is the only navigation into /model/{id} (#1069).
+      const model = await request.get(`${API_BASE}/ml/${modelId}`, { headers });
+      const { name } = (await model.json()) as { name: string };
+      await page.goto('/dashboard?skipOnboarding=true');
+      await page.getByTestId('recent-models').getByRole('button', { name }).first().click();
+      await expect(page).toHaveURL(new RegExp(`/model/${modelId}$`));
+    });
+
     await test.step('the Versions tab lists the model as version 1 of its family', async () => {
-      // Direct navigation: no page reaches /model/{id} for a trained model (see the
-      // fixme below), so a user cannot click their way here today.
-      await page.goto(`/model/${modelId}`);
       await page.getByRole('tab', { name: 'Versions' }).click();
 
       const table = page.getByTestId('versions-table');
@@ -92,24 +98,4 @@ test.describe('A trained model', () => {
       await expect(page.getByTestId(`promote-${modelId}`)).toBeEnabled();
     });
   });
-
-  test.fixme(
-    'is reachable from the dashboard’s Recent Models',
-    // The dashboard's Recent Models reads GET /models (the legacy ModelConfig surface,
-    // which training never writes), so a trained MLModel is never listed there, and that
-    // list is the only navigation into /model/{id}.
-    async ({ authenticatedPage: page, request, uploadTestDataset, trainModel }) => {
-      test.setTimeout(240000);
-      const datasetId = await uploadTestDataset(TRAINABLE_DATASET);
-      const modelId = await trainModel(datasetId, TARGET_COLUMN);
-      const model = await request.get(`${API_BASE}/ml/${modelId}`, {
-        headers: await apiAuthHeaders(request),
-      });
-      const { name } = (await model.json()) as { name: string };
-
-      await page.goto('/dashboard?skipOnboarding=true');
-      await page.getByRole('button', { name }).first().click();
-      await expect(page).toHaveURL(new RegExp(`/model/${modelId}$`));
-    }
-  );
 });
