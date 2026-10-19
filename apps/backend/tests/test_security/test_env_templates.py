@@ -18,7 +18,7 @@ PRODUCTION = REPO_ROOT / ".env.production.example"
 BACKEND_LOCAL = REPO_ROOT / "apps/backend/.env.example"
 FRONTEND_LOCAL = REPO_ROOT / "apps/frontend/.env.local.example"
 
-ASSIGNMENT = re.compile(r"^([A-Z_][A-Z0-9_]*)=(.*)$")
+ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 
 def _values(path: Path) -> dict[str, str]:
@@ -33,8 +33,8 @@ def test_the_deployed_templates_declare_the_same_names_in_the_same_order():
 def test_the_deployed_templates_hold_exactly_what_compose_interpolates():
     code = [line for line in COMPOSE_FILE.read_text().splitlines() if not line.lstrip().startswith("#")]
     interpolated = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)", "\n".join(code)))
-    # Read by scripts/deploy/apply_nginx_conf.sh, not by compose.
-    assert set(_values(STAGING)) == interpolated | {"NGINX_SERVER_NAME"}
+    # Read by scripts/deploy/apply_nginx_conf.sh, not by compose; NGINX_CERT_DIR is optional there.
+    assert set(_values(STAGING)) - {"NGINX_CERT_DIR"} == interpolated | {"NGINX_SERVER_NAME"}
 
 
 def test_a_variable_both_local_templates_declare_has_one_value():
