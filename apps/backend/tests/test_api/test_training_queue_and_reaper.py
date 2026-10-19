@@ -83,7 +83,12 @@ async def test_a_job_the_reaper_ended_while_it_queued_does_not_train(setup_datab
 
     async with _EverySlotTaken() as queue:
         task = asyncio.create_task(_run(_dataset(), "model_901_reaped", download, seen))
-        await asyncio.sleep(0.3)  # the default beat is 60s: no heartbeat in this time
+        # Wait for the task to mark the job running (a loaded CI runner can take longer
+        # than any fixed sleep), then outlast the timeout. The default beat is 60s, so no
+        # heartbeat lands in this time.
+        while (await _stored("model_901_reaped")).status != JobStatus.RUNNING:
+            await asyncio.sleep(0.02)
+        await asyncio.sleep(0.3)
         reaped = await reap_stale_jobs(timeout_seconds=0.1)
         assert reaped.training == 1, "precondition: the reaper ended the queued job"
         ended = await _stored("model_901_reaped")
