@@ -67,7 +67,7 @@ describe('BulkColumnSelector', () => {
     mockOnSelectionChange.mockClear();
   });
 
-  // Mirrors the ARIA-structure tests in ColumnSelector.test.tsx — this component
+  // Pins the ARIA structure of the virtualised list — this component
   // received the identical role relocation, so it needs the identical guard.
   describe('ARIA structure (#390)', () => {
     it('owns options directly under the listbox, with no role="list" between', () => {

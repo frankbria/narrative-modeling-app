@@ -1,7 +1,7 @@
 /**
  * Contract test against the REAL react-window, not `__mocks__/react-window.tsx`.
  *
- * `ColumnSelector` and `BulkColumnSelector` depend on two behaviours of v2's
+ * `BulkColumnSelector` depends on two behaviours of v2's
  * `List` that are NOT part of its documented public API:
  *
  *   1. it renders its container with a hard-coded `role="list"`, and
@@ -72,7 +72,7 @@ describe('react-window v2 contract (#390)', () => {
         rowProps={{}}
       />
     );
-    // If this fails, ColumnSelector/BulkColumnSelector are emitting
+    // If this fails, BulkColumnSelector is emitting
     // listbox > list > option again and their ARIA tests are only passing
     // because the mock is more permissive than the real library.
     expect(container.firstElementChild).toHaveAttribute('role', 'presentation');
