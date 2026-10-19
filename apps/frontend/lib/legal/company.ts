@@ -25,7 +25,7 @@ export const COMPANY = {
   /** The one-line value proposition, word for word from docs/product/positioning.md. */
   valueLine:
     'SheetPredict turns a spreadsheet into a validated, explained, deployable model in minutes — and shows its work.',
-  /** The PII proof point, word for word from docs/product/positioning.md section 4 (what `_summary_frame` does, #1110). */
+  /** The PII proof point, word for word from docs/product/positioning.md section 4: the in-app upload routes scan for PII (#1110). */
   piiProof:
     'PII is scanned when you upload in the app',
   /** The contracting party. */
