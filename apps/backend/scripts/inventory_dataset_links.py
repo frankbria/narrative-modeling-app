@@ -7,7 +7,7 @@ counts only (no ids, no URLs, no user identifiers in the output).
 
 Usage (see the operator's local runbook for credentials):
 
-    MONGODB_URI=... MONGODB_DB=... uv run python scripts/inventory_dataset_links.py [--json]
+    PYTHONPATH=. MONGODB_URI=... MONGODB_DB=... uv run python scripts/inventory_dataset_links.py [--json]
 
 Exit code 0 always; the numbers are the deliverable. A non-zero "broken" count is the
 input to a repair migration, which is its own issue.
