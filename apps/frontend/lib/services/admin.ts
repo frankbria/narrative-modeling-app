@@ -26,3 +26,20 @@ export async function getFunnel(days = 30): Promise<Funnel> {
   if (!response.ok) throw await apiError(response, 'Could not load the funnel')
   return response.json()
 }
+
+/** Mirrors `app/api/routes/admin.py::RefundWindow` (#746). */
+export interface RefundWindow {
+  refund_eligible: boolean
+  refund_window_ends_at: string | null
+  first_paid_at: string | null
+}
+
+export async function getRefundWindow(userId: string): Promise<RefundWindow> {
+  const token = await getAuthToken()
+  const response = await fetch(
+    `${API_BASE_URL}/admin/billing/${encodeURIComponent(userId)}/refund`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  )
+  if (!response.ok) throw await apiError(response, 'Could not look up the refund window')
+  return response.json()
+}
