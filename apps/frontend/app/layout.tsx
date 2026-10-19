@@ -15,18 +15,21 @@ import { PlanLimitDialog } from '@/components/billing/PlanLimitDialog'
 import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
+import { siteMetadata } from '@/lib/site'
 
-export const metadata: Metadata = {
-  title: 'SheetPredict',
-  description: 'Build and deploy machine learning models with ease.',
-  icons: {
-    icon: [
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon.ico', sizes: 'any', type: 'image/x-icon' },
-    ],
-    apple: '/apple-touch-icon.png',
-  },
+// Read per request, not at build: the same image serves dev. and www. (#766).
+export function generateMetadata(): Metadata {
+  return {
+    ...siteMetadata(),
+    icons: {
+      icon: [
+        { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+        { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon.ico', sizes: 'any', type: 'image/x-icon' },
+      ],
+      apple: '/apple-touch-icon.png',
+    },
+  }
 }
 
 export default async function RootLayout({
