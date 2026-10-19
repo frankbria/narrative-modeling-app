@@ -20,7 +20,7 @@ status is 1 while any mismatch remains (a dry run that found some, or a failed a
 
 Usage (from apps/backend; credentials: see the operator's local runbook):
 
-    MONGODB_URI=... MONGODB_DB=... uv run python scripts/audit_dataset_file_types.py [--apply] [--json]
+    PYTHONPATH=. MONGODB_URI=... MONGODB_DB=... uv run python scripts/audit_dataset_file_types.py [--apply] [--json]
 """
 
 from __future__ import annotations

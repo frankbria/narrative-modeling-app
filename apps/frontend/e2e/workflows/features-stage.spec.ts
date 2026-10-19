@@ -8,10 +8,11 @@ import { seedFeaturesWorkflow } from '../helpers/seedWorkflow';
  * that pass through it served all three from mocks, so nothing noticed that the
  * guided workflow could not get from here to training. Nothing on this page or
  * the next is mocked: the columns come from the upload, and the choice has to
- * arrive in the training request the backend accepts.
+ * arrive in the training request the backend accepts. The "also try interaction
+ * features" switch (#974) rides in the same request as `create_interactions`.
  */
 test.describe('Feature Engineering stage', () => {
-  test("lists the upload's columns, and a column left out is left out of training @smoke", async ({
+  test("lists the upload's columns, and a column left out and the interaction switch reach training @smoke", async ({
     authenticatedPage: page,
     request,
     uploadTestDataset,
@@ -28,6 +29,10 @@ test.describe('Feature Engineering stage', () => {
     await expect(page.getByTestId('continue-button')).toBeDisabled();
 
     await age.uncheck();
+    const interactions = page.getByRole('switch', { name: 'Also try interaction features' });
+    await expect(interactions).not.toBeChecked();
+    await interactions.click();
+    await expect(interactions).toBeChecked();
     await page.getByTestId('use-columns-button').click();
     await expect(page.getByTestId('choice-recorded')).toBeVisible();
     await page.getByTestId('continue-button').click();
@@ -48,7 +53,7 @@ test.describe('Feature Engineering stage', () => {
     expect(response.request().postDataJSON()).toMatchObject({
       dataset_id: datasetId,
       target_column: 'purchased',
-      feature_config: { exclude_columns: ['age'] },
+      feature_config: { exclude_columns: ['age'], create_interactions: true },
     });
 
     await cleanupDataset(datasetId);

@@ -305,10 +305,16 @@ class FeatureEngineer:
                 "excluded_date_columns": self.excluded_dates,
                 "excluded_empty_columns": self.excluded_empty,
                 "excluded_user_columns": self.excluded_by_choice,
+                # The interactions that reached the model: a selector may drop some (#974).
+                "interaction_features": self._interactions_kept(),
                 "final_feature_count": len(self.feature_names)
             }
         )
     
+    def _interactions_kept(self) -> list[str]:
+        built = self.transformers.get("interaction_features", [])
+        return [name for name in built if name in self.feature_names]
+
     def _exclude_unlearnable(self, X: pd.DataFrame) -> pd.DataFrame:
         """Record and drop the columns left out of the features: the caller's own
         choice (#969), per-row identifiers (#806), dates (#840) and columns with no

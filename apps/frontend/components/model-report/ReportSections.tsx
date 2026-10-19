@@ -63,6 +63,7 @@ export function DataSection(props: Report) {
         <ExcludedColumns label="Excluded as dates" columns={dataset.excluded_date_columns} />
         <ExcludedColumns label="Excluded as empty" columns={dataset.excluded_empty_columns} />
         <ExcludedColumns label="Left out by you" columns={dataset.excluded_user_columns} />
+        <ExcludedColumns label="Interaction features" columns={dataset.interaction_features} />
       </dl>
     </section>
   );

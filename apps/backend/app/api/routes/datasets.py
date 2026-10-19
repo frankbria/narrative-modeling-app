@@ -53,6 +53,7 @@ from app.schemas.feature_selection import (
 from app.schemas.preview import PreviewRequest, PreviewResponse
 from app.services.data_processing.data_processor import (
     DataProcessor,
+    EmptyFileError,
     ProcessedData,
     UnreadableFileError,
 )
@@ -167,6 +168,8 @@ async def _processed_upload(content: bytes, filename: str, extension: str) -> Pr
         return await DataProcessor().process_bytes(
             file_bytes=content, filename=filename, file_type=extension
         )
+    except EmptyFileError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except UnreadableFileError as e:
         # With the traceback: a reader defect would otherwise pass for a bad file.
         logger.warning(f"Upload could not be read as .{extension}", exc_info=True)

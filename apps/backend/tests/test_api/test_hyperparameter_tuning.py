@@ -228,3 +228,16 @@ async def test_every_kind_of_excluded_column_persists_on_the_model():
     _, save_model = await _run_train_task({}, metadata={})
     training_config = save_model.call_args.args[4]["training_config"]
     assert [training_config[f"excluded_{kind}_columns"] for kind in ("identifier", "date", "empty")] == [[], [], []]
+
+
+@pytest.mark.asyncio
+async def test_the_interaction_features_in_the_model_persist_on_it():
+    """#974: the model report names the interactions the switch built; a run that
+    built none (or an older one) still writes the key."""
+    _, save_model = await _run_train_task(
+        {}, metadata={"feature_engineering": {"interaction_features": ["age_x_tenure"]}}
+    )
+    assert save_model.call_args.args[4]["training_config"]["interaction_features"] == ["age_x_tenure"]
+
+    _, save_model = await _run_train_task({}, metadata={})
+    assert save_model.call_args.args[4]["training_config"]["interaction_features"] == []

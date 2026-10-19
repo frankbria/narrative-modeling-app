@@ -3,15 +3,14 @@
  * swap in model.ts / production.ts needs at least one non-OK
  * response exercised, or the branch is dead in coverage even though it is
  * mechanically identical everywhere. Table-driven over every static method
- * that has an `if (!response.ok)` branch, plus targeted coverage for the two
- * hooks (useFeatureSuggestions, useChunkedUpload) whose error branches aren't
- * reachable through a plain service call.
+ * that has an `if (!response.ok)` branch, plus targeted coverage for the
+ * useChunkedUpload hook, whose error branches aren't reachable through a plain
+ * service call.
  */
 import { renderHook, act } from '@testing-library/react'
 import { ModelService } from '@/lib/services/model'
 import { ProductionService } from '@/lib/services/production'
 import { ApiError, QuotaExceededError } from '@/lib/services/apiError'
-import { useFeatureSuggestions } from '@/lib/hooks/useFeatureSuggestions'
 import useChunkedUpload from '@/lib/hooks/useChunkedUpload'
 
 jest.mock('@/lib/auth-helpers', () => ({
@@ -102,44 +101,6 @@ describe('every metered-service method surfaces a non-OK response as an ApiError
       expect(caught).toMatchObject({ status: 503, message: 'upstream boom' })
     }
   )
-})
-
-describe('useFeatureSuggestions surfaces the backend detail as hook error state', () => {
-  beforeEach(() => {
-    ;(global.fetch as jest.Mock).mockResolvedValue(upstream503())
-  })
-
-  it('fetchSuggestions', async () => {
-    const { result } = renderHook(() => useFeatureSuggestions({ datasetId: 'd1' }))
-    await act(async () => {
-      await result.current.fetchSuggestions()
-    })
-    expect(result.current.error).toBe('upstream boom')
-  })
-
-  it('acceptSuggestion', async () => {
-    const { result } = renderHook(() => useFeatureSuggestions({ datasetId: 'd1' }))
-    await act(async () => {
-      await result.current.acceptSuggestion('s1')
-    })
-    expect(result.current.error).toBe('upstream boom')
-  })
-
-  it('rejectSuggestion', async () => {
-    const { result } = renderHook(() => useFeatureSuggestions({ datasetId: 'd1' }))
-    await act(async () => {
-      await result.current.rejectSuggestion('s1')
-    })
-    expect(result.current.error).toBe('upstream boom')
-  })
-
-  it('loadMore', async () => {
-    const { result } = renderHook(() => useFeatureSuggestions({ datasetId: 'd1' }))
-    await act(async () => {
-      await result.current.loadMore([])
-    })
-    expect(result.current.error).toBe('upstream boom')
-  })
 })
 
 describe('useChunkedUpload surfaces non-OK responses and skips retry on quota', () => {

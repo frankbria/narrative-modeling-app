@@ -5,7 +5,7 @@ Drives the REAL app (httpx over ASGITransport, real MongoDB) and the REAL
 rate-limit middleware + store. Nothing here is mocked: every status code is one
 FastAPI produced, and every rate_limit value is re-read from Mongo.
 
-    MONGODB_URI=mongodb://localhost:27017 uv run python scripts/demo_issue_455.py
+    PYTHONPATH=. MONGODB_URI=mongodb://localhost:27017 uv run python scripts/demo_issue_455.py
 """
 import asyncio
 import os

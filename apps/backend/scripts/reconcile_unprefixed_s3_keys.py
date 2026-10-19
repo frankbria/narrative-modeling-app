@@ -24,7 +24,7 @@ Usage (from apps/backend, against whichever bucket/cluster you want to check):
 
     MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... \\
     AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... \\
-        uv run python scripts/reconcile_unprefixed_s3_keys.py
+        PYTHONPATH=. uv run python scripts/reconcile_unprefixed_s3_keys.py
     # ... same environment, plus --apply, to move the objects
 """
 

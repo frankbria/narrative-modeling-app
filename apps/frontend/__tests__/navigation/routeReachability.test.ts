@@ -131,12 +131,10 @@ function isFrameworkRoot(route: string): boolean {
  * Pages known to be orphaned today, kept passing so the guard protects against NEW
  * orphans while these are resolved separately. Each entry MUST stay a real, still
  * non-navigable page or the anti-stale check below fails and tells you to drop it.
- * Tracked by #738 (link-into-nav or delete the legacy dataset-scoped flow).
+ * Tracked by #738 (link-into-nav or delete).
  */
 const KNOWN_ORPHANS: Record<string, string> = {
   '/recipes': 'Full recipes UI with no inbound link; nav home is a product decision (#738)',
-  '/datasets/:seg/engineer':
-    'Legacy dataset-scoped feature-engineering page, superseded by the /features workflow stage; nothing links in (#738)',
 };
 
 describe('#528 AC4 — page routes are reachable from navigation', () => {
