@@ -110,7 +110,3 @@ class ABTest(Document):
     def get_active_variants(self) -> list[Variant]:
         """Get all active variants"""
         return [v for v in self.variants if v.status == VariantStatus.ACTIVE]
-    
-    def calculate_total_traffic(self) -> float:
-        """Calculate total traffic percentage across all variants"""
-        return sum(v.traffic_percentage for v in self.variants)

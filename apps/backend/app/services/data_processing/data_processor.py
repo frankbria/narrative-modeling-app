@@ -245,39 +245,6 @@ class DataProcessor:
         else:
             return 'unknown'
     
-    async def _read_file(
-        self,
-        file_path: str,
-        file_type: str,
-        encoding: str,
-        delimiter: str | None
-    ) -> pd.DataFrame:
-        """Read file from disk"""
-        if file_type == 'csv':
-            # Auto-detect delimiter if not provided
-            if not delimiter:
-                delimiter = self._detect_delimiter(file_path)
-            
-            return pd.read_csv(
-                file_path,
-                encoding=encoding,
-                delimiter=delimiter,
-                low_memory=False
-            )
-        
-        elif file_type == 'excel':
-            # Read first sheet by default
-            return pd.read_excel(file_path, engine='openpyxl')
-        
-        elif file_type == 'json':
-            return pd.read_json(file_path)
-        
-        elif file_type == 'parquet':
-            return pd.read_parquet(file_path)
-        
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
-    
     async def _read_file_object(
         self,
         file_obj: io.BytesIO,
@@ -357,15 +324,3 @@ class DataProcessor:
         df.columns = cols
         
         return df
-    
-    def _get_file_metadata(self, file_path: str, file_type: str) -> dict[str, Any]:
-        """Get metadata about the file"""
-        path = Path(file_path)
-        
-        return {
-            "filename": path.name,
-            "file_type": file_type,
-            "file_size": path.stat().st_size,
-            "created_at": datetime.fromtimestamp(path.stat().st_ctime).isoformat(),
-            "modified_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat()
-        }
