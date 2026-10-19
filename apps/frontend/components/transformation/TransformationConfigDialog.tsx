@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ComponentType, MutableRefObject, RefObject } from 'react';
+import { useState, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,19 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Eye, Plus, Trash2, AlertCircle } from 'lucide-react';
+import {
+  fieldKind,
+  fieldLabel,
+  isRequired,
+  optionLabel,
+  selectOptions,
+  type FieldKind,
+  type ParameterField as ParameterSchemaField,
+  type ParametersSchema,
+} from './parameterSchema';
+import { useTransformationForm, type TransformationConfig } from './useTransformationForm';
+
+export type { TransformationConfig };
 
 export interface TransformationConfigDialogProps {
   open: boolean;
@@ -36,10 +50,321 @@ export interface TransformationConfigDialogProps {
   onDelete?: () => void;
 }
 
-export interface TransformationConfig {
-  type: string;
-  label?: string;
-  parameters: Record<string, any>;
+interface FieldProps {
+  name: string;
+  field: ParameterSchemaField;
+  value: any;
+  error: string | undefined;
+  availableColumns: string[];
+  inputRef(el: HTMLInputElement | null): void;
+  onChange(key: string, value: unknown): void;
+}
+
+interface FieldErrorProps {
+  name: string;
+  error: string | undefined;
+}
+
+interface FieldLabelProps {
+  name: string;
+  label: string;
+  required: boolean;
+}
+
+function errorAria(name: string, error: string | undefined) {
+  return {
+    'aria-invalid': !!error,
+    'aria-describedby': error ? `${name}-error` : undefined,
+  };
+}
+
+function FieldError(props: FieldErrorProps) {
+  const { name, error } = props;
+  if (!error) return null;
+  return (
+    <p id={`${name}-error`} className="text-sm text-red-500 flex items-center gap-1">
+      <AlertCircle className="w-4 h-4" />
+      {error}
+    </p>
+  );
+}
+
+function FieldLabel(props: FieldLabelProps) {
+  const { name, label, required } = props;
+  return (
+    <Label htmlFor={name} className="flex items-center gap-1">
+      {label}
+      {required ? <span className="text-red-500">*</span> : null}
+    </Label>
+  );
+}
+
+// Multi-select dropdown for an array of strings (typically column selection).
+function MultiSelectField(props: FieldProps) {
+  const { name, field, value, error, availableColumns, onChange } = props;
+  const handleChange = (selected: string[]) => onChange(name, selected);
+  return (
+    <div className="grid gap-2">
+      <FieldLabel name={name} label={fieldLabel(name, field)} required={isRequired(field)} />
+      <MultiSelect
+        id={name}
+        options={availableColumns}
+        value={Array.isArray(value) ? value : []}
+        onChange={handleChange}
+        placeholder={field.description || 'Select columns...'}
+        error={error}
+        {...errorAria(name, error)}
+      />
+      <FieldError name={name} error={error} />
+    </div>
+  );
+}
+
+// Single select for enum values, or for a string field about columns.
+function SelectField(props: FieldProps) {
+  const { name, field, value, error, availableColumns, onChange } = props;
+  const handleValueChange = (selectedValue: string) => onChange(name, selectedValue);
+  return (
+    <div className="grid gap-2">
+      <FieldLabel name={name} label={fieldLabel(name, field)} required={isRequired(field)} />
+      <Select value={value} onValueChange={handleValueChange}>
+        <SelectTrigger id={name} {...errorAria(name, error)}>
+          <SelectValue placeholder={field.description || 'Select an option'} />
+        </SelectTrigger>
+        <SelectContent>
+          {selectOptions(field, availableColumns).map((option) => (
+            <SelectItem key={option} value={option}>
+              {optionLabel(option)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <FieldError name={name} error={error} />
+    </div>
+  );
+}
+
+function NumberField(props: FieldProps) {
+  const { name, field, value, error, inputRef, onChange } = props;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) =>
+    onChange(name, e.target.value ? Number(e.target.value) : '');
+  return (
+    <div className="grid gap-2">
+      <FieldLabel name={name} label={fieldLabel(name, field)} required={isRequired(field)} />
+      <Input
+        ref={inputRef}
+        id={name}
+        type="number"
+        value={value}
+        onChange={handleChange}
+        placeholder={field.description || 'Enter a number'}
+        step={field.type === 'integer' ? '1' : 'any'}
+        min={field.minimum}
+        max={field.maximum}
+        {...errorAria(name, error)}
+      />
+      <FieldError name={name} error={error} />
+    </div>
+  );
+}
+
+function BooleanField(props: FieldProps) {
+  const { name, field, value, error, inputRef, onChange } = props;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => onChange(name, e.target.checked);
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          id={name}
+          type="checkbox"
+          checked={!!value}
+          onChange={handleChange}
+          className="w-4 h-4 rounded border border-input"
+          {...errorAria(name, error)}
+        />
+        <Label htmlFor={name} className="flex items-center gap-1 cursor-pointer">
+          {fieldLabel(name, field)}
+        </Label>
+      </div>
+      <FieldError name={name} error={error} />
+    </div>
+  );
+}
+
+// Text input, also for string fields and for types the form does not know.
+function TextField(props: FieldProps) {
+  const { name, field, value, error, inputRef, onChange } = props;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => onChange(name, e.target.value);
+  return (
+    <div className="grid gap-2">
+      <FieldLabel name={name} label={fieldLabel(name, field)} required={isRequired(field)} />
+      <Input
+        ref={inputRef}
+        id={name}
+        type="text"
+        value={value}
+        onChange={handleChange}
+        placeholder={field.description || 'Enter value'}
+        {...errorAria(name, error)}
+      />
+      <FieldError name={name} error={error} />
+    </div>
+  );
+}
+
+const FIELD_COMPONENTS: Record<FieldKind, ComponentType<FieldProps>> = {
+  multi: MultiSelectField,
+  select: SelectField,
+  number: NumberField,
+  boolean: BooleanField,
+  text: TextField,
+};
+
+interface ParameterFieldProps {
+  name: string;
+  schema: ParametersSchema;
+  parameters: Record<string, unknown>;
+  errors: Record<string, string>;
+  availableColumns: string[];
+  firstInputRef: MutableRefObject<HTMLInputElement | null>;
+  onChange(key: string, value: unknown): void;
+}
+
+// The first field's input is where focus lands on open and where Shift+Tab wraps.
+function captureFirstInput(
+  firstInputRef: MutableRefObject<HTMLInputElement | null>,
+  schema: ParametersSchema,
+  name: string
+) {
+  return (el: HTMLInputElement | null) => {
+    if (!firstInputRef.current && name === Object.keys(schema)[0]) {
+      firstInputRef.current = el;
+    }
+  };
+}
+
+function ParameterField(props: ParameterFieldProps) {
+  const { name, schema, parameters, errors, availableColumns, firstInputRef, onChange } = props;
+  const field = schema[name];
+  const Field = FIELD_COMPONENTS[fieldKind(name, field, availableColumns)];
+  return (
+    <Field
+      name={name}
+      field={field}
+      value={parameters[name] ?? ''}
+      error={errors[name]}
+      availableColumns={availableColumns}
+      inputRef={captureFirstInput(firstInputRef, schema, name)}
+      onChange={onChange}
+    />
+  );
+}
+
+interface ParameterFormProps {
+  schema: ParametersSchema;
+  parameters: Record<string, unknown>;
+  errors: Record<string, string>;
+  availableColumns: string[];
+  firstInputRef: MutableRefObject<HTMLInputElement | null>;
+  onChange(key: string, value: unknown): void;
+}
+
+function ParameterForm(props: ParameterFormProps) {
+  const { schema, ...rest } = props;
+  const names = Object.keys(schema);
+  const renderField = (name: string) => (
+    <ParameterField key={name} name={name} schema={schema} {...rest} />
+  );
+  if (names.length === 0) {
+    return <p className="text-sm text-muted-foreground">No parameters needed for this transformation.</p>;
+  }
+  return <>{names.map(renderField)}</>;
+}
+
+function ErrorBanner(props: { message: string | undefined }) {
+  const { message } = props;
+  if (!message) return null;
+  return (
+    <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md flex items-start gap-2">
+      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+      <p className="text-sm text-red-700 dark:text-red-300">{message}</p>
+    </div>
+  );
+}
+
+interface DialogActionsProps {
+  isBusy: boolean;
+  isUpdate: boolean;
+  lastInteractiveRef: RefObject<HTMLButtonElement | null>;
+  onDelete?: VoidFunction;
+  onPreview?: VoidFunction;
+  onAdd: VoidFunction;
+}
+
+interface ActionButtonProps {
+  isBusy: boolean;
+  onClick: VoidFunction;
+}
+
+interface DeleteButtonProps extends ActionButtonProps {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+}
+
+function DeleteButton(props: DeleteButtonProps) {
+  const { isBusy, onClick, buttonRef } = props;
+  return (
+    <Button
+      ref={buttonRef}
+      variant="destructive"
+      size="sm"
+      onClick={onClick}
+      disabled={isBusy}
+      aria-label="Delete this transformation"
+    >
+      <Trash2 className="mr-2 h-4 w-4" />
+      Delete
+    </Button>
+  );
+}
+
+function PreviewButton(props: ActionButtonProps) {
+  const { isBusy, onClick } = props;
+  return (
+    <Button
+      variant="outline"
+      onClick={onClick}
+      disabled={isBusy}
+      aria-label="Preview transformation effect"
+    >
+      <Eye className="mr-2 h-4 w-4" />
+      Preview
+    </Button>
+  );
+}
+
+function DialogActions(props: DialogActionsProps) {
+  const { isBusy, isUpdate, lastInteractiveRef, onDelete, onPreview, onAdd } = props;
+  return (
+    <DialogFooter className="flex gap-2">
+      {onDelete ? <DeleteButton isBusy={isBusy} onClick={onDelete} buttonRef={lastInteractiveRef} /> : null}
+
+      <div className="flex-1" />
+
+      {onPreview ? <PreviewButton isBusy={isBusy} onClick={onPreview} /> : null}
+
+      <Button
+        ref={!onDelete ? lastInteractiveRef : undefined}
+        variant="default"
+        onClick={onAdd}
+        disabled={isBusy}
+        aria-label="Add transformation to pipeline"
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        {isUpdate ? 'Update' : 'Add'} to Pipeline
+      </Button>
+    </DialogFooter>
+  );
 }
 
 /**
@@ -52,421 +377,30 @@ export interface TransformationConfig {
  * Features:
  * - Dynamic form generation based on transformation parameter schema
  * - Column selection dropdown for applicable transformations
- * - Parameter validation before adding to pipeline
+ * - Parameter validation before adding to pipeline (values are checked, never converted)
  * - Preview button to test transformation (optional)
  * - Focus trap while dialog is open
  * - Keyboard navigation (Tab, Escape, Enter)
  * - ARIA labels and accessibility attributes
  */
-export function TransformationConfigDialog({
-  open,
-  onOpenChange,
-  transformationType,
-  transformationLabel,
-  transformationDescription,
-  parametersSchema,
-  availableColumns,
-  datasetId,
-  onAdd,
-  onPreview,
-  existingConfig,
-  onDelete,
-}: TransformationConfigDialogProps) {
-  const [parameters, setParameters] = useState<Record<string, any>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const firstInputRef = useRef<HTMLInputElement | null>(null);
-  const lastInteractiveRef = useRef<HTMLButtonElement | null>(null);
-
-  /**
-   * Format schema key to human-readable field name
-   */
-  const formatFieldName = (key: string): string => {
-    return key
-      .replace(/_/g, ' ')
-      .replace(/([A-Z])/g, ' $1')
-      .trim()
-      .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
-
-  // Resetting form state when the dialog opens (or its subject changes) is a
-  // prop-driven reset, so it happens during render rather than in an effect.
-  const [formSubject, setFormSubject] = useState({ open, transformationType, existingConfig });
-  if (
-    formSubject.open !== open ||
-    formSubject.transformationType !== transformationType ||
-    formSubject.existingConfig !== existingConfig
-  ) {
-    setFormSubject({ open, transformationType, existingConfig });
-    if (open) {
-      setParameters(existingConfig?.parameters ? { ...existingConfig.parameters } : {});
-      setErrors({});
-    }
-  }
-
-  // The focus call is a real DOM side effect and stays an effect.
-  useEffect(() => {
-    if (!open) return;
-    const timeoutId = setTimeout(() => {
-      firstInputRef.current?.focus();
-    }, 0);
-    return () => clearTimeout(timeoutId);
-  }, [open, transformationType, existingConfig]);
-
-  /**
-   * Handle parameter value changes with error clearing
-   */
-  const handleParameterChange = useCallback(
-    (key: string, value: any) => {
-      setParameters((prev) => ({ ...prev, [key]: value }));
-      // Clear error for this field
-      if (errors[key]) {
-        setErrors((prev) => {
-          const newErrors = { ...prev };
-          delete newErrors[key];
-          return newErrors;
-        });
-      }
-    },
-    [errors]
-  );
-
-  /**
-   * Validate form parameters based on schema requirements
-   */
-  const validateForm = useCallback((): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    Object.entries(parametersSchema).forEach(([key, schema]) => {
-      const value = parameters[key];
-
-      // Check if field is required (not marked as optional in schema)
-      if (schema.required !== false && !schema.default) {
-        if (
-          value === undefined ||
-          value === null ||
-          value === '' ||
-          (Array.isArray(value) && value.length === 0)
-        ) {
-          newErrors[key] = `${formatFieldName(key)} is required`;
-          return;
-        }
-      }
-
-      // Type validation
-      if (value !== undefined && value !== null && value !== '') {
-        if (schema.type === 'array' && !Array.isArray(value)) {
-          newErrors[key] = `${formatFieldName(key)} must be an array`;
-        } else if (schema.type === 'number' && typeof value !== 'number') {
-          // Try to coerce string to number
-          if (typeof value === 'string' && value === '') {
-            if (schema.required !== false) {
-              newErrors[key] = `${formatFieldName(key)} is required`;
-            }
-          } else if (isNaN(Number(value))) {
-            newErrors[key] = `${formatFieldName(key)} must be a number`;
-          }
-        } else if (
-          schema.type === 'string' &&
-          typeof value !== 'string'
-        ) {
-          newErrors[key] = `${formatFieldName(key)} must be text`;
-        }
-
-        // Enum validation
-        if (schema.enum && !schema.enum.includes(value)) {
-          newErrors[key] = `${formatFieldName(key)} must be one of: ${schema.enum.join(', ')}`;
-        }
-
-        // Minimum/maximum validation
-        if (
-          schema.type === 'number' &&
-          typeof value === 'number'
-        ) {
-          if (schema.minimum !== undefined && value < schema.minimum) {
-            newErrors[key] = `${formatFieldName(key)} must be at least ${schema.minimum}`;
-          }
-          if (schema.maximum !== undefined && value > schema.maximum) {
-            newErrors[key] = `${formatFieldName(key)} must be no more than ${schema.maximum}`;
-          }
-        }
-      }
-    });
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [parameters, parametersSchema]);
-
-  /**
-   * Handle preview transformation
-   */
-  const handlePreview = async () => {
-    if (!validateForm()) return;
-    if (!onPreview || !transformationType) return;
-
-    setIsPreviewLoading(true);
-    try {
-      await onPreview({
-        type: transformationType,
-        parameters,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Preview failed';
-      setErrors((prev) => ({ ...prev, _preview: message }));
-    } finally {
-      setIsPreviewLoading(false);
-    }
-  };
-
-  /**
-   * Handle form submission
-   */
-  const handleAdd = async () => {
-    if (!validateForm()) return;
-    if (!transformationType) return;
-
-    setIsSubmitting(true);
-    try {
-      onAdd({
-        type: transformationType,
-        parameters,
-      });
-      onOpenChange(false);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to add transformation';
-      setErrors((prev) => ({ ...prev, _submit: message }));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  /**
-   * Render form field based on schema definition
-   */
-  const renderFormField = (key: string, schema: any) => {
-    const value = parameters[key] ?? '';
-    const error = errors[key];
-    const fieldLabel = schema.title || formatFieldName(key);
-    const isRequired = schema.required !== false && !schema.default;
-
-    // Multi-select dropdown for array of strings (typically column selection)
-    if (
-      schema.type === 'array' &&
-      schema.items?.type === 'string'
-    ) {
-      return (
-        <div key={key} className="grid gap-2">
-          <Label htmlFor={key} className="flex items-center gap-1">
-            {fieldLabel}
-            {isRequired && <span className="text-red-500">*</span>}
-          </Label>
-          <MultiSelect
-            id={key}
-            options={availableColumns}
-            value={Array.isArray(value) ? value : []}
-            onChange={(selected) => handleParameterChange(key, selected)}
-            placeholder={schema.description || 'Select columns...'}
-            error={error}
-            aria-invalid={!!error}
-            aria-describedby={error ? `${key}-error` : undefined}
-          />
-          {error && (
-            <p id={`${key}-error`} className="text-sm text-red-500 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </p>
-          )}
-        </div>
-      );
-    }
-
-    // Auto-detect column selection fields and populate from availableColumns
-    // This handles cases where backend doesn't specify enum but field is for column selection
-    const isColumnField =
-      schema.type === 'string' &&
-      !schema.enum &&
-      availableColumns.length > 0 &&
-      (key.toLowerCase().includes('column') ||
-       schema.title?.toLowerCase().includes('column') ||
-       schema.description?.toLowerCase().includes('column'));
-
-    // Single select dropdown (enum values or auto-detected column fields)
-    if (schema.enum || isColumnField) {
-      const options = schema.enum || availableColumns;
-      return (
-        <div key={key} className="grid gap-2">
-          <Label htmlFor={key} className="flex items-center gap-1">
-            {fieldLabel}
-            {isRequired && <span className="text-red-500">*</span>}
-          </Label>
-          <Select
-            value={value}
-            onValueChange={(selectedValue) =>
-              handleParameterChange(key, selectedValue)
-            }
-          >
-            <SelectTrigger
-              id={key}
-              aria-invalid={!!error}
-              aria-describedby={error ? `${key}-error` : undefined}
-            >
-              <SelectValue placeholder={schema.description || 'Select an option'} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((option: string) => (
-                <SelectItem key={option} value={option}>
-                  {option
-                    .split('_')
-                    .map(
-                      (word: string) =>
-                        word.charAt(0).toUpperCase() + word.slice(1)
-                    )
-                    .join(' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {error && (
-            <p id={`${key}-error`} className="text-sm text-red-500 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </p>
-          )}
-        </div>
-      );
-    }
-
-    // Number input
-    if (schema.type === 'number' || schema.type === 'integer') {
-      return (
-        <div key={key} className="grid gap-2">
-          <Label htmlFor={key} className="flex items-center gap-1">
-            {fieldLabel}
-            {isRequired && <span className="text-red-500">*</span>}
-          </Label>
-          <Input
-            ref={(el) => {
-              if (!firstInputRef.current && key === Object.keys(parametersSchema)[0]) {
-                firstInputRef.current = el;
-              }
-            }}
-            id={key}
-            type="number"
-            value={value}
-            onChange={(e) => handleParameterChange(key, e.target.value ? Number(e.target.value) : '')}
-            placeholder={schema.description || 'Enter a number'}
-            step={schema.type === 'integer' ? '1' : 'any'}
-            min={schema.minimum}
-            max={schema.maximum}
-            aria-invalid={!!error}
-            aria-describedby={error ? `${key}-error` : undefined}
-          />
-          {error && (
-            <p id={`${key}-error`} className="text-sm text-red-500 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </p>
-          )}
-        </div>
-      );
-    }
-
-    // Boolean checkbox
-    if (schema.type === 'boolean') {
-      return (
-        <div key={key} className="grid gap-2">
-          <div className="flex items-center gap-2">
-            <input
-              ref={(el) => {
-                if (!firstInputRef.current && key === Object.keys(parametersSchema)[0]) {
-                  firstInputRef.current = el;
-                }
-              }}
-              id={key}
-              type="checkbox"
-              checked={!!value}
-              onChange={(e) => handleParameterChange(key, e.target.checked)}
-              className="w-4 h-4 rounded border border-input"
-              aria-invalid={!!error}
-              aria-describedby={error ? `${key}-error` : undefined}
-            />
-            <Label htmlFor={key} className="flex items-center gap-1 cursor-pointer">
-              {fieldLabel}
-            </Label>
-          </div>
-          {error && (
-            <p id={`${key}-error`} className="text-sm text-red-500 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </p>
-          )}
-        </div>
-      );
-    }
-
-    // Default: text input (for string type or unknown types)
-    return (
-      <div key={key} className="grid gap-2">
-        <Label htmlFor={key} className="flex items-center gap-1">
-          {fieldLabel}
-          {isRequired && <span className="text-red-500">*</span>}
-        </Label>
-        <Input
-          ref={(el) => {
-            if (!firstInputRef.current && key === Object.keys(parametersSchema)[0]) {
-              firstInputRef.current = el;
-            }
-          }}
-          id={key}
-          type="text"
-          value={value}
-          onChange={(e) => handleParameterChange(key, e.target.value)}
-          placeholder={schema.description || 'Enter value'}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${key}-error` : undefined}
-        />
-        {error && (
-          <p id={`${key}-error`} className="text-sm text-red-500 flex items-center gap-1">
-            <AlertCircle className="w-4 h-4" />
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  };
-
-  /**
-   * Handle keyboard events (Escape to close, focus trap)
-   */
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onOpenChange(false);
-      }
-      // Focus trap on Tab
-      if (e.key === 'Tab' && lastInteractiveRef.current) {
-        if (e.shiftKey && document.activeElement === firstInputRef.current) {
-          e.preventDefault();
-          lastInteractiveRef.current.focus();
-        } else if (!e.shiftKey && document.activeElement === lastInteractiveRef.current) {
-          e.preventDefault();
-          firstInputRef.current?.focus();
-        }
-      }
-    },
-    [onOpenChange]
-  );
-
+export function TransformationConfigDialog(props: TransformationConfigDialogProps) {
+  const {
+    open,
+    onOpenChange,
+    transformationLabel,
+    transformationDescription,
+    parametersSchema,
+    availableColumns,
+    onPreview,
+    existingConfig,
+    onDelete,
+  } = props;
+  const form = useTransformationForm(props);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-[500px]"
-        onKeyDown={handleKeyDown}
+        onKeyDown={form.handleKeyDown}
         role="dialog"
         aria-labelledby="transform-dialog-title"
         aria-describedby="transform-dialog-desc"
@@ -481,71 +415,26 @@ export function TransformationConfigDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-4" role="group">
-          {Object.keys(parametersSchema).length > 0 ? (
-            Object.entries(parametersSchema).map(([key, schema]) =>
-              renderFormField(key, schema)
-            )
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No parameters needed for this transformation.
-            </p>
-          )}
-
-          {errors._preview && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700 dark:text-red-300">{errors._preview}</p>
-            </div>
-          )}
-
-          {errors._submit && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700 dark:text-red-300">{errors._submit}</p>
-            </div>
-          )}
+          <ParameterForm
+            schema={parametersSchema}
+            parameters={form.parameters}
+            errors={form.errors}
+            availableColumns={availableColumns}
+            firstInputRef={form.firstInputRef}
+            onChange={form.handleParameterChange}
+          />
+          <ErrorBanner message={form.errors._preview} />
+          <ErrorBanner message={form.errors._submit} />
         </div>
 
-        <DialogFooter className="flex gap-2">
-          {onDelete && (
-            <Button
-              ref={lastInteractiveRef}
-              variant="destructive"
-              size="sm"
-              onClick={onDelete}
-              disabled={isSubmitting || isPreviewLoading}
-              aria-label="Delete this transformation"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
-          )}
-
-          <div className="flex-1" />
-
-          {onPreview && (
-            <Button
-              variant="outline"
-              onClick={handlePreview}
-              disabled={isSubmitting || isPreviewLoading}
-              aria-label="Preview transformation effect"
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              Preview
-            </Button>
-          )}
-
-          <Button
-            ref={!onDelete ? lastInteractiveRef : undefined}
-            variant="default"
-            onClick={handleAdd}
-            disabled={isSubmitting || isPreviewLoading}
-            aria-label="Add transformation to pipeline"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            {existingConfig ? 'Update' : 'Add'} to Pipeline
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          isBusy={form.isBusy}
+          isUpdate={!!existingConfig}
+          lastInteractiveRef={form.lastInteractiveRef}
+          onDelete={onDelete}
+          onPreview={onPreview ? form.handlePreview : undefined}
+          onAdd={form.handleAdd}
+        />
       </DialogContent>
     </Dialog>
   );
