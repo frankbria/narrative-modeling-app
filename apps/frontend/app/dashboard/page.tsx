@@ -68,10 +68,8 @@ function modelItem(model: TrainedModel): ModelItem {
   return { model_id, name, algorithm, test_score, created_at, status: model.is_deployed ? 'deployed' : 'trained' };
 }
 
-// `/ml/` answers a bare list, newest first. All of it is kept: View Deployments
-// must see a deployed model older than the five Recent Models shows.
-async function fetchModels() {
-  const body = await getJson('ml/', 'models');
+async function fetchModelList(query: string): Promise<ModelItem[]> {
+  const body = await getJson(`ml/?${query}`, 'models');
   if (!Array.isArray(body)) {
     throw new Error('Invalid models format: expected array');
   }
@@ -80,6 +78,19 @@ async function fetchModels() {
 
 function isDeployed(model: ModelItem): boolean {
   return model.status.toLowerCase() === 'deployed';
+}
+
+const NO_MODELS = { recent: [] as ModelItem[], canDeploy: false };
+
+// `/ml/` answers a bare list, newest first. Recent Models asks for five rows; View
+// Deployments asks for one deployed row, since the deployed model may be older than
+// the five (#1085).
+async function fetchModels() {
+  const [recent, deployed] = await Promise.all([
+    fetchModelList('limit=5'),
+    fetchModelList('deployed=true&limit=1'),
+  ]);
+  return { recent, canDeploy: deployed.some(isDeployed) };
 }
 
 // Per-dataset right-to-erasure (#482).
@@ -112,7 +123,7 @@ export default function DashboardPage() {
   const datasets = useAsyncData(fetchDatasets, [], { errorMessage: 'Unable to load datasets' });
   const models = useAsyncData(fetchModels, [], { errorMessage: 'Unable to load models' });
   const recentDatasets = datasets.data || [];
-  const recentModels = models.data || [];
+  const { recent: recentModels, canDeploy } = models.data || NO_MODELS;
   const [datasetToErase, setDatasetToErase] = useState<DatasetItem | null>(null);
   const [samplesOpen, setSamplesOpen] = useState(false);
 
@@ -124,7 +135,7 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto p-6" data-testid="dashboard">
       {HEADER}
-      <QuickActions canTrain={hasDatasets} canDeploy={recentModels.some(isDeployed)} />
+      <QuickActions canTrain={hasDatasets} canDeploy={canDeploy} />
       <WorkflowProgress />
       <StageCards />
 
@@ -138,7 +149,7 @@ export default function DashboardPage() {
           onTrySample={openSamples}
         />
         <RecentModels
-          models={recentModels.slice(0, 5)}
+          models={recentModels}
           loading={models.loading}
           error={models.error}
           onRetry={models.reload}

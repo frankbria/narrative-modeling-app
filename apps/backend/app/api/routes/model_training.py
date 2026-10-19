@@ -1321,14 +1321,21 @@ async def _build_algorithm_recommendations(
 async def list_models(
     dataset_id: str | None = Query(None),
     is_active: bool = Query(True),
+    deployed: bool | None = Query(None, description="Only models with this deployed flag"),
+    limit: int | None = Query(None, ge=1, le=100, description="Return at most this many, newest first"),
     current_user_id: str = Depends(get_current_user_id),
 ):
     """
-    List all models for the current user
+    List the current user's models, newest first.
+
+    Without `limit` every matching model is returned. The dashboard sends
+    `limit=5` for Recent Models and `deployed=true&limit=1` to learn whether
+    any model is deployed (#1085).
     """
     storage_service = ModelStorageService()
     models = await storage_service.list_models(
-        current_user_id, dataset_id=dataset_id, is_active=is_active
+        current_user_id, dataset_id=dataset_id, is_active=is_active,
+        deployed=deployed, limit=limit,
     )
 
     return [

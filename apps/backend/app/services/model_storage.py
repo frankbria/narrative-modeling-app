@@ -670,22 +670,27 @@ class ModelStorageService:
         self,
         user_id: str,
         dataset_id: str | None = None,
-        is_active: bool = True
+        is_active: bool = True,
+        deployed: bool | None = None,
+        limit: int | None = None,
     ) -> list[MLModel]:
         """
-        List models for a user
-        
+        List models for a user, newest first
+
         Args:
             user_id: User ID
             dataset_id: Optional dataset filter
             is_active: Filter by active status
-            
+            deployed: Optional deployed-flag filter
+            limit: Optional cap on the rows returned
+
         Returns:
             List of MLModel documents
         """
-        query = {"user_id": user_id, "is_active": is_active}
+        query: dict[str, Any] = {"user_id": user_id, "is_active": is_active}
         if dataset_id:
             query["dataset_id"] = dataset_id
-        
-        models = await MLModel.find(query).sort("-created_at").to_list()
-        return models
+        if deployed is not None:
+            query["is_deployed"] = deployed
+
+        return await MLModel.find(query).sort("-created_at").limit(limit).to_list()
