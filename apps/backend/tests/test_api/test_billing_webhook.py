@@ -420,6 +420,98 @@ class TestWebhookEndpoint:
         assert sub is not None
         assert sub.status == SubscriptionStatus.CANCELED
 
+    async def _deliver(self, client, event_type: str, status: str | None, created: int):
+        obj: dict = {"metadata": {"user_id": TEST_USER}, "id": "sub_1"}
+        if status:
+            obj["status"] = status
+        payload = event(event_type, obj, created=created)
+        response = await client.post(
+            WEBHOOK_PATH, content=payload, headers={"Stripe-Signature": sign(payload)}
+        )
+        assert response.status_code == 200
+
+    async def _status(self) -> SubscriptionStatus:
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        return sub.status
+
+    async def test_a_cancelled_sub_stays_cancelled_against_a_same_second_update(
+        self, async_authorized_client, setup_database
+    ):
+        """#693: `created` has one-second resolution, so a non-terminal `updated`
+        stamped the SAME second as the `deleted` must not resurrect it."""
+        now = int(time.time())
+        await self._deliver(
+            async_authorized_client, "customer.subscription.deleted", None, now
+        )
+        await self._deliver(
+            async_authorized_client, "customer.subscription.updated", "active", now
+        )
+
+        sub = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert sub is not None
+        assert sub.status == SubscriptionStatus.CANCELED
+        assert sub.effective_tier == PlanTier.FREE
+        assert not sub.is_entitled
+
+    async def test_a_same_second_deleted_after_an_update_cancels(
+        self, async_authorized_client, setup_database
+    ):
+        now = int(time.time())
+        await self._deliver(
+            async_authorized_client, "customer.subscription.updated", "active", now
+        )
+        await self._deliver(
+            async_authorized_client, "customer.subscription.deleted", None, now
+        )
+
+        assert await self._status() == SubscriptionStatus.CANCELED
+
+    async def test_a_strictly_newer_update_reactivates_a_cancelled_sub(
+        self, async_authorized_client, setup_database
+    ):
+        now = int(time.time())
+        await self._deliver(
+            async_authorized_client, "customer.subscription.deleted", None, now
+        )
+        await self._deliver(
+            async_authorized_client, "customer.subscription.updated", "active", now + 1
+        )
+
+        assert await self._status() == SubscriptionStatus.ACTIVE
+
+    async def test_same_second_non_terminal_updates_still_apply_in_arrival_order(
+        self, async_authorized_client, setup_database
+    ):
+        now = int(time.time())
+        await self._deliver(
+            async_authorized_client, "customer.subscription.updated", "active", now
+        )
+        await self._deliver(
+            async_authorized_client, "invoice.payment_failed", None, now
+        )
+
+        assert await self._status() == SubscriptionStatus.PAST_DUE
+
+    async def test_a_redelivered_same_second_deleted_is_still_applied(
+        self, async_authorized_client, setup_database
+    ):
+        """The stickiness guard binds only non-terminal writes: a retried `deleted`
+        must still reach the row (and the key re-clamp that follows it)."""
+        now = int(time.time())
+        await self._deliver(
+            async_authorized_client, "customer.subscription.deleted", None, now
+        )
+        first = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert first is not None
+        await self._deliver(
+            async_authorized_client, "customer.subscription.deleted", None, now
+        )
+
+        again = await Subscription.find_one(Subscription.user_id == TEST_USER)
+        assert again is not None
+        assert as_utc(again.updated_at) > as_utc(first.updated_at)
+
     async def test_concurrent_update_and_delete_end_cancelled(
         self, async_authorized_client, setup_database
     ):
