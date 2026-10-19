@@ -195,74 +195,6 @@ class FeatureTemplateInfo(BaseModel):
     )
 
 
-class FeatureTemplateListResponse(BaseModel):
-    """Response schema for listing feature templates."""
-
-    templates: list[FeatureTemplateInfo] = Field(default_factory=list)
-    by_category: dict[str, list[FeatureTemplateInfo]] = Field(default_factory=dict)
-
-
-class ApplyTemplateRequest(BaseModel):
-    """Request schema for applying a feature template."""
-
-    template_id: str = Field(..., description="Template to apply")
-    columns: list[str] = Field(..., min_length=1, description="Columns to use")
-    parameters: dict[str, Any] = Field(default_factory=dict, description="Template parameters")
-    feature_name: str | None = Field(None, description="Name for created feature")
-
-
-class ApplyTemplateResponse(BaseModel):
-    """Response schema for applying a feature template."""
-
-    success: bool = Field(default=True)
-    expression_tree: ExpressionNodeResponse | None = None
-    formula_string: str | None = None
-    suggested_name: str = Field(..., description="Suggested feature name")
-    error: str | None = None
-
-
-# =============================================================================
-# Batch Operations Schemas
-# =============================================================================
-
-
-class BatchFeatureCreateRequest(BaseModel):
-    """Request schema for creating multiple features at once."""
-
-    features: list[FeatureDefinitionCreate] = Field(
-        ...,
-        min_length=1,
-        max_length=50,
-        description="Features to create"
-    )
-
-
-class BatchFeatureCreateResponse(BaseModel):
-    """Response schema for batch feature creation."""
-
-    success: bool = Field(default=True)
-    created: list[FeatureDefinitionResponse] = Field(default_factory=list)
-    failed: list[dict[str, Any]] = Field(default_factory=list)
-    total_created: int = 0
-    total_failed: int = 0
-
-
-class BatchFeatureDeleteRequest(BaseModel):
-    """Request schema for deleting multiple features."""
-
-    feature_ids: list[str] = Field(..., min_length=1, max_length=50)
-
-
-class BatchFeatureDeleteResponse(BaseModel):
-    """Response schema for batch feature deletion."""
-
-    success: bool = Field(default=True)
-    deleted: list[str] = Field(default_factory=list)
-    failed: list[dict[str, str]] = Field(default_factory=list)
-    total_deleted: int = 0
-    total_failed: int = 0
-
-
 # =============================================================================
 # Feature Application Schemas
 # =============================================================================
@@ -293,15 +225,3 @@ class ApplyMultipleFeaturesRequest(BaseModel):
 
     feature_ids: list[str] = Field(..., min_length=1, max_length=50)
     create_new_dataset: bool = Field(default=False)
-
-
-class ApplyMultipleFeaturesResponse(BaseModel):
-    """Response schema for applying multiple features."""
-
-    success: bool = Field(default=True)
-    dataset_id: str = Field(...)
-    applied_features: list[dict[str, Any]] = Field(default_factory=list)
-    failed_features: list[dict[str, Any]] = Field(default_factory=list)
-    total_applied: int = 0
-    total_failed: int = 0
-    error: str | None = None

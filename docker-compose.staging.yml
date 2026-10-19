@@ -176,6 +176,10 @@ services:
       - "127.0.0.1:3011:3000"  # loopback only — reached via nginx upstream (#258)
     environment:
       NODE_ENV: production
+      # Read per request (lib/site.ts): anything but `production` makes
+      # robots.txt disallow the whole site (#766). The same image serves dev.
+      # and www., so this cannot be baked in at build.
+      ENVIRONMENT: staging
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       # Server/edge error reporting (instrumentation.ts); optional like the backend's.
       SENTRY_DSN: ${SENTRY_DSN:-}

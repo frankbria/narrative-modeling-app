@@ -117,16 +117,3 @@ class OnboardingUserProgress(BaseModel):
     sample_datasets_loaded: list[str] = Field(default_factory=list)
     features_discovered: list[str] = Field(default_factory=list)
     help_articles_viewed: list[str] = Field(default_factory=list)
-
-
-class OnboardingMetrics(BaseModel):
-    """Model for onboarding analytics and metrics"""
-    total_users_started: int
-    total_users_completed: int
-    completion_rate: float
-    average_completion_time_minutes: float
-    most_skipped_steps: list[dict[str, Any]]
-    most_difficult_steps: list[dict[str, Any]]
-    popular_sample_datasets: list[dict[str, Any]]
-    drop_off_points: list[dict[str, Any]]
-    user_feedback_scores: dict[str, float]

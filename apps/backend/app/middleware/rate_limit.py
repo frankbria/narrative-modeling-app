@@ -21,8 +21,8 @@ the route handler. Allowed requests carry ``X-RateLimit-*`` headers when the
 limiter actively enforced them (omitted on fail-open / disabled paths, where no
 limit is in effect to report).
 
-Registered so that the CORS middleware stays *outermost* — a ``429`` returned here
-still passes back through CORS and gains its headers, so browsers can read it.
+Registered before the CORS middleware, which therefore wraps it — a ``429`` returned
+here still passes back through CORS and gains its headers, so browsers can read it.
 """
 
 from __future__ import annotations

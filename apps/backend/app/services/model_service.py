@@ -465,10 +465,10 @@ class ModelService(BaseService[ModelConfig]):
             user_id: User ID for ownership check
 
         Returns:
-            True if deleted, False if not found
+            True when deleted
 
         Raises:
-            PermissionDeniedError: If user doesn't own the model
+            NotFoundError: If the model doesn't exist or isn't the caller's (#985)
         """
         return await self.delete(
             resource_id=model_id,
@@ -494,8 +494,7 @@ class ModelService(BaseService[ModelConfig]):
             Updated ModelConfig
 
         Raises:
-            NotFoundError: If model not found
-            PermissionDeniedError: If user doesn't own the model
+            NotFoundError: If model not found or not the caller's (#985)
             OperationError: If update fails
         """
         # BaseService.update() now raises NotFoundError directly, no need to check for None
