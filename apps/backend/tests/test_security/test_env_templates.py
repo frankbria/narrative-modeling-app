@@ -32,7 +32,7 @@ def test_the_deployed_templates_declare_the_same_names_in_the_same_order():
 
 def test_the_deployed_templates_hold_exactly_what_compose_interpolates():
     code = [line for line in COMPOSE_FILE.read_text().splitlines() if not line.lstrip().startswith("#")]
-    interpolated = set(re.findall(r"\$\{([A-Z_][A-Z0-9_]*)", "\n".join(code)))
+    interpolated = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)", "\n".join(code)))
     # Read by scripts/deploy/apply_nginx_conf.sh, not by compose.
     assert set(_values(STAGING)) == interpolated | {"NGINX_SERVER_NAME"}
 
