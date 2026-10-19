@@ -60,7 +60,7 @@ interface TransformationChainViewProps {
  * - Collapse/expand for step details
  * - Keyboard navigation (Arrow keys to move, Delete key to remove, Enter to edit)
  * - ARIA live regions for screen reader updates
- * - Mobile-friendly (touch-friendly targets with 44px minimum)
+ * - Mobile-friendly (32px action buttons)
  *
  * Keyboard shortcuts:
  * - Alt+Arrow Up/Down: Reorder steps

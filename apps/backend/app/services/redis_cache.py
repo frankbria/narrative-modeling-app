@@ -273,25 +273,6 @@ class RedisCacheService:
             logger.error(f"Failed to get hash {key}: {e}")
             return None
             
-    async def get_hash_field(self, key: str, field: str) -> Any | None:
-        """Get a specific field from hash"""
-        if not self.redis_client:
-            return None
-            
-        try:
-            data = await cast(
-                Awaitable[bytes | None], self.redis_client.hget(key, field)
-            )
-            if data is None:
-                return None
-            return self._deserialize_value(data)
-        except ValueError as e:
-            logger.warning("Hash field %s.%s treated as miss: %s", key, field, e)
-            return None
-        except Exception as e:
-            logger.error(f"Failed to get hash field {key}.{field}: {e}")
-            return None
-            
     async def set_list(self, key: str, values: list[Any], ttl: int | None = None) -> bool:
         """Set a list in cache"""
         if not self.redis_client:
@@ -342,36 +323,6 @@ class RedisCacheService:
         """Get cached user progress"""
         key = f"user_progress:{user_id}"
         return await self.get_hash(key)
-        
-    async def cache_data_stats(self, data_id: str, stats: dict[str, Any]) -> bool:
-        """Cache data statistics"""
-        key = f"data_stats:{data_id}"
-        return await self.set(key, stats, ttl=7200)  # 2 hours
-        
-    async def get_data_stats(self, data_id: str) -> dict[str, Any] | None:
-        """Get cached data statistics"""
-        key = f"data_stats:{data_id}"
-        return await self.get(key)
-        
-    async def cache_model_predictions(self, model_id: str, input_hash: str, predictions: Any) -> bool:
-        """Cache model predictions"""
-        key = f"predictions:{model_id}:{input_hash}"
-        return await self.set(key, predictions, ttl=3600)  # 1 hour
-        
-    async def get_model_predictions(self, model_id: str, input_hash: str) -> Any | None:
-        """Get cached predictions"""
-        key = f"predictions:{model_id}:{input_hash}"
-        return await self.get(key)
-        
-    async def cache_eda_results(self, data_id: str, eda_results: dict[str, Any]) -> bool:
-        """Cache EDA analysis results"""
-        key = f"eda:{data_id}"
-        return await self.set(key, eda_results, ttl=10800)  # 3 hours
-        
-    async def get_eda_results(self, data_id: str) -> dict[str, Any] | None:
-        """Get cached EDA results"""
-        key = f"eda:{data_id}"
-        return await self.get(key)
         
     async def invalidate_user_cache(self, user_id: str) -> int:
         """Delete this user's cache entries across every user-scoped family.

@@ -49,12 +49,6 @@ export interface LineChartData {
   showBrush?: boolean;
 }
 
-export interface TimeSeriesData {
-  timestamps: string[];
-  values: number[];
-  label: string;
-}
-
 export interface ChartFilter {
   column: string;
   operator: 'equals' | 'greater_than' | 'less_than' | 'contains' | 'between';
@@ -176,55 +170,3 @@ export async function getLineChart(
   }
   return response.json();
 }
-
-export async function getTimeSeries(
-  datasetId: string, 
-  timeColumn: string, 
-  valueColumn: string,
-  filters?: ChartFilter[],
-  token?: string
-): Promise<TimeSeriesData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  
-  const queryParams = new URLSearchParams()
-  if (filters && filters.length > 0) {
-    queryParams.append('filters', JSON.stringify(filters))
-  }
-  
-  const response = await fetch(
-    `${apiUrl}/visualizations/timeseries/${datasetId}/${timeColumn}/${valueColumn}?${queryParams}`,
-    { headers }
-  );
-  if (!response.ok) {
-    throw new Error('Failed to fetch time series data');
-  }
-  return response.json();
-}
-
-export async function getFilteredData(
-  datasetId: string,
-  filters: ChartFilter[],
-  columns?: string[],
-  token?: string
-): Promise<any[]> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  
-  const queryParams = new URLSearchParams()
-  queryParams.append('filters', JSON.stringify(filters))
-  if (columns && columns.length > 0) {
-    queryParams.append('columns', columns.join(','))
-  }
-  
-  const response = await fetch(
-    `${apiUrl}/visualizations/filtered/${datasetId}?${queryParams}`,
-    { headers }
-  );
-  if (!response.ok) {
-    throw new Error('Failed to fetch filtered data');
-  }
-  return response.json();
-} 

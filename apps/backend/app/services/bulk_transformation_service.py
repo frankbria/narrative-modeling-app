@@ -1,8 +1,8 @@
 """
-Bulk transformation service for processing multiple columns in parallel.
+Bulk transformation service for processing multiple columns in a background job.
 
 This service handles bulk transformation operations that apply the same
-transformation to multiple columns simultaneously with progress tracking.
+transformation to multiple columns, one after another, with progress tracking.
 """
 
 import asyncio

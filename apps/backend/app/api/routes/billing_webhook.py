@@ -132,6 +132,70 @@ async def _upsert(
     )
 
 
+def _insert_defaults(
+    user_id: str, now: datetime, set_fields: dict[str, Any]
+) -> dict[str, Any]:
+    """Defaults only for a brand-new row, and never for a key the event itself set
+    (Mongo rejects a field appearing in both $set and $setOnInsert)."""
+    defaults = {
+        "user_id": user_id,
+        "created_at": now,
+        "plan_tier": PlanTier.FREE.value,
+        "status": SubscriptionStatus.INCOMPLETE.value,
+        "cancel_at_period_end": False,
+    }
+    return {k: v for k, v in defaults.items() if k not in set_fields}
+
+
+def _ordering_filter(
+    user_id: str, status_: SubscriptionStatus | None, event_at: datetime | None
+) -> dict[str, Any]:
+    """The filter that orders events (#509, #693).
+
+    Apply only if this event is not older than the newest already applied;
+    null/missing (never applied) counts as older, so the first event applies.
+    `created` has one-second resolution, so on a tie CANCELED is sticky: a
+    non-terminal event in the same second can't resurrect a cancellation; only a
+    strictly newer one can.
+    """
+    flt: dict[str, Any] = {"user_id": user_id}
+    if event_at is None:
+        return flt
+    same_second: dict[str, Any] = {"last_event_at": event_at}
+    if status_ != SubscriptionStatus.CANCELED:
+        same_second["status"] = {"$ne": SubscriptionStatus.CANCELED.value}
+    flt["$or"] = [
+        {"last_event_at": {"$lt": event_at}},
+        same_second,
+        {"last_event_at": None},
+        {"last_event_at": {"$exists": False}},
+    ]
+    return flt
+
+
+def _present(fields: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in fields.items() if v is not None and v != ""}
+
+
+async def _write_ordered(
+    user_id: str, flt: dict[str, Any], update: dict[str, Any]
+) -> bool:
+    """One conditional upsert; False when the event was dropped as out of order."""
+    coll = Subscription.get_motor_collection()
+    for attempt in (1, 2):
+        try:
+            await coll.update_one(flt, update, upsert=True)
+            return True
+        except DuplicateKeyError:
+            if attempt == 2:
+                logger.info(
+                    "ignoring out-of-order stripe event", extra={"user_id": user_id}
+                )
+            # A first one means a concurrent event just created the row; retry — the
+            # ordering filter now decides whether to apply this event or drop it.
+    return False
+
+
 async def _apply(
     user_id: str,
     *,
@@ -152,9 +216,10 @@ async def _apply(
     ``subscription.deleted`` could leave a cancelled tenant entitled indefinitely.
 
     Ordering (Stripe does not guarantee it) lives in the filter: the write applies
-    only to a row whose ``last_event_at`` is ``<=`` this event's (or unset), so a
-    strictly-older event matches nothing; the upsert then tries to INSERT and the
-    unique ``user_id`` index rejects it, dropping the stale event. A *first*
+    only to a row whose ``last_event_at`` is ``<=`` this event's (or unset) — and, on a
+    tie, only if the row is not already CANCELED unless this event is the cancellation
+    (#693) — so a strictly-older event matches nothing; the upsert then tries to
+    INSERT and the unique ``user_id`` index rejects it, dropping the stale event. A *first*
     ``DuplicateKeyError`` instead means a concurrent event just created the row
     (the normal ``checkout.completed`` + ``subscription.created`` burst for a new
     tenant); retry once, where the same ordering filter now decides apply-or-reject.
@@ -163,59 +228,26 @@ async def _apply(
     on the same row (idempotent in effect).
     """
     now = datetime.now(UTC)
-    set_fields: dict[str, Any] = {"updated_at": now}
-    if status_ is not None:
-        set_fields["status"] = status_.value
-    if tier is not None:
-        set_fields["plan_tier"] = tier.value
-    if customer_id:
-        set_fields["stripe_customer_id"] = customer_id
-    if subscription_id:
-        set_fields["stripe_subscription_id"] = subscription_id
-    if price_id:
-        set_fields["stripe_price_id"] = price_id
-    if period_end is not None:
-        set_fields["current_period_end"] = period_end
-    if cancel_at_period_end is not None:
-        set_fields["cancel_at_period_end"] = cancel_at_period_end
-    if event_at is not None:
-        set_fields["last_event_at"] = event_at
-
-    # Defaults only for a brand-new row, and never for a key the event itself set
-    # (Mongo rejects a field appearing in both $set and $setOnInsert).
-    insert_defaults = {
-        "user_id": user_id,
-        "created_at": now,
-        "plan_tier": PlanTier.FREE.value,
-        "status": SubscriptionStatus.INCOMPLETE.value,
-        "cancel_at_period_end": False,
+    # Only fields present on the event; an empty id string never overwrites.
+    present = {
+        "status": getattr(status_, "value", None),
+        "plan_tier": getattr(tier, "value", None),
+        "stripe_customer_id": customer_id,
+        "stripe_subscription_id": subscription_id,
+        "stripe_price_id": price_id,
+        "current_period_end": period_end,
+        "cancel_at_period_end": cancel_at_period_end,
+        "last_event_at": event_at,
     }
-    set_on_insert = {k: v for k, v in insert_defaults.items() if k not in set_fields}
-
-    flt: dict[str, Any] = {"user_id": user_id}
-    if event_at is not None:
-        # Apply only if this event is not older than the newest already applied.
-        # null/missing (never applied) counts as older, so the first event applies.
-        flt["$or"] = [
-            {"last_event_at": {"$lte": event_at}},
-            {"last_event_at": None},
-            {"last_event_at": {"$exists": False}},
-        ]
-
-    coll = Subscription.get_motor_collection()
-    update = {"$set": set_fields, "$setOnInsert": set_on_insert}
-    for attempt in (1, 2):
-        try:
-            await coll.update_one(flt, update, upsert=True)
-            break
-        except DuplicateKeyError:
-            if attempt == 2:
-                logger.info(
-                    "ignoring out-of-order stripe event", extra={"user_id": user_id}
-                )
-                return
-            # A concurrent event just created the row; retry — the ordering filter
-            # above now decides whether to apply this event or reject it as stale.
+    set_fields = {"updated_at": now, **_present(present)}
+    update = {
+        "$set": set_fields,
+        "$setOnInsert": _insert_defaults(user_id, now, set_fields),
+    }
+    if not await _write_ordered(
+        user_id, _ordering_filter(user_id, status_, event_at), update
+    ):
+        return
 
     # A plan change can *lower* what a key may do; the limiter never re-reads a
     # subscription on the serving path, so nothing else revisits a key minted under

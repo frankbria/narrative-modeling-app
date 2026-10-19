@@ -13,7 +13,7 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.types import CallToolResult
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +56,6 @@ class MCPToolResponse(BaseModel):
     result: Any
     error: str | None = None
     execution_time: float
-
-
-class MCPAnalysisRequest(BaseModel):
-    """Request for comprehensive data analysis via MCP"""
-    file_id: str
-    analysis_type: str = Field(default="comprehensive", pattern="^(comprehensive|statistical|quality|summary)$")
-    include_visualization: bool = True
-    custom_prompts: list[str] | None = None
 
 
 class MCPAnalysisResponse(BaseModel):
