@@ -6,32 +6,30 @@ reached `ModelStatus("TRAINED")` inside the handler's catch-all and answered 500
 import pytest
 
 from app.models.model import (
+    DeploymentConfig,
     FeatureConfig,
+    ModelConfig,
     ModelStatus,
     PerformanceMetrics,
     ProblemType,
     TrainingConfig,
 )
-from app.services.model_service import ModelService
 
 USER = "test_user_123"
 
 
 async def _model(model_id: str, dataset_id: str, status: ModelStatus) -> None:
-    service = ModelService()
-    await service.create_model_config(
+    """Insert a ModelConfig in the given state, as a training run would have left it."""
+    deployed = status == ModelStatus.DEPLOYED
+    await ModelConfig(
         user_id=USER, dataset_id=dataset_id, model_id=model_id, name=model_id,
-        problem_type=ProblemType.CLASSIFICATION, algorithm="XGBoost",
+        problem_type=ProblemType.CLASSIFICATION, algorithm="XGBoost", status=status,
         feature_config=FeatureConfig(feature_names=["f1"], target_column="y"),
         training_config=TrainingConfig(training_time=1.0, n_samples_train=7, n_samples_test=3),
         performance_metrics=PerformanceMetrics(cv_score=0.8, test_score=0.8),
+        deployment_config=DeploymentConfig(is_deployed=deployed, deployment_endpoint="/predict" if deployed else None),
         model_path=f"models/{model_id}.pkl", model_size=1,
-    )
-    if status == ModelStatus.TRAINED:
-        await service.mark_model_trained(model_id)
-    elif status == ModelStatus.DEPLOYED:
-        await service.mark_model_trained(model_id)
-        await service.mark_model_deployed(model_id, endpoint="/predict")
+    ).insert()
 
 
 @pytest.mark.asyncio
