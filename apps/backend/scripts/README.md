@@ -1,6 +1,6 @@
 # Backend Scripts
 
-Operational scripts. Run them from `apps/backend` with `PYTHONPATH=. uv run python scripts/<name>.py` (the scripts import `app`; `scripts/` alone is on the path),
+Operational scripts. Run them from `apps/backend` with `PYTHONPATH=. uv run python scripts/<name>.py` (most import `app`, and `python scripts/x.py` puts only `scripts/` on the path),
 with `MONGODB_URI` + `MONGODB_DB` (and the S3 settings where noted) for the environment
 you mean. Scripts that change data are read-only unless given `--apply`; most accept
 `--json` for machine-readable output. Each script's docstring is its full manual.
