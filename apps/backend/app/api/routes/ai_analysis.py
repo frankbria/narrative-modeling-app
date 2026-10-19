@@ -117,8 +117,9 @@ async def analyze_with_ai(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("POST /ai/analyze failed for %s", file_id)
+        raise HTTPException(status_code=500, detail=internal_error_message("The analysis"))
 
 
 @router.get("/insights/{file_id}", dependencies=[Depends(quota("ai_calls"))])

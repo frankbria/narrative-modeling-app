@@ -198,3 +198,23 @@ async def test_an_unexpected_route_failure_is_logged_with_its_traceback_not_echo
     assert response.status_code == 500
     assert "secret.csv" not in response.text and "RuntimeError" not in response.text
     assert any(r.exc_info and "secret.csv" in str(r.exc_info[1]) for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_analyze_failure_is_logged_with_its_traceback_not_echoed(
+    setup_database, async_authorized_client, monkeypatch, caplog
+):
+    """The sibling `/ai/analyze` route had the same `str(e)` catch-all (#1076)."""
+    from app.api.routes import ai_analysis
+
+    async def exploding(*_args):
+        raise RuntimeError("s3://narrative-prod/datasets/u/secret.csv unreadable")
+
+    monkeypatch.setattr(ai_analysis, "_analysis", exploding)
+    doc = await _dataset()
+
+    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
+
+    assert response.status_code == 500
+    assert "secret.csv" not in response.text and "RuntimeError" not in response.text
+    assert any(r.exc_info and "secret.csv" in str(r.exc_info[1]) for r in caplog.records)
