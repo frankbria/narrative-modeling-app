@@ -5,22 +5,6 @@
  */
 
 /**
- * Recipe-related mock data types
- */
-export interface MockRecipe {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  compatibility_score?: number;
-  is_compatible?: boolean;
-  transformations?: any[];
-  created_at?: string;
-  updated_at?: string;
-  user_id?: string;
-}
-
-/**
  * Transformation-related mock data types
  */
 export interface MockTransformation {
@@ -102,25 +86,6 @@ export function createMockErrorResponse(
 }
 
 /**
- * Mock recipe data builder
- */
-export function createMockRecipe(overrides: Partial<MockRecipe> = {}): MockRecipe {
-  return {
-    id: 'recipe-1',
-    name: 'Test Recipe',
-    description: 'A test recipe for unit tests',
-    category: 'data_cleaning',
-    compatibility_score: 0.95,
-    is_compatible: true,
-    transformations: [],
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    user_id: 'user-1',
-    ...overrides,
-  };
-}
-
-/**
  * Mock transformation data builder
  */
 export function createMockTransformation(
@@ -177,20 +142,6 @@ export function createAPIFetchMock(
     }
 
     // Default responses based on URL patterns
-    if (url.includes('/api/recipes')) {
-      if (method === 'GET') {
-        return Promise.resolve(
-          createMockResponse({
-            recipes: [createMockRecipe()],
-            total: 1,
-          })
-        );
-      }
-      if (method === 'POST') {
-        return Promise.resolve(createMockResponse(createMockRecipe()));
-      }
-    }
-
     if (url.includes('/api/transformations')) {
       if (method === 'GET') {
         return Promise.resolve(

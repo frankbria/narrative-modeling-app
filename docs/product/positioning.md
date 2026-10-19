@@ -56,14 +56,14 @@ Supporting claims that may also be used, with evidence: eight guided stages (`li
 
 ## 6. Do-not-claim list (binding; extends public-surface-gtm.md §6)
 
-auto-scaling · auto-provisioning · global or low-latency infrastructure · per-request pricing · uploads above 100 MB · database or cloud-storage connectors · multi-file joins · a broad transformation library (four types execute, #499) · per-dataset chat (`POST /ai/chat/{file_id}` is 501) · guaranteed ONNX/PMML export · any sample-dataset row count until #770 lands · recipes, A/B testing or data-issues detection until #738, #502 and #635 are decided · "replaces your statistics package" (no inference testing) · "better than ChatGPT" · any comparative accuracy claim against a named vendor.
+auto-scaling · auto-provisioning · global or low-latency infrastructure · per-request pricing · uploads above 100 MB · database or cloud-storage connectors · multi-file joins · a broad transformation library (four types execute, #499) · per-dataset chat (`POST /ai/chat/{file_id}` is 501) · guaranteed ONNX/PMML export · any sample-dataset row count until #770 lands · a standalone recipe library (removed, #738; saving and loading recipes stay in Prepare), A/B testing or data-issues detection until #502 and #635 are decided · "replaces your statistics package" (no inference testing) · "better than ChatGPT" · any comparative accuracy claim against a named vendor.
 
 Additionally, publish a short **"What SheetPredict does not do yet"** section on the landing page (CSV/XLSX only, 100 MB cap, no connectors or joins). It is on-brand for a rigor product and filters the buyers we do not want yet.
 
 ## 7. Launch surface (D3, D5)
 
 - Signup: **open, OAuth-only**, switched on only after #768 (backstops) and #769 AC1–AC3 (telemetry) are live in production. Invite mode remains available via `SIGNUP_MODE`.
-- Hidden at launch: recipes navigation (#738), A/B testing (#502). Removed: the data-issues UI (#635) and its backend routes (#1088).
+- Hidden at launch: A/B testing (#502). Removed: the standalone /recipes page (#738; recipes stay in Prepare) and the data-issues UI (#635) with its backend routes (#1088).
 - Shown at launch: eight-stage workflow, leaderboard with baseline row, SHAP, version history, exports, endpoint, billing page with the ADR-003 table.
 
 ## 8. Pricing surface (for #475; numbers owned by ADR-003)
@@ -82,4 +82,4 @@ Not in the name. It names one feature: the **Narrative** — a generated, export
 | D2 Persona | Applied researcher primary; defend-the-number analyst secondary | 2026-09-18 |
 | D3 Signup | Open OAuth after #768/#769 | 2026-09-18 |
 | D4 Hostname | www.sheetpredict.app (prod, apex redirects) / dev.sheetpredict.app (staging) | 2026-10-02 |
-| D5 Hidden features | recipes, A/B (data-issues UI removed, #635) | 2026-09-18 |
+| D5 Hidden features | A/B (standalone recipes page removed, #738; data-issues UI removed, #635) | 2026-09-18 |

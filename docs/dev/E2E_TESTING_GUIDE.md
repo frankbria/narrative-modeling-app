@@ -80,7 +80,6 @@ apps/frontend/e2e/
 ├── capture/               # *.capture.ts: re-records public/how-it-works media (not a spec, never in CI)
 ├── pages/                 # page objects: Base, Upload, Evaluate, Predict
 ├── workflows/             # *.spec.ts
-├── recipes/               # recipe-management.spec.ts
 └── test-data/             # CSVs; ai-test-datasets/ holds trainable sets
 ```
 

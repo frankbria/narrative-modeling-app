@@ -129,13 +129,11 @@ function isFrameworkRoot(route: string): boolean {
 
 /**
  * Pages known to be orphaned today, kept passing so the guard protects against NEW
- * orphans while these are resolved separately. Each entry MUST stay a real, still
+ * orphans while they are resolved separately. Each entry MUST stay a real, still
  * non-navigable page or the anti-stale check below fails and tells you to drop it.
- * Tracked by #738 (link-into-nav or delete).
+ * Empty since #738 deleted the last ones (`/recipes` and the `/transform` redirect only it linked to).
  */
-const KNOWN_ORPHANS: Record<string, string> = {
-  '/recipes': 'Full recipes UI with no inbound link; nav home is a product decision (#738)',
-};
+const KNOWN_ORPHANS: Record<string, string> = {};
 
 describe('#528 AC4 — page routes are reachable from navigation', () => {
   const pageRoutes = [...new Set(collectPageRoutes(APP))].sort();
