@@ -131,11 +131,9 @@ function isFrameworkRoot(route: string): boolean {
  * Pages known to be orphaned today, kept passing so the guard protects against NEW
  * orphans while they are resolved separately. Each entry MUST stay a real, still
  * non-navigable page or the anti-stale check below fails and tells you to drop it.
- * #738 deleted `/recipes`, whose "Create"/"Apply" buttons were the only inbound link to `/transform`.
+ * Empty since #738 deleted the last ones (`/recipes` and the `/transform` redirect only it linked to).
  */
-const KNOWN_ORPHANS: Record<string, string> = {
-  '/transform': 'Legacy redirect to /prepare; its only inbound link was the deleted /recipes page (#738)',
-};
+const KNOWN_ORPHANS: Record<string, string> = {};
 
 describe('#528 AC4 — page routes are reachable from navigation', () => {
   const pageRoutes = [...new Set(collectPageRoutes(APP))].sort();
