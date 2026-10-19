@@ -3,7 +3,7 @@ import { mkdirSync } from 'fs';
 import path from 'path';
 import { test, expect } from '../fixtures';
 import { API_BASE, apiAuthHeaders } from '../helpers/apiAuth';
-import { isolatedState } from '../isolatedUsers';
+import { isolatedEmail, isolatedState } from '../isolatedUsers';
 
 /**
  * Re-records the public /how-it-works media (#772): the eight stage screenshots and the
@@ -35,9 +35,22 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
   const headers = await apiAuthHeaders(page.request);
   await page.request.post(`${API_BASE}/onboarding/reset`, { headers });
 
+  // The signed-in account (name and address) is shown in the sidebar. Fail the capture
+  // unless every place it appears lies wholly outside the kept rectangle, so a layout
+  // change cannot ship the test identity in an image or the video.
+  const account = page.getByText(new RegExp(`${isolatedEmail('onboarding').replace(/[+.]/g, '\\$&')}|Test User`));
+  const assertAccountCropped = async () => {
+    await expect(account.first()).toBeVisible();
+    for (const element of await account.all()) {
+      const box = (await element.boundingBox())!;
+      expect(box.y >= CROP_HEIGHT || box.x >= CROP_WIDTH, `account text at y=${box.y} is inside the crop`).toBe(true);
+    }
+  };
+
   // Wait for the page to settle, then write the cropped frame as <stage>.webp.
   const shoot = async (stage: string) => {
     await page.waitForLoadState('networkidle');
+    await assertAccountCropped();
     await expect(page.locator('.animate-spin')).toHaveCount(0, { timeout: 30_000 });
     await page.waitForTimeout(1500);
     const png = testInfo.outputPath(`${stage}.png`);

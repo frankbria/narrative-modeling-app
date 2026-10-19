@@ -9,7 +9,15 @@ import { render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import SecurityPage, { metadata } from '@/app/security/page'
 import { COMPANY, SUB_PROCESSORS } from '@/lib/legal/company'
-import { AI_SAMPLE_ROWS, DATASET_KEY_PREFIX, PII_SCAN_SAMPLE_ROWS } from '@/lib/trust/datasetFacts'
+import {
+  AI_SAMPLE_ROWS,
+  DATASET_KEY_TEMPLATE,
+  MASKED_KEY_TEMPLATE,
+  PII_NAME_CATEGORIES,
+  PII_SCAN_SAMPLE_ROWS,
+  PII_VALUE_CATEGORIES,
+  SUMMARY_EXAMPLE_VALUES,
+} from '@/lib/trust/datasetFacts'
 
 function section(name: RegExp): HTMLElement {
   return screen.getByRole('region', { name })
@@ -27,8 +35,26 @@ describe('Security page', () => {
   it('says where a dataset is stored: under the account prefix, in S3', () => {
     render(<SecurityPage />)
     const text = section(/what happens to a dataset/i).textContent ?? ''
-    expect(text).toContain(`${DATASET_KEY_PREFIX}/`)
+    expect(text).toContain(DATASET_KEY_TEMPLATE)
+    expect(text).toContain(MASKED_KEY_TEMPLATE)
     expect(text).toMatch(/AWS S3/)
+  })
+
+  it('says the column-name check covers more categories than the value patterns', () => {
+    render(<SecurityPage />)
+    const text = section(/what happens to a dataset/i).textContent ?? ''
+    expect(PII_NAME_CATEGORIES.length).toBeGreaterThan(PII_VALUE_CATEGORIES.length)
+    expect(text).toMatch(/date of birth/i)
+    expect(text).toMatch(/medical/i)
+    expect(text).toMatch(/financial account/i)
+    expect(text).toMatch(/card numbers/i)
+  })
+
+  it('says exactly what the upload summary sends: file name, counts, example values per column', () => {
+    render(<SecurityPage />)
+    const text = section(/what happens to a dataset/i).textContent ?? ''
+    expect(text).toMatch(/file name/i)
+    expect(text).toContain(`up to ${SUMMARY_EXAMPLE_VALUES} example values per column`)
   })
 
   it('states the PII scan with its real sample size, and what the AI summary receives', () => {
@@ -36,7 +62,7 @@ describe('Security page', () => {
     const text = section(/what happens to a dataset/i).textContent ?? ''
     expect(text).toContain(`first ${PII_SCAN_SAMPLE_ROWS}`)
     expect(text).toMatch(/redact/i)
-    expect(text).toContain(`${AI_SAMPLE_ROWS} sample rows`)
+    expect(text).toContain(`up to ${AI_SAMPLE_ROWS} sample rows`)
   })
 
   it('says nothing about backups (#299 is not done)', () => {
