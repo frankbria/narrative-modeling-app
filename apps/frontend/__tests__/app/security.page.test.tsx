@@ -95,6 +95,13 @@ describe('Security page', () => {
     expect(retention).toHaveTextContent(COMPANY.privacyEmail)
   })
 
+  it('says deleting a dataset removes the models trained on it, as the privacy policy does (#1111)', () => {
+    render(<SecurityPage />)
+    const retention = section(/erasure and retention/i)
+    expect(retention).toHaveTextContent(/models trained on it with their saved files/i)
+    expect(retention).not.toHaveTextContent(/separate objects/i)
+  })
+
   it('states the refund window from COMPANY and links the refund terms', () => {
     render(<SecurityPage />)
     const refunds = section(/refunds/i)
