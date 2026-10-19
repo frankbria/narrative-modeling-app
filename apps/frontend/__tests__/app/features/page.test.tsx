@@ -133,6 +133,60 @@ describe('Feature Engineering page', () => {
     expect(screen.getByRole('button', { name: 'Use these 1 columns' })).toBeDisabled();
   });
 
+  describe('the interaction features switch (#974)', () => {
+    const SWITCH = 'Also try interaction features';
+
+    it('is off by default, explains itself, and is recorded with the choice', async () => {
+      render(<FeaturesPage />);
+      await loaded();
+
+      const toggle = screen.getByRole('switch', { name: SWITCH });
+      expect(toggle).not.toBeChecked();
+      expect(screen.getByText(/lengthen training/)).toBeInTheDocument();
+
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button', { name: 'Use these 4 columns' }));
+
+      expect(mockCompleteStage).toHaveBeenCalledWith(
+        WorkflowStage.FEATURE_ENGINEERING,
+        expect.objectContaining({ createInteractions: true, excludedFeatures: [] }),
+      );
+    });
+
+    it('records off when it was never touched', async () => {
+      render(<FeaturesPage />);
+      await loaded();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Use these 4 columns' }));
+
+      expect(mockCompleteStage).toHaveBeenCalledWith(
+        WorkflowStage.FEATURE_ENGINEERING,
+        expect.objectContaining({ createInteractions: false }),
+      );
+    });
+
+    it('comes back on, and flipping it asks for the choice to be recorded again', async () => {
+      mockWorkflow.state.completedStages = new Set([WorkflowStage.FEATURE_ENGINEERING]);
+      mockWorkflow.state.stageData = {
+        [WorkflowStage.FEATURE_ENGINEERING]: {
+          selectedFeatures: COLUMNS,
+          excludedFeatures: [],
+          createInteractions: true,
+        },
+      };
+      render(<FeaturesPage />);
+      await loaded();
+
+      expect(screen.getByRole('switch', { name: SWITCH })).toBeChecked();
+      expect(screen.getByTestId('stage-navigation')).toHaveAttribute('data-ready', 'true');
+
+      fireEvent.click(screen.getByRole('switch', { name: SWITCH }));
+
+      expect(screen.getByRole('switch', { name: SWITCH })).not.toBeChecked();
+      expect(screen.getByTestId('stage-navigation')).toHaveAttribute('data-ready', 'false');
+    });
+  });
+
   it('says so when the columns cannot be read, and reads them again on retry', async () => {
     mockFetch.mockResolvedValue(answer({ detail: 'not found' }, false));
     render(<FeaturesPage />);

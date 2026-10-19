@@ -8,9 +8,11 @@ import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
+import { Switch } from '@/components/ui/switch';
 import { loadColumns } from '@/lib/services/datasetColumns';
 import {
   choiceOf,
+  interactionsOn,
   recordedChoice,
   sameChoice,
   startingSelection,
@@ -111,16 +113,41 @@ function Recorded(props: ShownProps) {
   );
 }
 
+interface InteractionsSwitchProps {
+  on: boolean;
+  onChange(on: boolean): void;
+}
+
+function InteractionsSwitch(props: InteractionsSwitchProps) {
+  const { on, onChange } = props;
+  return (
+    <div className="flex items-start gap-3 p-3 border border-border rounded-lg">
+      <Switch id="try-interactions" checked={on} onCheckedChange={onChange} />
+      <div className="space-y-1">
+        <label htmlFor="try-interactions" className="text-sm font-medium cursor-pointer">
+          Also try interaction features
+        </label>
+        <p className="text-sm text-muted-foreground">
+          Adds products and ratios of pairs of numeric columns for the model to learn from. It can
+          lengthen training.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 interface ColumnChoiceFormProps {
   columns: string[];
   selected: string[];
+  interactions: boolean;
   recorded: boolean;
   onToggle(column: string): void;
+  onInteractions(on: boolean): void;
   onRecord: VoidFunction;
 }
 
 function ColumnChoiceForm(props: ColumnChoiceFormProps) {
-  const { columns, selected, recorded, onToggle, onRecord } = props;
+  const { columns, selected, interactions, recorded, onToggle, onInteractions, onRecord } = props;
   const enough = selected.length >= MIN_COLUMNS;
   const summary = `${selected.length} of ${columns.length} columns selected`;
   const action = `Use these ${selected.length} columns`;
@@ -138,6 +165,7 @@ function ColumnChoiceForm(props: ColumnChoiceFormProps) {
           <ColumnBox key={column} column={column} checked={selected.includes(column)} onToggle={onToggle} />
         ))}
       </div>
+      <InteractionsSwitch on={interactions} onChange={onInteractions} />
       <TooFew show={!enough} />
       <Recorded show={recorded} />
       <div className="flex justify-end">
@@ -155,9 +183,9 @@ function ColumnChoiceForm(props: ColumnChoiceFormProps) {
 }
 
 /** What completing the stage stores: the choice, and when it was made. */
-function stageRecord(columns: string[], selected: string[]) {
-  const choice = choiceOf(columns, selected);
-  return { ...choice, timestamp: new Date().toISOString() };
+function stageRecord(columns: string[], selection: Selection) {
+  const choice = choiceOf(columns, selection.selected);
+  return { ...choice, createInteractions: selection.interactions, timestamp: new Date().toISOString() };
 }
 
 interface Edited {
@@ -168,18 +196,27 @@ interface Edited {
 interface Selection {
   selected: string[];
   toggle(column: string): void;
+  interactions: boolean;
+  setInteractions(on: boolean): void;
 }
 
 /** The user's edits on top of where the stage starts; they reset with the dataset. */
-function useSelection(datasetId: string | undefined, columns: string[], recorded: ColumnChoice | null): Selection {
+function useSelection(
+  datasetId: string | undefined,
+  columns: string[],
+  recorded: ColumnChoice | null,
+  recordedInteractions: boolean,
+): Selection {
   const [edited, setEdited] = useState<Edited | null>(null);
+  const [interactionsEdit, setInteractions] = useState<boolean | null>(null);
   const mine = edited !== null && edited.datasetId === datasetId;
   const current = mine ? edited.names : startingSelection(columns, recorded);
   const toggle = (column: string) => {
     const names = current.includes(column) ? current.filter((name) => name !== column) : [...current, column];
     setEdited({ datasetId, names });
   };
-  return { selected: columns.filter((column) => current.includes(column)), toggle };
+  const interactions = interactionsEdit ?? recordedInteractions;
+  return { selected: columns.filter((column) => current.includes(column)), toggle, interactions, setInteractions };
 }
 
 interface ChoiceBodyProps {
@@ -205,8 +242,10 @@ function ChoiceBody(props: ChoiceBodyProps) {
     <ColumnChoiceForm
       columns={columns}
       selected={selection.selected}
+      interactions={selection.interactions}
       recorded={props.recorded}
       onToggle={selection.toggle}
+      onInteractions={selection.setInteractions}
       onRecord={props.onRecord}
     />
   );
@@ -217,7 +256,8 @@ function ChoiceBody(props: ChoiceBodyProps) {
  *
  * The columns come from the dataset record itself, the same read the Model
  * Training stage uses. Recording the choice completes the stage; training then
- * leaves the unselected columns out (`feature_config.exclude_columns`, #969).
+ * leaves the unselected columns out (`feature_config.exclude_columns`, #969), and
+ * tries interaction features when the switch is on (`create_interactions`, #974).
  */
 export default function FeaturesPage() {
   const { state, completeStage } = useWorkflow();
@@ -228,11 +268,12 @@ export default function FeaturesPage() {
     enabled: ready && Boolean(datasetId),
   });
   const columns = load.data ?? [];
-  const recorded = recordedChoice(state.stageData[WorkflowStage.FEATURE_ENGINEERING]);
-  const selection = useSelection(datasetId, columns, recorded);
-  const isRecorded = sameChoice(recorded, selection.selected);
+  const stageData = state.stageData[WorkflowStage.FEATURE_ENGINEERING];
+  const recorded = recordedChoice(stageData);
+  const selection = useSelection(datasetId, columns, recorded, interactionsOn(stageData));
+  const isRecorded = sameChoice(recorded, selection.selected) && interactionsOn(stageData) === selection.interactions;
   const goToUpload = () => router.push('/upload');
-  const record = () => completeStage(WorkflowStage.FEATURE_ENGINEERING, stageRecord(columns, selection.selected));
+  const record = () => completeStage(WorkflowStage.FEATURE_ENGINEERING, stageRecord(columns, selection));
 
   if (!datasetId) return <NoDataset onUpload={goToUpload} />;
 

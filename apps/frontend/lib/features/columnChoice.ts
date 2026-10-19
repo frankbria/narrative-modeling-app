@@ -44,6 +44,11 @@ export function sameChoice(recorded: ColumnChoice | null, selected: string[]): b
   return kept.length === selected.length && kept.every((column) => selected.includes(column));
 }
 
+/** Whether the stage's "also try interaction features" switch was recorded on (#974). */
+export function interactionsOn(stageData: unknown): boolean {
+  return (stageData as Record<string, unknown> | null | undefined)?.createInteractions === true;
+}
+
 /** The columns training must leave out. The target is never a feature, so it is never listed. */
 export function excludedFromTraining(stageData: unknown, targetColumn: string): string[] {
   const leftOut = recordedChoice(stageData)?.excludedFeatures ?? [];

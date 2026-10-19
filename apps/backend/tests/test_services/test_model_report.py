@@ -732,6 +732,19 @@ class TestFreeTextCannotInjectStructure:
         assert (await build_model_report(_model("m-older"), USER)).dataset.excluded_user_columns == []
 
     @pytest.mark.asyncio
+    async def test_interaction_features_in_the_model_are_reported(self, setup_database):
+        """#974: the switch's outcome is named, and absent when nothing was built."""
+        model = _model("m-inter", training_config={"interaction_features": ["age_x_tenure", "age_div_tenure"]})
+
+        report = await build_model_report(model, USER)
+
+        assert report.dataset.interaction_features == ["age_x_tenure", "age_div_tenure"]
+        assert "Interaction features: `age_x_tenure`, `age_div_tenure`" in render_markdown(report)
+        older = await build_model_report(_model("m-older2"), USER)
+        assert older.dataset.interaction_features == []
+        assert "Interaction features" not in render_markdown(older)
+
+    @pytest.mark.asyncio
     async def test_exactly_one_row_is_the_winner_when_a_job_exists(
         self, setup_database
     ):

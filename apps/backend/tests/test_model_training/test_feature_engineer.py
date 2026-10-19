@@ -1398,3 +1398,39 @@ class TestColumnsLeftOutByChoice:
         fe.excluded_features = ["customer_id"]
 
         assert fe.exclusion_notes() == ["Excluded per-row identifier columns from the features: customer_id"]
+
+
+class TestInteractionFeaturesSwitch:
+    """#974: the Feature Engineering stage's "also try interaction features" switch
+    sends ``feature_config.create_interactions``; it must change what is trained
+    and the run must say so."""
+
+    @pytest.mark.asyncio
+    async def test_the_engine_trains_on_interactions_when_asked_and_reports_them(self):
+        from app.api.routes.model_training import FeatureConfigRequest
+        from app.services.model_training.automl_engine import AutoMLEngine
+
+        df = _churn_frame(200, seed=5)
+        asked = FeatureConfigRequest(create_interactions=True, select_features=False)
+
+        async def train(config):
+            engine = AutoMLEngine(max_models=1, cv_folds=2, random_state=0)
+            return await engine.run(df, "churned", config)
+
+        on = await train(FeatureEngineeringConfig(**asked.model_dump(exclude_none=True)))
+        off = await train(FeatureEngineeringConfig(select_features=False))
+
+        assert on.metadata["feature_engineering"]["interaction_features"] == ["age_x_tenure", "age_div_tenure"]
+        assert {"age_x_tenure", "age_div_tenure"} <= set(on.feature_names)
+        assert on.metadata["n_features_engineered"] == off.metadata["n_features_engineered"] + 2
+        assert off.metadata["feature_engineering"]["interaction_features"] == []
+
+    @pytest.mark.asyncio
+    async def test_an_interaction_the_selector_drops_is_not_reported(self):
+        df = _churn_frame(200, seed=5)
+        fe = FeatureEngineer(FeatureEngineeringConfig(create_interactions=True, max_features=2))
+
+        result = await fe.fit_transform(df.drop(columns="churned"), df["churned"], "binary_classification")
+
+        built = result.metadata["interaction_features"]
+        assert built == [name for name in built if name in result.feature_names]

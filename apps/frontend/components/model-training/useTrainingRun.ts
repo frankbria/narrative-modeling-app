@@ -7,7 +7,7 @@ import {
   type TrainingMode,
   type TrainingStatus,
 } from '@/lib/services/model';
-import { excludedFromTraining } from '@/lib/features/columnChoice';
+import { excludedFromTraining, interactionsOn } from '@/lib/features/columnChoice';
 
 /** One training run: start it, follow it to its end, and start it again keeping columns. */
 
@@ -16,16 +16,22 @@ export interface TrainingChoice {
   mode: TrainingMode;
 }
 
-/** Columns named on the request: kept although a rule set them aside (#841), or left out by the user's own choice (#969). */
+/**
+ * What the request names beyond the dataset: columns kept although a rule set them
+ * aside (#841), columns left out by the user's own choice (#969), and the
+ * interaction-features switch (#974).
+ */
 export interface ColumnOverrides {
   keep: string[];
   exclude: string[];
+  interactions?: boolean;
 }
 
 function featureConfig(columns: ColumnOverrides): TrainModelRequest['feature_config'] {
   const config: TrainModelRequest['feature_config'] = {};
   if (columns.keep.length) config.keep_columns = columns.keep;
   if (columns.exclude.length) config.exclude_columns = columns.exclude;
+  if (columns.interactions) config.create_interactions = true;
   return config;
 }
 
@@ -72,11 +78,12 @@ export function useTrainingRun() {
     setKeepColumns(keep);
     try {
       // TrainingProgress takes over polling once the job id is known.
-      const exclude = excludedFromTraining(
-        state.stageData[WorkflowStage.FEATURE_ENGINEERING],
-        next.targetColumn,
+      const chosen = state.stageData[WorkflowStage.FEATURE_ENGINEERING];
+      const exclude = excludedFromTraining(chosen, next.targetColumn);
+      const interactions = interactionsOn(chosen);
+      const result = await modelService.trainModel(
+        trainRequest(state.datasetId, next, { keep, exclude, interactions }),
       );
-      const result = await modelService.trainModel(trainRequest(state.datasetId, next, { keep, exclude }));
       setModelId(result.model_id);
     } catch (err) {
       console.error('Failed to train model:', err);

@@ -173,6 +173,17 @@ describe('ModelReportPage', () => {
     expect(screen.queryByText('Excluded as identifiers')).not.toBeInTheDocument();
   });
 
+  it('names the interaction features the switch built (#974)', async () => {
+    (modelService.getModelReport as jest.Mock).mockResolvedValue({
+      ...base,
+      dataset: { ...base.dataset, interaction_features: ['age_x_tenure', 'age_div_tenure'] },
+    });
+    render(<ModelReportPage />);
+
+    await waitFor(() => expect(screen.getByText('age_x_tenure, age_div_tenure')).toBeInTheDocument());
+    expect(screen.getByText('Interaction features')).toBeInTheDocument();
+  });
+
   it('shows no exclusion row when nothing was excluded', async () => {
     render(<ModelReportPage />);
 
@@ -181,6 +192,7 @@ describe('ModelReportPage', () => {
     expect(screen.queryByText('Excluded as dates')).not.toBeInTheDocument();
     expect(screen.queryByText('Excluded as empty')).not.toBeInTheDocument();
     expect(screen.queryByText('Left out by you')).not.toBeInTheDocument();
+    expect(screen.queryByText('Interaction features')).not.toBeInTheDocument();
   });
 
   it('surfaces caveats', async () => {
