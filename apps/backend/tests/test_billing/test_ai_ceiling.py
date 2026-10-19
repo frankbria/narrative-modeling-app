@@ -208,8 +208,7 @@ class TestEveryModelCallIsBehindTheCeiling:
 
 class TestReleaseGaps:
     """Routes that used to keep the tenant's unit when no model ran (#768 review of
-    the #461 fallbacks): `/ai/summarize` on its fallback, `/features/suggest` when
-    the model call raised, `/ai/chat` when the ceiling refused it."""
+    the #461 fallbacks): `/ai/summarize` on its fallback, `/ai/chat` when the ceiling refused it."""
 
     async def test_summarize_service_falls_back_past_the_ceiling(self, setup_database):
         from app.services.dataset_summarization import (
@@ -253,21 +252,6 @@ class TestReleaseGaps:
             response = await async_authorized_client.post(f"/api/v1/ai/summarize/{doc.id}")
         assert response.status_code == 200, response.text
         assert await metering.usage_for(TEST_USER, "ai_calls") == 0
-
-    async def test_feature_suggestions_report_no_ai_when_the_ceiling_refuses(self, setup_database):
-        import pandas as pd
-
-        from app.services.feature_engineering_service import FeatureEngineeringService
-
-        df = pd.DataFrame({"a": range(20), "b": [x * 2.0 for x in range(20)], "y": [0, 1] * 10})
-        with patch.object(ai_ceiling, "AI_CALLS_DAILY_CEILING", 1), \
-             patch("app.services.feature_engineering_service.get_openai_client",
-                   return_value=AsyncMock()):
-            await ai_ceiling.admit()
-            response = await FeatureEngineeringService().suggest_features(
-                df, "ds-1", target_column="y", user_id=TEST_USER, write_cache=False
-            )
-        assert response.metadata["ai_used"] is False
 
     async def test_chat_answers_503_and_refunds_past_the_ceiling(
         self, async_authorized_client, setup_database

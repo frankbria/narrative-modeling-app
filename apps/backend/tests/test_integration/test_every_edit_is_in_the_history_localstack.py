@@ -1,4 +1,4 @@
-"""#923: a bulk transformation, a data-issue fix and an added feature column are history steps.
+"""#923: a bulk transformation and an added feature column are history steps.
 
 They used to move the dataset with no step, which closed the history behind them (#851):
 the edit was not listed and could not be undone, and every earlier step became
@@ -70,15 +70,6 @@ async def _undo_restores(client, dataset_id: str, before: pd.DataFrame) -> None:
     assert history["can_redo"] is True, "and the edit can be redone"
 
 
-async def _fixable(client, upload_id: str) -> list[str]:
-    detected = await client.post("/api/v1/data-issues/detect", json={
-        "dataset_id": upload_id, "options": {"include_ai_analysis": False}})
-    assert detected.status_code == 200, detected.text
-    fixable = [i["issue_id"] for i in detected.json()["issues"] if i["suggested_fixes"]]
-    assert fixable, "precondition: the file has an issue with a suggested fix"
-    return fixable
-
-
 async def test_a_bulk_transformation_is_a_step_and_can_be_undone(client, real_s3_env):
     dataset_id, _ = await _trimmed_dataset(client)
     before = await _frame(dataset_id)
@@ -99,36 +90,6 @@ async def test_a_bulk_transformation_is_a_step_and_can_be_undone(client, real_s3
     assert [h["transformation_type"] for h in history["history"]] == ["trim_whitespace", "fill_missing"]
     assert history["history"][1]["description"] == "Bulk fill missing on score"
     assert history["history"][1]["affected_columns"] == ["score"]
-    await _undo_restores(client, dataset_id, before)
-
-
-async def test_a_data_issue_fix_is_a_step_and_can_be_undone(client, real_s3_env):
-    dataset_id, upload_id = await _trimmed_dataset(client)
-    before = await _frame(dataset_id)
-    issue_id = (await _fixable(client, upload_id))[0]
-
-    fixed = await client.post("/api/v1/data-issues/apply-fix", json={
-        "dataset_id": upload_id, "issue_id": issue_id, "preview_mode": False})
-    assert fixed.json()["success"] is True, fixed.text
-
-    history = await _history(client, dataset_id)
-    assert [h["transformation_type"] for h in history["history"]] == ["trim_whitespace", "data_issue_fix"]
-    assert history["history"][1]["description"].startswith("Fixed data issue: ")
-    await _undo_restores(client, dataset_id, before)
-
-
-async def test_a_batch_of_fixes_is_one_step_and_can_be_undone(client, real_s3_env):
-    dataset_id, upload_id = await _trimmed_dataset(client)
-    before = await _frame(dataset_id)
-    issue_ids = await _fixable(client, upload_id)
-
-    fixed = await client.post("/api/v1/data-issues/batch-fix", json={
-        "dataset_id": upload_id, "issue_ids": issue_ids, "preview_mode": False})
-    assert fixed.status_code == 200 and fixed.json()["successful_fixes"] >= 1, fixed.text
-
-    history = await _history(client, dataset_id)
-    assert [h["transformation_type"] for h in history["history"]] == ["trim_whitespace", "data_issue_fix"]
-    assert history["history"][1]["description"].startswith("Fixed ")
     await _undo_restores(client, dataset_id, before)
 
 

@@ -14,7 +14,6 @@ import pytest
 from bson import ObjectId
 
 from app.models.dataset import DatasetMetadata
-from app.models.user_data import UserData
 
 pytestmark = pytest.mark.asyncio
 
@@ -30,101 +29,7 @@ def _assert_sanitized(response, error_text: str):
     assert "internal error" in error_text
 
 
-class TestDataIssues:
-    BASE = "/api/v1/data-issues"
-
-    async def _dataset(self) -> UserData:
-        return await UserData(
-            user_id=TEST_USER, filename="d.csv", original_filename="d.csv",
-            s3_url=f"https://test-bucket.s3.amazonaws.com/datasets/{TEST_USER}/d.csv",
-            num_rows=6, num_columns=3, data_schema=[], file_type="csv", is_processed=True,
-        ).insert()
-
-    async def test_detect(self, async_authorized_client, setup_database):
-        ds = await self._dataset()
-        with patch("app.api.routes.data_issues.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET):
-            r = await async_authorized_client.post(
-                f"{self.BASE}/detect",
-                json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": False}},
-            )
-        body = r.json()
-        assert body["success"] is False
-        _assert_sanitized(r, body["error"])
-
-    @pytest.mark.parametrize("path,extra", [
-        ("preview-fix", {}),
-        ("apply-fix", {"preview_mode": False}),
-    ])
-    async def test_preview_and_apply(self, async_authorized_client, setup_database, path, extra):
-        ds = await self._dataset()
-        frame = pd.DataFrame({"id": [1, 2, 2], "age": [25, None, 30]})
-        with patch("app.api.routes.data_issues.get_dataframe_from_s3", new_callable=AsyncMock, return_value=frame):
-            detected = (await async_authorized_client.post(
-                f"{self.BASE}/detect",
-                json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": False}},
-            )).json()
-        issue_id = next(i for i in detected["issues"] if i["suggested_fixes"])["issue_id"]
-        with patch("app.api.routes.data_issues.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET):
-            r = await async_authorized_client.post(
-                f"{self.BASE}/{path}", json={"dataset_id": str(ds.id), "issue_id": issue_id, **extra}
-            )
-        body = r.json()
-        assert body["success"] is False
-        _assert_sanitized(r, body["error"])
-
-    async def test_batch_fix(self, async_authorized_client, setup_database):
-        ds = await self._dataset()
-        frame = pd.DataFrame({"id": [1, 2, 2], "age": [25, None, 30]})
-        with patch("app.api.routes.data_issues.get_dataframe_from_s3", new_callable=AsyncMock, return_value=frame):
-            detected = (await async_authorized_client.post(
-                f"{self.BASE}/detect",
-                json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": False}},
-            )).json()
-        issue_ids = [i["issue_id"] for i in detected["issues"]]
-        with patch("app.api.routes.data_issues.get_dataframe_from_s3", new_callable=AsyncMock, side_effect=SECRET):
-            r = await async_authorized_client.post(
-                f"{self.BASE}/batch-fix", json={"dataset_id": str(ds.id), "issue_ids": issue_ids}
-            )
-        body = r.json()
-        assert body["success"] is False
-        _assert_sanitized(r, body["error"])
-
-    async def test_apply_fix_failure_inside_the_engine(self, async_authorized_client, setup_database):
-        """The domain branch: TransformationEngine's catch-all used to put str(e) into
-        result.error, the fix engine wrapped it in OperationError.message, and the
-        route returned that verbatim — a leak through the 'safe' branch."""
-        ds = await self._dataset()
-        frame = pd.DataFrame({"id": [1, 2, 2], "age": [25, None, 30]})
-        with patch("app.api.routes.data_issues.get_dataframe_from_s3", new_callable=AsyncMock, return_value=frame):
-            detected = (await async_authorized_client.post(
-                f"{self.BASE}/detect",
-                json={"dataset_id": str(ds.id), "options": {"include_ai_analysis": False}},
-            )).json()
-            issue_id = next(i for i in detected["issues"] if i["suggested_fixes"])["issue_id"]
-            with patch(
-                "app.services.transformation_engine.transformation_engine.TransformationEngine.apply_transformation",
-                side_effect=SECRET,
-            ):
-                r = await async_authorized_client.post(
-                    f"{self.BASE}/apply-fix",
-                    json={"dataset_id": str(ds.id), "issue_id": issue_id, "preview_mode": False},
-                )
-        body = r.json()
-        assert r.status_code == 200 and body["success"] is False, body
-        assert "secret-bucket" not in r.text and "boom" not in r.text
-
-    def test_fix_engine_preview_does_not_echo_either(self):
-        """One layer down: the route copies the engine's error string into the body."""
-        from app.models.transformation import TransformationType
-        from app.services.fix_suggestion_engine import FixSuggestionEngine
-
-        engine = FixSuggestionEngine()
-        fix = MagicMock(transformation_type=list(TransformationType)[0].value, parameters={})
-        with patch.object(engine.transformation_engine, "preview_transformation", side_effect=SECRET):
-            result = engine.preview_fix(pd.DataFrame({"a": [1]}), MagicMock(), fix)
-        assert result["success"] is False
-        assert "secret-bucket" not in result["error"] and "boom" not in result["error"]
-
+class TestTransformationEngine:
     @pytest.mark.parametrize("method", ["apply_transformation", "preview_transformation"])
     def test_transformation_engine_catch_alls_do_not_echo(self, method):
         """Both the validation catch-all (create_transformation raises inside

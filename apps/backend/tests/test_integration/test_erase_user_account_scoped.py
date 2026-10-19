@@ -2,11 +2,11 @@
 
 Before #480 the user sweep stopped at models/jobs/feedback + dataset children,
 leaving live API keys (which still authenticated the paid serving surface),
-feature-store rows, saved recipes, quota counters and the local billing mirror
+saved recipes, quota counters and the local billing mirror
 behind. This seeds one of each for a user, erases the user, and asserts:
 
 - AC1: the API key no longer authenticates (the sharp one).
-- AC2: feature-store (features, versions, collections) and recipes are gone.
+- AC2: saved recipes are gone (the retired feature-store collections: test_erase_retired_collections.py).
 - AC3: Subscription + UsageRecord are RETAINED — erase_user backs the
   "erase my data, keep my account" endpoint, so billing/quota state is live
   account state, not orphaned data; the manifest records that decision.
@@ -31,11 +31,6 @@ async def _seed() -> str:
 
     from app.api.routes.production import hash_api_key
     from app.models.api_key import APIKey
-    from app.models.feature_store import (
-        FeatureCollection,
-        FeatureVersion,
-        StoredFeature,
-    )
     from app.models.subscription import Subscription
     from app.models.usage import UsageRecord
     from app.services.transformation_engine.recipe_manager import (
@@ -47,21 +42,6 @@ async def _seed() -> str:
     raw_key = "sk_live_erase_account_test_key_value_0123456789"
     await APIKey(
         key_id="key-erase-1", key_hash=hash_api_key(raw_key), name="k", user_id=USER, is_active=True
-    ).insert()
-
-    sf = await StoredFeature(
-        feature_id="feat-1", user_id=USER, name="f", description="d", category="c",
-        definition_type="transformation", definition_code="x", output_type="numeric",
-        output_column_name="col", created_by=USER,
-    ).insert()
-    await FeatureVersion(
-        version_id="fv-1", feature_id=sf.feature_id, version_number=1, definition_code="x",
-        definition_type="transformation", output_type="numeric", changes_description="init",
-        created_by=USER,
-    ).insert()
-    await FeatureCollection(
-        collection_id="fc-1", user_id=USER, name="c", description="d", domain="finance",
-        created_by=USER,
     ).insert()
 
     await TransformationRecipe(name="r", user_id=USER, steps=[]).insert()
@@ -82,11 +62,6 @@ async def _seed() -> str:
 async def test_erase_user_removes_all_account_scoped_records(setup_database):
     from app.api.routes.production import verify_api_key
     from app.models.api_key import APIKey
-    from app.models.feature_store import (
-        FeatureCollection,
-        FeatureVersion,
-        StoredFeature,
-    )
     from app.models.subscription import Subscription
     from app.models.usage import UsageRecord
     from app.services.erasure_service import dataset_erasure_service
@@ -106,9 +81,6 @@ async def test_erase_user_removes_all_account_scoped_records(setup_database):
 
     # AC1/AC2/AC3: nothing account-scoped survives for this user.
     assert await APIKey.find(APIKey.user_id == USER).count() == 0
-    assert await StoredFeature.find(StoredFeature.user_id == USER).count() == 0
-    assert await FeatureVersion.find(FeatureVersion.feature_id == "feat-1").count() == 0
-    assert await FeatureCollection.find(FeatureCollection.user_id == USER).count() == 0
     assert await TransformationRecipe.find(TransformationRecipe.user_id == USER).count() == 0
     assert await RecipeExecutionHistory.find(RecipeExecutionHistory.user_id == USER).count() == 0
     assert await SharedRecipe.find(SharedRecipe.user_id == USER).count() == 0

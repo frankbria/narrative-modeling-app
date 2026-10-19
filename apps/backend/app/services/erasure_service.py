@@ -28,7 +28,6 @@ from app.models.ai_feedback import AIRecommendationFeedback
 from app.models.analytics_result import AnalyticsResult
 from app.models.bulk_transformation import BulkTransformationJob
 from app.models.column_stats import ColumnStats
-from app.models.data_issue import DataIssueRecord
 from app.models.dataset import DatasetMetadata
 from app.models.erasure_audit import ErasureAuditLog
 from app.models.feature import FeatureDefinition
@@ -63,9 +62,16 @@ _STRING_KEYED_MODELS = [
     BulkTransformationJob,
     ModelConfig,
     TrainingJob,
-    DataIssueRecord,
     AIRecommendationFeedback,
 ]
+
+# Collections no model maps to any more: the features that wrote them were removed
+# (data issues #635, feature store #738, #1088). Raw names, so rows written before the
+# removal are still erased with their owner.
+_RETIRED_DATASET_KEYED = ("data_issues",)
+_RETIRED_USER_KEYED = ("data_issues", "feature_store", "feature_collections")
+# Feature-store rows other tenants were granted access to.
+_RETIRED_ACL = ("feature_store", "feature_collections")
 
 # Legacy UserData children linked via a Beanie Link (stored as a DBRef); queried
 # by ``{"<field>.$id": <ObjectId>}``. (model_class, dbref_field_name).
@@ -302,6 +308,8 @@ class DatasetErasureService:
         # 3. Remaining string-keyed children (incl. the DatasetVersion docs).
         for model_cls in _STRING_KEYED_MODELS:
             await self._delete_many(model_cls, {"dataset_id": dataset_id}, manifest)
+        for name in _RETIRED_DATASET_KEYED:
+            await self._delete_retired(name, {"dataset_id": dataset_id}, manifest)
 
     async def _erase_files_of(
         self, parent: DatasetMetadata | UserData, manifest: DeletionManifest
@@ -418,6 +426,49 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"delete {getattr(model_cls, '__name__', '?')}: {e}")
 
+    @staticmethod
+    def _retired(name: str) -> Any:
+        return DatasetMetadata.get_motor_collection().database[name]
+
+    async def _delete_retired(self, name: str, query: dict, manifest: DeletionManifest) -> None:
+        try:
+            count = (await self._retired(name).delete_many(query)).deleted_count
+            if count:
+                manifest.documents_deleted[name] = manifest.documents_deleted.get(name, 0) + count
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"delete {name}: {e}")
+
+    async def _sweep_retired_user_scoped(self, user_id: str, manifest: DeletionManifest) -> None:
+        """A user's rows in the retired collections, and their id in other tenants' ACLs (#662)."""
+        await self._delete_retired_versions(user_id, manifest)
+        for name in _RETIRED_USER_KEYED:
+            await self._delete_retired(name, {"user_id": user_id}, manifest)
+        for name in _RETIRED_ACL:
+            await self._pull_from_acl(name, user_id, manifest)
+
+    async def _delete_retired_versions(self, user_id: str, manifest: DeletionManifest) -> None:
+        """`feature_versions` is keyed by its parent feature, so resolve the owner's ids first."""
+        try:
+            owned = self._retired("feature_store").find({"user_id": user_id}, {"feature_id": 1})
+            feature_ids = [row["feature_id"] async for row in owned]
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"sweep feature_versions: {e}")
+            return
+        await self._delete_retired("feature_versions", {"feature_id": {"$in": feature_ids}}, manifest)
+
+    async def _pull_from_acl(self, name: str, user_id: str, manifest: DeletionManifest) -> None:
+        """Pull the erased id from a co-tenant's `shared_with`; their row is their data, so it stays."""
+        try:
+            res = await self._retired(name).update_many(
+                {"shared_with": user_id}, {"$pull": {"shared_with": user_id}}
+            )
+            if res.modified_count:
+                manifest.notes.append(
+                    f"pulled erased id from shared_with on {res.modified_count} {name} held by other tenants"
+                )
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"scrub shared_with {name}: {e}")
+
     async def _delete_doc(self, doc: Document, name: str, manifest: DeletionManifest) -> None:
         try:
             result = await doc.delete()
@@ -485,60 +536,14 @@ class DatasetErasureService:
         """
         from app.models.ab_test import ABTest
         from app.models.api_key import APIKey
-        from app.models.feature_store import (
-            FeatureCollection,
-            FeatureVersion,
-            StoredFeature,
-        )
         from app.models.feedback import Feedback
-        from app.models.subscription import Subscription
-        from app.models.usage import UsageRecord
         from app.services.transformation_engine.recipe_manager import (
             RecipeExecutionHistory,
             SharedRecipe,
             TransformationRecipe,
         )
 
-        # Any MLModels not tied to a dataset we already swept.
-        try:
-            leftover = await MLModel.find(MLModel.user_id == user_id).to_list()
-        except Exception as e:  # noqa: BLE001
-            manifest.failures.append(f"query ml_models: {e}")
-            leftover = []
-        # Per-model try/except, mirroring _erase_models: delete_model can now raise
-        # (ModelArtifactDeletionError, #521), and wrapping the whole loop would let
-        # one model's S3 failure abort every OTHER leftover model — leaving their
-        # rows/artifacts/PredictionEvents untouched behind a single generic failure.
-        for m in leftover:
-            model_deleted = False
-            try:
-                await self.model_storage.delete_model(m.model_id, user_id)
-                model_deleted = True
-            except Exception as e:  # noqa: BLE001
-                manifest.failures.append(f"delete_model {m.model_id}: {e}")
-            if model_deleted:
-                manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
-                if not self.model_storage.s3_service.is_mock_mode:
-                    manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
-            # Independently-erasable PII — erase even if delete_model failed (#521).
-            await self._delete_many(
-                PredictionEvent, {"model_id": m.model_id}, manifest
-            )
-
-        # feature_versions is keyed by its parent StoredFeature.feature_id, not
-        # user_id — resolve the owner's feature ids first, then delete the
-        # versions before the parents (order is safe since we captured the ids).
-        try:
-            feature_ids = [
-                f.feature_id
-                for f in await StoredFeature.find(StoredFeature.user_id == user_id).to_list()
-            ]
-            if feature_ids:
-                await self._delete_many(
-                    FeatureVersion, {"feature_id": {"$in": feature_ids}}, manifest
-                )
-        except Exception as e:  # noqa: BLE001
-            manifest.failures.append(f"sweep feature_versions: {e}")
+        await self._erase_leftover_models(user_id, manifest)
 
         # Every account-scoped collection with a user_id field holding the user's
         # own data. Billing state (Subscription, UsageRecord) is deliberately
@@ -556,8 +561,6 @@ class DatasetErasureService:
             APIKey,
             OnboardingProgress,  # account-scoped onboarding state (#541)
             ProductEvent,  # funnel telemetry (#769)
-            StoredFeature,
-            FeatureCollection,
             TransformationRecipe,
             RecipeExecutionHistory,
             SharedRecipe,
@@ -572,16 +575,47 @@ class DatasetErasureService:
             if "user_id" in model_cls.model_fields:
                 await self._delete_many(model_cls, {"user_id": user_id}, manifest)
 
-        # A recipe this user shared to OTHERS lives in the recipient's row with
-        # `user_id` = recipient and `original_owner_id` = the erased user, so the
-        # user_id sweep above never matches it and the erased user's id stays
-        # visible in the recipient's /recipes/shared (#480). Don't delete the
-        # recipient's copy — it is their data — scrub the erased user's id to a
-        # tombstone so the row no longer identifies them.
+        await self._anonymize_shared_recipes(user_id, manifest)
+        await self._sweep_retired_user_scoped(user_id, manifest)
+
+        await self._note_billing_retention(user_id, manifest)
+
+    async def _erase_leftover_models(self, user_id: str, manifest: DeletionManifest) -> None:
+        """Any MLModels not tied to a dataset we already swept."""
         try:
-            res = await SharedRecipe.find(
-                SharedRecipe.original_owner_id == user_id
-            ).update(
+            leftover = await MLModel.find(MLModel.user_id == user_id).to_list()
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"query ml_models: {e}")
+            return
+        # Per model, mirroring _erase_models: delete_model can raise
+        # (ModelArtifactDeletionError, #521), and one model's S3 failure must not abort
+        # every OTHER leftover model.
+        for m in leftover:
+            await self._erase_leftover_model(m, user_id, manifest)
+
+    async def _erase_leftover_model(self, m: MLModel, user_id: str, manifest: DeletionManifest) -> None:
+        try:
+            await self.model_storage.delete_model(m.model_id, user_id)
+            manifest.documents_deleted["ml_models"] = manifest.documents_deleted.get("ml_models", 0) + 1
+            if not self.model_storage.s3_service.is_mock_mode:
+                manifest.s3_objects_deleted.append(f"models/{user_id}/{m.model_id}/")
+        except Exception as e:  # noqa: BLE001
+            manifest.failures.append(f"delete_model {m.model_id}: {e}")
+        # Independently-erasable PII — erase even if delete_model failed (#521).
+        await self._delete_many(PredictionEvent, {"model_id": m.model_id}, manifest)
+
+    async def _anonymize_shared_recipes(self, user_id: str, manifest: DeletionManifest) -> None:
+        """Scrub the erased id from recipes they shared to OTHER tenants (#480).
+
+        Such a recipe lives in the recipient's row with `user_id` = recipient and
+        `original_owner_id` = the erased user, so the user_id sweep never matches it and
+        the id stays visible in the recipient's /recipes/shared. The recipient's copy is
+        their data, so it is kept and the id replaced with a tombstone.
+        """
+        from app.services.transformation_engine.recipe_manager import SharedRecipe
+
+        try:
+            res = await SharedRecipe.find(SharedRecipe.original_owner_id == user_id).update(
                 {
                     "$set": {
                         # Both copies of the sharer's id: the field and the
@@ -600,35 +634,19 @@ class DatasetErasureService:
         except Exception as e:  # noqa: BLE001
             manifest.failures.append(f"anonymize shared_recipes: {e}")
 
-        # The erased user's id can also sit in ANOTHER tenant's feature-store ACL —
-        # StoredFeature/FeatureCollection.shared_with — either a feature shared TO
-        # them or one they granted others access to (#662). The user_id sweep above
-        # only removes docs they OWN, so pull their id from every other tenant's
-        # shared_with (don't delete the co-tenant's feature — it is their data).
-        for acl_cls in (StoredFeature, FeatureCollection):
-            try:
-                res = await acl_cls.find({"shared_with": user_id}).update(
-                    {"$pull": {"shared_with": user_id}}
-                )
-                pulled = getattr(res, "modified_count", 0) or 0
-                if pulled:
-                    manifest.notes.append(
-                        f"pulled erased id from shared_with on {pulled} "
-                        f"{acl_cls.Settings.name} held by other tenants"
-                    )
-            except Exception as e:  # noqa: BLE001
-                manifest.failures.append(
-                    f"scrub shared_with {getattr(acl_cls, '__name__', '?')}: {e}"
-                )
+    async def _note_billing_retention(self, user_id: str, manifest: DeletionManifest) -> None:
+        """Billing state (Subscription, UsageRecord) is intentionally RETAINED, not deleted.
 
-        # Billing state (Subscription, UsageRecord) is intentionally RETAINED,
-        # not deleted. erase_user backs the "erase my data, keep my account"
-        # endpoint (POST /users/me/erase), so the account stays active and
-        # billable: deleting the Subscription mirror would enforce an actively-
-        # paying customer as FREE until the next Stripe webhook, and deleting
-        # UsageRecord would reset their quota mid-period. Both are live account
-        # state, not orphaned personal data. Full billing teardown belongs to a
-        # true account-closure flow, which does not exist yet (#480 AC3).
+        erase_user backs the "erase my data, keep my account" endpoint
+        (POST /users/me/erase), so the account stays active and billable: deleting the
+        Subscription mirror would enforce an actively-paying customer as FREE until the
+        next Stripe webhook, and deleting UsageRecord would reset their quota mid-period.
+        Both are live account state, not orphaned personal data. Full billing teardown
+        belongs to a true account-closure flow, which does not exist yet (#480 AC3).
+        """
+        from app.models.subscription import Subscription
+        from app.models.usage import UsageRecord
+
         try:
             retained = await Subscription.find(
                 Subscription.user_id == user_id

@@ -12,22 +12,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from app.models.feature import (
     ExpressionNode,
     FeatureDefinition,
     FeatureStatistics,
-    NodeType,
     OutputType,
 )
 from app.services.base_service import BaseService
 from app.services.dataset_service import DatasetService
 from app.services.exceptions import ValidationError
 from app.services.expression_evaluator import (
-    ColumnNotFoundError,
-    ExpressionError,
     ExpressionEvaluator,
 )
 from app.services.transformation_engine.data_utils import (
@@ -163,112 +159,6 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             return [f"Column(s) not found in dataset: {missing}"]
         return []
 
-    async def preview_feature(
-        self,
-        dataset_id: str,
-        user_id: str,
-        expression_tree: ExpressionNode,
-        sample_size: int = 100
-    ) -> dict[str, Any]:
-        """
-        Preview a feature computation on sample data.
-
-        Args:
-            dataset_id: Dataset to preview on
-            user_id: User requesting the preview
-            expression_tree: Expression tree to evaluate
-            sample_size: Number of rows to sample
-
-        Returns:
-            Dictionary with preview data, statistics, distribution, etc.
-        """
-        # Get dataset
-        dataset = await self.dataset_service.get_dataset_or_raise(
-            dataset_id=dataset_id,
-            user_id=user_id,
-            check_ownership=True
-        )
-
-        try:
-            # Load sample data from S3
-            df = await get_dataframe_from_s3(dataset.s3_url, nrows=sample_size)
-
-            # Evaluate expression
-            result_series, warnings = self.evaluator.evaluate(
-                expression_tree=expression_tree,
-                dataframe=df,
-                feature_name="preview_feature"
-            )
-
-            # Calculate statistics
-            stats = self._calculate_statistics(result_series)
-
-            # Calculate distribution
-            distribution = self._calculate_distribution(result_series)
-
-            # Get sample data with feature
-            sample_data = self._get_sample_data(df, result_series)
-
-            # Get formula string
-            formula = expression_tree.to_formula_string()
-
-            # Infer output type
-            inferred_type = self._infer_output_type(result_series)
-
-            return {
-                "success": True,
-                "values": result_series.head(sample_size).tolist(),
-                "statistics": stats,
-                "distribution": distribution,
-                "formula": formula,
-                "input_columns": expression_tree.get_input_columns(),
-                "inferred_type": inferred_type,
-                "sample_data": sample_data,
-                "warnings": warnings,
-                "error": None
-            }
-
-        except ColumnNotFoundError as e:
-            return {
-                "success": False,
-                "values": [],
-                "statistics": None,
-                "distribution": [],
-                "formula": expression_tree.to_formula_string(),
-                "input_columns": expression_tree.get_input_columns(),
-                "inferred_type": "unknown",
-                "sample_data": None,
-                "warnings": [],
-                "error": str(e)
-            }
-        except ExpressionError as e:
-            return {
-                "success": False,
-                "values": [],
-                "statistics": None,
-                "distribution": [],
-                "formula": expression_tree.to_formula_string(),
-                "input_columns": expression_tree.get_input_columns(),
-                "inferred_type": "unknown",
-                "sample_data": None,
-                "warnings": [],
-                "error": str(e)
-            }
-        except Exception as e:
-            logger.exception(f"Error previewing feature: {e}")
-            return {
-                "success": False,
-                "values": [],
-                "statistics": None,
-                "distribution": [],
-                "formula": expression_tree.to_formula_string(),
-                "input_columns": expression_tree.get_input_columns(),
-                "inferred_type": "unknown",
-                "sample_data": None,
-                "warnings": [],
-                "error": f"Preview failed: {str(e)}"
-            }
-
     def _calculate_statistics(self, series: pd.Series) -> dict[str, Any]:
         """Calculate statistics for a series."""
         # Handle non-numeric series
@@ -295,77 +185,6 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             "total_count": len(series)
         }
 
-    def _calculate_distribution(
-        self,
-        series: pd.Series,
-        num_bins: int = 10
-    ) -> list[dict[str, Any]]:
-        """Calculate distribution bins for a series."""
-        if series.empty or series.isna().all():
-            return []
-
-        # Handle non-numeric series
-        if not pd.api.types.is_numeric_dtype(series):
-            # Return value counts for categorical data
-            value_counts = series.value_counts().head(num_bins)
-            return [
-                {
-                    "bin_start": 0,
-                    "bin_end": 0,
-                    "count": int(count),
-                    "label": str(value)
-                }
-                for value, count in value_counts.items()
-            ]
-
-        # Numeric series - create histogram bins
-        non_null = series.dropna()
-        if non_null.empty:
-            return []
-
-        try:
-            counts, bin_edges = np.histogram(non_null, bins=num_bins)
-            distribution = []
-            for i in range(len(counts)):
-                distribution.append({
-                    "bin_start": float(bin_edges[i]),
-                    "bin_end": float(bin_edges[i + 1]),
-                    "count": int(counts[i]),
-                    "label": f"{bin_edges[i]:.2f} - {bin_edges[i + 1]:.2f}"
-                })
-            return distribution
-        except Exception as e:
-            logger.warning(f"Error calculating distribution: {e}")
-            return []
-
-    def _get_sample_data(
-        self,
-        df: pd.DataFrame,
-        feature_series: pd.Series,
-        max_rows: int = 10
-    ) -> list[dict[str, Any]]:
-        """Get sample data with computed feature column."""
-        sample_df = df.head(max_rows).copy()
-        sample_df["_computed_feature"] = feature_series.head(max_rows)
-
-        # Convert to list of dicts, handling various types
-        records = []
-        for _, row in sample_df.iterrows():
-            record: dict[str, Any] = {}
-            for col, val in row.items():
-                if pd.isna(val):
-                    record[col] = None
-                elif isinstance(val, (np.integer, np.floating)):
-                    record[col] = float(val) if isinstance(val, np.floating) else int(val)
-                elif isinstance(val, (np.bool_)):
-                    record[col] = bool(val)
-                elif isinstance(val, pd.Timestamp):
-                    record[col] = val.isoformat()
-                else:
-                    record[col] = str(val) if not isinstance(val, (str, int, float, bool)) else val
-            records.append(record)
-        return records
-
     def _infer_output_type(self, series: pd.Series) -> str:
         """Infer the output type from a computed series."""
         if series.empty:
@@ -383,83 +202,6 @@ class FeatureBuilderService(BaseService[FeatureDefinition]):
             return "string"
         else:
             return "unknown"
-
-    async def validate_expression(
-        self,
-        dataset_id: str,
-        user_id: str,
-        expression_tree: ExpressionNode
-    ) -> dict[str, Any]:
-        """
-        Validate an expression tree without full evaluation.
-
-        Args:
-            dataset_id: Dataset to validate against
-            user_id: User requesting validation
-            expression_tree: Expression tree to validate
-
-        Returns:
-            Validation result with errors, warnings, inferred type
-        """
-        # Get dataset
-        dataset = await self.dataset_service.get_dataset_or_raise(
-            dataset_id=dataset_id,
-            user_id=user_id,
-            check_ownership=True
-        )
-
-        # Build column type info from dataset schema
-        column_info: dict[str, str] = {}
-        for schema_field in dataset.data_schema:
-            column_info[schema_field.field_name] = schema_field.field_type
-
-        # Use evaluator's validation
-        is_valid, errors, warnings, inferred_type = self.evaluator.validate_expression(
-            expression_tree=expression_tree,
-            column_info=column_info
-        )
-
-        # Additional validation: check columns exist
-        missing_columns = self._validate_columns_exist(expression_tree, dataset.columns)
-        if missing_columns:
-            errors.extend(missing_columns)
-            is_valid = False
-
-        # Check for potential runtime issues
-        potential_issues = self._check_potential_issues(expression_tree)
-
-        return {
-            "is_valid": is_valid,
-            "errors": errors,
-            "warnings": warnings,
-            "inferred_type": inferred_type,
-            "input_columns": expression_tree.get_input_columns(),
-            "column_types": column_info,
-            "type_compatibility": {},  # Could be enhanced
-            "potential_issues": potential_issues
-        }
-
-    def _check_potential_issues(self, expression_tree: ExpressionNode) -> list[str]:
-        """Check for potential runtime issues in the expression."""
-        issues = []
-
-        def check_node(node: ExpressionNode):
-            if node.node_type == NodeType.OPERATION:
-                op = str(node.value).lower()
-                if op == "divide":
-                    issues.append("Division operation may cause division by zero")
-            elif node.node_type == NodeType.FUNCTION:
-                func = str(node.value).lower()
-                if func == "log":
-                    issues.append("log() on non-positive values will produce -inf or NaN")
-                elif func == "sqrt":
-                    issues.append("sqrt() on negative values will produce NaN")
-
-            for child in node.children:
-                check_node(child)
-
-        check_node(expression_tree)
-        return issues
 
     async def get_feature(
         self,

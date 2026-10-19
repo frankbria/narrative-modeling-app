@@ -1,6 +1,6 @@
 """#898: a route that reports failure in a 200 deletes what it uploaded and nothing owns.
 
-The transformation, data-issue and feature apply routes write the new file to S3 first
+The transformation and feature apply routes write the new file to S3 first
 and then move the dataset to it. When the move, or the bookkeeping before it, failed,
 they answered 200 with `success: false`, and the cleanup that acts on a 4xx or 5xx
 (#735) never ran: the file stayed in the bucket with no row pointing at it.
@@ -46,7 +46,6 @@ def written():
 
     with patch("app.services.transformation_engine.data_utils.upload_file_to_s3", put), \
          patch("app.services.transformation_engine.data_utils.get_dataframe_from_s3", side_effect=read), \
-         patch("app.api.routes.data_issues.get_dataframe_from_s3", side_effect=read), \
          patch("app.services.bulk_transformation_service.get_dataframe_from_s3", side_effect=read), \
          patch("app.services.versioning_service.versioning_service.s3_client"):
         yield keys
@@ -144,50 +143,6 @@ class TestTransformationApply:
         assert response.json()["success"] is False, response.text
         deleted.assert_not_awaited()
         assert (await UserData.get(upload.id)).s3_url.endswith(written[0])
-
-
-class TestDataIssueFixes:
-    async def _fixable(self, client, upload: UserData) -> list[str]:
-        detected = await client.post("/api/v1/data-issues/detect", json={
-            "dataset_id": str(upload.id), "options": {"include_ai_analysis": False}})
-        assert detected.status_code == 200, detected.text
-        return [i["issue_id"] for i in detected.json()["issues"] if i["suggested_fixes"]]
-
-    async def test_a_fix_that_fails_after_the_put_deletes_the_file(
-        self, async_authorized_client, setup_database, written, deleted
-    ):
-        upload = await _upload()
-        issue_id = (await self._fixable(async_authorized_client, upload))[0]
-
-        with _fails(STEP):
-            response = await async_authorized_client.post("/api/v1/data-issues/apply-fix", json={
-                "dataset_id": str(upload.id), "issue_id": issue_id, "preview_mode": False})
-
-        assert response.status_code == 200 and response.json()["success"] is False, response.text
-        deleted.assert_awaited_once_with(written[0])
-
-    async def test_a_batch_of_fixes_that_fails_after_the_put_deletes_the_file(
-        self, async_authorized_client, setup_database, written, deleted
-    ):
-        upload = await _upload()
-        issue_ids = await self._fixable(async_authorized_client, upload)
-
-        with _fails(STEP):
-            response = await async_authorized_client.post("/api/v1/data-issues/batch-fix", json={
-                "dataset_id": str(upload.id), "issue_ids": issue_ids, "preview_mode": False})
-
-        assert response.status_code == 200 and response.json()["success"] is False, response.text
-        deleted.assert_awaited_once_with(written[0])
-
-    async def test_a_fix_that_works_keeps_its_file(self, async_authorized_client, setup_database, written, deleted):
-        upload = await _upload()
-        issue_id = (await self._fixable(async_authorized_client, upload))[0]
-
-        response = await async_authorized_client.post("/api/v1/data-issues/apply-fix", json={
-            "dataset_id": str(upload.id), "issue_id": issue_id, "preview_mode": False})
-
-        assert response.json()["success"] is True, response.text
-        deleted.assert_not_awaited()
 
 
 class TestFeatureApply:
