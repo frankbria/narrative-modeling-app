@@ -7,7 +7,7 @@ credentials, so its output is safe to paste into a public issue.
 Usage (from apps/backend, against whichever cluster you want to check):
 
     MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... \
-        uv run python scripts/check_s3_url_ownership.py
+        PYTHONPATH=. uv run python scripts/check_s3_url_ownership.py
 
 Exit status is 1 if anything suspicious is found, so it can gate a deploy.
 
