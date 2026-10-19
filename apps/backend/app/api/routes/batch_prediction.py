@@ -6,6 +6,7 @@ import csv
 import io
 import os
 import tempfile
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -24,7 +25,7 @@ from pydantic import BaseModel
 
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota, reserve
-from app.models.batch_job import BatchJob, JobStatus, JobType
+from app.models.batch_job import BatchJob, JobProgress, JobStatus, JobType
 from app.services.batch_prediction import (
     BatchConcurrencyLimitError,
     BatchPredictionService,
@@ -528,40 +529,37 @@ async def delete_batch_job(
     return {"message": "Job deleted successfully"}
 
 
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0
+
+
+def _percent(part: int, whole: int) -> float:
+    return part / whole * 100 if whole else 0
+
+
+def _progress_of_jobs_that_ran(jobs: list[BatchJob]) -> list[JobProgress]:
+    return [j.progress for j in jobs if j.progress.processed_records > 0]
+
+
+def _batch_stats(jobs: list[BatchJob]) -> dict[str, Any]:
+    """Counts and rates over ``jobs``; the caller decides which jobs those are."""
+    by_status = Counter(j.status for j in jobs)
+    ran = _progress_of_jobs_that_ran(jobs)
+    return {
+        "total_jobs": len(jobs),
+        "completed_jobs": by_status[JobStatus.COMPLETED],
+        "failed_jobs": by_status[JobStatus.FAILED],
+        "running_jobs": by_status[JobStatus.RUNNING],
+        "pending_jobs": by_status[JobStatus.PENDING],
+        "total_predictions": sum(p.processed_records for p in ran),
+        "average_success_rate": _mean([p.success_rate for p in ran]),
+        "completion_rate": _percent(by_status[JobStatus.COMPLETED], len(jobs)),
+    }
+
+
 @router.get("/stats")
 async def get_batch_stats(current_user_id: str = Depends(get_current_user_id)):
-    """Get batch processing statistics for the user"""
+    """Get batch processing statistics over the user's 1000 most recent jobs"""
 
-    # Get all user jobs
-    all_jobs = await batch_service.list_user_jobs(
-        user_id=current_user_id, limit=1000  # Get all jobs for stats
-    )
-
-    # Calculate statistics
-    total_jobs = len(all_jobs)
-    completed_jobs = len([j for j in all_jobs if j.status == JobStatus.COMPLETED])
-    failed_jobs = len([j for j in all_jobs if j.status == JobStatus.FAILED])
-    running_jobs = len([j for j in all_jobs if j.status == JobStatus.RUNNING])
-    pending_jobs = len([j for j in all_jobs if j.status == JobStatus.PENDING])
-
-    # Calculate total predictions processed
-    total_predictions = sum(
-        j.progress.processed_records for j in all_jobs if j.progress.processed_records
-    )
-
-    # Calculate average success rate
-    success_rates = [
-        j.progress.success_rate for j in all_jobs if j.progress.processed_records > 0
-    ]
-    avg_success_rate = sum(success_rates) / len(success_rates) if success_rates else 0
-
-    return {
-        "total_jobs": total_jobs,
-        "completed_jobs": completed_jobs,
-        "failed_jobs": failed_jobs,
-        "running_jobs": running_jobs,
-        "pending_jobs": pending_jobs,
-        "total_predictions": total_predictions,
-        "average_success_rate": avg_success_rate,
-        "completion_rate": (completed_jobs / total_jobs * 100) if total_jobs > 0 else 0,
-    }
+    # list_user_jobs sorts newest first, so jobs past the 1000th are not counted
+    return _batch_stats(await batch_service.list_user_jobs(user_id=current_user_id, limit=1000))

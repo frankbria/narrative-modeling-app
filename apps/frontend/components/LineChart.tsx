@@ -3,16 +3,20 @@
 import React from 'react'
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush } from 'recharts'
 
+interface LinePoint {
+  x: string | number
+  [key: string]: string | number
+}
+
+interface LineSeries {
+  dataKey: string
+  label: string
+  color?: string
+}
+
 export interface LineChartData {
-  data: Array<{
-    x: string | number
-    [key: string]: string | number
-  }>
-  lines: Array<{
-    dataKey: string
-    label: string
-    color?: string
-  }>
+  data: LinePoint[]
+  lines: LineSeries[]
   xLabel: string
   yLabel: string
   title?: string
@@ -26,27 +30,31 @@ interface LineChartProps {
   onPointClick?: (data: Record<string, unknown>) => void
 }
 
-// Defined at module scope, not inside LineChart: a component created during
-// render gets a new identity every render, which remounts the tooltip subtree
-// (react-hooks/static-components). recharts clones the `content` element and
-// injects active/payload/label, so `xLabel` is passed in explicitly instead of
-// being closed over.
 /** Reserved for the legend row, so the x-axis title can sit clear above it (#404). */
 const LEGEND_HEIGHT = 32
 /** Drops the x-axis title below the tick row but above the reserved legend band. */
 const X_LABEL_OFFSET = -10
 
-function CustomTooltip({
-  active,
-  payload,
-  label,
-  xLabel,
-}: {
+// Defined at module scope, not inside LineChart: a component created during
+// render gets a new identity every render, which remounts the tooltip subtree
+// (react-hooks/static-components). recharts clones the `content` element and
+// injects active/payload/label, so `xLabel` is passed in explicitly instead of
+// being closed over.
+interface TooltipEntry {
+  name: string
+  value: number | string
+  color: string
+}
+
+interface CustomTooltipProps {
   active?: boolean
-  payload?: Array<{ name: string; value: number | string; color: string }>
+  payload?: TooltipEntry[]
   label?: string | number
   xLabel?: string
-}) {
+}
+
+function CustomTooltip(props: CustomTooltipProps) {
+  const { active, payload, label, xLabel } = props
   if (active && payload && payload.length) {
     return (
       <div className="bg-card p-3 border rounded shadow-lg">

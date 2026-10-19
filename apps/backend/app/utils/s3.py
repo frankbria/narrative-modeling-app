@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import uuid
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 import boto3
@@ -250,6 +251,36 @@ def _recorded(upload):
     return wrapper
 
 
+def _upload_target() -> tuple[Any, str] | None:
+    """The S3 client and bucket an upload goes to, or None when either is not configured."""
+    # Get the S3 client with current environment variables
+    client = get_s3_client()
+    if client is None:
+        return None
+
+    # Same resolution as the readers' allowlist (#567 AC4).
+    bucket_name = configured_bucket()
+    if not bucket_name:
+        logger.error("No S3 bucket configured (AWS_BUCKET_NAME or a sibling variable)")
+        return None
+    return client, bucket_name
+
+
+def _put_object(client: Any, bucket_name: str, s3_filename: str, content: bytes, content_type: str | None) -> None:
+    """Upload ``content`` without public access."""
+    extra_args = {"ContentType": content_type} if content_type else {}
+    client.upload_fileobj(io.BytesIO(content), bucket_name, s3_filename, ExtraArgs=extra_args)
+
+
+def _object_url(bucket_name: str, s3_filename: str) -> str:
+    """Plain object URL, not presigned: reads go through the downloader, not this link."""
+    endpoint_url = os.getenv("AWS_ENDPOINT_URL")
+    if endpoint_url:
+        # S3-compatible storage (MinIO/LocalStack): path-style URL
+        return f"{endpoint_url.rstrip('/')}/{bucket_name}/{s3_filename}"
+    return f"https://{bucket_name}.s3.amazonaws.com/{s3_filename}"
+
+
 @_recorded
 def upload_file_to_s3(
     file_content: bytes, s3_filename: str, content_type: str | None = None
@@ -265,41 +296,21 @@ def upload_file_to_s3(
     Returns:
         A tuple of (success, url)
         - success: Boolean indicating if the upload was successful
-        - url: The public URL of the uploaded file, or None if upload failed
+        - url: The object URL (unsigned, the object is private), or None if upload failed
     """
-    # Get the S3 client with current environment variables
-    client = get_s3_client()
-    if client is None:
+    target = _upload_target()
+    if target is None:
         return False, None
-
-    # Same resolution as the readers' allowlist (#567 AC4).
-    bucket_name = configured_bucket()
-    if not bucket_name:
-        logger.error("No S3 bucket configured (AWS_BUCKET_NAME or a sibling variable)")
-        return False, None
+    client, bucket_name = target
 
     try:
         # Log upload attempt
         logger.info(f"Attempting to upload file to S3: {s3_filename} to bucket: {bucket_name}")
         logger.info(f"File size: {len(file_content)} bytes")
-        
-        # Upload the file without public access
-        extra_args = {}
-        if content_type:
-            extra_args["ContentType"] = content_type
 
-        client.upload_fileobj(
-            io.BytesIO(file_content), bucket_name, s3_filename, ExtraArgs=extra_args
-        )
+        _put_object(client, bucket_name, s3_filename, file_content, content_type)
 
-        # Generate the URL (this will be a signed URL if needed for access)
-        endpoint_url = os.getenv("AWS_ENDPOINT_URL")
-        if endpoint_url:
-            # S3-compatible storage (MinIO/LocalStack): path-style URL
-            url = f"{endpoint_url.rstrip('/')}/{bucket_name}/{s3_filename}"
-        else:
-            url = f"https://{bucket_name}.s3.amazonaws.com/{s3_filename}"
-
+        url = _object_url(bucket_name, s3_filename)
         logger.info(f"File uploaded successfully to {url}")
         return True, url
 

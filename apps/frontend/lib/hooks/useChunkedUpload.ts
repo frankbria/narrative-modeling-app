@@ -75,6 +75,27 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     return data.session_id
   }
 
+  const postChunk = async (sessionId: string, chunkNumber: number, chunkData: Blob): Promise<boolean> => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+    const formData = new FormData()
+    formData.append('file', chunkData, `chunk_${chunkNumber}`)
+
+    const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/chunk/${chunkNumber}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${await getAuthToken()}`
+      },
+      body: formData
+    })
+
+    if (!response.ok) {
+      throw await apiError(response, `Chunk ${chunkNumber} upload failed: ${response.statusText}`)
+    }
+
+    const result = await response.json()
+    return result.complete || false
+  }
+
   const uploadChunk = async (
     sessionId: string, 
     chunkNumber: number, 
@@ -82,24 +103,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     retryCount = 0
   ): Promise<boolean> => {
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
-      const formData = new FormData()
-      formData.append('file', chunkData, `chunk_${chunkNumber}`)
-
-      const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/chunk/${chunkNumber}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${await getAuthToken()}`
-        },
-        body: formData
-      })
-
-      if (!response.ok) {
-        throw await apiError(response, `Chunk ${chunkNumber} upload failed: ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      return result.complete || false
+      return await postChunk(sessionId, chunkNumber, chunkData)
     } catch (error) {
       // A quota 402 is not transient — retrying it burns backoff time for a
       // request that will never succeed, and would keep re-showing (then
@@ -109,7 +113,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       }
       if (retryCount < maxRetries) {
         console.warn(`Retrying chunk ${chunkNumber}, attempt ${retryCount + 1}`)
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))) // Linear backoff: 1s, 2s, 3s…
         return uploadChunk(sessionId, chunkNumber, chunkData, retryCount + 1)
       }
       throw error
