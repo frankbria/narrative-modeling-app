@@ -73,56 +73,59 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
   await page.getByRole('button', { name: /^use this$/i }).first().click();
   await expect(page).toHaveURL(/\/explore\/[0-9a-f]{24}/, { timeout: 30_000 });
   const datasetId = page.url().match(/\/explore\/([0-9a-f]{24})/)![1];
-  await expect(page.locator('th', { hasText: 'monthly_charges' }).first()).toBeVisible({ timeout: 30_000 });
-  await shoot('data_profiling');
+  // Erase the sample on every exit: a failed capture must not leave it on the shared isolated user.
+  try {
+    await expect(page.locator('th', { hasText: 'monthly_charges' }).first()).toBeVisible({ timeout: 30_000 });
+    await shoot('data_profiling');
 
-  await page.getByRole('button', { name: /Continue to Data Preparation/ }).click();
-  await expect(page).toHaveURL(/\/prepare/);
-  await page.getByText('Remove Duplicates', { exact: true }).first().click();
-  await page.getByRole('button', { name: /Apply & Continue/ }).click();
-  await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 20_000 });
-  await shoot('data_preparation');
-  await next(/\/features/);
+    await page.getByRole('button', { name: /Continue to Data Preparation/ }).click();
+    await expect(page).toHaveURL(/\/prepare/);
+    await page.getByText('Remove Duplicates', { exact: true }).first().click();
+    await page.getByRole('button', { name: /Apply & Continue/ }).click();
+    await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 20_000 });
+    await shoot('data_preparation');
+    await next(/\/features/);
 
-  await page.getByRole('button', { name: /^Use these \d+ columns$/ }).click();
-  await shoot('feature_engineering');
-  await next(/\/model/);
+    await page.getByRole('button', { name: /^Use these \d+ columns$/ }).click();
+    await shoot('feature_engineering');
+    await next(/\/model/);
 
-  const target = page.getByRole('combobox');
-  await expect(target.getByRole('option', { name: 'churn' })).toBeAttached({ timeout: 30_000 });
-  await target.selectOption('churn');
-  await shoot('model_training');
-  await page.getByText('Quick', { exact: true }).first().click();
-  await page.getByRole('button', { name: /Start Training/ }).click();
-  await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 240_000 });
-  await page.waitForTimeout(2000);
-  await next(/\/evaluate/);
+    const target = page.getByRole('combobox');
+    await expect(target.getByRole('option', { name: 'churn' })).toBeAttached({ timeout: 30_000 });
+    await target.selectOption('churn');
+    await shoot('model_training');
+    await page.getByText('Quick', { exact: true }).first().click();
+    await page.getByRole('button', { name: /Start Training/ }).click();
+    await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 240_000 });
+    await page.waitForTimeout(2000);
+    await next(/\/evaluate/);
 
-  await shoot('model_evaluation');
-  await next(/\/predict/);
+    await shoot('model_evaluation');
+    await next(/\/predict/);
 
-  await page.getByLabel('tenure', { exact: true }).fill('12');
-  await page.getByLabel('monthly_charges', { exact: true }).fill('70');
-  await page.getByLabel('total_charges', { exact: true }).fill('840');
-  await page.getByRole('button', { name: 'Make Prediction' }).click();
-  await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 30_000 });
-  // The result sits below the form: bring it up under the stage bar.
-  await page.getByText('Prediction Result').evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 280));
-  await shoot('prediction');
-  await next(/\/deploy/);
-  await shoot('deployment');
+    await page.getByLabel('tenure', { exact: true }).fill('12');
+    await page.getByLabel('monthly_charges', { exact: true }).fill('70');
+    await page.getByLabel('total_charges', { exact: true }).fill('840');
+    await page.getByRole('button', { name: 'Make Prediction' }).click();
+    await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 30_000 });
+    // The result sits below the form: bring it up under the stage bar.
+    await page.getByText('Prediction Result').evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 280));
+    await shoot('prediction');
+    await next(/\/deploy/);
+    await shoot('deployment');
 
-  // The walkthrough: the recording of this same pass, cropped like the screenshots.
-  const video = page.video()!;
-  await page.close();
-  const raw = testInfo.outputPath('walkthrough-raw.webm');
-  await video.saveAs(raw);
-  execFileSync('ffmpeg', [
-    '-y', '-ss', '1', '-i', raw,
-    '-vf', `crop=${CROP_WIDTH}:${CROP_HEIGHT}:0:0,scale=1280:-2`,
-    '-c:v', 'libvpx-vp9', '-crf', '42', '-b:v', '0', '-an',
-    WALKTHROUGH,
-  ]);
-
-  await request.delete(`${API_BASE}/user_data/${datasetId}`, { headers });
+    // The walkthrough: the recording of this same pass, cropped like the screenshots.
+    const video = page.video()!;
+    await page.close();
+    const raw = testInfo.outputPath('walkthrough-raw.webm');
+    await video.saveAs(raw);
+    execFileSync('ffmpeg', [
+      '-y', '-ss', '1', '-i', raw,
+      '-vf', `crop=${CROP_WIDTH}:${CROP_HEIGHT}:0:0,scale=1280:-2`,
+      '-c:v', 'libvpx-vp9', '-crf', '42', '-b:v', '0', '-an',
+      WALKTHROUGH,
+    ]);
+  } finally {
+    await request.delete(`${API_BASE}/user_data/${datasetId}`, { headers });
+  }
 });
