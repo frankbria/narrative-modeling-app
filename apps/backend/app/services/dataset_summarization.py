@@ -284,48 +284,62 @@ Focus on:
 4. Potential use cases or analysis approaches
 5. Any unusual patterns or outliers that need attention"""
     
+    def _fallback_figures(self, context: dict[str, Any]) -> dict[str, Any]:
+        """What the rule-based summary prints, each read as stored-or-default (#1076)."""
+        overview = self._stored(context, "dataset_overview", {})
+        quality = self._stored(context, "data_quality", {})
+        return {
+            "rows": self._stored(overview, "row_count", 0),
+            "columns": self._stored(overview, "column_count", 0),
+            "file_type": self._stored(overview, "file_type", "unknown"),
+            "score": self._stored(quality, "overall_score", 0),
+            "critical": self._stored(quality, "critical_issues", 0),
+            "warnings": self._stored(quality, "warnings", 0),
+            "recommendations": self._stored(quality, "recommendations", []),
+            "correlations": self._stored(self._stored(context, "statistical_summary", {}), "correlations", []),
+        }
+
     def _generate_fallback_summary(self, context: dict[str, Any]) -> EnhancedAISummary:
         """Generate basic summary without AI"""
-        overview = f"Dataset contains {context['dataset_overview']['row_count']:,} rows and {context['dataset_overview']['column_count']} columns."
-        
+        f = self._fallback_figures(context)
+        overview = f"Dataset contains {f['rows']:,} rows and {f['columns']} columns."
+
         issues = []
-        if context['data_quality']['critical_issues'] > 0:
-            issues.append(f"Found {context['data_quality']['critical_issues']} critical data quality issues")
-        if context['data_quality']['overall_score'] < 0.8:
-            issues.append(f"Data quality score is {context['data_quality']['overall_score']:.2f}, below recommended threshold")
-        
-        relationships = []
-        for corr in context['statistical_summary']['correlations'][:3]:
-            relationships.append(
-                f"Strong correlation ({corr['correlation']:.2f}) between {corr['columns'][0]} and {corr['columns'][1]}"
-            )
-        
-        suggestions = context['data_quality']['recommendations']
-        
+        if f["critical"] > 0:
+            issues.append(f"Found {f['critical']} critical data quality issues")
+        if f["score"] < 0.8:
+            issues.append(f"Data quality score is {f['score']:.2f}, below recommended threshold")
+
+        relationships = [
+            f"Strong correlation ({corr['correlation']:.2f}) between {corr['columns'][0]} and {corr['columns'][1]}"
+            for corr in f["correlations"][:3]
+        ]
+
         return EnhancedAISummary(
             overview=overview,
             issues=issues,
             relationships=relationships,
-            suggestions=suggestions,
+            suggestions=f["recommendations"],
             rawMarkdown=self._create_fallback_markdown(context),
             confidence_score=0.6,
             analysis_depth="basic",
             model_used="fallback"
         )
-    
+
     def _create_fallback_markdown(self, context: dict[str, Any]) -> str:
         """Create basic markdown analysis"""
+        f = self._fallback_figures(context)
         return f"""# Dataset Analysis
 
 ## Overview
-- **Rows**: {context['dataset_overview']['row_count']:,}
-- **Columns**: {context['dataset_overview']['column_count']}
-- **File Type**: {context['dataset_overview']['file_type']}
+- **Rows**: {f['rows']:,}
+- **Columns**: {f['columns']}
+- **File Type**: {f['file_type']}
 
 ## Data Quality
-- **Overall Score**: {context['data_quality']['overall_score']:.2f}
-- **Critical Issues**: {context['data_quality']['critical_issues']}
-- **Warnings**: {context['data_quality']['warnings']}
+- **Overall Score**: {f['score']:.2f}
+- **Critical Issues**: {f['critical']}
+- **Warnings**: {f['warnings']}
 
 ## Key Findings
 This is a basic analysis generated without AI assistance. For more detailed insights, ensure OpenAI API access is configured.

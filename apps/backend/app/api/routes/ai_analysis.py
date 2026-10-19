@@ -2,6 +2,7 @@
 API routes for AI-powered data analysis using MCP
 """
 
+import logging
 
 from beanie import PydanticObjectId
 from bson.errors import InvalidId
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing import enforcement
 from app.billing.enforcement import quota
+from app.middleware.error_handlers import internal_error_message
 from app.models.user_data import UserData
 from app.services.ai_chat import ChatRequest, ai_chat_service
 from app.services.dataset_summarization import (
@@ -20,6 +22,8 @@ from app.services.dataset_summarization import (
 )
 from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
 from app.utils.circuit_breaker import CircuitBreakerOpen
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -113,8 +117,9 @@ async def analyze_with_ai(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+    except Exception:
+        logger.exception("POST /ai/analyze failed for %s", file_id)
+        raise HTTPException(status_code=500, detail=internal_error_message("The analysis"))
 
 
 @router.get("/insights/{file_id}", dependencies=[Depends(quota("ai_calls"))])
@@ -234,8 +239,9 @@ async def generate_ai_summary(
         
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")
+    except Exception:
+        logger.exception("POST /ai/summarize failed for %s", file_id)
+        raise HTTPException(status_code=500, detail=internal_error_message("The summary"))
 
 
 @router.get("/health")
