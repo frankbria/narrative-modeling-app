@@ -19,6 +19,11 @@ describe('AdminPage (#478)', () => {
     expect(screen.getByTestId('health-monitor')).toBeInTheDocument();
   });
 
+  it('offers the refund-window lookup (#746)', () => {
+    render(<AdminPage />);
+    expect(screen.getByLabelText('User id')).toBeInTheDocument();
+  });
+
   it.each([
     'Sprint 1',
     'fully operational',

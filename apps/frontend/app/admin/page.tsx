@@ -2,6 +2,7 @@
 
 import { HealthMonitor } from '@/components/HealthMonitor'
 import { FunnelReadout } from '@/components/admin/FunnelReadout'
+import { RefundLookup } from '@/components/admin/RefundLookup'
 
 /**
  * Admin dashboard.
@@ -25,6 +26,7 @@ export default function AdminPage() {
 
       <HealthMonitor refreshInterval={10000} />
       <FunnelReadout />
+      <RefundLookup />
     </div>
   )
 }
