@@ -33,14 +33,14 @@ docs/
   dev/        Local development, backend test infrastructure, E2E testing
   ops/        Staging deployment, credential rotation, erasure/backup, artifact integrity
   product/    Positioning and public-surface decisions
-scripts/      Local setup, deploy, CI and ops scripts
+scripts/      Local setup, deploy, CI, quality-gate and ops scripts
 ```
 
 ## Tech stack
 
 - **Frontend:** Next.js 16, React 19, TypeScript, Tailwind CSS 4, NextAuth v5 (Google and GitHub sign-in), Jest, Playwright
 - **Backend:** Python 3.13, FastAPI, Pydantic, Beanie (MongoDB ODM), pandas, scikit-learn, XGBoost, LightGBM, SHAP, Optuna
-- **Data:** MongoDB, Redis (cache and rate limiting), S3 (LocalStack locally)
+- **Data:** MongoDB, Redis (optional: cache and shared rate limiting; without it the limiter is process-local), S3 (LocalStack locally)
 - **AI:** OpenAI, behind a circuit breaker, per-tenant quotas and a global daily ceiling
 - **Tooling:** uv, npm, Docker, GitHub Actions
 

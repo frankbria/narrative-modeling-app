@@ -31,7 +31,7 @@ Usage (from apps/backend, against whichever cluster you want to check):
 
     MONGODB_URI=... MONGODB_DB=... STRIPE_SECRET_KEY=... \
     STRIPE_PRICE_PRO=... STRIPE_PRICE_ENTERPRISE=... \
-        uv run python scripts/reconcile_subscriptions.py
+        PYTHONPATH=. uv run python scripts/reconcile_subscriptions.py
     # ... same environment, plus --apply, to write
 
 All five are required. The two price ids are not decoration: without them every

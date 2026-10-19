@@ -1,6 +1,7 @@
 import {
   choiceOf,
   excludedFromTraining,
+  interactionsOn,
   recordedChoice,
   sameChoice,
   startingSelection,
@@ -57,5 +58,13 @@ describe('the Feature Engineering stage choice', () => {
     expect(excludedFromTraining(stageData, 'spend')).toEqual(['region', 'bought']);
     expect(excludedFromTraining(stageData, 'bought')).toEqual(['region']);
     expect(excludedFromTraining(undefined, 'bought')).toEqual([]);
+  });
+
+  it('reads the interaction switch as on only when the stage recorded it on (#974)', () => {
+    expect(interactionsOn({ createInteractions: true })).toBe(true);
+    expect(interactionsOn({ createInteractions: false })).toBe(false);
+    expect(interactionsOn({ selectedFeatures: ['plan'] })).toBe(false);
+    expect(interactionsOn({ createInteractions: 'yes' })).toBe(false);
+    expect(interactionsOn(undefined)).toBe(false);
   });
 });

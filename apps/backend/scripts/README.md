@@ -1,6 +1,6 @@
 # Backend Scripts
 
-Operational scripts. Run them from `apps/backend` with `uv run python scripts/<name>.py`,
+Operational scripts. Run them from `apps/backend` with `PYTHONPATH=. uv run python scripts/<name>.py` (most import `app`, and `python scripts/x.py` puts only `scripts/` on the path),
 with `MONGODB_URI` + `MONGODB_DB` (and the S3 settings where noted) for the environment
 you mean. Scripts that change data are read-only unless given `--apply`; most accept
 `--json` for machine-readable output. Each script's docstring is its full manual.
@@ -59,9 +59,9 @@ only.
 ```bash
 MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=... \
-  uv run python scripts/reconcile_unprefixed_s3_keys.py           # dry run
+  PYTHONPATH=. uv run python scripts/reconcile_unprefixed_s3_keys.py           # dry run
 # same environment:
-  uv run python scripts/reconcile_unprefixed_s3_keys.py --apply   # move them
+  PYTHONPATH=. uv run python scripts/reconcile_unprefixed_s3_keys.py --apply   # move them
 ```
 
 - Exit 1 while any object remains unreconciled (planned but not applied, orphaned,

@@ -27,12 +27,127 @@ from app.utils.s3 import (
     upload_file_to_s3,
 )
 from app.utils.schema_inference import infer_schema
-from app.utils.upload_limits import read_upload_capped
+from app.utils.upload_limits import read_upload_capped, require_rows
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _frame_of(filename: str, content: bytes) -> pd.DataFrame:
+    """The upload as a frame: 400 for an unsupported type or a header with no rows (#1062)."""
+    if filename.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(content))
+    elif filename.endswith(".xlsx"):
+        df = pd.read_excel(io.BytesIO(content))
+    elif filename.endswith(".txt"):
+        df = pd.read_csv(io.BytesIO(content), sep="\t")
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Please upload a CSV, Excel, or TXT file.",
+        )
+    require_rows(df)
+    return df
+
+
+def _require_s3_configured() -> None:
+    """503 when this deployment cannot store files — an operator fix, not a retry.
+
+    Was: carry on with `s3_url = "s3_not_configured"` and return 200, a dataset row
+    whose s3_url is a placeholder that every later read fails on (#459). The refund
+    middleware returns the unit.
+    """
+    missing_vars = [
+        var for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY") if not os.getenv(var)
+    ]
+    # The bucket goes through the ONE resolver, not a hardcoded env name (#507).
+    if not configured_bucket():
+        missing_vars.append("a configured S3 bucket")
+    if missing_vars:
+        logger.error(
+            f"S3 is not configured; refusing upload. Missing: {', '.join(missing_vars)}"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="File storage is not configured on this deployment.",
+        )
+
+
+def _signed(url: str, s3_filename: str) -> str:
+    """A signed URL valid for an hour, or the plain one when signing fails."""
+    try:
+        signed_url = create_s3_client().generate_presigned_url(
+            "get_object",
+            # Same resolver the writer used, so the signed URL points at the bucket
+            # the object was written to (#507).
+            Params={"Bucket": allowed_bucket(), "Key": s3_filename},
+            ExpiresIn=3600,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate signed URL: {e}")
+        return url
+    logger.info("Generated signed URL for temporary access")
+    return str(signed_url)
+
+
+def _stored(user_id: str, filename: str, content: bytes, content_type: str | None) -> str:
+    """Put the bytes in S3 under an owner-prefixed, server-derived key (#581) and return a
+    URL for them. 503 / 500 when storage is unconfigured / the put fails: the old
+    placeholder-string `s3_url` made every later read of the dataset fail (#459)."""
+    s3_filename = dataset_s3_key(user_id, filename)
+    _require_s3_configured()
+    logger.info(f"Attempting to upload file to S3: {s3_filename}")
+    success, upload_url = upload_file_to_s3(content, s3_filename, content_type)
+    if not success or not upload_url:
+        logger.error("Failed to upload file to S3")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to upload file to S3. Please check AWS credentials "
+                "and bucket configuration."
+            ),
+        )
+    logger.info(f"File uploaded successfully to S3: {upload_url}")
+    return _signed(upload_url, s3_filename)
+
+
+def _file_type(filename: str) -> str | None:
+    """The extension — model training routes on it (csv, xls, xlsx, parquet)."""
+    return filename.rsplit(".", 1)[-1].lower() if "." in filename else None
+
+
+def _upload_response(
+    df: pd.DataFrame,
+    user_data: UserData,
+    schema_fields: Any,
+    filename: str,
+    content_type: str | None,
+    s3_url: str,
+) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "file_id": str(user_data.id),
+        "filename": filename,
+        "num_rows": user_data.num_rows,
+        "num_columns": user_data.num_columns,
+        "preview": df.head(5).to_dict('records'),
+        "pii_report": {
+            "has_pii": False,
+            "detections": [],
+            "risk_level": "none",
+            "total_detections": 0,
+            "affected_columns": []
+        },
+        "headers": df.columns.tolist(),
+        "previewData": df.head(10).values.tolist(),
+        "fileName": filename,
+        "fileType": content_type,
+        "id": str(user_data.id),
+        "s3_url": s3_url,
+        "schema": schema_fields,
+    }
 
 
 @router.post("/", dependencies=[Depends(quota("uploads"))])
@@ -47,12 +162,10 @@ async def upload_file(
     Supports CSV, Excel, and TXT files.
     """
     try:
-        # Log request details
         logger.info(
             f"Received file: {file.filename}, content_type: {file.content_type}"
         )
 
-        # Read file content
         # Ensure a filename is present before reading the upload into memory
         if not file.filename:
             raise HTTPException(
@@ -64,160 +177,32 @@ async def upload_file(
         logger.info(f"File content size: {len(content)} bytes")
         await enforce_storage_ceiling(current_user_id, len(content))
 
-        # Determine file type and read accordingly
-        if file.filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(content))
-        elif file.filename.endswith(".xlsx"):
-            df = pd.read_excel(io.BytesIO(content))
-        elif file.filename.endswith(".txt"):
-            df = pd.read_csv(io.BytesIO(content), sep="\t")
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported file type. Please upload a CSV, Excel, or TXT file.",
-            )
-
-        # Get basic stats
-        num_rows = len(df)
-        num_columns = len(df.columns)
-
-        # Infer schema
+        df = _frame_of(file.filename, content)
         schema_fields = infer_schema(df)
+        s3_url = _stored(current_user_id, file.filename, content, file.content_type)
 
-        # Owner-prefixed, server-derived key (#581): see dataset_s3_key.
-        s3_filename = dataset_s3_key(current_user_id, file.filename)
-
-        # Check if AWS environment variables are set
-        required_env_vars = [
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-        ]
-        missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-        # The bucket goes through the ONE resolver, not a hardcoded env name (#507):
-        # a deploy configured with only AWS_S3_BUCKET would otherwise fail this gate
-        # while the writer resolved the bucket fine.
-        if not configured_bucket():
-            missing_vars.append("a configured S3 bucket")
-
-        if missing_vars:
-            # Was: `s3_url = "s3_not_configured"`, then carry on and return 200. Same
-            # defect as the upload-failed branch below and found the same way — a
-            # dataset row whose s3_url is a placeholder string, which every later read
-            # fails on, and which now costs the tenant an `uploads` unit (#459).
-            #
-            # 503 rather than 500: nothing broke, the deployment simply cannot store
-            # files, and that is an operator fix rather than a retry. The refund
-            # middleware returns the unit either way.
-            logger.error(
-                f"S3 is not configured; refusing upload. Missing: {', '.join(missing_vars)}"
-            )
-            raise HTTPException(
-                status_code=503,
-                detail="File storage is not configured on this deployment.",
-            )
-        else:
-            # Upload to S3
-            logger.info(f"Attempting to upload file to S3: {s3_filename}")
-            success, upload_url = upload_file_to_s3(content, s3_filename, file.content_type)
-
-            if not success or not upload_url:
-                # Was: `s3_url = "s3_upload_failed"`, then carry on and return 200 with
-                # a UserData row pointing at a sentinel string. Every later read of that
-                # dataset fails, and now that this route is metered (#459) the tenant is
-                # charged an upload for it. `/upload/secure` already answers 500 for the
-                # same condition; this makes the two agree, and the refund middleware
-                # returns the unit.
-                logger.error("Failed to upload file to S3")
-                raise HTTPException(
-                    status_code=500,
-                    detail=(
-                        "Failed to upload file to S3. Please check AWS credentials "
-                        "and bucket configuration."
-                    ),
-                )
-            else:
-                s3_url = upload_url
-                logger.info(f"File uploaded successfully to S3: {s3_url}")
-
-                # Generate a signed URL for temporary access if needed
-                try:
-                    s3_client = create_s3_client()
-
-                    # Generate a signed URL that expires in 1 hour
-                    signed_url = s3_client.generate_presigned_url(
-                        "get_object",
-                        Params={
-                            # Same resolver the writer used, so the signed URL
-                            # points at the bucket the object was written to (#507).
-                            "Bucket": allowed_bucket(),
-                            "Key": s3_filename,
-                        },
-                        ExpiresIn=3600,  # 1 hour
-                    )
-
-                    logger.info("Generated signed URL for temporary access")
-                    s3_url = signed_url
-                except Exception as e:
-                    logger.error(f"Failed to generate signed URL: {e}")
-                    # Continue with the regular URL if signed URL generation fails
-
-        # Derive file_type from the extension — model training routes on it
-        # (values it understands: csv, xls, xlsx, parquet)
-        file_type = (
-            file.filename.rsplit(".", 1)[-1].lower()
-            if file.filename and "." in file.filename
-            else None
-        )
-
-        # Create a new UserData document
         user_data = UserData(
             user_id=current_user_id,
             filename=file.filename,
             original_filename=file.filename,
-            file_type=file_type,
+            file_type=_file_type(file.filename),
             s3_url=s3_url,
-            num_rows=num_rows,
-            num_columns=num_columns,
+            num_rows=len(df),
+            num_columns=len(df.columns),
             data_schema=schema_fields,
             file_size=len(content),
         )
-
-        # Save to database
         await user_data.insert()
         logger.info(f"UserData document saved to database with ID: {user_data.id}")
 
-        # Add AI summary generation to background tasks
         background_tasks.add_task(generate_dataset_summary, str(user_data.id))
         logger.info(
             f"Added AI summary generation to background tasks for dataset {user_data.id}"
         )
 
-        # Get preview data for response
-        preview_data = df.head(10).values.tolist()
-        headers = df.columns.tolist()
-
-        return {
-            "status": "success",
-            "file_id": str(user_data.id),
-            "filename": file.filename,
-            "num_rows": num_rows,
-            "num_columns": num_columns,
-            "preview": df.head(5).to_dict('records'),
-            "pii_report": {
-                "has_pii": False,
-                "detections": [],
-                "risk_level": "none",
-                "total_detections": 0,
-                "affected_columns": []
-            },
-            "headers": headers,
-            "previewData": preview_data,
-            "fileName": file.filename,
-            "fileType": file.content_type,
-            "id": str(user_data.id),
-            "s3_url": s3_url,
-            "schema": schema_fields,
-        }
+        return _upload_response(
+            df, user_data, schema_fields, file.filename, file.content_type, s3_url
+        )
 
     except HTTPException:
         # Preserve client errors (e.g. 400 bad file, 413 too large) instead of

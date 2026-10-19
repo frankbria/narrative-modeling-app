@@ -11,8 +11,8 @@ so its output is safe to paste into a public issue.
 
 Usage (from apps/backend, against whichever cluster you want to check):
 
-    MONGODB_URI=... MONGODB_DB=... uv run python scripts/fix_api_key_rate_limits.py
-    MONGODB_URI=... MONGODB_DB=... uv run python scripts/fix_api_key_rate_limits.py --apply
+    PYTHONPATH=. MONGODB_URI=... MONGODB_DB=... uv run python scripts/fix_api_key_rate_limits.py
+    PYTHONPATH=. MONGODB_URI=... MONGODB_DB=... uv run python scripts/fix_api_key_rate_limits.py --apply
 
 ``--apply`` raises every non-positive value to the FREE ceiling and lowers every
 value above the ENTERPRISE ceiling down to it. The per-tenant ceiling is not used

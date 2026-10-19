@@ -23,7 +23,7 @@ Usage (from apps/backend; credentials: see the operator's local runbook):
 
     MONGODB_URI=... MONGODB_DB=... AWS_BUCKET_NAME=... AWS_ACCESS_KEY_ID=... \\
     AWS_SECRET_ACCESS_KEY=... AWS_REGION=... \\
-        uv run python scripts/inventory_orphaned_s3_objects.py [--json] [--dump orphans.txt]
+        PYTHONPATH=. uv run python scripts/inventory_orphaned_s3_objects.py [--json] [--dump orphans.txt]
 """
 
 from __future__ import annotations

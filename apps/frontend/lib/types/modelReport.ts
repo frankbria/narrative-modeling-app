@@ -41,6 +41,8 @@ export interface ModelReport {
     excluded_empty_columns?: string[];
     /** Left unselected in the Feature Engineering stage (#969). */
     excluded_user_columns?: string[];
+    /** Built by the Feature Engineering "also try interaction features" switch (#974). */
+    interaction_features?: string[];
   };
   leaderboard: ReportSection & { rows: LeaderboardRow[] };
   winner: ReportSection & {
