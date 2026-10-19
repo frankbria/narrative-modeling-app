@@ -222,7 +222,7 @@ export default function TransformationPipeline(props: TransformationPipelineProp
   // keyboard-operable toggle away.
   const [viewMode, setViewMode] = useState<PipelineView>('chain');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  // Monotonic counter for collision-free node IDs (mirrors FeatureBuilder);
+  // Monotonic counter for collision-free node IDs;
   // Date.now()+length can collide on rapid adds within the same millisecond.
   const nodeIdCounterRef = useRef(0);
 
