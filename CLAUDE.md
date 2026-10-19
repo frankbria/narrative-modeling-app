@@ -24,7 +24,7 @@ Per-app conventions load when you work in that app: `apps/backend/CLAUDE.md` (Fa
 ### Test footguns
 - **Route tests use real documents (#267, #683):** `mock_async_client` mounts only health + secure_upload (other routes 404 vacuously). Use `async_authorized_client` with real Mongo docs and exact statuses. Seed datasets with `UserData(...).insert()` and processed state from captured `dataProcessResponse.json`; never a `MagicMock` dataset or a patched `save`. For X-API-Key routes insert a real `APIKey` and send the raw `sk_live_…`.
 - **Captured fixtures (#808):** `apps/frontend/__tests__/fixtures/` bodies are captured, never hand-written — regenerate with `UPDATE_FIXTURES=1 PYTHONPATH=. uv run pytest <capturing test>` (e.g. `tests/test_api/test_user_data_response_fixture.py`) and build page fixtures on them.
-- **Frontend lint is warning-capped (#333):** `eslint . --max-warnings 87` over the whole project (incl. `e2e/`, `__tests__/`). The cap only ratchets down; never widen `globalIgnores`.
+- **Frontend lint is warning-capped (#333):** `eslint . --max-warnings 83` over the whole project (incl. `e2e/`, `__tests__/`). The cap only ratchets down; never widen `globalIgnores`.
 - **React Compiler rules (#393):** `immutability`, `static-components`, `refs`, `preserve-manual-memoization` are `error`; `set-state-in-effect` is still `warn` (keeps `reactCompiler` off). Counts are lower bounds — re-measure after each batch.
 - **`apps/frontend/__mocks__/` auto-applies to every suite (#390):** when bumping a mocked dependency's major, update the mock in the same PR, make it throw on the old prop shape, and mutation-check.
 - **Charts run against real recharts (#346):** mock only `ResponsiveContainer` via `jest.requireActual('@/__tests__/utils/sizedRecharts').sizedRecharts()`; assert on drawn output (`axisTicks`, `.recharts-bar-rectangle`, `.recharts-line-curve[d]`). `Tooltip` stays a stub. Recharts majors break at the type level — run `tsc`.
@@ -66,5 +66,6 @@ Keep docs in sync with code: OpenAPI when endpoints change; docstrings/JSDoc on 
   - a named type, not an inline object type as a generic argument (`ComponentType<{…}>` blinds the whole file).
   - `unknown` + a cast at the caller, not a generic function declaration.
   - a component with a statement before `return <JSX>` (a bare return gets no LCOV line); inline JSX arrows named in the component body; `??` counts as two branches; a file not yet `git add`ed reads as absent.
+  - in a multi-line JSX tag, a hyphenated string attribute (`aria-label="…"`) can make lizard drop the whole component; in a large file its line numbers can drift from the real ones. If a changed function is missing from `uvx lizard` output, move it to its own small file (#1116).
   When line ranges look wrong, run `uvx lizard -l typescript <file>`.
 - **CodeRabbit:** max 3 iterations; auto-fix style/types/simple bugs/docs. Escalate on iteration-3 failures, architecture changes, or security decisions.
