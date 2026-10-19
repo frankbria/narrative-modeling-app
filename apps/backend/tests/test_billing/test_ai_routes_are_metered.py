@@ -9,16 +9,12 @@ on anything this file has no opinion about — but the scope is derived, not lis
    (with `quota("ai_calls")`) or in `_EXEMPT` with the reason it calls no model.
 
 #461 listed four routes. This walk found eleven more, in three other routers — the
-"rule-based" orchestration service takes an OpenAI pass when a key is present, the
-feature-suggestion lookups re-run `suggest_features(include_ai=True)` (#522), and the
+"rule-based" orchestration service takes an OpenAI pass when a key is present, and the
 evaluation report card and error suggestions are OpenAI calls with a rule-based
 fallback. A prefix-scoped registry could not have seen any of them.
 
 Scope follows one import hop: a router importing a service that imports a model module
 is in scope (#471 made that the common shape). Deeper chains are not followed.
-`data_issues.py` reaches `AIIssueAnalyzer` through a lazy import inside its service;
-that router is mounted nowhere today (#471), so it is invisible here until #471 mounts
-it — at which point the service import should be made direct so this test sees it.
 """
 import re
 from pathlib import Path
@@ -46,8 +42,7 @@ def _imports(src: str, mod: str) -> bool:
 
 def _model_modules() -> set[str]:
     """Files that call the model, plus files that import one of those (one hop): a route that
-    reaches OpenAI through a *service* — data_issues.py via DataIssueDetectionService via
-    AIIssueAnalyzer (#471) — is model access too, and the direct-import rule missed it."""
+    reaches OpenAI through a *service* is model access too, and the direct-import rule missed it."""
     direct = {_module_name(p) for p in _APP.rglob("*.py") if _MODEL_CALL.search(p.read_text())}
     one_hop = set()
     for p in _APP.rglob("*.py"):
@@ -103,21 +98,10 @@ _MUST_BE_METERED = {
     # ai_orchestration.py — rule-based core, OpenAI pass when a key is present
     "/api/v1/ai/recommend-tools",
     "/api/v1/ai/stage-guidance",
-    # feature_engineering.py — the two generators reach suggest_features(include_ai)
-    "/api/v1/datasets/{dataset_id}/features/suggest",
-    "/api/v1/datasets/{dataset_id}/features/suggest-more",
     # model_training.py — report card / improvement suggestions; both release the
     # unit on the branch that has no artifacts to explain.
     "/api/v1/ml/{model_id}/evaluation",
     "/api/v1/ml/{model_id}/errors",
-}
-
-#: Routes that reach a model only on a branch, so they reserve INSIDE the handler with
-#: `enforcement.reserve(...)` rather than through a route dependency — a dependency would
-#: 402 a tenant out of AI quota on the branch that calls no model. Each carries the reason.
-_CONDITIONALLY_METERED = {
-    # data_issues.py (#471): AIIssueAnalyzer (OpenAI) runs only when options.include_ai_analysis.
-    "/api/v1/data-issues/detect": "reserves ai_calls only when include_ai_analysis is set",
 }
 
 _NO_MODEL_ML = "MLModel CRUD/serving; no LLM call (training and predictions have their own metrics)."
@@ -128,17 +112,7 @@ _UPLOAD_SUMMARY = (
 _EXEMPT = {
     "/api/v1/ai/health": "MCP liveness probe; calls no model.",
     "/api/v1/ai/feedback": "Persists a recommendation rating; calls no model.",
-    **{p: "Reads the cached suggestion set only, never reaches the model (#523, #728)." for p in (
-        "/api/v1/features/suggestions/{suggestion_id}/feedback",
-        "/api/v1/datasets/{dataset_id}/features/suggestions/{suggestion_id}",
-        "/api/v1/datasets/{dataset_id}/features/apply",
-        "/api/v1/datasets/{dataset_id}/features/apply-multiple",
-    )},
     "/api/v1/ai/optimize-parameters": "Rule-based only; never touches the OpenAI client.",
-    **{p: "Reads or applies stored detection results; the model ran at /detect." for p in (
-        "/api/v1/data-issues/{dataset_id}/issues", "/api/v1/data-issues/{dataset_id}/history",
-        "/api/v1/data-issues/preview-fix", "/api/v1/data-issues/apply-fix", "/api/v1/data-issues/batch-fix",
-    )},
     **{p: _NO_MODEL_ML for p in (
         "/api/v1/ml/", "/api/v1/ml/compare", "/api/v1/ml/datasets/{dataset_id}/mode-recommendation",
         "/api/v1/ml/jobs", "/api/v1/ml/train", "/api/v1/ml/{model_id}", "/api/v1/ml/{model_id}/cancel",
@@ -166,7 +140,7 @@ _EXEMPT = {
 
 
 def test_the_scope_is_derived_and_not_empty():
-    assert {"app.services.ai_chat", "app.services.feature_engineering_service"} <= _model_modules()
+    assert {"app.services.ai_chat", "app.services.ai_orchestration_service"} <= _model_modules()
     assert {"app.api.routes.ai_analysis", "app.api.routes.model_training"} <= _route_modules_with_model_access()
     assert len(_in_scope_routes()) >= 40
 
@@ -181,20 +155,8 @@ def test_a_model_calling_route_charges_ai_calls(path):
     )
 
 
-@pytest.mark.parametrize("path", sorted(_CONDITIONALLY_METERED))
-def test_a_conditionally_metered_route_reserves_in_its_handler(path):
-    import inspect
-
-    routes = _in_scope_routes()
-    assert path in routes, f"{path} is no longer mounted; update this registry"
-    assert not _metered_metrics(routes[path]), f"{path} must not ALSO carry a route dependency"
-    assert 'enforcement.reserve(' in inspect.getsource(routes[path].endpoint), (
-        f"{path} is listed as conditionally metered but its handler never reserves"
-    )
-
-
 def test_no_route_with_model_access_is_unaccounted_for():
-    unaccounted = set(_in_scope_routes()) - _MUST_BE_METERED - set(_EXEMPT) - set(_CONDITIONALLY_METERED)
+    unaccounted = set(_in_scope_routes()) - _MUST_BE_METERED - set(_EXEMPT)
     assert not unaccounted, (
         f"Route(s) in a module that imports a model-calling service: {sorted(unaccounted)}. "
         f'Add each to _MUST_BE_METERED with quota("ai_calls"), or to _EXEMPT with the reason '

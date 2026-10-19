@@ -13,7 +13,6 @@ import pandas as pd
 import pytest
 from beanie import PydanticObjectId
 
-from app.models.dataset import DatasetMetadata
 from app.services.s3_service import read_dataframe_from_bytes
 
 FRAME = pd.DataFrame({"visits": [1, 2, 3, 4, 5, 6], "spend": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]})
@@ -97,23 +96,5 @@ async def test_the_chart_routes_loader(kind):
 
     with patch.object(visualizations, "get_file_from_s3", return_value=io.BytesIO(STORED_AS[kind])):
         frame = await visualizations._load_dataframe(f"s3://bucket/datasets/u/d.{kind}", set(FRAME.columns))
-
-    assert _same(frame)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["parquet", "json", "csv", "xlsx"])
-async def test_the_feature_store(kind):
-    from app.services.feature_store_service import FeatureStoreService
-
-    dataset = DatasetMetadata(
-        user_id="u", dataset_id="d733", filename=f"d.{kind}", original_filename=f"d.{kind}", file_type=kind,
-        file_path=f"datasets/u/d.{kind}", s3_url=f"s3://test-bucket/datasets/u/d.{kind}", num_rows=6, num_columns=2,
-    )
-    with patch(
-        "app.services.feature_store_service.s3_service.download_file_bytes",
-        new_callable=AsyncMock, return_value=STORED_AS[kind],
-    ):
-        frame = await FeatureStoreService._load_dataset_frame(dataset)
 
     assert _same(frame)

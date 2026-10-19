@@ -58,11 +58,8 @@ from app.api.routes import (
     billing_webhook,
     cache,
     column_stats,
-    data_issues,
     data_processing,
     datasets,
-    feature_engineering,
-    feature_store,
     features,
     feedback,
     health,
@@ -390,14 +387,6 @@ app.include_router(
     tags=["transformations"],
 )
 app.include_router(
-    # Was registered only on an aggregator that nothing attached to the app (removed in
-    # #530), so the whole feature 404'd (#471). tests/test_api/test_every_router_is_mounted.py
-    # fails on any route module that is not mounted here.
-    data_issues.router,
-    prefix=f"{settings.API_V1_STR}/data-issues",
-    tags=["data-issues"],
-)
-app.include_router(
     versions.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["versioning"],
@@ -408,19 +397,9 @@ app.include_router(
     tags=["datasets"],
 )
 app.include_router(
-    feature_engineering.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["feature-engineering"],
-)
-app.include_router(
     features.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["feature-builder"],
-)
-app.include_router(
-    feature_store.router,
-    prefix=f"{settings.API_V1_STR}/feature-store",
-    tags=["feature-store"],
 )
 app.include_router(
     workflows.router,

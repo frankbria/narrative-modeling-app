@@ -3,7 +3,7 @@
 Single source of truth used by the app lifespan (app/main.py) and the test
 database fixture (tests/conftest.py). Keeping one list prevents the drift that
 previously left VisualizationCache, TransformationConfig, RevisedData,
-SharedRecipe, and DataIssueRecord unregistered at app startup (issue #160).
+and SharedRecipe unregistered at app startup (issue #160).
 """
 
 from app.models.ab_test import ABTest
@@ -13,12 +13,10 @@ from app.models.api_key import APIKey
 from app.models.batch_job import BatchJob
 from app.models.bulk_transformation import BulkTransformationJob
 from app.models.column_stats import ColumnStats
-from app.models.data_issue import DataIssueRecord
 from app.models.dataset import DatasetMetadata
 from app.models.dataset_lease import DatasetLease
 from app.models.erasure_audit import ErasureAuditLog
 from app.models.feature import FeatureDefinition
-from app.models.feature_store import FeatureCollection, FeatureVersion, StoredFeature
 from app.models.feedback import Feedback
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
@@ -50,14 +48,11 @@ DOCUMENT_MODELS = [
     BatchJob,
     BulkTransformationJob,
     ColumnStats,
-    DataIssueRecord,
     DatasetLease,
     DatasetMetadata,
     DatasetVersion,
     ErasureAuditLog,
-    FeatureCollection,
     FeatureDefinition,
-    FeatureVersion,
     Feedback,
     MLModel,
     ModelConfig,
@@ -66,7 +61,6 @@ DOCUMENT_MODELS = [
     RecipeExecutionHistory,
     RevisedData,
     SharedRecipe,
-    StoredFeature,
     Subscription,
     PredictionEvent,
     ProductEvent,

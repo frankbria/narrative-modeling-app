@@ -20,7 +20,6 @@ from typing import Any, cast
 from openai import OpenAI, OpenAIError
 
 from app.models.ai_feedback import AIRecommendationFeedback
-from app.models.data_issue import DataIssueRecord
 from app.models.dataset import DatasetMetadata
 from app.models.transformation import TransformationType
 from app.models.workflow import WorkflowState
@@ -158,56 +157,38 @@ class AIOrchestrationService:
             is_processed=dataset.is_processed,
         )
 
-        for fld in dataset.data_schema:
-            name = fld.field_name
-            if fld.field_type == "numeric":
-                profile.numeric_columns.append(name)
-            elif fld.field_type == "datetime":
-                profile.datetime_columns.append(name)
-            else:  # text, categorical, boolean -> treated as categorical for encoding
-                profile.categorical_columns.append(name)
-            if fld.is_high_cardinality:
-                profile.high_cardinality_columns.append(name)
-            if fld.is_constant:
-                profile.constant_columns.append(name)
-            if fld.missing_values > 0 and dataset.num_rows > 0:
-                profile.columns_with_missing[name] = fld.missing_values / dataset.num_rows
-
-        # The /api/v1/datasets upload path stores data_schema=[] and puts the real
-        # column metadata in inferred_schema — fall back to it so that common path
-        # gets real recommendations, not partial/generic ones (codex).
-        if not dataset.data_schema and dataset.inferred_schema:
-            self._hydrate_from_inferred(profile, dataset.inferred_schema, dataset.num_rows)
-
-        # Fold in detected data issues (best-effort).
-        try:
-            # Newest detection run wins — store_detection_results inserts a fresh
-            # record each time, so an unsorted find_one can read stale results.
-            issue_record = (
-                await DataIssueRecord.find(
-                    DataIssueRecord.dataset_id == dataset_id,
-                    DataIssueRecord.user_id == user_id,
-                )
-                .sort("-detected_at")
-                .first_or_none()
-            )
-            if issue_record is not None:
-                profile.detected_issue_types = [i.issue_type.value for i in issue_record.issues]
-                profile.has_duplicates = any(
-                    t == "duplicates" for t in profile.detected_issue_types
-                )
-                profile.has_outliers = any(
-                    t == "outliers" for t in profile.detected_issue_types
-                )
-        except Exception:  # pragma: no cover - defensive; issues are optional
-            logger.debug("Could not load data issues for %s", dataset_id, exc_info=True)
-
+        self._fill_profile(profile, dataset)
         profile.partial = not (
             profile.numeric_columns
             or profile.categorical_columns
             or profile.datetime_columns
         )
         return profile
+
+    _FIELD_BUCKETS = {"numeric": "numeric_columns", "datetime": "datetime_columns"}
+
+    @classmethod
+    def _fill_profile(cls, profile: OrchestrationProfile, dataset: DatasetMetadata) -> None:
+        for fld in dataset.data_schema:
+            cls._add_field(profile, fld, dataset.num_rows)
+
+        # The /api/v1/datasets upload path stores data_schema=[] and puts the real
+        # column metadata in inferred_schema — fall back to it so that common path
+        # gets real recommendations, not partial/generic ones (codex).
+        if not dataset.data_schema and dataset.inferred_schema:
+            cls._hydrate_from_inferred(profile, dataset.inferred_schema, dataset.num_rows)
+
+    @classmethod
+    def _add_field(cls, profile: OrchestrationProfile, fld: Any, n_rows: int) -> None:
+        name = fld.field_name
+        # text, categorical, boolean -> treated as categorical for encoding
+        getattr(profile, cls._FIELD_BUCKETS.get(fld.field_type, "categorical_columns")).append(name)
+        if fld.is_high_cardinality:
+            profile.high_cardinality_columns.append(name)
+        if fld.is_constant:
+            profile.constant_columns.append(name)
+        if fld.missing_values > 0 and n_rows > 0:
+            profile.columns_with_missing[name] = fld.missing_values / n_rows
 
     # inferred_schema (SchemaInference) data_type -> profile bucket mapping
     _INFERRED_NUMERIC = {"integer", "float", "currency", "percentage"}

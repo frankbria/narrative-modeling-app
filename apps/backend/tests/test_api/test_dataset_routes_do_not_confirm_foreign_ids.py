@@ -1,6 +1,6 @@
 """#751: a dataset that is someone else's answers exactly like one that does not exist.
 
-Seven routes under /datasets/{id} looked the dataset up, then answered 403 "Access denied"
+Six routes under /datasets/{id} looked the dataset up, then answered 403 "Access denied"
 when it belonged to another tenant, which tells any signed-in caller which ids are real.
 Every other owned surface answers 404 for both. Real documents, no patched lookups.
 """
@@ -16,7 +16,6 @@ ROUTES = [
     ("GET", "/api/v1/datasets/{id}/schema", None),
     ("GET", "/api/v1/datasets/{id}/preview", None),
     ("POST", "/api/v1/datasets/{id}/process", {"statistics": {"rows": 1}}),
-    ("GET", "/api/v1/datasets/{id}/features/selected", None),
 ]
 IDS = [f"{method} {url.rsplit('}', 1)[1] or '/'}" for method, url, _ in ROUTES]
 
@@ -54,13 +53,11 @@ async def test_the_owner_still_reads_and_updates_their_dataset(setup_database, a
     read = await async_authorized_client.get("/api/v1/datasets/ds-mine")
     updated = await async_authorized_client.put("/api/v1/datasets/ds-mine", json={"statistics": {"rows": 2}})
     schema = await async_authorized_client.get("/api/v1/datasets/ds-mine/schema")
-    selected = await async_authorized_client.get("/api/v1/datasets/ds-mine/features/selected")
     processed = await async_authorized_client.post("/api/v1/datasets/ds-mine/process", json={"statistics": {"rows": 2}})
 
     assert read.status_code == 200 and read.json()["dataset_id"] == "ds-mine"
     assert updated.status_code == 200 and updated.json()["statistics"] == {"rows": 2}
     assert updated.json().keys() == read.json().keys()
     assert schema.status_code == 200
-    assert selected.status_code == 200
     assert processed.status_code == 200, processed.text
     assert (await DatasetMetadata.find_one(DatasetMetadata.dataset_id == "ds-mine")).is_processed is True

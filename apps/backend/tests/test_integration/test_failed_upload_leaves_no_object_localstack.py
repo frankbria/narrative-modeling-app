@@ -198,24 +198,6 @@ async def test_a_transformation_that_works_keeps_its_file(client, s3_client, rea
     assert (await DatasetMetadata.find_one(DatasetMetadata.dataset_id == dataset_id)).s3_url.endswith(kept.pop())
 
 
-@pytest.mark.parametrize("route", ["apply-fix", "batch-fix"])
-async def test_a_data_issue_fix_that_fails_after_the_put_leaves_no_object(client, s3_client, real_s3_env, route):
-    _, upload_id = await _dataset(client)
-    detected = await client.post("/api/v1/data-issues/detect", json={
-        "dataset_id": upload_id, "options": {"include_ai_analysis": False}})
-    assert detected.status_code == 200, detected.text
-    fixable = [i["issue_id"] for i in detected.json()["issues"] if i["suggested_fixes"]]
-    assert fixable, "precondition: the file has an issue with a suggested fix"
-    body = {"issue_id": fixable[0]} if route == "apply-fix" else {"issue_ids": fixable}
-
-    with _the_database_goes_away(STEP):
-        response = await client.post(f"/api/v1/data-issues/{route}", json={
-            "dataset_id": upload_id, "preview_mode": False, **body})
-
-    assert response.status_code == 200 and response.json()["success"] is False, response.text
-    assert _transformed(s3_client, real_s3_env) == set()
-
-
 async def test_a_bulk_job_that_fails_after_the_put_leaves_no_object(client, s3_client, real_s3_env):
     import asyncio
 
