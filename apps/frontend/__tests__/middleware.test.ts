@@ -3,7 +3,8 @@
  */
 jest.mock('next-auth/jwt', () => ({ getToken: jest.fn() }))
 
-import middleware from '@/middleware'
+import middleware, { config } from '@/middleware'
+import { PUBLIC_LINKS } from '@/lib/publicLinks'
 import { getToken } from 'next-auth/jwt'
 import type { NextRequest } from 'next/server'
 
@@ -47,6 +48,10 @@ describe('middleware (deny-by-default)', () => {
     '/legal-review',
     '/pricingx', // the /pricing exact-path exemption must not leak onto a lookalike
     '/pricing/plans',
+    '/security/x', // the exact-path exemptions of #772 do not extend to children
+    '/securityx',
+    '/how-it-works/x',
+    '/how-it-works-not',
   ])('redirects requests without a valid session for protected page %s', async (pathname) => {
     mockGetToken.mockResolvedValue(null) // no / invalid token
     const res = await middleware(mockRequest(pathname))
@@ -102,12 +107,22 @@ describe('middleware (deny-by-default)', () => {
   // Issue #766: the landing page, and the two files a crawler fetches before it
   // decides anything. /robots.txt and /sitemap.xml are not excluded by the
   // matcher's extension list, so without an entry they redirect to sign-in.
-  it.each(['/', '/robots.txt', '/sitemap.xml'])(
+  it.each(['/', '/security', '/how-it-works', '/robots.txt', '/sitemap.xml'])(
     'always allows the public page %s (without checking a token)',
     async (pathname) => {
       const res = await middleware(mockRequest(pathname))
       expect(res.status).not.toBe(307)
       expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+      expect(mockGetToken).not.toHaveBeenCalled()
+    },
+  )
+
+  // #772 AC5: a link added to the shared list must also be reachable anonymously.
+  it.each(PUBLIC_LINKS.map((link) => link.href))(
+    'lets the shared public link %s through without a session',
+    async (pathname) => {
+      const res = await middleware(mockRequest(pathname))
+      expect(res.status).not.toBe(307)
       expect(mockGetToken).not.toHaveBeenCalled()
     },
   )
@@ -125,6 +140,26 @@ describe('middleware (deny-by-default)', () => {
     const res = await middleware(mockRequest('/api/chat', { method: 'POST' }))
     expect(res.status).not.toBe(307)
     expect(mockGetToken).not.toHaveBeenCalled()
+  })
+})
+
+// #772: the public pages name an image and a video under /how-it-works/. A file the matcher
+// does not exempt goes through the session check, so an anonymous visitor's request for it
+// is a redirect to sign-in: the page renders and its video does not play.
+describe('middleware matcher', () => {
+  const pageMatcher = new RegExp(`^${config.matcher[0]}$`)
+
+  it.each([
+    '/how-it-works/churn-walkthrough.webm',
+    '/how-it-works/data_loading.webp',
+    '/logo.svg',
+    '/_next/static/chunks/app.js',
+  ])('leaves the static file %s to the file server', (pathname) => {
+    expect(pageMatcher.test(pathname)).toBe(false)
+  })
+
+  it.each(['/dashboard', '/security', '/how-it-works', '/sitemap.xml'])('runs middleware for the page %s', (pathname) => {
+    expect(pageMatcher.test(pathname)).toBe(true)
   })
 })
 

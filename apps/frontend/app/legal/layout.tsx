@@ -1,3 +1,5 @@
+import { PublicNav } from '@/components/PublicNav'
+
 /**
  * Shell for the public legal pages (issue #473).
  *
@@ -8,7 +10,8 @@
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="w-full max-w-3xl mx-auto px-6 pt-10 pb-20 text-foreground">
-      <article className="prose prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-6">
+      <PublicNav />
+      <article className="prose mt-8 prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-6">
         {children}
       </article>
     </div>
