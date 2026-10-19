@@ -69,30 +69,3 @@ export function validateDatasetId(datasetId: string): string | null {
 
   return datasetId;
 }
-
-/**
- * Sanitize transformation type to prevent injection
- * Only allows lowercase letters, numbers, and underscores
- *
- * @param type - The transformation type
- * @returns Validated type or null if invalid
- */
-export function validateTransformationType(type: string): string | null {
-  if (!type || typeof type !== 'string') {
-    return null;
-  }
-
-  // Only allow lowercase letters, numbers, and underscores
-  const validPattern = /^[a-z0-9_]+$/;
-
-  if (!validPattern.test(type)) {
-    return null;
-  }
-
-  // Limit length
-  if (type.length > 50) {
-    return null;
-  }
-
-  return type;
-}

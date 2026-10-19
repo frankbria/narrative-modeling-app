@@ -107,18 +107,6 @@ class TransformationPreviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
 
 
-class TransformationValidationResponse(BaseModel):
-    """Response schema for transformation validation."""
-
-    is_valid: bool
-    errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    validated_at: datetime
-    parameter_validation: dict[str, bool] = Field(default_factory=dict)
-    data_type_compatibility: dict[str, bool] = Field(default_factory=dict)
-    dependency_validation: bool = True
-
-
 class TransformationApplyResponse(BaseModel):
     """Response schema for transformation apply operation."""
 
@@ -148,21 +136,6 @@ class TransformationHistoryResponse(BaseModel):
     version: str = Field(default="1.0.0", description="Version (major.minor.patch)")
     created_at: datetime = Field(..., description="Created timestamp")
     updated_at: datetime = Field(..., description="Updated timestamp")
-
-
-class TransformationListResponse(BaseModel):
-    """Response schema for list transformations endpoint."""
-
-    configurations: list[TransformationConfigResponse] = Field(default_factory=list)
-    total: int = Field(..., ge=0, description="Total number of configurations")
-
-
-class TransformationDeleteResponse(BaseModel):
-    """Response schema for transformation delete endpoint."""
-
-    status: str = Field(..., description="Delete status")
-    config_id: str = Field(..., description="Deleted configuration ID")
-    message: str = Field(..., description="Success message")
 
 
 # Additional schemas for transformation pipeline

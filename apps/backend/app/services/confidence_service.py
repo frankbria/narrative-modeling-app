@@ -138,8 +138,9 @@ class ConfidenceService:
     ) -> float | None:
         """Calibration quality: Brier score (binary) or log loss (multiclass).
 
-        Measured in-sample on ``X_cal`` (the calibration-fit data), so it is an
-        optimistic diagnostic — see ``calibrate_classifier``.
+        Measured on whatever ``X_cal`` is passed: in-sample (an optimistic
+        diagnostic) for the calibration slice, out-of-sample when
+        ``calibrate_classifier`` passes it a clean holdout — see there.
         """
         try:
             proba = calibrated.predict_proba(X_cal)

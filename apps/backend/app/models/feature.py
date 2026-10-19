@@ -376,17 +376,3 @@ class FeatureDefinition(Document):
         self.update_timestamp()
 
         return result
-
-    def mark_valid(self) -> None:
-        """Mark feature as valid."""
-        self.is_valid = True
-        self.update_timestamp()
-
-    def mark_invalid(self, errors: list[str]) -> None:
-        """Mark feature as invalid with error messages."""
-        self.is_valid = False
-        self.validation_result = FeatureValidationResult(
-            is_valid=False,
-            errors=errors
-        )
-        self.update_timestamp()

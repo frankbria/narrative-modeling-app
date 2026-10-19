@@ -243,9 +243,9 @@ app = FastAPI(
 app.state.rate_limit_store = None
 
 # ✅ Rate limiting (#151). Added FIRST so it is the innermost middleware — it runs
-# just before the route handler and short-circuits over-budget requests, while the
-# CORS middleware (added next) stays outermost and still decorates the 429 with
-# CORS headers so browsers can read it.
+# just before the route handler and short-circuits over-budget requests. The CORS
+# middleware is added after it, so it wraps the limiter and still decorates the 429
+# with CORS headers so browsers can read it.
 app.add_middleware(RateLimitMiddleware)
 # Outside RateLimitMiddleware in registration order, so it wraps the routes and
 # sees the final status of anything that reserved quota (#368).
@@ -291,9 +291,10 @@ register_error_handlers(app)
 # ✅ Include routers
 # Health check routes at root level (no version prefix)
 app.include_router(health.router, tags=["health"])
-# Liveness ONLY under /api/v1 (#479): the browser reaches the backend through
-# nginx's /api/ proxy, so the admin widget needs a versioned liveness path — but
-# NOT /health/ready, which does per-request outbound work (#503).
+# Liveness and the authenticated /health/dependencies diagnostic under /api/v1
+# (#479): the browser reaches the backend through nginx's /api/ proxy, so the admin
+# widget needs a versioned liveness path — but NOT /health/ready, which does
+# per-request outbound work (#503).
 app.include_router(
     health.liveness_router, prefix=settings.API_V1_STR, tags=["health"]
 )
@@ -406,6 +407,11 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}",
     tags=["workflows"],
 )
+app.include_router(
+    billing.router,
+    prefix=f"{settings.API_V1_STR}/billing",
+    tags=["billing"],
+)
 # Deliberately OUTSIDE API_V1_STR. RateLimitMiddleware limits everything under
 # /api/v1 and buckets unauthenticated callers by IP — and Stripe delivers every
 # event for every tenant from a small set of IPs, so a burst would 429, Stripe
@@ -413,11 +419,6 @@ app.include_router(
 # public API surface: it is Stripe's endpoint, already excluded from the OpenAPI
 # schema. Protection here is signature verification plus the body-size limit, not
 # an IP budget (#367).
-app.include_router(
-    billing.router,
-    prefix=f"{settings.API_V1_STR}/billing",
-    tags=["billing"],
-)
 app.include_router(
     billing_webhook.router,
     prefix="/webhooks/stripe",
