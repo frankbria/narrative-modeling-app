@@ -27,7 +27,7 @@ export const COMPANY = {
     'SheetPredict turns a spreadsheet into a validated, explained, deployable model in minutes — and shows its work.',
   /** The PII proof point, word for word from docs/product/positioning.md section 4 (what `_summary_frame` does, #1110). */
   piiProof:
-    'PII is scanned when you upload in the app; when it finds high-risk data, you choose whether to store a masked copy',
+    'PII is scanned when you upload in the app',
   /** The contracting party. */
   legalEntity: 'Noatak Enterprises, LLC, dba Bria Strategy Group',
   governingLaw: 'State of Arizona, USA',

@@ -6,6 +6,9 @@ import {
   PII_SCAN_SAMPLE_ROWS,
   SUMMARY_EXAMPLE_VALUES,
 } from '@/lib/trust/datasetFacts'
+import { CHUNKED_UPLOAD_THRESHOLD } from '@/components/upload/uploadFlow'
+
+const CHUNKED_UPLOAD_MB = CHUNKED_UPLOAD_THRESHOLD / (1024 * 1024)
 
 /**
  * What the code does with an uploaded file. Each step names its source:
@@ -36,8 +39,9 @@ export function DatasetSection() {
           {PII_SCAN_SAMPLE_ROWS} values.
         </li>
         <li>
-          <strong>A high-risk finding stops the upload until you confirm it.</strong> You then
-          choose whether the stored copy has its personal values masked.
+          <strong>Up to {CHUNKED_UPLOAD_MB} MB, a high-risk finding stops the upload until you
+          confirm it.</strong> You then choose whether the stored copy has its personal values
+          masked. A larger file is uploaded in parts; it is scanned too, but stored as uploaded.
         </li>
         <li>
           <strong>What the AI summary receives.</strong> After an upload, OpenAI is sent the file

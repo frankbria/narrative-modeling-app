@@ -42,7 +42,7 @@ Tagline for `<title>` and OG: **Explained predictions from your spreadsheet.**
 |---|---|---|
 | Validated, not vibes | "About ten algorithms, cross-validated, with an explanation of why the winner won." | `automl_engine.py`, `algorithm_selector.py` |
 | Explained and reproducible | "SHAP explanations for every model, a full version history, and a self-contained Python or Docker export you own." | SHAP surface under `/api/v1/ml/`; #629 history/undo; #632 exports |
-| Safe with real data | "PII is scanned when you upload in the app; when it finds high-risk data, you choose whether to store a masked copy; every AI feature works without an AI key; one-click erasure; Apache 2.0 source you can read and self-host." | #608/#490 PII; #461 fallbacks; #480/#497 erasure; `LICENSE`, `README.md` §License |
+| Safe with real data | "PII is scanned when you upload in the app; every AI feature works without an AI key; one-click erasure; Apache 2.0 source you can read and self-host." | #608/#490 PII; #461 fallbacks; #480/#497 erasure; `LICENSE`, `README.md` §License |
 
 Supporting claims that may also be used, with evidence: eight guided stages (`lib/types/workflow.ts`); secured REST prediction endpoint with API keys and rate limits (#455); drift monitoring (#488); 14-day refund from first payment (#602); free tier sized for one complete run (ADR-003).
 
