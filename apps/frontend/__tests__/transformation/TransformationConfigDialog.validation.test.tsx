@@ -349,7 +349,8 @@ describe('TransformationConfigDialog multi-select', () => {
     await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ type: 't', parameters: { cols: ['age'] } }));
   });
 
-  // aria-invalid is not valid on a button role (jsx-a11y), so the trigger points at its error text instead.
+  // The trigger is a button, where this repo's jsx-a11y rule (role-supports-aria-props) flags
+  // aria-invalid; it points at its error text with aria-describedby instead.
   it('links an invalid multi-select to its error text', async () => {
     renderWith({ cols: { type: 'array', items: { type: 'string' } } }, { cols: [] });
     await submit();
