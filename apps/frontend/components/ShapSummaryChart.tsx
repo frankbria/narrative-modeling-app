@@ -24,22 +24,21 @@ export interface ShapSummaryChartProps {
   maxFeatures?: number
 }
 
-/**
- * SHAP summary plot (issue #80): a horizontal bar chart of each feature's mean
- * absolute SHAP value — how much, on average, the feature moves the model's
- * output. Uses Recharts, matching the evaluate page's other charts (P2.3).
- */
 // Module scope, not inside the chart component: a component created during
 // render gets a fresh identity each render and remounts the tooltip subtree
 // (react-hooks/static-components). It closes over nothing, so lifting it needs
 // no extra props.
-function CustomTooltip({
-  active,
-  payload
-}: {
+interface TooltipEntry {
+  payload: RankedFeature
+}
+
+interface CustomTooltipProps {
   active?: boolean
-  payload?: Array<{ payload: RankedFeature }>
-}) {
+  payload?: TooltipEntry[]
+}
+
+function CustomTooltip(props: CustomTooltipProps) {
+  const { active, payload } = props
   if (active && payload && payload.length) {
     const feature = payload[0].payload
     return (
@@ -55,6 +54,11 @@ function CustomTooltip({
   return null
 }
 
+/**
+ * SHAP summary plot (issue #80): a horizontal bar chart of each feature's mean
+ * absolute SHAP value — how much, on average, the feature moves the model's
+ * output. Uses Recharts, matching the evaluate page's other charts (P2.3).
+ */
 export function ShapSummaryChart({
   features,
   plainLanguage,
