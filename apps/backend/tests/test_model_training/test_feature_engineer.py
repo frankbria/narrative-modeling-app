@@ -1436,3 +1436,18 @@ class TestInteractionFeaturesSwitch:
         reported = result.metadata["interaction_features"]
         assert built and set(built) - set(result.feature_names), "the selector should drop some"
         assert reported == [name for name in built if name in result.feature_names]
+
+
+@pytest.mark.parametrize("columns, expected", [
+    (["a"], [1, 2]),
+    (["a", "b"], [3, 8]),
+    (["a", "b", "c"], None),
+])
+def test_a_generic_feature_copies_one_column_multiplies_two_and_ignores_more(columns, expected):
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
+
+    out = FeatureEngineer()._apply_generic(df, "new", columns, {})
+
+    assert ("new" in out.columns) is (expected is not None)
+    if expected is not None:
+        assert out["new"].tolist() == expected

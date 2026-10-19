@@ -86,12 +86,19 @@ const mockDatasets = [
 const trainedModels = mlModelList;
 
 // Answers each list the dashboard reads: `/datasets` wraps its list, `/ml/` is bare.
+// `/ml/` honours `deployed` and `limit` the way the route does (#1085), so a stub
+// holding every model answers each request with only the rows asked for.
 function api(lists: { datasets?: unknown[]; models?: unknown[] } = {}) {
-  return (url: string) =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve(url.includes('/ml/') ? (lists.models ?? []) : { datasets: lists.datasets ?? [] }),
-    });
+  return (url: string) => {
+    if (!url.includes('/ml/')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ datasets: lists.datasets ?? [] }) });
+    }
+    const query = new URL(url).searchParams;
+    let rows = (lists.models ?? []) as { is_deployed?: boolean }[];
+    if (query.get('deployed') === 'true') rows = rows.filter((row) => row.is_deployed);
+    if (query.get('limit')) rows = rows.slice(0, Number(query.get('limit')));
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(rows) });
+  };
 }
 
 describe('DashboardPage', () => {
@@ -448,6 +455,16 @@ describe('DashboardPage', () => {
       expect(names).toEqual(['Model 0', 'Model 1', 'Model 2', 'Model 3', 'Model 4']);
     });
 
+    it('asks /ml/ for five rows and for one deployed row, never the whole history (#1085)', async () => {
+      mockFetch.mockImplementation(api({ models: trainedModels }));
+
+      render(<DashboardPage />);
+
+      await screen.findByText('Sales Forecaster');
+      const mlUrls = mockFetch.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/ml/'));
+      expect(mlUrls.map((url) => url.split('/ml/')[1]).sort()).toEqual(['?deployed=true&limit=1', '?limit=5']);
+    });
+
     it('shows error state when model fetch fails', async () => {
       mockFetch.mockImplementation((url: string) => {
         if (url.includes('/ml/')) {
@@ -634,6 +651,25 @@ describe('DashboardPage', () => {
       fireEvent.click(profilingCard);
 
       expect(mockPush).toHaveBeenCalledWith('/explore/test-dataset-123');
+    });
+
+    it('opens a stage whose page reads the dataset from the workflow at its plain route (#1094)', async () => {
+      mockWorkflowContext.state = createMockWorkflowState({
+        datasetId: 'test-dataset-123',
+        completedStages: new Set([WorkflowStage.DATA_LOADING, WorkflowStage.DATA_PROFILING]),
+        currentStage: WorkflowStage.DATA_PREPARATION,
+      });
+      mockCanAccessStage.mockReturnValue(true);
+      mockFetch.mockImplementation(api());
+
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByRole('button', { name: /^Data Preparation/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^Model Training/i }));
+
+      expect(mockPush).toHaveBeenCalledWith('/prepare');
+      expect(mockPush).toHaveBeenCalledWith('/model');
+      expect(mockPush).not.toHaveBeenCalledWith('/model/test-dataset-123');
     });
   });
 

@@ -63,7 +63,7 @@ Additionally, publish a short **"What SheetPredict does not do yet"** section on
 ## 7. Launch surface (D3, D5)
 
 - Signup: **open, OAuth-only**, switched on only after #768 (backstops) and #769 AC1–AC3 (telemetry) are live in production. Invite mode remains available via `SIGNUP_MODE`.
-- Hidden at launch: recipes navigation (#738), A/B testing (#502), data-issues UI (#635).
+- Hidden at launch: recipes navigation (#738), A/B testing (#502). Removed: the data-issues UI (#635) and its backend routes (#1088).
 - Shown at launch: eight-stage workflow, leaderboard with baseline row, SHAP, version history, exports, endpoint, billing page with the ADR-003 table.
 
 ## 8. Pricing surface (for #475; numbers owned by ADR-003)
@@ -82,4 +82,4 @@ Not in the name. It names one feature: the **Narrative** — a generated, export
 | D2 Persona | Applied researcher primary; defend-the-number analyst secondary | 2026-09-18 |
 | D3 Signup | Open OAuth after #768/#769 | 2026-09-18 |
 | D4 Hostname | www.sheetpredict.app (prod, apex redirects) / dev.sheetpredict.app (staging) | 2026-10-02 |
-| D5 Hidden features | recipes, A/B, data-issues | 2026-09-18 |
+| D5 Hidden features | recipes, A/B (data-issues UI removed, #635) | 2026-09-18 |

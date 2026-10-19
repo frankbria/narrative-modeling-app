@@ -19,9 +19,7 @@ ROUTE_403 = {
 }
 
 #: Service functions that raise PermissionDeniedError, and why the caller may know.
-SERVICE_RAISES = {
-    ("feature_store_service.py", "_owned_for_change"): "the caller can read the feature (shared or public)",
-}
+SERVICE_RAISES: dict[tuple[str, str], str] = {}
 
 
 def _is_403(node: ast.AST) -> bool:

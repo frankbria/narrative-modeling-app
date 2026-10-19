@@ -94,7 +94,7 @@ class TestReadersOfARowStoredAsExcel:
         assert list(_parse_and_hash(_workbook(), row.file_type)[0].columns) == ["id", "color"]
 
     async def test_the_shared_loader(self, setup_database, tmp_path):
-        """feature selection and feature engineering read through it."""
+        """the transformation engine and EDA read through it."""
         from app.services.s3_service import _read_dataframe
 
         row = await self._stored_as_excel()
@@ -102,22 +102,6 @@ class TestReadersOfARowStoredAsExcel:
         path.write_bytes(_workbook())
 
         assert list(_read_dataframe(str(path), row.file_type, None).columns) == ["id", "color"]
-
-    async def test_the_feature_store(self, setup_database):
-        from unittest.mock import AsyncMock, patch
-
-        from app.services.feature_store_service import FeatureStoreService
-
-        meta = DatasetMetadata(
-            user_id="u", dataset_id="d1", filename="colors.xlsx", original_filename="colors.xlsx",
-            file_type="excel", file_path="datasets/u/colors.xlsx", s3_url="s3://test-bucket/datasets/u/colors.xlsx",
-            num_rows=2, num_columns=2,
-        )
-        with patch("app.services.feature_store_service.s3_service.download_file_bytes",
-                   new_callable=AsyncMock, return_value=_workbook()):
-            frame = await FeatureStoreService._load_dataset_frame(meta)
-
-        assert list(frame.columns) == ["id", "color"]
 
     async def test_data_processing(self, setup_database):
         """The explore page's reader, which knows a workbook as "excel"."""

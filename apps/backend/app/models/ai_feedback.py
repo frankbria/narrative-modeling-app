@@ -1,8 +1,7 @@
 """AI recommendation feedback persistence (issue #89).
 
 Stores user reactions to AI orchestration recommendations so the engine can make
-context-aware, personalized suggestions over time. Separate collection (mirrors
-how DataIssueRecord is separate from DatasetMetadata) so feedback can be queried
+context-aware, personalized suggestions over time. Separate collection so feedback can be queried
 across datasets per tool type.
 """
 

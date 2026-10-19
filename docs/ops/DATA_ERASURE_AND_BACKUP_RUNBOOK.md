@@ -50,7 +50,11 @@ mongosh "$MONGODB_URI" --eval '
    "ai_recommendation_feedback"].forEach(c =>
     print(c, db[c].countDocuments({dataset_id: "<DATASET_ID>"})))'
 ```
-Automated equivalent: `apps/backend/tests/test_integration/test_erasure_cascade.py`.
+`data_issues`, `feature_store`, `feature_versions` and `feature_collections` belong to features that
+were removed (#1088): no model maps them, so erasure reaches them by collection name
+(`_RETIRED_*` in `erasure_service.py`) and rows written before the removal are still erased.
+Automated equivalent: `apps/backend/tests/test_integration/test_erasure_cascade.py` and
+`test_erase_retired_collections.py`.
 
 ---
 
@@ -200,5 +204,5 @@ Atlas without API credentials instead of quietly counting them as passes.
   mechanism; the manifest records any residual failures.
 - `POST /users/me/erase` erases the user's **data** but keeps the account: the
   NextAuth user/account records, `Subscription` and `UsageRecord` stay (the account
-  remains billable). API keys, recipes, feature-store rows, product events and
+  remains billable). API keys, recipes, feature-store rows (a retired collection, swept by name), product events and
   batch jobs are deleted; shared recipes owned by others are anonymised, not deleted.

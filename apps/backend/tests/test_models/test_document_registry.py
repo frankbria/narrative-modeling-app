@@ -4,7 +4,7 @@ The registry (app/models/registry.py) is the single source of truth for
 database initialization. The app lifespan (app/main.py) and the test database
 fixture (tests/conftest.py) must both use it so the two can never drift —
 drift previously left VisualizationCache, TransformationConfig, RevisedData,
-SharedRecipe, and DataIssueRecord unregistered at app startup (issue #160).
+and SharedRecipe unregistered at app startup (issue #160).
 """
 
 import importlib

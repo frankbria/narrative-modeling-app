@@ -2,16 +2,14 @@
 Feature engineering for AutoML
 """
 
-import json
 import logging
 import re
 import warnings
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from pydantic import ValidationError as PydanticValidationError
 from sklearn.feature_selection import SelectKBest, f_classif, f_regression
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import (
@@ -21,24 +19,6 @@ from sklearn.preprocessing import (
     RobustScaler,
     StandardScaler,
 )
-
-from app.models.feature import (
-    ExpressionNode,
-    FunctionType,
-    NodeType,
-    OperationType,
-)
-from app.services.exceptions import (
-    UnsafeFeatureDefinitionError,
-    ValidationError,
-)
-from app.services.expression_evaluator import (
-    ExpressionError,
-    ExpressionEvaluator,
-)
-
-if TYPE_CHECKING:
-    from app.models.feature_store import StoredFeature
 
 logger = logging.getLogger(__name__)
 
@@ -117,110 +97,6 @@ def _is_row_counter(name: Any, s: pd.Series) -> bool:
 
 def _monotone_integers(s: pd.Series) -> bool:
     return bool((s % 1 == 0).all()) and (s.is_monotonic_increasing or s.is_monotonic_decreasing)
-
-
-def parse_feature_definition(definition_code: str | None) -> ExpressionNode:
-    """
-    Parse a Feature Store definition into a safe expression tree.
-
-    SECURITY (GH-132): ``definition_code`` must be a JSON-serialized
-    ExpressionNode tree. It is parsed and validated — NEVER executed.
-    Raw Python code (the legacy format) is rejected here, which makes
-    arbitrary file system, network, import, and system-command access
-    impossible by construction.
-
-    Args:
-        definition_code: JSON-serialized ExpressionNode tree
-
-    Returns:
-        Validated ExpressionNode root
-
-    Raises:
-        UnsafeFeatureDefinitionError: If the definition is not a valid
-            serialized expression tree (including legacy raw Python code)
-    """
-    try:
-        # RecursionError: pathologically deep JSON blows the parser's stack
-        # before any tree validation can run — treat it as an invalid
-        # definition (422), not a server error (500).
-        if not isinstance(definition_code, str):
-            raise TypeError("Feature definition must be a JSON string")
-        data = json.loads(definition_code)
-    except (json.JSONDecodeError, TypeError, RecursionError) as e:
-        raise UnsafeFeatureDefinitionError(
-            message=(
-                "Feature definition must be a JSON-serialized expression tree. "
-                "Raw code is not supported — recreate the feature with the "
-                "Visual Feature Builder."
-            )
-        ) from e
-
-    if not isinstance(data, dict):
-        raise UnsafeFeatureDefinitionError(
-            message="Feature definition must be a JSON object describing an expression tree"
-        )
-
-    try:
-        tree = ExpressionNode.model_validate(data)
-    except PydanticValidationError as e:
-        raise UnsafeFeatureDefinitionError(
-            message="Feature definition is not a valid expression tree",
-            details={"errors": [err["msg"] for err in e.errors()]},
-        ) from e
-    except RecursionError as e:
-        # Belt-and-braces: pydantic-core's internal recursion limit (~254)
-        # raises ValidationError long before the stack could overflow, so
-        # this branch is unreachable today — but correctness here must not
-        # depend on pydantic internals.
-        raise UnsafeFeatureDefinitionError(
-            message="Feature definition is not a valid expression tree",
-            details={"errors": ["expression tree is too deeply nested"]},
-        ) from e
-
-    _validate_tree_whitelist(tree)
-    return tree
-
-
-# NOTE: these whitelists must stay in sync with what ExpressionEvaluator
-# actually implements — a new OperationType/FunctionType variant that the
-# evaluator doesn't handle would pass save-time validation here but fail
-# at apply time.
-_ALLOWED_OPERATIONS = frozenset(op.value for op in OperationType)
-_ALLOWED_FUNCTIONS = frozenset(fn.value for fn in FunctionType)
-
-# Far deeper than any legitimate feature expression, far shallower than the
-# Python recursion limit — crafted deep trees get a clean 422, never a 500.
-_MAX_TREE_DEPTH = 50
-
-
-def _validate_tree_whitelist(node: ExpressionNode, _depth: int = 0) -> None:
-    """
-    Reject expression trees referencing operations/functions outside the
-    whitelist, so invalid definitions fail at save time rather than at apply
-    time (GH-132 review finding). Also bounds tree depth so recursive
-    traversal (here and in ExpressionEvaluator) can never overflow the stack.
-    """
-    if _depth > _MAX_TREE_DEPTH:
-        raise UnsafeFeatureDefinitionError(
-            message=(
-                f"Expression tree exceeds maximum allowed depth ({_MAX_TREE_DEPTH})"
-            ),
-            details={"node_id": node.node_id},
-        )
-    if node.node_type == NodeType.OPERATION:
-        if str(node.value).lower() not in _ALLOWED_OPERATIONS:
-            raise UnsafeFeatureDefinitionError(
-                message=f"Operation '{node.value}' is not allowed",
-                details={"node_id": node.node_id},
-            )
-    elif node.node_type == NodeType.FUNCTION:
-        if str(node.value).lower() not in _ALLOWED_FUNCTIONS:
-            raise UnsafeFeatureDefinitionError(
-                message=f"Function '{node.value}' is not allowed",
-                details={"node_id": node.node_id},
-            )
-    for child in node.children:
-        _validate_tree_whitelist(child, _depth + 1)
 
 
 @dataclass
@@ -1060,8 +936,7 @@ class FeatureEngineer:
         params: dict[str, Any]
     ) -> pd.DataFrame:
         """Apply generic transformation based on formula (limited support)"""
-        # Simplified implementation; complex formulas belong in expression
-        # trees evaluated by ExpressionEvaluator (see apply_stored_feature)
+        # Simplified implementation: formula-driven features are not evaluated.
         if len(input_cols) == 1:
             col = input_cols[0]
             # Simple copy with optional modification
@@ -1072,61 +947,3 @@ class FeatureEngineer:
             df[name] = df[col1] * df[col2]
 
         return df
-
-    async def apply_stored_feature(
-        self,
-        df: pd.DataFrame,
-        feature: 'StoredFeature'
-    ) -> pd.DataFrame:
-        """
-        Apply a stored feature definition to a dataframe.
-
-        SECURITY (GH-132): The definition is parsed as a serialized
-        expression tree and evaluated by the whitelist-based
-        ExpressionEvaluator. No eval() or exec() — user-provided
-        definitions cannot access the file system, network, modules,
-        or system commands.
-
-        Args:
-            df: Input dataframe
-            feature: StoredFeature instance from feature store
-
-        Returns:
-            New DataFrame with the feature column added (input is not mutated)
-
-        Raises:
-            UnsafeFeatureDefinitionError: If the definition is not a valid
-                serialized expression tree
-            ValidationError: If the expression cannot be evaluated on the
-                dataframe (e.g., missing columns)
-        """
-        expression_tree = parse_feature_definition(feature.definition_code)
-
-        evaluator = ExpressionEvaluator()
-        try:
-            series, warnings = evaluator.evaluate(
-                expression_tree, df, feature.output_column_name
-            )
-        except ExpressionError as e:
-            logger.error(
-                f"Error applying stored feature {feature.feature_id}: {e.message}"
-            )
-            raise ValidationError(
-                message=f"Failed to apply feature: {e.message}",
-                details={"feature_id": feature.feature_id, "node_id": e.node_id},
-            ) from e
-
-        for warning in warnings:
-            logger.warning(
-                f"Stored feature {feature.feature_id} warning: {warning}"
-            )
-
-        result_df = df.copy()
-        result_df[feature.output_column_name] = series
-
-        logger.info(
-            f"Applied stored feature {feature.feature_id} - "
-            f"created column: {feature.output_column_name}"
-        )
-
-        return result_df

@@ -1190,10 +1190,6 @@ class TestAiQuota:
             ("/api/v1/ai/analyze/{fid}",
              "app.services.mcp_integration.mcp_service.analyze_dataset"),
             ("/api/v1/ai/chat", "app.services.ai_chat.ai_chat_service.reply"),
-            ("/api/v1/datasets/ds-1/features/suggest",
-             "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
-            ("/api/v1/datasets/ds-1/features/suggest-more",
-             "app.services.feature_engineering_service.feature_engineering_service.suggest_features"),
             # orchestration: the 402 lands before the body is even validated
             ("/api/v1/ai/recommend-tools",
              "app.services.ai_orchestration_service.ai_orchestration_service.build_profile"),
@@ -1254,32 +1250,6 @@ class TestAiQuota:
         assert response.status_code == 200, response.text
         assert response.json()["partial"] is True
         assert await metering.usage_for(TEST_USER, "ai_calls") == 0
-
-    async def test_rule_based_suggestions_hand_the_unit_back(self, async_authorized_client, setup_database):
-        """The service reports whether a model call happened (`metadata.ai_used`); the route
-        keeps the unit only when it did."""
-        import pandas as pd
-
-        from app.schemas.feature_engineering import FeatureSuggestionResponse
-
-        def _response(ai_used: bool) -> FeatureSuggestionResponse:
-            return FeatureSuggestionResponse(
-                dataset_id="ds-1", suggestions=[], total_suggestions=0, metadata={"ai_used": ai_used}
-            )
-
-        url = "/api/v1/datasets/ds-1/features/suggest"
-        with patch("app.api.routes.feature_engineering._load_dataset_dataframe",
-                   new_callable=AsyncMock, return_value=pd.DataFrame({"a": [1, 2]})), \
-             patch("app.services.feature_engineering_service.feature_engineering_service.suggest_features",
-                   new_callable=AsyncMock) as suggest:
-            # the service says no model ran (AI off, no key, or breaker open) -> released
-            suggest.return_value = _response(ai_used=False)
-            assert (await async_authorized_client.post(url, json={})).status_code == 200
-            assert await metering.usage_for(TEST_USER, "ai_calls") == 0
-            # the service says the model ran -> the unit stays charged
-            suggest.return_value = _response(ai_used=True)
-            assert (await async_authorized_client.post(url, json={})).status_code == 200
-            assert await metering.usage_for(TEST_USER, "ai_calls") == 1
 
     @pytest.mark.parametrize("generated_by, charged", [("fallback", 0), ("openai", 1)])
     async def test_report_card_is_charged_only_when_the_model_wrote_it(
