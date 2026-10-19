@@ -97,9 +97,6 @@ class OrchestrationProfile:
     high_cardinality_columns: list[str] = field(default_factory=list)
     constant_columns: list[str] = field(default_factory=list)
     columns_with_missing: dict[str, float] = field(default_factory=dict)
-    detected_issue_types: list[str] = field(default_factory=list)
-    has_duplicates: bool = False
-    has_outliers: bool = False
     is_processed: bool = False
     # True when the dataset exists but has thin/missing profiling metadata.
     partial: bool = False
@@ -116,8 +113,6 @@ class OrchestrationProfile:
             parts.append(f"{len(self.columns_with_missing)} column(s) with missing values")
         if self.high_cardinality_columns:
             parts.append(f"{len(self.high_cardinality_columns)} high-cardinality column(s)")
-        if self.detected_issue_types:
-            parts.append("detected issues: " + ", ".join(sorted(set(self.detected_issue_types))))
         return "; ".join(parts)
 
 
@@ -279,114 +274,7 @@ class AIOrchestrationService:
         return self._exploration_recs(profile)
 
     def _cleaning_recs(self, profile: OrchestrationProfile) -> list[ToolRecommendation]:
-        recs: list[ToolRecommendation] = []
-        if profile.has_duplicates:
-            recs.append(
-                self._rec(
-                    TransformationType.REMOVE_DUPLICATES.value,
-                    priority=9,
-                    confidence=0.9,
-                    explanation="Duplicate rows were detected; removing them prevents "
-                    "double-counting and leakage between train and test splits.",
-                    pros=["Cleaner data", "Avoids inflated metrics"],
-                    cons=["Irreversible row loss"],
-                    estimated_impact="Removes repeated records",
-                )
-            )
-        if profile.columns_with_missing:
-            # Split by missing rate so lightly-missing columns are imputed, not
-            # dropped alongside the mostly-empty ones (codex review).
-            drop_cols = sorted(
-                c for c, frac in profile.columns_with_missing.items() if frac > 0.5
-            )
-            impute_cols = sorted(
-                c for c, frac in profile.columns_with_missing.items() if frac <= 0.5
-            )
-            if drop_cols:
-                # Advisory, not an executable drop_missing: that transform drops
-                # ROWS (and is rejected past 50% row loss), which would nuke the
-                # dataset for a mostly-empty column. Removing the column is a
-                # manual/column-level step, so flag it rather than emit a bogus
-                # executable recommendation (codex).
-                recs.append(
-                    self._rec(
-                        "drop_columns",
-                        priority=8,
-                        confidence=0.7,
-                        explanation=f"{len(drop_cols)} column(s) are over 50% empty; imputing "
-                        "that much fabricates signal, so consider removing these columns.",
-                        parameters={"columns": drop_cols},
-                        pros=["Avoids fabricated values"],
-                        cons=["Manual column removal (not an automated row-drop)"],
-                        estimated_impact="Drops mostly-empty columns",
-                    )
-                )
-            # Split by type: median only works on numeric columns; categorical/text
-            # need mode, else FillMissingTransformation silently skips them (codex).
-            numeric_set = set(profile.numeric_columns)
-            numeric_impute = [c for c in impute_cols if c in numeric_set]
-            other_impute = [c for c in impute_cols if c not in numeric_set]
-            if numeric_impute:
-                recs.append(
-                    self._rec(
-                        # Executable contract: engine maps FILL_MISSING (not IMPUTE_*).
-                        TransformationType.FILL_MISSING.value,
-                        priority=8,
-                        confidence=0.8,
-                        explanation=f"{len(numeric_impute)} numeric column(s) have some missing "
-                        "values; median imputation fills gaps robustly without dropping rows.",
-                        parameters={"columns": numeric_impute, "method": "median"},
-                        pros=["Keeps all rows", "Robust to skew/outliers"],
-                        cons=["Reduces variance slightly"],
-                        estimated_impact="Fills missing numeric values",
-                    )
-                )
-            if other_impute:
-                recs.append(
-                    self._rec(
-                        TransformationType.FILL_MISSING.value,
-                        priority=7,
-                        confidence=0.75,
-                        explanation=f"{len(other_impute)} categorical/text column(s) have some "
-                        "missing values; filling with the most frequent value keeps all rows.",
-                        parameters={"columns": other_impute, "method": "mode"},
-                        pros=["Keeps all rows", "Works on non-numeric columns"],
-                        cons=["Over-represents the most common category"],
-                        estimated_impact="Fills missing categorical values",
-                    )
-                )
-        if any(
-            t in ("type_mismatch", "numeric_string_mismatch")
-            for t in profile.detected_issue_types
-        ):
-            recs.append(
-                self._rec(
-                    TransformationType.TO_NUMERIC.value,
-                    priority=7,
-                    confidence=0.75,
-                    explanation="Numeric values are stored as text; converting them lets the "
-                    "model treat them as numbers instead of categories.",
-                    pros=["Correct dtypes"],
-                    cons=["Unparseable values become missing"],
-                    estimated_impact="Fixes numeric-as-text columns",
-                )
-            )
-        if any(
-            t in ("whitespace_issues", "inconsistent_casing")
-            for t in profile.detected_issue_types
-        ):
-            recs.append(
-                self._rec(
-                    TransformationType.TRIM_WHITESPACE.value,
-                    priority=5,
-                    confidence=0.7,
-                    explanation="Inconsistent whitespace/casing was detected; normalizing it "
-                    "merges values that should be identical.",
-                    pros=["Consolidates categories"],
-                    cons=[],
-                    estimated_impact="Normalizes text values",
-                )
-            )
+        recs = self._missing_value_recs(profile)
         if not recs:
             recs.append(
                 self._rec(
@@ -401,6 +289,80 @@ class AIOrchestrationService:
                 )
             )
         return recs
+
+    def _missing_value_recs(self, profile: OrchestrationProfile) -> list[ToolRecommendation]:
+        recs: list[ToolRecommendation] = []
+        if not profile.columns_with_missing:
+            return recs
+        drop_cols, impute_cols = self._split_by_missing_rate(profile.columns_with_missing)
+        numeric_impute, other_impute = self._split_by_type(impute_cols, set(profile.numeric_columns))
+        if drop_cols:
+            recs.append(self._drop_columns_rec(drop_cols))
+        if numeric_impute:
+            recs.append(self._numeric_impute_rec(numeric_impute))
+        if other_impute:
+            recs.append(self._other_impute_rec(other_impute))
+        return recs
+
+    @staticmethod
+    def _split_by_missing_rate(missing: dict[str, float]) -> tuple[list[str], list[str]]:
+        # Lightly-missing columns are imputed, not dropped alongside the
+        # mostly-empty ones (codex review).
+        return (
+            sorted(c for c, frac in missing.items() if frac > 0.5),
+            sorted(c for c, frac in missing.items() if frac <= 0.5),
+        )
+
+    @staticmethod
+    def _split_by_type(columns: list[str], numeric: set[str]) -> tuple[list[str], list[str]]:
+        # Median only works on numeric columns; categorical/text need mode, else
+        # FillMissingTransformation silently skips them (codex).
+        return [c for c in columns if c in numeric], [c for c in columns if c not in numeric]
+
+    def _drop_columns_rec(self, drop_cols: list[str]) -> ToolRecommendation:
+        # Advisory, not an executable drop_missing: that transform drops
+        # ROWS (and is rejected past 50% row loss), which would nuke the
+        # dataset for a mostly-empty column. Removing the column is a
+        # manual/column-level step, so flag it rather than emit a bogus
+        # executable recommendation (codex).
+        return self._rec(
+            "drop_columns",
+            priority=8,
+            confidence=0.7,
+            explanation=f"{len(drop_cols)} column(s) are over 50% empty; imputing "
+            "that much fabricates signal, so consider removing these columns.",
+            parameters={"columns": drop_cols},
+            pros=["Avoids fabricated values"],
+            cons=["Manual column removal (not an automated row-drop)"],
+            estimated_impact="Drops mostly-empty columns",
+        )
+
+    def _numeric_impute_rec(self, columns: list[str]) -> ToolRecommendation:
+        return self._rec(
+            # Executable contract: engine maps FILL_MISSING (not IMPUTE_*).
+            TransformationType.FILL_MISSING.value,
+            priority=8,
+            confidence=0.8,
+            explanation=f"{len(columns)} numeric column(s) have some missing "
+            "values; median imputation fills gaps robustly without dropping rows.",
+            parameters={"columns": columns, "method": "median"},
+            pros=["Keeps all rows", "Robust to skew/outliers"],
+            cons=["Reduces variance slightly"],
+            estimated_impact="Fills missing numeric values",
+        )
+
+    def _other_impute_rec(self, columns: list[str]) -> ToolRecommendation:
+        return self._rec(
+            TransformationType.FILL_MISSING.value,
+            priority=7,
+            confidence=0.75,
+            explanation=f"{len(columns)} categorical/text column(s) have some "
+            "missing values; filling with the most frequent value keeps all rows.",
+            parameters={"columns": columns, "method": "mode"},
+            pros=["Keeps all rows", "Works on non-numeric columns"],
+            cons=["Over-represents the most common category"],
+            estimated_impact="Fills missing categorical values",
+        )
 
     def _feature_recs(self, profile: OrchestrationProfile) -> list[ToolRecommendation]:
         recs: list[ToolRecommendation] = []
@@ -555,7 +517,7 @@ class AIOrchestrationService:
                 estimated_impact="Surfaces data shape issues",
             ),
         ]
-        if profile.columns_with_missing or profile.detected_issue_types:
+        if profile.columns_with_missing:
             recs.append(
                 self._rec(
                     "missing_value_report",
@@ -1048,106 +1010,19 @@ class AIOrchestrationService:
             TransformationType.FILL_MISSING.value,
             TransformationType.IMPUTE.value,
         ):
-            # 'method' is the executable param FillMissingTransformation reads
-            # (not 'strategy'). median/mean apply only to numeric columns, so if
-            # any requested column is non-numeric, recommend mode — else those
-            # columns are silently skipped (codex). Without requested columns,
-            # default to median (numeric assumption) and offer mode/mean.
-            requested = current.get("columns") or []
-            numeric_set = set(profile.numeric_columns)
-            any_non_numeric = bool(requested) and any(c not in numeric_set for c in requested)
-            if any_non_numeric:
-                primary, alt = "mode", "median"
-                explanation = (
-                    "The selected columns include non-numeric fields, so mode (most frequent "
-                    "value) fills them — mean/median apply only to numeric columns."
-                )
-                alt_explanation = "Use median for the numeric columns in your selection."
-            else:
-                primary, alt = "median", "mode"
-                explanation = (
-                    "Median imputation resists outliers and skew better than the mean, the "
-                    "safer default for numeric columns when distributions are unknown."
-                )
-                alt_explanation = "Use mode for categorical columns or mean for symmetric numeric data."
-            return ParameterOptimizationResponse(
-                dataset_id=profile.dataset_id,
-                tool_type=tool,
-                optimized_parameters={**current, "method": primary},
-                expected_improvement="Imputation method matched to the selected columns' types",
-                explanation=explanation,
-                alternatives=[
-                    ParameterAlternative(
-                        parameters={**current, "method": alt},
-                        explanation=alt_explanation,
-                    )
-                ],
-                partial=profile.partial,
-            )
-
+            return self._optimize_imputation(profile, tool, current)
         if tool in (
             TransformationType.SCALE.value,
             TransformationType.STANDARDIZE.value,
             TransformationType.NORMALIZE.value,
         ):
-            method = "robust" if profile.has_outliers else "standard"
-            explanation = (
-                "Outliers were detected, so a robust scaler (median/IQR) is less distorted "
-                "than standardization."
-                if profile.has_outliers
-                else "No outliers detected, so standardization (zero mean, unit variance) is "
-                "the conventional choice."
-            )
-            return ParameterOptimizationResponse(
-                dataset_id=profile.dataset_id,
-                tool_type=tool,
-                optimized_parameters={**current, "method": method},
-                expected_improvement="Scaling matched to the data's outlier profile",
-                explanation=explanation,
-                alternatives=[
-                    ParameterAlternative(
-                        parameters={**current, "method": "minmax"},
-                        explanation="Min-max scaling to [0,1] when you need bounded features.",
-                    )
-                ],
-                partial=profile.partial,
-            )
-
+            return self._optimize_scaling(profile, tool, current)
         if tool in (
             TransformationType.ONE_HOT_ENCODE.value,
             TransformationType.LABEL_ENCODE.value,
             TransformationType.ENCODE.value,
         ):
-            # Base the choice on the requested columns when supplied, not the
-            # whole dataset — else a low-card one-hot request gets flipped to
-            # label just because some unrelated column is high-card (codex).
-            requested = current.get("columns") or []
-            high_card_set = set(profile.high_cardinality_columns)
-            high_card = (
-                any(c in high_card_set for c in requested)
-                if requested
-                else bool(profile.high_cardinality_columns)
-            )
-            chosen = "label" if high_card else "onehot"
-            return ParameterOptimizationResponse(
-                dataset_id=profile.dataset_id,
-                tool_type=tool,
-                optimized_parameters={**current, "method": chosen, "max_onehot_cardinality": 20},
-                expected_improvement="Encoding matched to column cardinality",
-                explanation=(
-                    "High-cardinality columns are present, so label encoding avoids a column "
-                    "explosion."
-                    if high_card
-                    else "Cardinality is low, so one-hot encoding avoids implying a false order."
-                ),
-                alternatives=[
-                    ParameterAlternative(
-                        parameters={**current, "method": "onehot" if chosen == "label" else "label"},
-                        explanation="Switch encoding if your model handles the trade-off better.",
-                    )
-                ],
-                partial=profile.partial,
-            )
+            return self._optimize_encoding(profile, tool, current)
 
         # Unknown tool: echo current params with guidance rather than failing.
         return ParameterOptimizationResponse(
@@ -1157,6 +1032,102 @@ class AIOrchestrationService:
             expected_improvement="",
             explanation=f"No specific parameter heuristics for '{tool}'. Current parameters "
             "are kept as-is.",
+            partial=profile.partial,
+        )
+
+    @staticmethod
+    def _optimize_imputation(
+        profile: OrchestrationProfile, tool: str, current: dict[str, Any]
+    ) -> ParameterOptimizationResponse:
+        # 'method' is the executable param FillMissingTransformation reads
+        # (not 'strategy'). median/mean apply only to numeric columns, so if
+        # any requested column is non-numeric, recommend mode — else those
+        # columns are silently skipped (codex). Without requested columns,
+        # default to median (numeric assumption) and offer mode/mean.
+        requested = current.get("columns") or []
+        numeric_set = set(profile.numeric_columns)
+        any_non_numeric = bool(requested) and any(c not in numeric_set for c in requested)
+        if any_non_numeric:
+            primary, alt = "mode", "median"
+            explanation = (
+                "The selected columns include non-numeric fields, so mode (most frequent "
+                "value) fills them — mean/median apply only to numeric columns."
+            )
+            alt_explanation = "Use median for the numeric columns in your selection."
+        else:
+            primary, alt = "median", "mode"
+            explanation = (
+                "Median imputation resists outliers and skew better than the mean, the "
+                "safer default for numeric columns when distributions are unknown."
+            )
+            alt_explanation = "Use mode for categorical columns or mean for symmetric numeric data."
+        return ParameterOptimizationResponse(
+            dataset_id=profile.dataset_id,
+            tool_type=tool,
+            optimized_parameters={**current, "method": primary},
+            expected_improvement="Imputation method matched to the selected columns' types",
+            explanation=explanation,
+            alternatives=[
+                ParameterAlternative(
+                    parameters={**current, "method": alt},
+                    explanation=alt_explanation,
+                )
+            ],
+            partial=profile.partial,
+        )
+
+    @staticmethod
+    def _optimize_scaling(
+        profile: OrchestrationProfile, tool: str, current: dict[str, Any]
+    ) -> ParameterOptimizationResponse:
+        return ParameterOptimizationResponse(
+            dataset_id=profile.dataset_id,
+            tool_type=tool,
+            optimized_parameters={**current, "method": "standard"},
+            expected_improvement="Scaling to zero mean and unit variance",
+            explanation="Standardization (zero mean, unit variance) is the conventional choice.",
+            alternatives=[
+                ParameterAlternative(
+                    parameters={**current, "method": "minmax"},
+                    explanation="Min-max scaling to [0,1] when you need bounded features.",
+                )
+            ],
+            partial=profile.partial,
+        )
+
+    @staticmethod
+    def _needs_label_encoding(profile: OrchestrationProfile, current: dict[str, Any]) -> bool:
+        # Base the choice on the requested columns when supplied, not the
+        # whole dataset — else a low-card one-hot request gets flipped to
+        # label just because some unrelated column is high-card (codex).
+        requested = current.get("columns") or []
+        high_card_set = set(profile.high_cardinality_columns)
+        if requested:
+            return any(c in high_card_set for c in requested)
+        return bool(profile.high_cardinality_columns)
+
+    def _optimize_encoding(
+        self, profile: OrchestrationProfile, tool: str, current: dict[str, Any]
+    ) -> ParameterOptimizationResponse:
+        high_card = self._needs_label_encoding(profile, current)
+        chosen = "label" if high_card else "onehot"
+        return ParameterOptimizationResponse(
+            dataset_id=profile.dataset_id,
+            tool_type=tool,
+            optimized_parameters={**current, "method": chosen, "max_onehot_cardinality": 20},
+            expected_improvement="Encoding matched to column cardinality",
+            explanation=(
+                "High-cardinality columns are present, so label encoding avoids a column "
+                "explosion."
+                if high_card
+                else "Cardinality is low, so one-hot encoding avoids implying a false order."
+            ),
+            alternatives=[
+                ParameterAlternative(
+                    parameters={**current, "method": "onehot" if chosen == "label" else "label"},
+                    explanation="Switch encoding if your model handles the trade-off better.",
+                )
+            ],
             partial=profile.partial,
         )
 

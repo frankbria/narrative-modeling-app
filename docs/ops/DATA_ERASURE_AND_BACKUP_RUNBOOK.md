@@ -50,8 +50,8 @@ mongosh "$MONGODB_URI" --eval '
    "ai_recommendation_feedback"].forEach(c =>
     print(c, db[c].countDocuments({dataset_id: "<DATASET_ID>"})))'
 ```
-`data_issues`, `feature_store`, `feature_versions` and `feature_collections` belong to features that
-were removed (#1088): no model maps them, so erasure reaches them by collection name
+`data_issues`, `feature_definitions`, `feature_store`, `feature_versions` and `feature_collections`
+belong to features that were removed (#1088, #1103): no model maps them, so erasure reaches them by collection name
 (`_RETIRED_*` in `erasure_service.py`) and rows written before the removal are still erased.
 Automated equivalent: `apps/backend/tests/test_integration/test_erasure_cascade.py` and
 `test_erase_retired_collections.py`.

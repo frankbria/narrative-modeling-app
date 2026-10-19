@@ -16,7 +16,6 @@ from app.models.column_stats import ColumnStats
 from app.models.dataset import DatasetMetadata
 from app.models.dataset_lease import DatasetLease
 from app.models.erasure_audit import ErasureAuditLog
-from app.models.feature import FeatureDefinition
 from app.models.feedback import Feedback
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
@@ -52,7 +51,6 @@ DOCUMENT_MODELS = [
     DatasetMetadata,
     DatasetVersion,
     ErasureAuditLog,
-    FeatureDefinition,
     Feedback,
     MLModel,
     ModelConfig,

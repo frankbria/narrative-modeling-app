@@ -60,7 +60,6 @@ from app.api.routes import (
     column_stats,
     data_processing,
     datasets,
-    features,
     feedback,
     health,
     model_export,
@@ -396,11 +395,6 @@ app.include_router(
     datasets.router,
     prefix=f"{settings.API_V1_STR}",
     tags=["datasets"],
-)
-app.include_router(
-    features.router,
-    prefix=f"{settings.API_V1_STR}",
-    tags=["feature-builder"],
 )
 app.include_router(
     workflows.router,

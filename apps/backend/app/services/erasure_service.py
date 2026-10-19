@@ -30,7 +30,6 @@ from app.models.bulk_transformation import BulkTransformationJob
 from app.models.column_stats import ColumnStats
 from app.models.dataset import DatasetMetadata
 from app.models.erasure_audit import ErasureAuditLog
-from app.models.feature import FeatureDefinition
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
 from app.models.plot import Plot
@@ -57,7 +56,6 @@ _STRING_KEYED_MODELS = [
     TransformationConfig,
     DatasetVersion,
     TransformationLineage,
-    FeatureDefinition,
     WorkflowState,
     BulkTransformationJob,
     ModelConfig,
@@ -66,10 +64,10 @@ _STRING_KEYED_MODELS = [
 ]
 
 # Collections no model maps to any more: the features that wrote them were removed
-# (data issues #635, feature store #738, #1088). Raw names, so rows written before the
+# (data issues #635, feature store #738, feature definitions #1103). Raw names, so rows written before the
 # removal are still erased with their owner.
-_RETIRED_DATASET_KEYED = ("data_issues",)
-_RETIRED_USER_KEYED = ("data_issues", "feature_store", "feature_collections")
+_RETIRED_DATASET_KEYED = ("data_issues", "feature_definitions")
+_RETIRED_USER_KEYED = ("data_issues", "feature_definitions", "feature_store", "feature_collections")
 # Feature-store rows other tenants were granted access to.
 _RETIRED_ACL = ("feature_store", "feature_collections")
 
