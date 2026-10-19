@@ -42,7 +42,6 @@ describe('middleware (deny-by-default)', () => {
     '/recipes',
     '/review',
     '/dashboard',
-    '/', // previously the only implicitly-covered root
     '/some-future-page', // proves new pages are protected automatically
     '/legality', // the /legal public prefix must not leak onto a lookalike path
     '/legal-review',
@@ -99,6 +98,28 @@ describe('middleware (deny-by-default)', () => {
     expect(res.headers.get('x-middleware-rewrite')).toBeNull()
     expect(mockGetToken).not.toHaveBeenCalled()
   })
+
+  // Issue #766: the landing page, and the two files a crawler fetches before it
+  // decides anything. /robots.txt and /sitemap.xml are not excluded by the
+  // matcher's extension list, so without an entry they redirect to sign-in.
+  it.each(['/', '/robots.txt', '/sitemap.xml'])(
+    'always allows the public page %s (without checking a token)',
+    async (pathname) => {
+      const res = await middleware(mockRequest(pathname))
+      expect(res.status).not.toBe(307)
+      expect(res.headers.get('x-middleware-rewrite')).toBeNull()
+      expect(mockGetToken).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['/robots.txtx', '/sitemap.xml/extra', '/sitemap'])(
+    'keeps the lookalike %s behind the session wall',
+    async (pathname) => {
+      mockGetToken.mockResolvedValue(null)
+      const res = await middleware(mockRequest(pathname))
+      expect(res.status).toBe(307)
+    },
+  )
 
   it('does not redirect API routes (they self-guard with 401)', async () => {
     const res = await middleware(mockRequest('/api/chat', { method: 'POST' }))

@@ -7,14 +7,6 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 
-class ValidationRule(BaseModel):
-    """A single validation rule"""
-    rule_type: str
-    parameters: dict[str, Any]
-    error_message: str
-    severity: str = "error"  # error, warning, info
-
-
 class ValidationResult(BaseModel):
     """Result of validation"""
     is_valid: bool

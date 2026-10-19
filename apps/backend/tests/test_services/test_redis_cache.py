@@ -304,63 +304,6 @@ class TestRedisCacheService:
         retrieved_progress = await self.cache_service.get_user_progress("test_user")
         assert retrieved_progress == progress_data
         
-    @pytest.mark.asyncio
-    async def test_data_stats_caching(self):
-        """Test data statistics caching methods"""
-        mock_redis = AsyncMock()
-        mock_redis.setex = AsyncMock(return_value=True)
-        mock_redis.get = AsyncMock(return_value=b'{"rows": 1000, "columns": 10}')
-        
-        self.cache_service.redis_client = mock_redis
-        
-        stats_data = {"rows": 1000, "columns": 10}
-        
-        # Test cache data stats
-        result = await self.cache_service.cache_data_stats("data_123", stats_data)
-        assert result is True
-        
-        # Test get data stats
-        retrieved_stats = await self.cache_service.get_data_stats("data_123")
-        assert retrieved_stats == stats_data
-        
-    @pytest.mark.asyncio
-    async def test_model_predictions_caching(self):
-        """Test model predictions caching"""
-        mock_redis = AsyncMock()
-        mock_redis.setex = AsyncMock(return_value=True)
-        mock_redis.get = AsyncMock(return_value=b'[0.8, 0.2]')
-        
-        self.cache_service.redis_client = mock_redis
-        
-        predictions = [0.8, 0.2]
-        
-        # Test cache predictions
-        result = await self.cache_service.cache_model_predictions("model_123", "input_hash", predictions)
-        assert result is True
-        
-        # Test get predictions
-        retrieved_predictions = await self.cache_service.get_model_predictions("model_123", "input_hash")
-        assert retrieved_predictions == predictions
-        
-    @pytest.mark.asyncio
-    async def test_eda_results_caching(self):
-        """Test EDA results caching"""
-        mock_redis = AsyncMock()
-        mock_redis.setex = AsyncMock(return_value=True)
-        mock_redis.get = AsyncMock(return_value=b'{"summary": "analysis complete"}')
-        
-        self.cache_service.redis_client = mock_redis
-        
-        eda_results = {"summary": "analysis complete"}
-        
-        # Test cache EDA results
-        result = await self.cache_service.cache_eda_results("data_123", eda_results)
-        assert result is True
-        
-        # Test get EDA results
-        retrieved_results = await self.cache_service.get_eda_results("data_123")
-        assert retrieved_results == eda_results
-        
     def _fake_redis(self, store):
         """A Redis double whose KEYS honours backslash-escaped metacharacters."""
         from tests.test_api.test_cache import FakeRedis

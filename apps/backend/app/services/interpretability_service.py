@@ -342,12 +342,12 @@ class InterpretabilityService:
     def _class_index(base: Any, prediction: Any, n_classes: int) -> int:
         """Resolve the class axis index for the predicted class.
 
-        Falls back to the positive class (index 1) for binary, else 0.
+        Falls back to index 1 (the positive class for binary) when there are
+        two or more classes, else 0.
         """
         classes_attr = getattr(base, "classes_", None)
         classes = list(classes_attr) if classes_attr is not None else []
         if prediction is not None and prediction in classes:
             return classes.index(prediction)
-        # Default to the positive class for binary; index 0 only if somehow
-        # called with a single column.
+        # Index 0 only if somehow called with a single column.
         return 1 if n_classes >= 2 else 0

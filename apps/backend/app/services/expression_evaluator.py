@@ -28,18 +28,8 @@ class ExpressionError(Exception):
         super().__init__(message)
 
 
-class TypeMismatchError(ExpressionError):
-    """Raised when types are incompatible for an operation."""
-    pass
-
-
 class ColumnNotFoundError(ExpressionError):
     """Raised when a referenced column doesn't exist."""
-    pass
-
-
-class DivisionByZeroWarning(ExpressionError):
-    """Warning for potential division by zero."""
     pass
 
 

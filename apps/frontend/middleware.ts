@@ -16,7 +16,9 @@ import { isAdminEmail } from "@/lib/admin-allowlist";
 // forged or stale cookie still fails signature/expiry inside decode.
 const SECURE_COOKIE_VARIANTS = [true, false] as const;
 
-const PUBLIC_PATHS = new Set(['/pricing']);
+// Exact paths only. `/robots.txt` and `/sitemap.xml` are here because the matcher
+// excludes by file extension and `.txt`/`.xml` are not in its list.
+const PUBLIC_PATHS = new Set(['/', '/pricing', '/robots.txt', '/sitemap.xml']);
 
 async function readSessionToken(request: NextRequest) {
   const secret = process.env.NEXTAUTH_SECRET;
@@ -50,9 +52,10 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Public marketing pages (issue #475): a prospective customer reads the price
-  // before they have an account. An EXACT-path allowlist, not a prefix — a prefix
-  // makes every future file under it public by construction (the /legal/ caveat
+  // Public marketing pages (issues #475, #766): a prospective customer reads the
+  // landing page and the price before they have an account; `/` sends a signed-in
+  // user to the dashboard itself (app/page.tsx). An EXACT-path allowlist, not a
+  // prefix — a prefix makes every future file under it public by construction (the /legal/ caveat
   // above), so /pricingx and /pricing/anything stay behind the session wall.
   if (PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();

@@ -115,7 +115,7 @@ async def get_current_user_id(
     _admit_signup(payload)
     return payload["sub"]
 
-# For backward compatibility during migration
+# Best-effort caller id for RateLimitMiddleware's per-user bucket.
 async def get_current_user_id_optional(
     authorization: str | None = Header(None)
 ) -> str | None:

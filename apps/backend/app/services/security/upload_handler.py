@@ -462,11 +462,6 @@ class RateLimiter:
         request_count = len(self.request_times.get(user_id, []))
         return request_count < self.max_requests_per_minute
     
-    def check_concurrent_limit(self, user_id: str) -> bool:
-        """Check if user can start another upload"""
-        active_count = self.active_uploads.get(user_id, 0)
-        return active_count < self.max_concurrent_uploads
-    
     def record_request(self, user_id: str):
         """Record a new request"""
         if user_id not in self.request_times:
