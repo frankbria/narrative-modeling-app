@@ -45,23 +45,36 @@ function listOf(data: unknown, key: string): unknown[] {
   return items;
 }
 
-async function fetchList(key: string): Promise<unknown[]> {
+async function getJson(path: string, what: string): Promise<unknown> {
   const token = await getAuthToken();
-  const response = await fetch(`${API_URL}/${key}?page=1&limit=5`, {
+  const response = await fetch(`${API_URL}/${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${key}`);
+    throw new Error(`Failed to fetch ${what}`);
   }
-  return listOf(await response.json(), key);
+  return response.json();
 }
 
 async function fetchDatasets() {
-  return (await fetchList('datasets')) as DatasetItem[];
+  return listOf(await getJson('datasets?page=1&limit=5', 'datasets'), 'datasets') as DatasetItem[];
 }
 
+// One row of `GET /ml/` (`ModelInfo`), the trained-model surface (#1069).
+type TrainedModel = Omit<ModelItem, 'status'> & { is_deployed: boolean };
+
+function modelItem(model: TrainedModel): ModelItem {
+  const { model_id, name, algorithm, test_score, created_at } = model;
+  return { model_id, name, algorithm, test_score, created_at, status: model.is_deployed ? 'deployed' : 'trained' };
+}
+
+// `/ml/` answers a bare list, newest first.
 async function fetchModels() {
-  return (await fetchList('models')) as ModelItem[];
+  const body = await getJson('ml/', 'models');
+  if (!Array.isArray(body)) {
+    throw new Error('Invalid models format: expected array');
+  }
+  return (body as TrainedModel[]).slice(0, 5).map(modelItem);
 }
 
 function isDeployed(model: ModelItem): boolean {

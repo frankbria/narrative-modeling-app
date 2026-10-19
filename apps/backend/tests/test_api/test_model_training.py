@@ -235,6 +235,7 @@ class TestModelTrainingEndpoints:
         mock_model.created_at = datetime.now(UTC)
         mock_model.last_used_at = None
         mock_model.is_active = True
+        mock_model.is_deployed = False
 
         # Mock model listing
         with patch(

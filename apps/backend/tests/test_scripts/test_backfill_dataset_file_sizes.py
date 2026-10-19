@@ -90,10 +90,11 @@ async def test_a_second_run_finds_nothing_left(setup_database):
 
 async def _run(monkeypatch, capsys, *argv: str) -> tuple[int, str]:
     """The script's own entry point, against the test database the suite is on."""
-    import os
+    from app.config import settings
 
     monkeypatch.setattr("sys.argv", ["backfill_dataset_file_sizes.py", *argv])
-    monkeypatch.setenv("MONGODB_URI", os.environ["TEST_MONGODB_URI"])
+    # The setting, not the environment: a local run may set it only through .env.
+    monkeypatch.setenv("MONGODB_URI", settings.TEST_MONGODB_URI)
     monkeypatch.setenv("MONGODB_DB", UserData.get_motor_collection().database.name)
     status = await _load().main()
     return status, capsys.readouterr().out.strip()

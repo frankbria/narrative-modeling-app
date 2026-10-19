@@ -315,6 +315,7 @@ class ModelInfo(BaseModel):
     created_at: datetime
     last_used_at: datetime | None
     is_active: bool
+    is_deployed: bool
 
 
 class PredictRequest(BaseModel):
@@ -1336,6 +1337,7 @@ async def list_models(
             created_at=model.created_at,
             last_used_at=model.last_used_at,
             is_active=model.is_active,
+            is_deployed=model.is_deployed,
         )
         for model in models
     ]
