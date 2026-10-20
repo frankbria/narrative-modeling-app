@@ -33,7 +33,7 @@ class DatasetUploadResponse(BaseModel):
         "populate_by_name": True
     }
 
-    # PII report (for backward compatibility)
+    # The detector's report, the /upload/secure shape
     pii_report: dict[str, Any] | None = None
 
     # Legacy fields (for backward compatibility)

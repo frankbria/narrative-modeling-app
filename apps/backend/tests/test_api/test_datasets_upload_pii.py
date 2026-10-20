@@ -72,6 +72,7 @@ async def test_a_name_only_match_is_stored_with_its_report_and_listed_as_pii(
     response = await _upload(async_authorized_client, NAME_ONLY_CSV)
 
     assert response.status_code == 200, response.text
+    assert response.json()["pii_report"]["risk_level"] == "medium"  # the caller learns it at once
     dataset = await DatasetMetadata.find_one(
         DatasetMetadata.dataset_id == response.json()["dataset_id"]
     )

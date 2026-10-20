@@ -272,7 +272,8 @@ async def upload_dataset(
             headers=dataset.columns,
             s3_url=dataset.s3_url,
             file_size=dataset.file_size,
-            file_type=dataset.file_type
+            file_type=dataset.file_type,
+            pii_report=pii_report.detection_details,
         )
 
     except HTTPException:
