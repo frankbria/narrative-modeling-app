@@ -22,7 +22,7 @@ from fastapi import (
 from app.auth.nextauth_auth import get_current_user_id
 from app.billing.enforcement import quota
 from app.billing.storage import enforce_storage_ceiling
-from app.models.dataset import DatasetMetadata
+from app.models.dataset import DatasetMetadata, PIIReport
 from app.schemas.dataset import (
     DatasetDeleteResponse,
     DatasetDetailResponse,
@@ -44,6 +44,7 @@ from app.services.data_processing.data_processor import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.erasure_service import dataset_erasure_service
+from app.services.security.pii_detector import PIIDetector
 from app.services.versioning_service import versioning_service
 from app.utils.s3 import dataset_s3_key, upload_file_to_s3
 from app.utils.upload_limits import read_upload_capped
@@ -177,6 +178,29 @@ def _stored_upload(user_id: str, filename: str, content: bytes, content_type: st
     return file_path, s3_url
 
 
+def _scanned_for_pii(processed: ProcessedData) -> PIIReport:
+    """The upload's PII report, from the same detector `/upload/secure` runs (#1124).
+
+    High risk (matching values) is refused with a 400 before the S3 put: this route has
+    no confirmation gate, and `/upload/secure` + `/confirm-pii-upload` is the only way to
+    store such a file. A name-only match (medium) is stored with its report.
+    """
+    detector = PIIDetector()
+    report = detector.generate_pii_report(detector.detect_pii_in_dataframe(processed.dataframe))
+    if report["risk_level"] == "high":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The file contains high-risk personal data. Upload it through "
+            "/upload/secure, which asks you to confirm before it is stored.",
+        )
+    return PIIReport(
+        contains_pii=report["has_pii"],
+        pii_fields=[d["column"] for d in report.get("detections", [])],
+        risk_level=report["risk_level"],
+        detection_details=report,
+    )
+
+
 async def _create_base_version(dataset: DatasetMetadata, content: bytes, user_id: str) -> None:
     """The lineage root (#276). Best-effort: versioning must never fail the upload."""
     try:
@@ -211,6 +235,7 @@ async def upload_dataset(
         await enforce_storage_ceiling(current_user_id, file_size)
 
         processed_data = await _processed_upload(file_content, filename, extension)
+        pii_report = _scanned_for_pii(processed_data)
         file_path, s3_url = _stored_upload(current_user_id, filename, file_content, file.content_type)
 
         dataset = await DatasetService().create_dataset(
@@ -229,7 +254,8 @@ async def upload_dataset(
             data_preview=processed_data.get_preview()['data'],
             inferred_schema=processed_data.schema.model_dump(),
             statistics=processed_data.statistics.model_dump(),
-            quality_report=processed_data.quality_report.model_dump()
+            quality_report=processed_data.quality_report.model_dump(),
+            pii_report=pii_report,
         )
         await _create_base_version(dataset, file_content, current_user_id)
         logger.info(f"Dataset {dataset.dataset_id} uploaded successfully")
