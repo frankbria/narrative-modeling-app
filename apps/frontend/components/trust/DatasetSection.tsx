@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import {
   AI_SAMPLE_ROWS,
-  CHUNKED_UPLOAD_MB,
   DATASET_KEY_TEMPLATE,
   MASKED_KEY_TEMPLATE,
   PII_SCAN_SAMPLE_ROWS,
@@ -37,9 +36,8 @@ export function DatasetSection() {
           {PII_SCAN_SAMPLE_ROWS} values.
         </li>
         <li>
-          <strong>Up to {CHUNKED_UPLOAD_MB} MB, a high-risk finding stops the upload until you
-          confirm it.</strong> You then choose whether the stored copy has its personal values
-          masked. A larger file is uploaded in parts; it is scanned too, but stored as uploaded.
+          <strong>A high-risk finding stops the upload until you confirm it,</strong> at any
+          file size. You then choose whether the stored copy has its personal values masked.
         </li>
         <li>
           <strong>What the AI summary receives.</strong> After an upload, OpenAI is sent the file

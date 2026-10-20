@@ -235,7 +235,7 @@ class TestChunkedCompletionSizeCap:
         from unittest.mock import patch
 
         import pytest
-        from fastapi import BackgroundTasks, HTTPException
+        from fastapi import BackgroundTasks, HTTPException, Request
 
         from app.api.routes import secure_upload
 
@@ -254,6 +254,7 @@ class TestChunkedCompletionSizeCap:
         ):
             with pytest.raises(HTTPException) as exc:
                 await secure_upload.complete_chunked_upload(
+                    request=Request({"type": "http"}),
                     session_id="s1",
                     background_tasks=BackgroundTasks(),
                     current_user_id="u1",

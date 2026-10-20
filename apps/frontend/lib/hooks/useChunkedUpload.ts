@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
 import { apiError, QuotaExceededError } from '@/lib/services/apiError'
-import type { ChunkedUploadResponse } from '@/lib/types/api'
+import type { ChunkedPiiPause, ChunkedUploadResponse } from '@/lib/types/api'
 
 interface ChunkUploadProgress {
   sessionId: string
@@ -23,6 +23,8 @@ interface ChunkedUploadOptions {
   maxRetries?: number // Default 3
   onProgress?: (progress: ChunkUploadProgress) => void
   onComplete?: (fileId: string, response: ChunkedUploadResponse) => void
+  // High-risk PII: nothing is stored until `confirmUpload` (or `cancelUpload`).
+  onPiiDetected?: (pause: ChunkedPiiPause) => void
   onError?: (error: string) => void
 }
 
@@ -36,6 +38,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     maxRetries = 3,
     onProgress,
     onComplete,
+    onPiiDetected,
     onError
   } = options
 
@@ -120,7 +123,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     }
   }
 
-  const completeUpload = async (sessionId: string): Promise<ChunkedUploadResponse> => {
+  const completeUpload = async (sessionId: string): Promise<ChunkedUploadResponse | ChunkedPiiPause> => {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
     const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/complete`, {
@@ -134,7 +137,60 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       throw await apiError(response, `Failed to complete upload: ${response.statusText}`)
     }
 
-    return (await response.json()) as ChunkedUploadResponse
+    return (await response.json()) as ChunkedUploadResponse | ChunkedPiiPause
+  }
+
+  // A stored dataset completes the upload; a paused one hands the user the choice.
+  const finished = (result: ChunkedUploadResponse | ChunkedPiiPause) => {
+    if (result.status === 'pii_detected') {
+      onPiiDetected?.(result as ChunkedPiiPause)
+    } else {
+      onComplete?.((result as ChunkedUploadResponse).file_id, result as ChunkedUploadResponse)
+    }
+  }
+
+  const progressAt = (
+    sessionId: string,
+    file: File,
+    chunkNumber: number,
+    end: number,
+    startTime: number,
+    isComplete: boolean
+  ): ChunkUploadProgress => {
+    const totalChunks = Math.ceil(file.size / chunkSize)
+    const speed = end / ((Date.now() - startTime) / 1000)
+    const remainingTime = (file.size - end) / speed
+    return {
+      sessionId,
+      totalChunks,
+      uploadedChunks: chunkNumber + 1,
+      currentChunk: chunkNumber,
+      progress: (end / file.size) * 100,
+      bytesUploaded: end,
+      totalBytes: file.size,
+      speed,
+      remainingTime: isFinite(remainingTime) ? remainingTime : 0,
+      status: isComplete ? 'completed' : 'uploading'
+    }
+  }
+
+  // Upload chunks sequentially, reporting progress, until the server says it has them all.
+  const transferChunks = async (file: File, sessionId: string, startTime: number) => {
+    const totalChunks = Math.ceil(file.size / chunkSize)
+    for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber++) {
+      const start = chunkNumber * chunkSize
+      const end = Math.min(start + chunkSize, file.size)
+
+      setUploadState(prev => prev ? { ...prev, currentChunk: chunkNumber } : null)
+
+      const isComplete = await uploadChunk(sessionId, chunkNumber, file.slice(start, end))
+
+      const progressState = progressAt(sessionId, file, chunkNumber, end, startTime, isComplete)
+      setUploadState(progressState)
+      onProgress?.(progressState)
+
+      if (isComplete) break
+    }
   }
 
   const uploadFile = useCallback(async (file: File) => {
@@ -144,7 +200,6 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
 
     setIsUploading(true)
     const startTime = Date.now()
-    let bytesUploaded = 0
 
     try {
       // Calculate total chunks
@@ -169,51 +224,14 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
       // Update state with session ID
       setUploadState(prev => prev ? { ...prev, sessionId, status: 'uploading' } : null)
 
-      // Upload chunks sequentially
-      for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber++) {
-        const start = chunkNumber * chunkSize
-        const end = Math.min(start + chunkSize, file.size)
-        const chunkData = file.slice(start, end)
-
-        // Update current chunk
-        setUploadState(prev => prev ? { ...prev, currentChunk: chunkNumber } : null)
-
-        const isComplete = await uploadChunk(sessionId, chunkNumber, chunkData)
-        
-        // Update progress
-        bytesUploaded = end
-        const progress = (bytesUploaded / file.size) * 100
-        const uploadedChunks = chunkNumber + 1
-        const elapsedTime = (Date.now() - startTime) / 1000
-        const speed = bytesUploaded / elapsedTime
-        const remainingBytes = file.size - bytesUploaded
-        const remainingTime = remainingBytes / speed
-
-        const progressState: ChunkUploadProgress = {
-          sessionId,
-          totalChunks,
-          uploadedChunks,
-          currentChunk: chunkNumber,
-          progress,
-          bytesUploaded,
-          totalBytes: file.size,
-          speed,
-          remainingTime: isFinite(remainingTime) ? remainingTime : 0,
-          status: isComplete ? 'completed' : 'uploading'
-        }
-
-        setUploadState(progressState)
-        onProgress?.(progressState)
-
-        if (isComplete) break
-      }
+      await transferChunks(file, sessionId, startTime)
 
       // Complete the upload
       const result = await completeUpload(sessionId)
       
       setUploadState(prev => prev ? { ...prev, status: 'completed' } : null)
-      onComplete?.(result.file_id, result)
-      
+      finished(result)
+
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -223,7 +241,27 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     } finally {
       setIsUploading(false)
     }
-  }, [userId, chunkSize, maxRetries, onProgress, onComplete, onError])
+  }, [userId, chunkSize, maxRetries, onProgress, onComplete, onPiiDetected, onError])
+
+  // Store the upload `onPiiDetected` paused; `maskPII` picks a masked or an as-uploaded copy.
+  const confirmUpload = useCallback(async (sessionId: string, maskPII: boolean) => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+      const response = await fetch(
+        `${backendUrl}/upload/chunked/${sessionId}/confirm?mask_pii=${maskPII}`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${await getAuthToken()}` } }
+      )
+      if (!response.ok) {
+        throw await apiError(response, `Failed to confirm upload: ${response.statusText}`)
+      }
+      const result = (await response.json()) as ChunkedUploadResponse
+      onComplete?.(result.file_id, result)
+      return result
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : 'Failed to confirm upload')
+      throw error
+    }
+  }, [onComplete, onError])
 
   const resumeUpload = useCallback(async (sessionId: string) => {
     if (!userId) {
@@ -282,6 +320,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
 
   return {
     uploadFile,
+    confirmUpload,
     resumeUpload,
     cancelUpload,
     resetUpload,

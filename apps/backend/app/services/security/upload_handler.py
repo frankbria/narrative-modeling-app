@@ -247,8 +247,13 @@ class ChunkedUploadHandler:
             "expires_at": session["expires_at"]
         }
     
-    def claim_upload(self, session_id: str, user_id: str) -> dict[str, Any] | None:
+    def claim_upload(
+        self, session_id: str, user_id: str, *, held_only: bool = False
+    ) -> dict[str, Any] | None:
         """Take a fully-uploaded session for finalisation, or return None.
+
+        ``held_only`` takes only a session `hold_upload` paused: anything else is None,
+        untouched, exactly as for an unknown id (#1122).
 
         The session is removed in the same synchronous step it is read, so a
         second concurrent complete — a double-click, or a client retrying after
@@ -258,7 +263,7 @@ class ChunkedUploadHandler:
         once it is popped.
         """
         session = self.get_session(session_id, user_id)
-        if session is None:
+        if session is None or (held_only and not session.get("held")):
             return None
 
         if session["status"] != "complete":
@@ -271,6 +276,23 @@ class ChunkedUploadHandler:
         (self.temp_dir / f"{session_id}.json").unlink(missing_ok=True)
         return session
     
+    def hold_upload(self, session: dict[str, Any]) -> None:
+        """Put a claimed session back, marked held, so its assembled file waits for a
+        decision (#1122). Only a held session can be confirmed.
+
+        Keeps its original expiry: an unconfirmed upload is reaped with its temp file
+        like any abandoned one, and counts toward the per-user cap until then. The
+        session joins the store only once its metadata is saved, so a failed save
+        leaves nothing half-held (see `holds`).
+        """
+        held = {**session, "held": True}
+        self._save_session_metadata(held["id"], held)
+        self.sessions[held["id"]] = held
+
+    def holds(self, session_id: str) -> bool:
+        """Whether the session is in the store, i.e. owns its temp file again."""
+        return session_id in self.sessions
+
     def abort_upload(self, session_id: str, user_id: str) -> bool:
         """Discard ``user_id``'s session and its partial file.
 

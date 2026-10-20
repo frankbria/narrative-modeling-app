@@ -32,11 +32,11 @@ describe('Security page', () => {
     expect(metadata.alternates?.canonical).toBe('/security')
   })
 
-  // The chunked path (complete_chunked_upload) scans but has no high-risk confirmation.
-  it('limits the high-risk confirmation to files up to the chunked-upload threshold', () => {
+  // complete_chunked_upload holds a high-risk file for confirmation too (#1122).
+  it('says a high-risk finding stops the upload at any file size', () => {
     render(<SecurityPage />)
-    expect(screen.getByText(/Up to 50 MB, a high-risk finding stops the upload/)).toBeInTheDocument()
-    expect(screen.getByText(/A larger file is uploaded in parts; it is scanned too, but stored as uploaded/)).toBeInTheDocument()
+    expect(screen.getByText(/A high-risk finding stops the upload until you confirm it/)).toBeInTheDocument()
+    expect(screen.queryByText(/stored as uploaded/)).not.toBeInTheDocument()
   })
 
   it('says where a dataset is stored: under the account prefix, in S3', () => {
