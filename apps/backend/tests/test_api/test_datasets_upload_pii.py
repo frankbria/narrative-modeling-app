@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 from app.api.routes import datasets as datasets_module
+from app.billing import metering
 from app.models.dataset import DatasetMetadata
 from app.models.user_data import UserData
 from app.services.security.pii_detector import PIIDetector
@@ -62,6 +63,7 @@ async def test_high_risk_pii_is_refused_before_anything_is_stored(
     assert s3_puts == []
     assert await DatasetMetadata.find().count() == 0
     assert await UserData.find().count() == 0
+    assert await metering.usage_for("test_user_123", "uploads") == 0  # the refusal is refunded
 
 
 async def test_a_name_only_match_is_stored_with_its_report_and_listed_as_pii(
@@ -78,6 +80,7 @@ async def test_a_name_only_match_is_stored_with_its_report_and_listed_as_pii(
     assert dataset.pii_report.pii_fields == ["email"]
     twin = await UserData.find_one(UserData.user_id == dataset.user_id)
     assert twin.contains_pii is True and twin.pii_risk_level == "medium"
+    assert await metering.usage_for("test_user_123", "uploads") == 1
     assert (await _listed(async_authorized_client))["contains_pii"] is True
 
 
