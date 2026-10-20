@@ -25,6 +25,9 @@ export const COMPANY = {
   /** The one-line value proposition, word for word from docs/product/positioning.md. */
   valueLine:
     'SheetPredict turns a spreadsheet into a validated, explained, deployable model in minutes — and shows its work.',
+  /** The PII proof point, word for word from docs/product/positioning.md section 4: the in-app upload routes scan for PII (#1110). */
+  piiProof:
+    'PII is scanned when you upload in the app',
   /** The contracting party. */
   legalEntity: 'Noatak Enterprises, LLC, dba Bria Strategy Group',
   governingLaw: 'State of Arizona, USA',
@@ -40,6 +43,8 @@ export const COMPANY = {
    */
   backupHorizonDays: 35,
   effectiveDate: 'September 9, 2026',
+  /** The Privacy Policy changed after the Terms did: section 6 on dataset deletion (#1111). */
+  privacyEffectiveDate: 'October 19, 2026',
 } as const
 
 export interface SubProcessor {

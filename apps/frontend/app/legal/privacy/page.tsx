@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <>
       <h1>Privacy Policy</h1>
       <p className="lead">
-        Effective {COMPANY.effectiveDate}. This explains what the {COMPANY.serviceName}{' '}
+        Effective {COMPANY.privacyEffectiveDate}. This explains what the {COMPANY.serviceName}{' '}
         service collects, who else sees it, and how long we keep it. It sits alongside our{' '}
         <Link href="/legal/terms">Terms of Service</Link>.
       </p>
@@ -131,10 +131,11 @@ export default function PrivacyPage() {
         </p>
         <ul>
           <li>
-            <strong>Deleting a dataset</strong> removes the uploaded file and the analysis records
-            tied to it. Trained models are separate objects with their own delete action — deleting
-            a dataset does not delete the models you trained from it, so delete those too if you
-            want them gone.
+            <strong>Deleting a dataset</strong> removes the uploaded file and its stored versions,
+            the analysis records tied to it, and the models you trained on it: their saved model
+            files, training jobs, batch prediction jobs and logged prediction inputs go with them.
+            Models also have their own delete action, which removes one model without touching
+            the dataset.
           </li>
           <li>
             <strong>Deleting everything</strong> — email{' '}

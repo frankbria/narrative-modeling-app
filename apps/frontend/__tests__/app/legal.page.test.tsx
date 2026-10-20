@@ -98,20 +98,27 @@ describe('Privacy Policy', () => {
     expect(section.textContent).toMatch(/backup/i);
   });
 
+  it('is dated by the change to section 6, not the Terms date (#1111)', () => {
+    const { container } = render(<PrivacyPage />);
+    expect(container.textContent).toContain(`Effective ${COMPANY.privacyEffectiveDate}`);
+    expect(COMPANY.privacyEffectiveDate).toBe('October 19, 2026');
+  });
+
   it('does not promise deletion the erasure cascade does not perform (AC4)', () => {
     const { container } = render(<PrivacyPage />);
     const text = (container.textContent ?? '').replace(/\s+/g, ' ');
 
-    // #497: the cascade misses trained models and their S3 artifacts, AND reports
-    // success anyway. Three claims therefore have to stay off this page, each
-    // phrased the way it would actually be written back in:
+    // #497 made the cascade reach trained models and their S3 artifacts (#1111 put that
+    // in the policy). Three claims still have to stay off this page, each phrased the way
+    // it would actually be written back in:
     expect(text).not.toMatch(/all data we hold for you/i); // unqualified completeness
     expect(text).not.toMatch(/tell you what was removed/i); // an itemised accounting the manifest cannot back
     expect(text).not.toMatch(/(permanently|immediately) delete (all|everything)/i);
 
     // And the qualifications that make the remaining promise true have to stay ON
     // it — a blanket rewrite would drop these, which the negatives alone miss.
-    expect(text).toMatch(/deleting a dataset does not delete the models/i);
+    expect(text).toMatch(/deleting a dataset removes .* the models you trained on it/i);
+    expect(text).not.toMatch(/does not delete the models/i);
     expect(text).toMatch(/records the self-service delete actions do not reach/i);
     expect(
       within(screen.getByRole('heading', { name: /retention/i }).closest('section')!)

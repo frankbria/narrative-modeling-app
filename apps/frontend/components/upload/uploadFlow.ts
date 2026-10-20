@@ -2,9 +2,10 @@ import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { apiError } from '@/lib/services/apiError';
 import type { PIIReport } from '@/lib/types/api';
+import { CHUNKED_UPLOAD_MB } from '@/lib/trust/datasetFacts';
 
-/** Files above this size go through the chunked upload (50MB). */
-export const CHUNKED_UPLOAD_THRESHOLD = 50 * 1024 * 1024;
+/** Files above this size go through the chunked upload. */
+export const CHUNKED_UPLOAD_THRESHOLD = CHUNKED_UPLOAD_MB * 1024 * 1024;
 
 export type PreviewCell = string | number | boolean | null;
 
