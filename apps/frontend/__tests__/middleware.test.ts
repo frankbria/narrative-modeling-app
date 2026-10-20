@@ -40,7 +40,6 @@ describe('middleware (deny-by-default)', () => {
     '/evaluate',
     '/transform',
     '/features',
-    '/recipes',
     '/review',
     '/dashboard',
     '/some-future-page', // proves new pages are protected automatically
