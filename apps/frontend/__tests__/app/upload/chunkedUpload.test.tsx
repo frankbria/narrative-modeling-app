@@ -222,6 +222,21 @@ describe('choosing another file while a chunked upload is held (#1122)', () => {
     expect(screen.queryByText('next.csv')).not.toBeInTheDocument();
   });
 
+  it('ignores a rejected file while the held upload is being confirmed', async () => {
+    hook.confirmUpload.mockReturnValue(new Promise(() => {}));
+    const { button } = await chooseLargeFile();
+    fireEvent.click(button);
+    act(() => hook.options!.onPiiDetected(PAUSE));
+    fireEvent.click(await screen.findByRole('button', { name: 'Upload Original Data' }));
+    await waitFor(() => expect(hook.confirmUpload).toHaveBeenCalledTimes(1));
+
+    const rejected = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [rejected] } });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    expect(screen.queryByText('No files were accepted')).not.toBeInTheDocument();
+  });
+
   it('does not call the abort when nothing is held', async () => {
     await chooseLargeFile();
 

@@ -90,8 +90,6 @@ export function useUploadFlow() {
   } = useChunkedUpload({ onComplete: chunkedStored, onPiiDetected: chunkedPaused, onError: chunkedFailed });
 
   function select(selected: File) {
-    // A confirm in flight owns the session; a new file would abort it and lose its answer.
-    if (isConfirming) return;
     // A new upload starts a new workflow.
     if (state.datasetId) {
       resetWorkflow();
@@ -116,6 +114,8 @@ export function useUploadFlow() {
   }
 
   function onDrop(acceptedFiles: File[]) {
+    // A confirm in flight owns the session; any drop would reset or abort it under the answer.
+    if (isConfirming) return;
     if (acceptedFiles.length === 0) {
       setUploadStatus('error');
       setFile(null);
