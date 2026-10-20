@@ -7,6 +7,8 @@
  * hard-coded any of them passes a literal test and drifts silently; this one
  * fails instead.
  */
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
@@ -80,6 +82,15 @@ describe('proof points', () => {
       'Safe with real data',
     ]);
   });
+
+  it('says what the PII scan does, from COMPANY, which positioning.md carries word for word (#1110)', async () => {
+    await renderLanding();
+    const section = screen.getByRole('region', { name: /why it holds up/i });
+    expect(section).toHaveTextContent(COMPANY.piiProof);
+    const positioning = readFileSync(join(__dirname, '..', '..', '..', '..', 'docs', 'product', 'positioning.md'), 'utf8');
+    expect(positioning).toContain(COMPANY.piiProof);
+    expect(positioning + (section.textContent ?? '')).not.toMatch(/masked before anything reaches/i);
+  });
 });
 
 describe('how it works', () => {
@@ -131,7 +142,7 @@ describe('trust strip', () => {
     await renderLanding();
     const section = screen.getByRole('region', { name: /your data/i });
     const text = section.textContent ?? '';
-    expect(text).toMatch(/PII is scanned and masked before anything reaches a language model/i);
+    expect(text).toContain(COMPANY.piiProof);
     expect(text).toMatch(/works without an AI key/i);
     expect(text).toMatch(/one-click erasure/i);
     expect(text).toContain(`${COMPANY.refundWindowDays}-day refund`);

@@ -25,3 +25,5 @@ export const PII_NAME_CATEGORIES = [
 export const SUMMARY_EXAMPLE_VALUES = 3
 /** `DatasetSummarizationService` (the Explore AI Insights panel): `sample_data[:N]`. */
 export const AI_SAMPLE_ROWS = 5
+/** Files above this size take the chunked upload path (`uploadFlow.CHUNKED_UPLOAD_THRESHOLD`). */
+export const CHUNKED_UPLOAD_MB = 50

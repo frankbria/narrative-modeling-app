@@ -15,8 +15,9 @@ export function RetentionSection() {
           derived records stay until you remove them or your account is closed.
         </li>
         <li>
-          <strong>Deleting a dataset</strong> removes the uploaded file and the analysis records
-          tied to it. Trained models are separate objects with their own delete action.
+          <strong>Deleting a dataset</strong> removes the uploaded file and its stored versions,
+          the analysis records tied to it, and the models trained on it with their saved files.
+          A model can also be deleted on its own.
         </li>
         <li>
           <strong>Deleting everything:</strong> email{' '}

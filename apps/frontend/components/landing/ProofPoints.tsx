@@ -1,3 +1,5 @@
+import { COMPANY } from '@/lib/legal/company'
+
 /** Positioning.md section 4: the three proof points, copy word for word. */
 const PROOF_POINTS = [
   {
@@ -10,7 +12,7 @@ const PROOF_POINTS = [
   },
   {
     title: 'Safe with real data',
-    copy: 'PII is scanned and masked before anything reaches a language model; every AI feature works without an AI key; one-click erasure; Apache 2.0 source you can read and self-host.',
+    copy: `${COMPANY.piiProof}; every AI feature works without an AI key; one-click erasure; Apache 2.0 source you can read and self-host.`,
   },
 ]
 
