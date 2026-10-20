@@ -206,6 +206,22 @@ describe('choosing another file while a chunked upload is held (#1122)', () => {
     await waitFor(() => expect(screen.queryByText('Sensitive Data Detected')).not.toBeInTheDocument());
   });
 
+  it('ignores another file while the held upload is being confirmed', async () => {
+    hook.confirmUpload.mockReturnValue(new Promise(() => {}));
+    const { button } = await chooseLargeFile();
+    fireEvent.click(button);
+    act(() => hook.options!.onPiiDetected(PAUSE));
+    fireEvent.click(await screen.findByRole('button', { name: 'Upload Original Data' }));
+    await waitFor(() => expect(hook.confirmUpload).toHaveBeenCalledTimes(1));
+
+    chooseAnother();
+    // The drop is handled asynchronously: let it settle before asserting nothing happened.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    expect(hook.cancelUpload).not.toHaveBeenCalled();
+    expect(screen.queryByText('next.csv')).not.toBeInTheDocument();
+  });
+
   it('does not call the abort when nothing is held', async () => {
     await chooseLargeFile();
 
