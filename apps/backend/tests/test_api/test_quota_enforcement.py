@@ -63,7 +63,6 @@ async def _fill(user_id: str, metric: str, units: int) -> None:
 _UPLOAD_ROUTES = [
     "/api/v1/upload/secure",
     "/api/v1/upload/confirm-pii-upload",
-    "/api/v1/upload/",
     "/api/v1/datasets/upload",
 ]
 
@@ -205,56 +204,26 @@ class TestUploadRefunds:
 
 
 class TestAFailedS3WriteIsNotABillableDataset:
-    """`upload.py` used to return 200 with a placeholder string as the s3_url.
-
-    **Two** branches did it, and the first fix only caught one — the other is what CI
-    then failed on, because the two are reached under opposite conditions and the
-    machine running the test decides which:
-
-    * `s3_upload_failed` — S3 configured, the write failed. Needs credentials present
-      to reach, so it is what a developer with AWS env vars sees.
-    * `s3_not_configured` — no AWS env vars at all, so the write is never attempted.
-      That is CI, and it short-circuits before the branch above.
-
-    Either way the row's `s3_url` is a string that is not a URL, every later read of
-    that dataset fails, and since #459 metered this route the tenant is charged an
-    upload for it. `/upload/secure` already answered 500 for the configured-but-failed
-    case. Both are parametrized here so neither environment can hide the other.
-    """
+    """A failed S3 write leaves no dataset row and no charge: a row whose `s3_url` is not a
+    URL fails every later read, and the tenant would pay an upload for it (#459)."""
 
     CSV = {"file": ("d.csv", b"a,b\n1,2\n", "text/csv")}
 
     async def test_a_failed_s3_write_does_not_leave_a_charged_broken_dataset(
         self, async_authorized_client, setup_database, monkeypatch
     ):
-        """S3 configured, write fails."""
-        import app.api.routes.upload as upload_module
+        import app.api.routes.secure_upload as secure_module
         from app.models.user_data import UserData
 
-        for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
-            monkeypatch.setenv(var, "present-for-this-test")
         monkeypatch.setattr(
-            upload_module, "upload_file_to_s3", lambda *a, **k: (False, None)
+            secure_module, "upload_file_to_s3", lambda *a, **k: (False, None)
         )
 
-        response = await async_authorized_client.post("/api/v1/upload/", files=self.CSV)
+        response = await async_authorized_client.post(
+            "/api/v1/upload/secure", files=self.CSV
+        )
 
         assert response.status_code >= 400, response.text
-        assert await metering.usage_for(TEST_USER, "uploads") == 0
-        assert await UserData.find_one(UserData.user_id == TEST_USER) is None
-
-    async def test_an_unconfigured_deployment_does_not_charge_for_a_stub_dataset(
-        self, async_authorized_client, setup_database, monkeypatch
-    ):
-        """No AWS env at all — the CI case, and the one the first fix missed."""
-        from app.models.user_data import UserData
-
-        for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
-            monkeypatch.delenv(var, raising=False)
-
-        response = await async_authorized_client.post("/api/v1/upload/", files=self.CSV)
-
-        assert response.status_code == 503, response.text
         assert await metering.usage_for(TEST_USER, "uploads") == 0
         assert await UserData.find_one(UserData.user_id == TEST_USER) is None
 
@@ -1114,27 +1083,18 @@ OTHER_USER = "other_tenant_999"  # never what async_authorized_client authentica
 _CSV = {"file": ("d.csv", b"a,b\n1,2\n3,4\n", "text/csv")}
 
 
-def _aws_env(monkeypatch) -> None:
-    # The plain /upload/ route skips the S3 write entirely when no AWS env is set
-    # (the CI branch), so set it and patch the write to succeed.
-    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
-        monkeypatch.setenv(var, "present-for-this-test")
-
-
 def _fake_upload_ok(monkeypatch) -> None:
-    import app.api.routes.upload as upload_module
+    import app.api.routes.secure_upload as secure_module
+    import app.utils.ai_summary as ai_summary
 
-    _aws_env(monkeypatch)
     monkeypatch.setattr(
-        upload_module, "upload_file_to_s3",
+        secure_module, "upload_file_to_s3",
         lambda *a, **k: (True, "s3://b/datasets/test_user_123/d.csv"),
     )
-    # The AI-summary background task hits OpenAI; keep this off the network. upload.py
-    # imports generate_dataset_summary at MODULE scope, so the BackgroundTasks call
-    # resolves app.api.routes.upload.generate_dataset_summary — patch THAT binding,
-    # not the source module (which the route no longer references) (#492 lesson).
+    # A clean /upload/secure dataset schedules `generate_dataset_summary`, imported inside
+    # the handler, so patch the source module. The summary hits OpenAI; keep it off the network.
     monkeypatch.setattr(
-        upload_module, "generate_dataset_summary", AsyncMock(return_value=None)
+        ai_summary, "generate_dataset_summary", AsyncMock(return_value=None)
     )
 
 
@@ -1167,7 +1127,7 @@ class TestSuccessfulChargesPersist:
         """AC1/AC4: a successful upload increments uploads by exactly one — not zero
         (counting stopped) and not two (the route also calling record())."""
         _fake_upload_ok(monkeypatch)
-        resp = await async_authorized_client.post("/api/v1/upload/", files=_CSV)
+        resp = await async_authorized_client.post("/api/v1/upload/secure", files=_CSV)
         assert resp.status_code == 200, resp.text
         assert await metering.usage_for(TEST_USER, "uploads") == 1
 
@@ -1177,7 +1137,7 @@ class TestSuccessfulChargesPersist:
         """AC2: the request is made as A; B's usage must be untouched."""
         _fake_upload_ok(monkeypatch)
         await _fill(OTHER_USER, "uploads", 3)  # B already has some usage
-        resp = await async_authorized_client.post("/api/v1/upload/", files=_CSV)
+        resp = await async_authorized_client.post("/api/v1/upload/secure", files=_CSV)
         assert resp.status_code == 200, resp.text
         assert await metering.usage_for(TEST_USER, "uploads") == 1  # A charged
         assert await metering.usage_for(OTHER_USER, "uploads") == 3  # B unchanged

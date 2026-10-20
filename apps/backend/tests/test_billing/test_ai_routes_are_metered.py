@@ -128,7 +128,7 @@ _EXEMPT = {
         "/api/v1/ml/{model_id}/versions",
     )},
     **{p: _UPLOAD_SUMMARY for p in (
-        "/api/v1/upload/", "/api/v1/upload/secure", "/api/v1/upload/confirm-pii-upload",
+        "/api/v1/upload/secure", "/api/v1/upload/confirm-pii-upload",
         "/api/v1/upload/chunked/{session_id}/complete",
         "/api/v1/upload/chunked/{session_id}/confirm",
     )},
