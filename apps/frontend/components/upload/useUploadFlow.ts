@@ -94,6 +94,10 @@ export function useUploadFlow() {
     if (state.datasetId) {
       resetWorkflow();
     }
+    // A held chunked upload is dropped on the server too, not just forgotten here.
+    if (piiSessionId) {
+      cancelChunkUpload();
+    }
     setFile(selected);
     setIsLargeFile(selected.size > CHUNKED_UPLOAD_THRESHOLD);
     setUploadStatus('idle');

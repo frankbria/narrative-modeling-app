@@ -475,7 +475,7 @@ async def _store_chunked(
     # the key: two tenants uploading data.csv used to write the same unprefixed object,
     # so the second silently destroyed the first (issue #464).
     lowered = filename.lower()
-    s3_url, _, stored_size = _store_confirmed(
+    s3_url, file_type, stored_size = _store_confirmed(
         user_id, lowered, _CONTENT_TYPES[_suffix(lowered)], content, masked
     )
     shown = df if masked is None else masked
@@ -488,7 +488,7 @@ async def _store_chunked(
         num_rows=len(shown),
         num_columns=len(shown.columns),
         data_schema=infer_schema(shown),
-        file_type=_file_type_of(lowered) if masked is None else "csv",
+        file_type=file_type,
         file_size=stored_size,
         columns=list(shown.columns),
         data_preview=shown.head(100).to_dict('records'),
@@ -502,23 +502,34 @@ async def _store_chunked(
     return user_data
 
 
-def _claimed(session_id: str, user_id: str) -> dict[str, Any]:
+def _claimed(session_id: str, user_id: str, confirming: bool) -> dict[str, Any]:
     """Claiming removes the session, so a concurrent or retried finish gets a clean 404
     instead of racing to a second S3 object, a second UserData row and a second charged
-    quota unit."""
-    session = upload_handler.claim_upload(session_id, user_id)
+    quota unit. A confirmation takes only a session completion held (#1122): confirming
+    an unscanned one would store a high-risk file with no pause."""
+    session = upload_handler.claim_upload(session_id, user_id, held_only=confirming)
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
     return session
 
 
 async def _scanned(
-    user_id: str, temp_path: Path, filename: str
+    user_id: str, session: dict[str, Any], confirming: bool
 ) -> tuple[bytes, pd.DataFrame, list[Any], dict[str, Any]]:
-    """The assembled file, admitted, parsed and scanned for PII."""
-    await _admit_assembled(user_id, temp_path, filename)
-    content = temp_path.read_bytes()
-    df = _parsed_frame(filename.lower(), content)
+    """The assembled file, admitted, parsed and scanned for PII.
+
+    A refusal at confirmation (storage ceiling, size, parse) puts the held session back:
+    nothing was stored, so the user's decision and the file are not lost to it.
+    """
+    temp_path, filename = Path(session["temp_path"]), session["filename"]
+    try:
+        await _admit_assembled(user_id, temp_path, filename)
+        content = temp_path.read_bytes()
+        df = _parsed_frame(filename.lower(), content)
+    except HTTPException:
+        if confirming:
+            upload_handler.hold_upload(session)
+        raise
     pii_detections = pii_detector.detect_pii_in_dataframe(df)
     return content, df, pii_detections, pii_detector.generate_pii_report(pii_detections)
 
@@ -567,7 +578,7 @@ async def _finish_chunked(
 ) -> dict[str, Any]:
     """`mask_pii` is None at completion (a high-risk file is held) and the user's
     choice at confirmation (the file is stored)."""
-    session = _claimed(session_id, user_id)
+    session = _claimed(session_id, user_id, mask_pii is not None)
     temp_path = Path(session["temp_path"])
 
     # Claiming popped the session, so it no longer counts via count_active_sessions.
@@ -580,17 +591,15 @@ async def _finish_chunked(
     # successful one — except a held file, which the session owns again. Releasing only
     # on success meant a handful of corrupt uploads pinned a user at the concurrency
     # cap with no session left to abort, and 429'd their every subsequent init.
-    held = False
     try:
-        scan = await _scanned(user_id, temp_path, session["filename"])
+        scan = await _scanned(user_id, session, mask_pii is not None)
         if mask_pii is None and scan[3]["risk_level"] == "high":
-            held = True
             return await _hold_for_confirmation(request, session, scan[3])
         return await _store_and_summarise(
             background_tasks, user_id, session["filename"], scan, mask_pii
         )
     finally:
-        if not held:
+        if not upload_handler.holds(session_id):
             temp_path.unlink(missing_ok=True)
         rate_limiter.end_upload(user_id)  # release the finalization slot (#526)
 

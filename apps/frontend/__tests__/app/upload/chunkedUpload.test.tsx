@@ -176,3 +176,43 @@ describe('a high-risk chunked upload (#1122)', () => {
     expect(await screen.findByTestId('upload-error-message')).toHaveTextContent('Upload session not found');
   });
 });
+
+describe('choosing another file while a chunked upload is held (#1122)', () => {
+  const PAUSE: ChunkedPiiPause = {
+    status: 'pii_detected',
+    requires_confirmation: true,
+    session_id: 's-held',
+    pii_report: {
+      has_pii: true, risk_level: 'high', summary: '', recommendations: [],
+      total_pii_columns: 1, high_risk_columns: 1,
+      detections: [{ column: 'ssn', type: 'ssn', confidence: 0.95, recommendation: '' }],
+    },
+  };
+
+  function chooseAnother() {
+    const next = new File(['a\n1\n'], 'next.csv', { type: 'text/csv' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [next] } });
+  }
+
+  it('discards the held session on the server first', async () => {
+    const { button } = await chooseLargeFile();
+    fireEvent.click(button);
+    act(() => hook.options!.onPiiDetected(PAUSE));
+    await screen.findByText('Sensitive Data Detected');
+
+    chooseAnother();
+
+    await waitFor(() => expect(hook.cancelUpload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText('Sensitive Data Detected')).not.toBeInTheDocument());
+  });
+
+  it('does not call the abort when nothing is held', async () => {
+    await chooseLargeFile();
+
+    chooseAnother();
+
+    // The drop is handled asynchronously: wait for the new file before asserting.
+    expect(await screen.findByText('next.csv')).toBeInTheDocument();
+    expect(hook.cancelUpload).not.toHaveBeenCalled();
+  });
+});

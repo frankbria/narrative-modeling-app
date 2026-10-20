@@ -57,6 +57,7 @@ export interface ChunkedUploadResponse {
   file_id: string
   filename?: string
   status?: string
+  pii_masked?: boolean
   preview?: Record<string, unknown>[]
   pii_report?: PIIReport
 }

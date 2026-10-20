@@ -985,3 +985,132 @@ class TestAHighRiskChunkedUploadWaitsForConfirmation:
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "success"
         assert len(s3_calls) == 1
+
+
+class TestOnlyAHeldUploadCanBeConfirmed:
+    """#1122 review: `/confirm` must not be a way around the pause. An assembled session
+    that completion never held is refused (404, as for an unknown id), untouched."""
+
+    async def _assembled(self, client, content=PII_CSV):
+        session_id = (await _init(client, "pii.csv", len(content))).json()["session_id"]
+        await _upload_all(client, session_id, content=content)
+        return session_id
+
+    async def test_confirm_without_completion_is_404_and_stores_nothing(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/confirm", params={"mask_pii": "false"}
+        )
+
+        assert response.status_code == 404
+        assert s3_calls == []
+        assert await UserData.find(UserData.user_id == TENANT_A).count() == 0
+
+    async def test_the_refused_session_is_not_consumed(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+
+        await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+        completed = await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert temp_path.exists()
+        assert completed.json()["status"] == "pii_detected"
+
+    async def test_a_held_session_survives_a_restart_as_held(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        fresh_handler.sessions.clear()  # the metadata json is all that is left
+
+        response = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert response.status_code == 200, response.text
+
+
+class TestAConfirmationThatIsRefusedKeepsTheHeldUpload:
+    """A refusal before anything is stored (storage ceiling, #768) is not the user's
+    last chance: the file stays held and a later confirm can succeed."""
+
+    async def test_a_storage_refusal_leaves_the_session_held(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        from app.billing.plans import PLAN_LIMITS
+        from app.models.subscription import PlanTier
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, "pii.csv", len(PII_CSV))).json()["session_id"]
+        await _upload_all(client, session_id, content=PII_CSV)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        full = await UserData(
+            user_id=TENANT_A, filename="d.csv", original_filename="d.csv",
+            s3_url="s3://b/d.csv", num_rows=1, num_columns=1, data_schema=[],
+            file_size=PLAN_LIMITS[PlanTier.FREE].storage_bytes,
+        ).insert()
+
+        refused = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert refused.status_code == 402, refused.text
+        assert temp_path.exists()
+        assert s3_calls == []
+
+        await full.delete()
+        retried = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+        assert retried.status_code == 200, retried.text
+        assert len(s3_calls) == 1
+
+
+class TestTwoConfirmationsStoreOnce:
+    async def test_concurrent_confirms_produce_one_dataset(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        import asyncio
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, "pii.csv", len(PII_CSV))).json()["session_id"]
+        await _upload_all(client, session_id, content=PII_CSV)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        first, second = await asyncio.gather(
+            client.post(f"/api/v1/upload/chunked/{session_id}/confirm"),
+            client.post(f"/api/v1/upload/chunked/{session_id}/confirm"),
+        )
+
+        assert sorted([first.status_code, second.status_code]) == [200, 404]
+        assert len(s3_calls) == 1
+        assert await UserData.find(UserData.user_id == TENANT_A).count() == 1
+
+
+class TestAFailedHoldDoesNotStrandTheFile:
+    async def test_the_temp_file_is_removed_when_the_session_cannot_be_saved(
+        self, client_as, fresh_handler, s3_calls, monkeypatch
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, "pii.csv", len(PII_CSV))).json()["session_id"]
+        await _upload_all(client, session_id, content=PII_CSV)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+
+        def broken(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(fresh_handler, "_save_session_metadata", broken)
+        with pytest.raises(OSError):
+            await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert not temp_path.exists()
+        assert session_id not in fresh_handler.sessions
