@@ -100,6 +100,18 @@ class TestUploadQuota:
 
         assert response.status_code == 402, response.text
 
+    async def test_the_chunked_confirmation_is_refused_at_the_free_limit(
+        self, async_authorized_client, setup_database
+    ):
+        """It stores a dataset like `/confirm-pii-upload`, so it is metered first (#1122)."""
+        await _fill(TEST_USER, "uploads", FREE_UPLOADS)
+
+        response = await async_authorized_client.post(
+            "/api/v1/upload/chunked/nonexistent-session/confirm"
+        )
+
+        assert response.status_code == 402, response.text
+
     async def test_upload_is_refused_at_the_free_limit(
         self, async_authorized_client, setup_database
     ):

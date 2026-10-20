@@ -50,6 +50,8 @@ _MUST_BE_METERED = {
     "/api/v1/upload/secure",
     "/api/v1/upload/confirm-pii-upload",
     "/api/v1/upload/chunked/{session_id}/complete",
+    # Stores the held upload of a high-risk completion (#1122), as /confirm-pii-upload does.
+    "/api/v1/upload/chunked/{session_id}/confirm",
     "/api/v1/upload/",
     # A sample load creates a real UserData row — rows, columns, schema, preview — and
     # the insert is unconditional: the `sample_datasets_loaded` check afterwards only
@@ -309,6 +311,9 @@ class TestEveryUploadEnforcesTheStorageCeiling:
         ),
         # Split out of the handler in #1062.
         "/api/v1/upload/chunked/{session_id}/complete": (
+            "app.api.routes.secure_upload", "_admit_assembled",
+        ),
+        "/api/v1/upload/chunked/{session_id}/confirm": (
             "app.api.routes.secure_upload", "_admit_assembled",
         ),
     }

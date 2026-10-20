@@ -271,6 +271,15 @@ class ChunkedUploadHandler:
         (self.temp_dir / f"{session_id}.json").unlink(missing_ok=True)
         return session
     
+    def hold_upload(self, session: dict[str, Any]) -> None:
+        """Put a claimed session back, so its assembled file waits for a decision (#1122).
+
+        Keeps its original expiry: an unconfirmed upload is reaped with its temp file
+        like any abandoned one, and counts toward the per-user cap until then.
+        """
+        self.sessions[session["id"]] = session
+        self._save_session_metadata(session["id"], session)
+
     def abort_upload(self, session_id: str, user_id: str) -> bool:
         """Discard ``user_id``'s session and its partial file.
 

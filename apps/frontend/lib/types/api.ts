@@ -61,6 +61,17 @@ export interface ChunkedUploadResponse {
   pii_report?: PIIReport
 }
 
+/**
+ * The answer to a chunked completion that found high-risk PII (#1122): nothing is stored;
+ * the assembled file waits under `session_id` for `/confirm` or an abort.
+ */
+export interface ChunkedPiiPause {
+  status: 'pii_detected'
+  requires_confirmation: true
+  session_id: string
+  pii_report: FlaggedPIIReport
+}
+
 /** PII summary attached to upload responses: `PIIDetector.generate_pii_report`. */
 export interface CleanPIIReport {
   has_pii: false

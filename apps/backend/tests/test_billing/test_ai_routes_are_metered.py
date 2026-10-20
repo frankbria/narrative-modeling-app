@@ -130,6 +130,7 @@ _EXEMPT = {
     **{p: _UPLOAD_SUMMARY for p in (
         "/api/v1/upload/", "/api/v1/upload/secure", "/api/v1/upload/confirm-pii-upload",
         "/api/v1/upload/chunked/{session_id}/complete",
+        "/api/v1/upload/chunked/{session_id}/confirm",
     )},
     **{p: "Upload plumbing; no model call." for p in (
         "/api/v1/upload/cleanup", "/api/v1/upload/chunked/init",

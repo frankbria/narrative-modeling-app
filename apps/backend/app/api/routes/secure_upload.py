@@ -467,31 +467,32 @@ async def _store_chunked(
     content: bytes,
     df: pd.DataFrame,
     pii_report: dict[str, Any],
+    masked: pd.DataFrame | None = None,
 ) -> UserData:
+    """Store the assembled upload; `masked` is the confirmed, PII-masked copy that
+    replaces the original (key, bytes, preview and schema all follow it, #1122)."""
     # Under a server-derived, tenant-prefixed key. The client filename must never reach
     # the key: two tenants uploading data.csv used to write the same unprefixed object,
     # so the second silently destroyed the first (issue #464).
     lowered = filename.lower()
-    s3_key = dataset_s3_key(user_id, lowered)
-    success, s3_url = upload_file_to_s3(
-        content, s3_key, content_type=_CONTENT_TYPES[_suffix(lowered)]
+    s3_url, _, stored_size = _store_confirmed(
+        user_id, lowered, _CONTENT_TYPES[_suffix(lowered)], content, masked
     )
-    if not success or not s3_url:
-        logger.error("S3 upload failed for chunked file %s", filename)
-        raise HTTPException(status_code=500, detail="Failed to upload file to S3")
+    shown = df if masked is None else masked
 
     user_data = UserData(
         user_id=user_id,
         filename=filename,
         original_filename=filename,
         s3_url=s3_url,
-        num_rows=len(df),
-        num_columns=len(df.columns),
-        data_schema=infer_schema(df),
-        file_type=_file_type_of(lowered),
-        file_size=len(content),
-        columns=list(df.columns),
-        data_preview=df.head(100).to_dict('records'),
+        num_rows=len(shown),
+        num_columns=len(shown.columns),
+        data_schema=infer_schema(shown),
+        file_type=_file_type_of(lowered) if masked is None else "csv",
+        file_size=stored_size,
+        columns=list(shown.columns),
+        data_preview=shown.head(100).to_dict('records'),
+        pii_masked=masked is not None,
     )
     if pii_report["has_pii"]:
         user_data.pii_report = pii_report
@@ -501,63 +502,130 @@ async def _store_chunked(
     return user_data
 
 
-@router.post(
-    "/chunked/{session_id}/complete",
-    dependencies=[Depends(quota("uploads"))],
-)
-async def complete_chunked_upload(
-    session_id: str,
-    background_tasks: BackgroundTasks,
-    current_user_id: str = Depends(get_current_user_id),
-) -> dict[str, Any]:
-    """
-    Complete chunked upload and process file
-    """
-
-    # Claiming removes the session, so a concurrent or retried complete gets a
-    # clean 404 instead of racing to a second S3 object, a second UserData row
-    # and a second charged quota unit.
-    session = upload_handler.claim_upload(session_id, current_user_id)
+def _claimed(session_id: str, user_id: str) -> dict[str, Any]:
+    """Claiming removes the session, so a concurrent or retried finish gets a clean 404
+    instead of racing to a second S3 object, a second UserData row and a second charged
+    quota unit."""
+    session = upload_handler.claim_upload(session_id, user_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Upload session not found")
+    return session
 
+
+async def _scanned(
+    user_id: str, temp_path: Path, filename: str
+) -> tuple[bytes, pd.DataFrame, list[Any], dict[str, Any]]:
+    """The assembled file, admitted, parsed and scanned for PII."""
+    await _admit_assembled(user_id, temp_path, filename)
+    content = temp_path.read_bytes()
+    df = _parsed_frame(filename.lower(), content)
+    pii_detections = pii_detector.detect_pii_in_dataframe(df)
+    return content, df, pii_detections, pii_detector.generate_pii_report(pii_detections)
+
+
+async def _hold_for_confirmation(
+    request: Request, session: dict[str, Any], pii_report: dict[str, Any]
+) -> dict[str, Any]:
+    """Pause a high-risk chunked upload exactly as `/secure` does (#1122): nothing is
+    stored, the session keeps the assembled file so `/confirm` can store it, and the
+    unit is handed back because no dataset was created (#459)."""
+    upload_handler.hold_upload(session)
+    await release(request)
+    return {**_pii_confirmation(pii_report), "session_id": session["id"]}
+
+
+async def _store_and_summarise(
+    background_tasks: BackgroundTasks,
+    user_id: str,
+    filename: str,
+    scan: tuple[bytes, pd.DataFrame, list[Any], dict[str, Any]],
+    mask_pii: bool | None,
+) -> dict[str, Any]:
+    content, df, pii_detections, pii_report = scan
+    masked = pii_detector.mask_pii(df, pii_detections) if mask_pii and pii_detections else None
+    user_data = await _store_chunked(user_id, filename, content, df, pii_report, masked)
+
+    # Background AI summary — always over a PII-masked frame (#490).
+    background_tasks.add_task(
+        generate_ai_summary_safe, str(user_data.id), _summary_frame(df, pii_detections)
+    )
+    return {
+        "status": "success",
+        "file_id": str(user_data.id),
+        "filename": filename,
+        "pii_masked": masked is not None,
+        "pii_report": pii_report,
+    }
+
+
+async def _finish_chunked(
+    request: Request,
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    user_id: str,
+    mask_pii: bool | None,
+) -> dict[str, Any]:
+    """`mask_pii` is None at completion (a high-risk file is held) and the user's
+    choice at confirmation (the file is stored)."""
+    session = _claimed(session_id, user_id)
     temp_path = Path(session["temp_path"])
-    filename = session["filename"]
 
     # Claiming popped the session, so it no longer counts via count_active_sessions.
     # The finalization below (parse + S3 upload + insert) is real, resource-heavy
     # work, so keep it counted toward the shared cap via a transient slot (#526) —
     # released on EVERY exit by the finally, so it can never leak.
-    rate_limiter.start_upload(current_user_id)
+    rate_limiter.start_upload(user_id)
 
-    # The concurrency slot and the assembled temp file are released on *every*
-    # exit, not just the successful one. Releasing only on success meant a
-    # handful of corrupt uploads pinned a user at the concurrency cap with no
-    # session left to abort, and 429'd their every subsequent init.
+    # The slot and the assembled temp file are released on *every* exit, not just the
+    # successful one — except a held file, which the session owns again. Releasing only
+    # on success meant a handful of corrupt uploads pinned a user at the concurrency
+    # cap with no session left to abort, and 429'd their every subsequent init.
+    held = False
     try:
-        await _admit_assembled(current_user_id, temp_path, filename)
-        content = temp_path.read_bytes()
-        df = _parsed_frame(filename.lower(), content)
-
-        pii_detections = pii_detector.detect_pii_in_dataframe(df)
-        pii_report = pii_detector.generate_pii_report(pii_detections)
-
-        user_data = await _store_chunked(current_user_id, filename, content, df, pii_report)
-
-        # Background AI summary — always over a PII-masked frame (#490).
-        background_tasks.add_task(
-            generate_ai_summary_safe, str(user_data.id), _summary_frame(df, pii_detections)
+        scan = await _scanned(user_id, temp_path, session["filename"])
+        if mask_pii is None and scan[3]["risk_level"] == "high":
+            held = True
+            return await _hold_for_confirmation(request, session, scan[3])
+        return await _store_and_summarise(
+            background_tasks, user_id, session["filename"], scan, mask_pii
         )
-
-        return {
-            "status": "success",
-            "file_id": str(user_data.id),
-            "filename": filename,
-            "pii_report": pii_report
-        }
     finally:
-        temp_path.unlink(missing_ok=True)
-        rate_limiter.end_upload(current_user_id)  # release the finalization slot (#526)
+        if not held:
+            temp_path.unlink(missing_ok=True)
+        rate_limiter.end_upload(user_id)  # release the finalization slot (#526)
+
+
+@router.post(
+    "/chunked/{session_id}/complete",
+    dependencies=[Depends(quota("uploads"))],
+)
+async def complete_chunked_upload(
+    request: Request,
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    current_user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    """
+    Complete chunked upload and process file. A high-risk PII finding answers
+    `pii_detected` and stores nothing until `/confirm` (#1122).
+    """
+    return await _finish_chunked(request, session_id, background_tasks, current_user_id, None)
+
+
+@router.post(
+    "/chunked/{session_id}/confirm",
+    dependencies=[Depends(quota("uploads"))],
+)
+async def confirm_chunked_upload(
+    request: Request,
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    mask_pii: bool = True,
+    current_user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    """Store the held upload of a `pii_detected` completion, masked or as uploaded
+    (the same choice as `/confirm-pii-upload`)."""
+    return await _finish_chunked(request, session_id, background_tasks, current_user_id, mask_pii)
 
 
 @router.delete("/chunked/{session_id}")

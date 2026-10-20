@@ -201,4 +201,72 @@ describe('useChunkedUpload', () => {
     expect(onError).toHaveBeenCalledWith('persistent failure');
     expect(result.current.uploadState?.status).toBe('error');
   });
+  // #1122: a high-risk file is held by the server, not stored; the 200 answer used to be
+  // read as a finished upload.
+  describe('a completion that found high-risk PII', () => {
+    const PAUSE = {
+      status: 'pii_detected',
+      requires_confirmation: true,
+      session_id: 'sess-pii',
+      pii_report: { has_pii: true, risk_level: 'high' },
+    };
+
+    const pausedUpload = () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(makeJsonResponse({ session_id: 'sess-pii' })) // init
+        .mockResolvedValueOnce(makeJsonResponse({ complete: true })) // chunk
+        .mockResolvedValueOnce(makeJsonResponse(PAUSE)); // complete
+    };
+
+    it('reports the pause and does not report a stored file', async () => {
+      pausedUpload();
+      const onComplete = jest.fn();
+      const onPiiDetected = jest.fn();
+      const { result } = renderHook(() =>
+        useChunkedUpload({ chunkSize: 1024, onComplete, onPiiDetected })
+      );
+
+      await act(async () => {
+        await result.current.uploadFile(makeFile(8));
+      });
+
+      expect(onPiiDetected).toHaveBeenCalledWith(PAUSE);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it.each([true, false])('confirmUpload sends the mask choice (%s) and reports the stored file', async (mask) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        makeJsonResponse({ status: 'success', file_id: 'file-7', pii_masked: mask })
+      );
+      const onComplete = jest.fn();
+      const { result } = renderHook(() => useChunkedUpload({ onComplete }));
+
+      await act(async () => {
+        await result.current.confirmUpload('sess-pii', mask);
+      });
+
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(String(url)).toContain(`/upload/chunked/sess-pii/confirm?mask_pii=${mask}`);
+      expect(init.method).toBe('POST');
+      expect(init.headers.Authorization).toBe('Bearer test-auth-token');
+      expect(onComplete).toHaveBeenCalledWith('file-7', expect.objectContaining({ file_id: 'file-7' }));
+    });
+
+    it('confirmUpload reports a refusal and rethrows it', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: jest.fn().mockResolvedValue({ detail: 'Upload session not found' }),
+      });
+      const onError = jest.fn();
+      const { result } = renderHook(() => useChunkedUpload({ onError }));
+
+      await act(async () => {
+        await expect(result.current.confirmUpload('gone', true)).rejects.toBeDefined();
+      });
+
+      expect(onError).toHaveBeenCalledWith(expect.stringContaining('Upload session not found'));
+    });
+  });
 });
