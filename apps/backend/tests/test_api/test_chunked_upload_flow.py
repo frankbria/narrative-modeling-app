@@ -758,3 +758,359 @@ async def test_completed_upload_stores_a_sanitised_filename(client_as, fresh_han
     assert stored is not None
     for value in (stored.filename, stored.original_filename):
         assert value == "evilX-Injected: yes.csv"
+
+
+PII_CSV = (
+    b"identifier,amount\n"
+    b"123-45-6789,10\n"
+    b"987-65-4321,20\n"
+    b"111-22-3333,30\n"
+)
+
+
+class TestAHighRiskChunkedUploadWaitsForConfirmation:
+    """#1122: `/secure` pauses a high-risk file for `/confirm-pii-upload`; the chunked
+    route used to store it unconditionally, for the largest files first."""
+
+    async def _assembled(self, client, content=PII_CSV, filename="pii.csv"):
+        session_id = (await _init(client, filename, len(content))).json()["session_id"]
+        await _upload_all(client, session_id, content=content)
+        return session_id
+
+    async def _uploads_used(self, tenant):
+        from app.billing import metering
+
+        return await metering.usage_for(tenant, "uploads")
+
+    async def test_completion_answers_pii_detected_and_stores_nothing(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+
+        response = await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "pii_detected"
+        assert body["requires_confirmation"] is True
+        assert body["pii_report"]["risk_level"] == "high"
+        assert body["session_id"] == session_id
+        assert s3_calls == []
+        assert await UserData.find(UserData.user_id == TENANT_A).count() == 0
+
+    async def test_the_paused_attempt_is_not_charged(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        before = await self._uploads_used(TENANT_A)
+
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert await self._uploads_used(TENANT_A) == before
+
+    async def test_the_assembled_file_is_held_with_its_session(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert temp_path.exists()
+        assert fresh_handler.get_session(session_id, TENANT_A) is not None
+
+    async def test_confirming_with_masking_stores_a_masked_copy(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        import pandas as pd
+
+        stored: dict[str, bytes] = {}
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        before = await self._uploads_used(TENANT_A)
+
+        original = secure_upload_module.upload_file_to_s3
+
+        def keep(content, key, content_type=None):
+            stored[key] = content
+            return original(content, key, content_type=content_type)
+
+        secure_upload_module.upload_file_to_s3 = keep
+        try:
+            response = await client.post(
+                f"/api/v1/upload/chunked/{session_id}/confirm",
+                params={"mask_pii": "true"},
+            )
+        finally:
+            secure_upload_module.upload_file_to_s3 = original
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "success"
+        assert body["pii_masked"] is True
+        ((key, written),) = stored.items()
+        assert key.startswith(f"datasets/{TENANT_A}/") and "masked" in key
+        assert key.endswith(".csv")
+        assert b"123-45-6789" not in written
+        row = await UserData.get(body["file_id"])
+        assert row.pii_masked is True
+        assert row.file_type == "csv"
+        assert row.pii_risk_level == "high"
+        assert "123-45-6789" not in str(row.data_preview)
+        assert list(pd.read_csv(io.BytesIO(written)).columns) == ["identifier", "amount"]
+        assert await self._uploads_used(TENANT_A) == before + 1
+
+    async def test_confirming_without_masking_stores_the_original(
+        self, client_as, fresh_handler, s3_calls, monkeypatch
+    ):
+        stored: dict[str, bytes] = {}
+        monkeypatch.setattr(
+            secure_upload_module,
+            "upload_file_to_s3",
+            lambda content, key, content_type=None: (
+                stored.__setitem__(key, content) or True,
+                f"s3://test-bucket/{key}",
+            ),
+        )
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/confirm",
+            params={"mask_pii": "false"},
+        )
+
+        assert response.status_code == 200, response.text
+        ((key, written),) = stored.items()
+        assert written == PII_CSV
+        assert "masked" not in key
+        row = await UserData.get(response.json()["file_id"])
+        assert row.pii_masked is False
+        assert row.contains_pii is True
+
+    async def test_masking_is_the_default(self, client_as, fresh_handler, s3_calls):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        response = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert response.status_code == 200, response.text
+        assert response.json()["pii_masked"] is True
+        assert "masked" in s3_calls[-1][0]
+
+    async def test_confirming_consumes_the_session_and_the_temp_file(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        first = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+        second = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert first.status_code == 200
+        assert second.status_code == 404
+        assert not temp_path.exists()
+        assert len(s3_calls) == 1
+
+    async def test_another_tenants_session_is_a_404_and_stores_nothing(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        session_id = await self._assembled(client_as(TENANT_A))
+        await client_as(TENANT_A).post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        response = await client_as(TENANT_B).post(
+            f"/api/v1/upload/chunked/{session_id}/confirm"
+        )
+
+        assert response.status_code == 404
+        assert s3_calls == []
+        assert fresh_handler.get_session(session_id, TENANT_A) is not None
+
+    async def test_an_unknown_session_is_a_404(self, client_as, fresh_handler, s3_calls):
+        response = await client_as(TENANT_A).post(
+            "/api/v1/upload/chunked/nope/confirm"
+        )
+
+        assert response.status_code == 404
+
+    async def test_an_expired_held_session_is_410(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        fresh_handler.sessions[session_id]["expires_at"] = "2000-01-01T00:00:00+00:00"
+
+        response = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert response.status_code == 410
+        assert s3_calls == []
+
+    async def test_cancelling_discards_the_held_file(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        response = await client.delete(f"/api/v1/upload/chunked/{session_id}")
+
+        assert response.status_code == 200
+        assert not temp_path.exists()
+        assert s3_calls == []
+
+    async def test_a_low_risk_chunked_file_is_still_stored_at_completion(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client, content=CSV, filename="data.csv")
+
+        response = await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "success"
+        assert len(s3_calls) == 1
+
+
+class TestOnlyAHeldUploadCanBeConfirmed:
+    """#1122 review: `/confirm` must not be a way around the pause. An assembled session
+    that completion never held is refused (404, as for an unknown id), untouched."""
+
+    async def _assembled(self, client, content=PII_CSV):
+        session_id = (await _init(client, "pii.csv", len(content))).json()["session_id"]
+        await _upload_all(client, session_id, content=content)
+        return session_id
+
+    async def test_confirm_without_completion_is_404_and_stores_nothing(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+
+        response = await client.post(
+            f"/api/v1/upload/chunked/{session_id}/confirm", params={"mask_pii": "false"}
+        )
+
+        assert response.status_code == 404
+        assert s3_calls == []
+        assert await UserData.find(UserData.user_id == TENANT_A).count() == 0
+
+    async def test_the_refused_session_is_not_consumed(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+
+        await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+        completed = await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert temp_path.exists()
+        assert completed.json()["status"] == "pii_detected"
+
+    async def test_a_held_session_survives_a_restart_as_held(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        client = client_as(TENANT_A)
+        session_id = await self._assembled(client)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        fresh_handler.sessions.clear()  # the metadata json is all that is left
+
+        response = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert response.status_code == 200, response.text
+
+
+class TestAConfirmationThatIsRefusedKeepsTheHeldUpload:
+    """A refusal before anything is stored (storage ceiling, #768) is not the user's
+    last chance: the file stays held and a later confirm can succeed."""
+
+    async def test_a_storage_refusal_leaves_the_session_held(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        from pathlib import Path
+
+        from app.billing.plans import PLAN_LIMITS
+        from app.models.subscription import PlanTier
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, "pii.csv", len(PII_CSV))).json()["session_id"]
+        await _upload_all(client, session_id, content=PII_CSV)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+        full = await UserData(
+            user_id=TENANT_A, filename="d.csv", original_filename="d.csv",
+            s3_url="s3://b/d.csv", num_rows=1, num_columns=1, data_schema=[],
+            file_size=PLAN_LIMITS[PlanTier.FREE].storage_bytes,
+        ).insert()
+
+        refused = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+
+        assert refused.status_code == 402, refused.text
+        assert temp_path.exists()
+        assert s3_calls == []
+
+        await full.delete()
+        retried = await client.post(f"/api/v1/upload/chunked/{session_id}/confirm")
+        assert retried.status_code == 200, retried.text
+        assert len(s3_calls) == 1
+
+
+class TestTwoConfirmationsStoreOnce:
+    async def test_concurrent_confirms_produce_one_dataset(
+        self, client_as, fresh_handler, s3_calls
+    ):
+        import asyncio
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, "pii.csv", len(PII_CSV))).json()["session_id"]
+        await _upload_all(client, session_id, content=PII_CSV)
+        await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        first, second = await asyncio.gather(
+            client.post(f"/api/v1/upload/chunked/{session_id}/confirm"),
+            client.post(f"/api/v1/upload/chunked/{session_id}/confirm"),
+        )
+
+        assert sorted([first.status_code, second.status_code]) == [200, 404]
+        assert len(s3_calls) == 1
+        assert await UserData.find(UserData.user_id == TENANT_A).count() == 1
+
+
+class TestAFailedHoldDoesNotStrandTheFile:
+    async def test_the_temp_file_is_removed_when_the_session_cannot_be_saved(
+        self, client_as, fresh_handler, s3_calls, monkeypatch
+    ):
+        from pathlib import Path
+
+        client = client_as(TENANT_A)
+        session_id = (await _init(client, "pii.csv", len(PII_CSV))).json()["session_id"]
+        await _upload_all(client, session_id, content=PII_CSV)
+        temp_path = Path(fresh_handler.sessions[session_id]["temp_path"])
+
+        def broken(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(fresh_handler, "_save_session_metadata", broken)
+        with pytest.raises(OSError):
+            await client.post(f"/api/v1/upload/chunked/{session_id}/complete")
+
+        assert not temp_path.exists()
+        assert session_id not in fresh_handler.sessions

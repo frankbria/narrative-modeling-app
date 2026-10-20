@@ -23,8 +23,8 @@ export interface UploadCleanupFixtures {
   eraseUploads: void;
 }
 
-// The three routes that store a dataset, each answering its `file_id`.
-const STORING_UPLOAD = /\/upload\/(secure|confirm-pii-upload|chunked\/[^/]+\/complete)$/;
+// The routes that store a dataset, each answering its `file_id`.
+const STORING_UPLOAD = /\/upload\/(secure|confirm-pii-upload|chunked\/[^/]+\/(complete|confirm))$/;
 
 // Merge all fixtures
 export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures & UploadCleanupFixtures>({

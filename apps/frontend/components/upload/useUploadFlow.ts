@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import type { FlaggedPIIReport } from '@/lib/types/api';
+import type { ChunkedPiiPause, FlaggedPIIReport } from '@/lib/types/api';
 import useChunkedUpload from '@/lib/hooks/useChunkedUpload';
 import {
   CHUNKED_UPLOAD_THRESHOLD,
@@ -36,6 +36,8 @@ export function useUploadFlow() {
   const [uploadedFileId, setUploadedFileId] = useState<string | null>(null);
   const [showPIIWarning, setShowPIIWarning] = useState(false);
   const [piiData, setPiiData] = useState<FlaggedPIIReport | null>(null);
+  // Set when the paused file is a chunked upload held on the server (#1122).
+  const [piiSessionId, setPiiSessionId] = useState<string | null>(null);
   const [useChunkedUploadMode, setUseChunkedUploadMode] = useState(false);
   const [isLargeFile, setIsLargeFile] = useState(false);
 
@@ -69,18 +71,32 @@ export function useUploadFlow() {
     setUseChunkedUploadMode(false);
   }
 
+  function chunkedPaused(pause: ChunkedPiiPause) {
+    // High-risk PII: nothing is stored until the user chooses, as on /upload/secure.
+    setPiiData(pause.pii_report);
+    setPiiSessionId(pause.session_id);
+    setShowPIIWarning(true);
+    setUploadStatus('idle');
+    setUseChunkedUploadMode(false);
+  }
+
   const {
     uploadFile: uploadFileChunked,
+    confirmUpload: confirmChunkedUpload,
     uploadState: chunkUploadState,
     isUploading: isChunkUploading,
     cancelUpload: cancelChunkUpload,
     resetUpload: resetChunkUpload
-  } = useChunkedUpload({ onComplete: chunkedStored, onError: chunkedFailed });
+  } = useChunkedUpload({ onComplete: chunkedStored, onPiiDetected: chunkedPaused, onError: chunkedFailed });
 
   function select(selected: File) {
     // A new upload starts a new workflow.
     if (state.datasetId) {
       resetWorkflow();
+    }
+    // A held chunked upload is dropped on the server too, not just forgotten here.
+    if (piiSessionId) {
+      cancelChunkUpload();
     }
     setFile(selected);
     setIsLargeFile(selected.size > CHUNKED_UPLOAD_THRESHOLD);
@@ -92,11 +108,14 @@ export function useUploadFlow() {
     setIsUploading(false);
     setShowPIIWarning(false);
     setPiiData(null);
+    setPiiSessionId(null);
     setUseChunkedUploadMode(false);
     resetChunkUpload();
   }
 
   function onDrop(acceptedFiles: File[]) {
+    // A confirm in flight owns the session; any drop would reset or abort it under the answer.
+    if (isConfirming) return;
     if (acceptedFiles.length === 0) {
       setUploadStatus('error');
       setFile(null);
@@ -174,12 +193,36 @@ export function useUploadFlow() {
     }
   }
 
+  async function confirmChunked(sessionId: string, maskPII: boolean) {
+    setIsConfirming(true);
+    try {
+      // The hook's onComplete shows the stored dataset; onError has shown a failure.
+      await confirmChunkedUpload(sessionId, maskPII);
+      setShowPIIWarning(false);
+      setPiiData(null);
+      setPiiSessionId(null);
+    } catch (err) {
+      console.error('Chunked PII confirmation error:', err);
+    } finally {
+      setIsConfirming(false);
+    }
+  }
+
   async function handleConfirmPII(maskPII: boolean) {
     if (!file || !piiData) return;
+    if (piiSessionId) {
+      await confirmChunked(piiSessionId, maskPII);
+      return;
+    }
     await confirm(file, maskPII);
   }
 
   function cancelPII() {
+    if (piiSessionId) {
+      // Drops the held file on the server.
+      cancelChunkUpload();
+      setPiiSessionId(null);
+    }
     setShowPIIWarning(false);
     setPiiData(null);
     setFile(null);
