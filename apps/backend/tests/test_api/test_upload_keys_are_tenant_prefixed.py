@@ -19,7 +19,6 @@ import pytest_asyncio
 
 import app.api.routes.datasets as datasets_module
 from app.api.routes import secure_upload as secure_upload_module
-from app.api.routes import upload as upload_module
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,7 +33,7 @@ KEY_RE = re.compile(
 
 @pytest.fixture
 def s3_keys(monkeypatch):
-    """Substitute the S3 write in BOTH route modules, recording every key."""
+    """Substitute the S3 write in the route modules, recording every key."""
     keys: list[str] = []
 
     def fake_upload(*args, **kwargs):
@@ -45,12 +44,7 @@ def s3_keys(monkeypatch):
         return True, f"s3://test-bucket/{s3_filename}"
 
     monkeypatch.setattr(secure_upload_module, "upload_file_to_s3", fake_upload)
-    monkeypatch.setattr(upload_module, "upload_file_to_s3", fake_upload)
     monkeypatch.setattr(datasets_module, "upload_file_to_s3", fake_upload)
-    # /upload/ refuses to run without these names set; the values are never used
-    # because the S3 call above is substituted.
-    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BUCKET_NAME"):
-        monkeypatch.setenv(name, "test-placeholder")
     return keys
 
 
@@ -61,13 +55,11 @@ def no_ai_summary(monkeypatch):
     async def noop(*args, **kwargs):
         return None
 
-    # Three entry points: /secure schedules generate_dataset_summary via an import
-    # inside the handler (patch the source module); /upload/ imports it at module
-    # level (patch its binding); /confirm and chunked schedule generate_ai_summary_safe.
+    # /secure schedules generate_dataset_summary via an import inside the handler (patch
+    # the source module); /confirm and chunked schedule generate_ai_summary_safe.
     import app.utils.ai_summary as ai_summary
 
     monkeypatch.setattr(ai_summary, "generate_dataset_summary", noop)
-    monkeypatch.setattr(upload_module, "generate_dataset_summary", noop)
     monkeypatch.setattr(secure_upload_module, "generate_ai_summary_safe", noop)
 
 
@@ -125,11 +117,6 @@ class TestEveryDatasetWriterUsesTheOwnerPrefix:
         assert response.status_code == 200, response.text
         assert len(s3_keys) == 1 and KEY_RE.match(s3_keys[0]), s3_keys
         assert s3_keys[0].rsplit("/", 1)[1].startswith("masked_")
-
-    async def test_plain_upload_route(self, client, s3_keys):
-        response = await client.post("/api/v1/upload/", files=_file(CLEAN_CSV))
-        assert response.status_code == 200, response.text
-        assert len(s3_keys) == 1 and KEY_RE.match(s3_keys[0]), s3_keys
 
     async def test_client_filename_never_reaches_the_key(self, client, s3_keys):
         response = await client.post(

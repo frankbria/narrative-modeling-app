@@ -94,7 +94,7 @@ class TestUserDataAPI:
         It asserted a create round-trip through a body that let the client name
         `s3_url`, which was the vulnerability. The endpoint answers 410; the
         replacement coverage lives in TestUserDataMassAssignment, and datasets
-        are created through POST /api/v1/upload.
+        are created through POST /api/v1/upload/secure.
         """
         response = await async_authorized_client.post(
             "/api/v1/user_data/",

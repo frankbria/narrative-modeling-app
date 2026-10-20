@@ -255,35 +255,6 @@ async def test_process_file_invalid_data(mock_user_id, setup_database):
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_oversized_file_with_413(monkeypatch):
-    """Issue #270: an oversized upload must 413 and NOT be masked as a 500 by
-    the route's catch-all `except Exception` (guarded by `except HTTPException`)."""
-    import io
-
-    from fastapi import BackgroundTasks, HTTPException
-    from starlette.datastructures import UploadFile
-
-    from app.api.routes.upload import upload_file
-
-    # Tiny cap so the test payload is trivially "too large".
-    monkeypatch.setattr("app.utils.upload_limits.MAX_UPLOAD_BYTES", 10)
-
-    big = UploadFile(
-        filename="big.csv",
-        file=io.BytesIO(b"a" * 5000),
-        size=5000,
-    )
-    with pytest.raises(HTTPException) as exc:
-        await upload_file(
-            request=Mock(),
-            background_tasks=BackgroundTasks(),
-            file=big,
-            current_user_id="user-1",
-        )
-    assert exc.value.status_code == 413
-
-
-@pytest.mark.asyncio
 async def test_upload_endpoint_rejects_oversized_multipart_413(
     async_authorized_client, setup_database, monkeypatch
 ):
@@ -294,7 +265,7 @@ async def test_upload_endpoint_rejects_oversized_multipart_413(
 
     oversized = b"col\n" + b"9\n" * 5000  # ~10 KB, over the 1 KB cap
     resp = await async_authorized_client.post(
-        "/api/v1/upload/",
+        "/api/v1/upload/secure",
         files={"file": ("big.csv", oversized, "text/csv")},
     )
     assert resp.status_code == 413
@@ -312,7 +283,7 @@ async def test_oversized_content_length_rejected_before_route(
 
     payload = b"col\n" + b"9\n" * 5000  # ~10 KB; httpx sets Content-Length
     resp = await async_authorized_client.post(
-        "/api/v1/upload/",
+        "/api/v1/upload/secure",
         files={"file": ("big.csv", payload, "text/csv")},
     )
     assert resp.status_code == 413

@@ -35,7 +35,7 @@ async def create_user_data_gone() -> None:
     raise HTTPException(
         status_code=410,
         detail=(
-            "Create datasets with POST /api/v1/upload. This route accepted a "
+            "Create datasets with POST /api/v1/upload/secure. This route accepted a "
             "client-supplied s3_url and has been retired."
         ),
     )
