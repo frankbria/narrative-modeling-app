@@ -4,7 +4,7 @@ import { COMPANY } from '@/lib/legal/company'
 
 /** Each line traces to code: #608/#490 PII, #461 fallbacks, #480/#497 erasure, #602 refund. */
 const COMMITMENTS = [
-  { icon: ShieldCheck, text: 'PII is scanned and masked before anything reaches a language model.' },
+  { icon: ShieldCheck, text: `${COMPANY.piiProof}.` },
   { icon: KeyRound, text: 'Every AI feature works without an AI key.' },
   { icon: Trash2, text: 'One-click erasure of your data.' },
   { icon: RotateCcw, text: `${COMPANY.refundWindowDays}-day refund from your first payment.` },

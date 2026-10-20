@@ -8,7 +8,7 @@ It is an AI-guided platform for analysts who are not ML engineers: upload a CSV 
 
 Eight guided stages (`apps/frontend/lib/types/workflow.ts`):
 
-1. **Data loading.** CSV/XLSX upload (100 MB cap, chunked for large files), PII scanning with masking before anything reaches a language model, and sample datasets for onboarding.
+1. **Data loading.** CSV/XLSX upload (100 MB cap, chunked for large files), PII scanning on the in-app upload, and sample datasets for onboarding.
 2. **Data profiling.** Column statistics, charts, data-quality issues with suggested fixes, and an AI summary.
 3. **Data preparation.** A visual pipeline of the four transformations the engine runs (remove duplicates, trim whitespace, drop missing, fill missing), with preview, undo/redo, version history and exportable Python code.
 4. **Feature engineering.** Choose features, with identifiers, dates and empty columns detected and excluded automatically.
