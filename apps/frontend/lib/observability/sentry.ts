@@ -6,7 +6,7 @@
  * so nothing identifying is attached and URL query strings (dataset ids,
  * filenames) are stripped before an event leaves the process.
  */
-import type { ErrorEvent, Event, Integration } from '@sentry/core'
+import type { ErrorEvent, Event, Integration, Options } from '@sentry/core'
 
 const stripQuery = (url: unknown) => (typeof url === 'string' ? url.split('?', 1)[0] : url)
 
@@ -36,14 +36,28 @@ export function scrubSentryEvent<T extends Event>(event: T): T {
   return event
 }
 
-export function sentryOptions(dsn: string | undefined) {
+// Typed so an option a Sentry major removes fails tsc instead of being silently ignored.
+export function sentryOptions(dsn: string | undefined): Options | undefined {
   const trimmed = dsn?.trim()
   if (!trimmed) return undefined
   return {
     dsn: trimmed,
     // Build-time like the DSN, so the browser and server halves agree.
     environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV,
-    sendDefaultPii: false,
+    // v11 collects every category below unless it is switched off; scrubSentryEvent
+    // only rewrites the fields it knows, so nothing else may be collected at all.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+    },
     // ponytail: errors only; add tracing when there's a perf question to answer.
     tracesSampleRate: 0,
     // With no tracing, the default browser-tracing integration only costs
