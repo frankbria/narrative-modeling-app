@@ -41,6 +41,21 @@ describe('frontend error reporting', () => {
     expect(sentryOptions('   ')).toBeUndefined()
   })
 
+  it('collects no request, user or variable data, since v11 collects all of it unless told not to', () => {
+    expect(Sentry.getClient()!.getDataCollectionOptions()).toMatchObject({
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: false, response: false },
+      httpBodies: [],
+      urlQueryParams: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+    })
+  })
+
   it('sends a render error caught by the global error boundary', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => {})
     window.history.pushState({}, '', '/explore?dataset=abc&file=salaries.csv')
