@@ -51,5 +51,7 @@ while :; do
     echo "--- timed out with runs still in progress:"; jq -r '.[]|select(.status!="completed")|.name' <<<"$runs"
     exit 2
   fi
-  sleep "$interval"
+  # The last sleep is clamped so --timeout bounds wall time, not wall time plus one interval.
+  remaining=$(( deadline - $(date +%s) ))
+  sleep $(( remaining < interval ? (remaining > 0 ? remaining : 1) : interval ))
 done
