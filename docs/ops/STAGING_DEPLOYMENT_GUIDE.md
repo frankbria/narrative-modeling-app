@@ -98,6 +98,7 @@ chmod 600 .env.staging
 - `NEXTAUTH_SECRET`: from Step 3; shared by both halves
 - `SIGNUP_MODE`: `invite` or `open` (#768). The preflight refuses any other value (#780). `open` admits any Google/GitHub account; do not switch to it before the #768 backstops and #769 telemetry are live in production.
 - `INVITE_ALLOWLIST`: comma-separated invitee emails. Required by the preflight while `SIGNUP_MODE=invite`; see [Managing beta invitees](#managing-beta-invitees).
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`: test-mode on staging (#598). Provision the three together: a secret key with no webhook secret takes money and entitles nobody.
 
 **Needed for a working site** (not guarded):
 
@@ -114,10 +115,9 @@ chmod 600 .env.staging
 `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`, `APP_VERSION`, the backstops
 `AI_CALLS_DAILY_CEILING` (default 500 model calls/day across all tenants) and
 `SIGNUP_ALERT_THRESHOLD_24H` (default 100 new accounts/day before the probe fails),
-and the four Stripe values `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_PRO`, `STRIPE_PRICE_ENTERPRISE`. Without Stripe, billing is inert and
-every tenant gets FREE limits (ADR-002). Provision the four together: a secret key
-with no webhook secret takes money and entitles nobody.
+and `STRIPE_PRICE_ENTERPRISE`, set only to entitle a sales-led deal through checkout
+(ADR-003). Once one is, guard it with `${STRIPE_PRICE_ENTERPRISE:?}` in compose and add
+it to `stripe_client._REQUIRED_SETTINGS`: losing it resolves that customer's price to PRO.
 
 > **No inline comments in `.env.staging`.** `VAR=value  # note` makes the comment part
 > of the value, because `docker compose --env-file` does not support them. Put

@@ -117,21 +117,23 @@ services:
       # the product simply cannot take money. The startup log now names any that
       # are unset (app/main.py), so a half-provisioned deploy is visible.
       #
-      # Deliberately OPTIONAL (`:-`) rather than guarded (`:?`), because
-      # scripts/deploy/preflight_staging_env.sh derives its required set from the
-      # `${VAR:?}` guards in this file: adding one for a key that is not yet in
-      # .env.staging fails the NEXT deploy and takes staging down. Once real
-      # values are provisioned, flip `:-` to `:?` on all four — that is the whole
-      # change, and tests/test_security/test_staging_billing_env.py is written to
-      # be updated at the same time.
+      # Guarded (`:?`) since the test keys were provisioned (#598), so
+      # scripts/deploy/preflight_staging_env.sh fails a deploy that lost one
+      # instead of booting with billing silently off or half on. A secret key with
+      # no webhook secret takes money and entitles nobody, which is worse than no
+      # Stripe at all. The guarded set is stripe_client._REQUIRED_SETTINGS
+      # (tests/test_security/test_staging_billing_env.py).
       #
-      # Note the half-configured trap: a secret key with no webhook secret takes
-      # money and entitles nobody, which is worse than no Stripe at all. Provision
-      # the four together, and point the Stripe dashboard endpoint at
-      # https://<host>/webhooks/stripe/webhook — outside /api/v1, see #456.
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      # STRIPE_PRICE_ENTERPRISE stays optional: ENTERPRISE is sales-led (ADR-003)
+      # and its price is set only for a deal entitled through checkout. Guard it
+      # here (and in _REQUIRED_SETTINGS) once one is: losing it resolves that
+      # customer's price to PRO.
+      #
+      # The Stripe dashboard endpoint is https://<host>/webhooks/stripe/webhook —
+      # outside /api/v1, see #456.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:?}
       STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
       # No PLAN_* overrides, deliberately (#457 AC4). The per-tier limits in
       # app/billing/plans.py ARE the intended configuration; they are placeholders

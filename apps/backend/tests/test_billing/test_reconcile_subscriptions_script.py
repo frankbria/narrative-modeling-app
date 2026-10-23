@@ -307,3 +307,38 @@ class TestReconcile:
             raise AssertionError("should not have been asked about a FREE tenant")
 
         assert await reconcile(_collection(), fetch, apply=False) == 0
+
+
+class TestEntryPoint:
+    """`main()` refuses only what would make `--apply` write a wrong tier (#598)."""
+
+    def _main(self):
+        spec = importlib.util.spec_from_file_location("reconcile_subscriptions", _SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.main
+
+    async def test_an_unset_enterprise_price_still_repairs_status(
+        self, setup_database, monkeypatch, capsys
+    ):
+        """ENTERPRISE is sales-led (ADR-003), so staging runs without its price.
+
+        `reconcile()` then rewrites status and period end only, which is the repair
+        staging actually needs; refusing outright left it with no repair at all.
+        """
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
+
+        assert await self._main()() == 0
+        assert "status and period end only" in capsys.readouterr().out
+
+    async def test_an_unset_pro_price_is_refused(self, monkeypatch, capsys):
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_ENTERPRISE", "price_ent")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
+
+        assert await self._main()() == 2
+        assert "STRIPE_PRICE_PRO" in capsys.readouterr().err

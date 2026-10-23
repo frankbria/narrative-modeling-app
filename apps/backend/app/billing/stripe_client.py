@@ -118,12 +118,15 @@ def is_configured() -> bool:
 #: Every variable the billing surface needs to work end to end, in the order an
 #: operator provisions them. `STRIPE_PUBLISHABLE_KEY` is not here: it is read into
 #: `Settings` but nothing reads it back, and Checkout is hosted, so the frontend
-#: has no Stripe code to hand it to.
+#: has no Stripe code to hand it to. Nor is `STRIPE_PRICE_ENTERPRISE`: ENTERPRISE is
+#: sales-led (ADR-003), so its price is set only for a deal entitled through checkout.
+#: `docker-compose.staging.yml` guards exactly this set with `${VAR:?}`.
+# shortcut: an ENTERPRISE price lost after a deal goes live is not flagged and resolves
+# that customer to PRO; add it here and guard it in compose with the first such deal.
 _REQUIRED_SETTINGS = (
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "STRIPE_PRICE_PRO",
-    "STRIPE_PRICE_ENTERPRISE",
 )
 
 #: What each one being unset actually costs, once `STRIPE_SECRET_KEY` is present
@@ -137,7 +140,6 @@ _CONSEQUENCES = {
         "the events that would entitle a paying customer are rejected"
     ),
     "STRIPE_PRICE_PRO": "the pro tier cannot be sold",
-    "STRIPE_PRICE_ENTERPRISE": "the enterprise tier cannot be sold",
 }
 
 
