@@ -9,7 +9,7 @@ authors = [
     { name = "Frank Bria", email = "frank.bria@gmail.com" }
 ]
 # readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.2.3",
     "numpy>=2.2.4",

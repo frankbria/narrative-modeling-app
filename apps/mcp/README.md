@@ -10,7 +10,7 @@ backend over an SSE transport.
   separately-installed `fastmcp` package. The backend's client pins the same range, so a
   new major migrates both together.
 - **Transport**: SSE (Starlette + uvicorn), bound to `127.0.0.1` by default.
-- **Language**: Python 3.10+
+- **Language**: Python 3.11+
 - **Package Manager**: uv
 - **Entry point**: `main.py`
 
@@ -18,7 +18,7 @@ backend over an SSE transport.
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - uv
 - The required environment variables (see Security & Deployment below)
 
