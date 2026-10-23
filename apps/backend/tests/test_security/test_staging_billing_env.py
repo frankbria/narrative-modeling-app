@@ -24,9 +24,9 @@ COMPOSE_FILE = REPO_ROOT / "docker-compose.staging.yml"
 STAGING_ENV_EXAMPLE = REPO_ROOT / ".env.staging.example"
 BACKEND_ENV_EXAMPLE = REPO_ROOT / "apps" / "backend" / ".env.example"
 
-#: Every variable the billing surface reads. `STRIPE_SECRET_KEY` gates
-#: `is_configured()`; `STRIPE_WEBHOOK_SECRET` gates signature verification; the two
-#: price ids are what `_price_for` maps a tier to when starting a checkout.
+#: Every variable the billing surface reads, required or not. `STRIPE_SECRET_KEY`
+#: gates `is_configured()`; `STRIPE_WEBHOOK_SECRET` gates signature verification; the
+#: two price ids are what `_price_for` maps a tier to when starting a checkout.
 #: `STRIPE_PUBLISHABLE_KEY` is deliberately absent — it is read into `Settings` but
 #: nothing reads it back, and checkout is hosted, so the frontend has no Stripe code.
 REQUIRED_STRIPE_VARS = (
@@ -67,20 +67,20 @@ class TestComposePassesStripeConfig:
                 f"{var} must interpolate ${{{var}}} from .env.staging, got {value!r}"
             )
 
-    def test_stripe_variables_do_not_block_the_deploy_before_keys_exist(self):
-        """AC2 of #457: passthrough now, `${VAR:?}` once the keys are provisioned.
+    def test_the_deploy_requires_exactly_what_billing_requires(self):
+        """AC6 of #598: the keys are provisioned, so losing one fails the deploy.
 
         `scripts/deploy/preflight_staging_env.sh` derives its required set from the
-        `${VAR:?}` guards in this very file, so adding a guard for a variable that is
-        not yet in `.env.staging` fails the next deploy and takes staging down. When
-        the keys land, flipping `:-` to `:?` here is the whole change — and this test
-        is then the thing to update, deliberately.
+        `${VAR:?}` guards in this file. Guarding a variable billing does not need
+        (the ENTERPRISE price, set per sales-led deal — ADR-003) would fail a correct
+        deploy; leaving a needed one optional would boot with billing off or half on.
         """
+        from app.billing.stripe_client import _REQUIRED_SETTINGS
+
         env = _backend_environment()
-        guarded = [v for v in REQUIRED_STRIPE_VARS if ":?" in env[v]]
-        assert not guarded, (
-            "these are marked required, so .env.staging must already carry real "
-            f"values — confirm that, then update this test: {guarded}"
+        guarded = {v for v in REQUIRED_STRIPE_VARS if ":?" in env[v]}
+        assert guarded == set(_REQUIRED_SETTINGS), (
+            "the compose `${VAR:?}` guards must match stripe_client._REQUIRED_SETTINGS"
         )
 
 

@@ -585,8 +585,21 @@ class TestConfigurationVisibility:
             "STRIPE_SECRET_KEY",
             "STRIPE_WEBHOOK_SECRET",
             "STRIPE_PRICE_PRO",
-            "STRIPE_PRICE_ENTERPRISE",
         ]
+
+    def test_an_unset_enterprise_price_is_a_complete_configuration(self, monkeypatch):
+        """ENTERPRISE is sales-led (ADR-003): its price is set per deal, not per deploy.
+
+        Counting it as required made the intended staging setup log PARTIAL on every
+        boot (#598), and a warning that is always there is one nobody reads.
+        """
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+
+        assert stripe_client.missing_configuration() == []
+        assert stripe_client.configuration_warning() is None
 
     def test_reports_nothing_when_fully_configured(self, monkeypatch):
         monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
@@ -687,16 +700,18 @@ class TestConfigurationWarning:
         assert "charge" in warning.lower()
 
     def test_a_missing_price_alone_still_warns(self, monkeypatch):
-        """One price id missing sells the other tier fine and 503s only that tier."""
+        """The pro price missing leaves checkout live for nothing self-serve."""
         monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
         monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
-        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
-        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", None, raising=False)
+        monkeypatch.setattr(
+            settings, "STRIPE_PRICE_ENTERPRISE", "price_ent", raising=False
+        )
 
         warning = stripe_client.configuration_warning()
         assert warning is not None
-        assert "STRIPE_PRICE_ENTERPRISE" in warning
-        assert "STRIPE_PRICE_PRO" not in warning
+        assert "STRIPE_PRICE_PRO" in warning
+        assert "STRIPE_PRICE_ENTERPRISE" not in warning
 
     def test_the_consequence_matches_what_is_actually_missing(self, monkeypatch):
         """A price-only gap must not be described as a webhook problem.
@@ -707,13 +722,12 @@ class TestConfigurationWarning:
         """
         monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
         monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_x", raising=False)
-        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", "price_pro", raising=False)
-        monkeypatch.setattr(settings, "STRIPE_PRICE_ENTERPRISE", None, raising=False)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO", None, raising=False)
 
         warning = stripe_client.configuration_warning()
         assert warning is not None
         assert "webhook" not in warning.lower(), warning
-        assert "enterprise" in warning.lower()
+        assert "pro tier" in warning.lower()
 
     def test_a_webhook_only_gap_does_not_mention_unsellable_tiers(self, monkeypatch):
         monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test_x", raising=False)
