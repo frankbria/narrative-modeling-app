@@ -34,8 +34,10 @@ Usage (from apps/backend, against whichever cluster you want to check):
         PYTHONPATH=. uv run python scripts/reconcile_subscriptions.py
     # ... same environment, plus --apply, to write
 
-All five are required. The two price ids are not decoration: without them every
-tenant resolves to PRO and `--apply` downgrades your ENTERPRISE customers.
+The first four are required. Without `STRIPE_PRICE_ENTERPRISE` (unset wherever no
+sales-led deal is sold through checkout, ADR-003) the tier is left alone and only
+status and period end are repaired: an unmatched price resolves to PRO, so a tier
+rewrite would downgrade any ENTERPRISE customer.
 
 Exit status is 1 when uncorrected drift remains, so it can gate a deploy.
 """
@@ -60,22 +62,12 @@ async def main() -> int:
     if not stripe_client.is_configured():
         print("Set STRIPE_SECRET_KEY — this script reads from Stripe.", file=sys.stderr)
         return 2
-    # Not optional, and the reason is not symmetry with the app's env file.
-    # `tier_for_price` falls back to PRO for any price it cannot match against a
-    # CONFIGURED setting — and an unset setting matches nothing. An operator shell
-    # with only a secret key would therefore resolve every tenant to PRO and
-    # `--apply` would write it, silently downgrading every ENTERPRISE customer on
-    # the cluster. This is the same trap CLAUDE.md documents for the webhook, one
-    # environment removed.
-    missing = [
-        name
-        for name in ("STRIPE_PRICE_PRO", "STRIPE_PRICE_ENTERPRISE")
-        if not stripe_client.setting(name)
-    ]
-    if missing:
+    # Required like the app requires it. An unset ENTERPRISE price is not refused:
+    # `reconcile()` then leaves every tier alone, because `tier_for_price` would
+    # resolve an unmatched price to PRO and `--apply` would downgrade ENTERPRISE.
+    if not stripe_client.setting("STRIPE_PRICE_PRO"):
         print(
-            "Set " + " and ".join(missing) + " — without them every tenant resolves\n"
-            "to PRO and --apply would downgrade your ENTERPRISE customers.",
+            "Set STRIPE_PRICE_PRO — the price billing sells, as the app requires.",
             file=sys.stderr,
         )
         return 2

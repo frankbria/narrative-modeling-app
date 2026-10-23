@@ -125,7 +125,9 @@ services:
       # (tests/test_security/test_staging_billing_env.py).
       #
       # STRIPE_PRICE_ENTERPRISE stays optional: ENTERPRISE is sales-led (ADR-003)
-      # and its price is set only for a deal entitled through checkout.
+      # and its price is set only for a deal entitled through checkout. Guard it
+      # here (and in _REQUIRED_SETTINGS) once one is: losing it resolves that
+      # customer's price to PRO.
       #
       # The Stripe dashboard endpoint is https://<host>/webhooks/stripe/webhook —
       # outside /api/v1, see #456.
