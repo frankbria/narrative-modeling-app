@@ -25,6 +25,8 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg: $1" >&2; usage;;
   esac
 done
+# interval feeds $(( )) below, where "0.5"/"2m"/"09" abort mid-loop as exit 1 and "010" goes octal.
+[[ "$interval" =~ ^[1-9][0-9]*$ ]] || { echo "--interval must be a positive integer, got: $interval" >&2; usage; }
 
 repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
 if [[ "$ref" =~ ^[0-9]+$ ]]; then
