@@ -25,7 +25,7 @@ jobs:
     # a PR that was never reviewed. Skipping instead reports it grey and honest.
     # Dependabot could not be reviewed here even if the guard were opened up:
     # GitHub runs Dependabot-triggered pull_request workflows with a read-only
-    # token and the separate Dependabot secret store, so ZHIPU_API_KEY would be
+    # token and the separate Dependabot secret store, so MODEL_API_KEY would be
     # empty and the summary comment unpostable. `user.type` covers every bot
     # rather than naming one.
     #
@@ -34,16 +34,19 @@ jobs:
     # Docs-only pull requests are skipped by `paths-ignore` above.
     if: github.event.pull_request.user.type == 'User'
     # Pinned to a commit SHA (not @main) so an upstream push can't silently run
-    # here with write perms + the ZHIPU_API_KEY secret (the repo's action-pinning
+    # here with write perms + the MODEL_API_KEY secret (the repo's action-pinning
     # policy, see claude-code-review.yml). The pinned callee bounds a review by turns
     # and by a step timeout shorter than the job's, uploads the agent transcript as an
     # artifact, and rewrites its tracking comment into "GLM review did not complete"
     # rather than leaving a spinner that reads like a clean review. Since 777f02e9 it
     # also fails the check, with that notice, when the provider rejects the model call
     # (a `success` result with `is_error: true`, #955) instead of reporting success.
-    uses: frankbria/glm-review/.github/workflows/review.yml@777f02e9bbb1b8b98f0d043809abe2bce3fa35fe # main @ 2026-10-13
+    uses: frankbria/glm-review/.github/workflows/review.yml@694b8104c462f47ace9112dfd46ee4c5954c75d6 # main @ 2026-10-24
+    with:
+      base_url: https://api.kimi.com/coding/
+      model: k3[1m]
     permissions:
       contents: read
       pull-requests: write
     secrets:
-      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+      MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
