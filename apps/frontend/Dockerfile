@@ -10,9 +10,9 @@
 # backend image. Node major MUST track CI (ci.yml builds/tests on Node 22) so
 # the deployed artifact isn't an untested major (issue #277). Refresh all three
 # stage pins together when bumping Node, and keep this comment honest.
-# Pinned 2026-09-13 (node:22-alpine → Node 22.23.2); raised from Node 20 in #443
+# Pinned 2026-10-24 (node:22-alpine → Node 22.23.4, the CVE-2026-111497 fix); raised from Node 20 in #443
 # so the runtime matches openai@7's `>=22` engines floor (Node 20 everywhere was
-# blocking every openai major). This digest is Node 22.23.2, which satisfies the
+# blocking every openai major). This digest is Node 22.23.4, which satisfies the
 # `engines` floor in package.json (^22.13.0 || >=24). `engine-strict` is not set,
 # so a digest bump to an older 22.x would NOT fail npm ci — it would fail somewhere
 # less obvious. Check `docker run --rm <digest> node -v` against that floor when
