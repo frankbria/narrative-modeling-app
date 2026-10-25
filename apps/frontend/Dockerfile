@@ -10,20 +10,20 @@
 # backend image. Node major MUST track CI (ci.yml builds/tests on Node 22) so
 # the deployed artifact isn't an untested major (issue #277). Refresh all three
 # stage pins together when bumping Node, and keep this comment honest.
-# Pinned 2026-09-13 (node:22-alpine → Node 22.23.2); raised from Node 20 in #443
+# Pinned 2026-10-24 (node:22-alpine → Node 22.23.4, the CVE-2026-111497 fix); raised from Node 20 in #443
 # so the runtime matches openai@7's `>=22` engines floor (Node 20 everywhere was
-# blocking every openai major). This digest is Node 22.23.2, which satisfies the
+# blocking every openai major). This digest is Node 22.23.4, which satisfies the
 # `engines` floor in package.json (^22.13.0 || >=24). `engine-strict` is not set,
 # so a digest bump to an older 22.x would NOT fail npm ci — it would fail somewhere
 # less obvious. Check `docker run --rm <digest> node -v` against that floor when
 # bumping, and keep it on the same major CI runs (test_staging_ports guards this).
-FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS deps
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ── builder: produce the standalone server bundle ───────────────────────────
-FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS builder
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -51,7 +51,7 @@ RUN CI=true \
     npm run build
 
 # ── runner: minimal runtime image ──────────────────────────────────────────
-FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS runner
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
