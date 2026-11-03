@@ -25,8 +25,8 @@ jobs:
     # a PR that was never reviewed. Skipping instead reports it grey and honest.
     # Dependabot could not be reviewed here even if the guard were opened up:
     # GitHub runs Dependabot-triggered pull_request workflows with a read-only
-    # token and the separate Dependabot secret store, so MODEL_API_KEY would be
-    # empty and the summary comment unpostable. `user.type` covers every bot
+    # token and the separate Dependabot secret store, so every provider key would
+    # be empty and the summary comment unpostable. `user.type` covers every bot
     # rather than naming one.
     #
     # There is no size gate (#576). The one there was skipped a one-file credential
@@ -34,19 +34,18 @@ jobs:
     # Docs-only pull requests are skipped by `paths-ignore` above.
     if: github.event.pull_request.user.type == 'User'
     # Pinned to a commit SHA (not @main) so an upstream push can't silently run
-    # here with write perms + the MODEL_API_KEY secret (the repo's action-pinning
-    # policy, see claude-code-review.yml). The pinned callee bounds a review by turns
-    # and by a step timeout shorter than the job's, uploads the agent transcript as an
-    # artifact, and rewrites its tracking comment into "GLM review did not complete"
-    # rather than leaving a spinner that reads like a clean review. Since 777f02e9 it
-    # also fails the check, with that notice, when the provider rejects the model call
-    # (a `success` result with `is_error: true`, #955) instead of reporting success.
-    uses: frankbria/glm-review/.github/workflows/review.yml@694b8104c462f47ace9112dfd46ee4c5954c75d6 # main @ 2026-10-24
-    with:
-      base_url: https://api.kimi.com/coding/
-      model: k3[1m]
+    # here with write perms + the provider keys (the repo's action-pinning policy, see
+    # claude-code-review.yml). The pinned callee reviews with Codex, then Kimi, then
+    # Z.ai GLM, each only if the one before failed. A quota failure fails over quietly;
+    # any other failure, or no review at all, is posted on the PR as a "Reviewer
+    # failover" comment while the check stays green (frankbria/glm-review#17).
+    uses: frankbria/glm-review/.github/workflows/review.yml@502f7c15f0b5ccc89d50faa4026d57741750cb19 # main @ 2026-11-03
     permissions:
       contents: read
       pull-requests: write
+    # The repo secret MODEL_API_KEY holds the Kimi key; the callee's own MODEL_API_KEY
+    # means the last (Z.ai) provider, so Z.ai goes under its other accepted name.
     secrets:
-      MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      KIMI_API_KEY: ${{ secrets.MODEL_API_KEY }}
+      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
