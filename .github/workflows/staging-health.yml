@@ -16,7 +16,7 @@ name: Staging Health Probe
 # Same network path and the same Development-environment secrets as deploy.yml
 # (SSH_KEY, HOST, SSH_KNOWN_HOSTS, TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, optional
 # DEPLOY_USER / DEPLOY_PATH) — read deploy.yml's header for why HOST is the
-# tailnet address. Secret-gated like backup-verify.yml: until they are configured
+# tailnet machine name. Secret-gated like backup-verify.yml: until they are configured
 # this passes with a warning rather than filing red runs nobody can act on.
 
 on:
