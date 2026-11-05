@@ -81,6 +81,7 @@ test.csv
 
 # Claude Code logs
 .claude/logs/
+.claude/quality-gate/receipts/
 
 # Local plans, demo docs and scratch notes. They can embed environment-specific
 # data such as presigned S3 URLs with credentials, so none of it is committed.

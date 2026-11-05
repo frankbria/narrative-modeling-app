@@ -59,13 +59,5 @@ Keep docs in sync with code: OpenAPI when endpoints change; docstrings/JSDoc on 
 
 ## Automated Workflow Configuration
 - **Quality gates before PR:** tests pass, coverage >85%, ruff/eslint clean, mypy/tsc clean, no TODO/FIXME/NotImplemented markers, OWASP scan, and `scripts/quality/crap.sh` passes: every added or modified function scores CRAP < 6 — split or cover it, never skip (exit 2 = a measurement is missing: follow the hint; backend coverage needs MongoDB). No standing exemptions.
-- **CRAP gate reads `.tsx` with lizard's TypeScript reader, which misreads some shapes (#765, #808, #825, #855).** Write instead:
-  - `props: {…}` destructured in the first statement (`const { a } = props`), not a typed destructured parameter.
-  - callbacks typed `VoidFunction` or as a method signature (`onSelect(view: View): void`), not `() => void` in a props type.
-  - `{x ? <A/> : <B/>}`, not a parenthesised JSX ternary.
-  - a named type, not an inline object type as a generic argument (`ComponentType<{…}>` blinds the whole file).
-  - `unknown` + a cast at the caller, not a generic function declaration.
-  - a component with a statement before `return <JSX>` (a bare return gets no LCOV line); inline JSX arrows named in the component body; `??` counts as two branches; a file not yet `git add`ed reads as absent.
-  - in a multi-line JSX tag, a hyphenated string attribute (`aria-label="…"`) can make lizard drop the whole component; in a large file its line numbers can drift from the real ones. If a changed function is missing from `uvx lizard` output, move it to its own small file (#1116).
-  When line ranges look wrong, run `uvx lizard -l typescript <file>`.
+- **CRAP gate engine (#1153):** `crap.sh` runs the newest `quality-gate` plugin in the plugin cache with `.claude/quality-gate/crap.json`; it parses TS/TSX with the TypeScript AST and Python with the stdlib AST, so write code naturally (the old lizard workarounds are gone). Receipts land in the gitignored `.claude/quality-gate/receipts/`.
 - **CodeRabbit:** max 3 iterations; auto-fix style/types/simple bugs/docs. Escalate on iteration-3 failures, architecture changes, or security decisions.

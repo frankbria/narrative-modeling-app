@@ -123,8 +123,6 @@ function OverviewStats({ dataset }: { dataset: ProcessedDataset }) {
 function ProfilingActions(props: {
   dataset: ProcessedDataset
   profiled: boolean
-  // VoidFunction, not `() => void`: the CRAP gate's lizard reader counts a type-level
-  // arrow as an (uncovered) function.
   onExport: VoidFunction
   onComplete: VoidFunction
   onContinue: VoidFunction

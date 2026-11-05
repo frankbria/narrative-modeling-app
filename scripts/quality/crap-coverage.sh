@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Coverage for the CRAP gate (.claude/quartermaster/crap.json): one LCOV file at
-# $QUARTERMASTER_COVERAGE_DIR/lcov.info with repo-root paths, because the gate
+# Coverage for the CRAP gate (.claude/quality-gate/crap.json): one LCOV file at
+# $QUALITY_GATE_COVERAGE_DIR/lcov.info with repo-root paths, because the gate
 # resolves every SF: line from the repo root while pytest-cov and jest write them
 # relative to their own app. Only the apps the change touches (vs main) are run:
 # the backend gate suite takes minutes and a frontend-only change has no use for it.
 # Backend needs MongoDB on :27017, same as the PR gate.
 set -euo pipefail
 
-out="${QUARTERMASTER_COVERAGE_DIR:?run this through: quartermaster crap}/lcov.info"
+out="${QUALITY_GATE_COVERAGE_DIR:?run this through: scripts/quality/crap.sh}/lcov.info"
 root="$(git rev-parse --show-toplevel)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
