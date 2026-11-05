@@ -357,7 +357,7 @@ def test_frontend_probe_prints_a_report_or_a_fixed_phrase_and_nothing_else():
 # GitHub masks secrets in the run log, not in an issue body the run posts itself.
 
 
-def _posted_alert(host: str, files: dict[str, str]) -> str:
+def _posted_alert(host: str, files: dict[str, str], **deploy: str) -> str:
     """Run the real report step with a ``gh`` that records what it would post.
 
     ``files`` are the earlier steps' outputs that exist (name under /tmp → text)."""
@@ -379,6 +379,7 @@ def _posted_alert(host: str, files: dict[str, str]) -> str:
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
                 "HOST": host,
                 "RUN_URL": "https://example.invalid/run",
+                **deploy,
             },
             check=True,
             timeout=30,
@@ -402,8 +403,35 @@ def test_alert_redacts_the_lowercased_host_ssh_prints():
     """ssh lowercases the name before it reports it, so an exact match would miss it."""
     host = "Box-Name.Tail0000.ts.net"
     error = f"ssh: Could not resolve hostname {host.lower()}: Name or service not known\n"
-    posted = _posted_alert(host, {"probe.err": error}).lower()
-    assert host.lower() not in posted
+    posted = _posted_alert(host, {"probe.err": error})
+    assert host.lower() not in posted.lower()
+    assert "Could not resolve hostname <staging host>" in posted
+
+
+def test_alert_redacts_the_deploy_user_and_path():
+    """ssh names the user beside the host; backend_state.sh names the path."""
+    error = (
+        "deployer@box.example: Permission denied (publickey).\n"
+        "cannot cd to /srv/secret-path\n"
+    )
+    posted = _posted_alert(
+        "box.example",
+        {"probe.err": error, "state.txt": error},
+        DEPLOY_USER="deployer",
+        DEPLOY_PATH="/srv/secret-path",
+    )
+    assert "deployer" not in posted and "/srv/secret-path" not in posted
+    assert "<deploy user>@<staging host>: Permission denied" in posted
+    # An unset user must not turn every `@` into a placeholder.
+    assert "a@b" in _posted_alert("box.example", {"probe.err": "a@b\n"}, DEPLOY_USER="")
+
+
+def test_alert_reads_the_same_deploy_values_the_probe_used():
+    steps = _steps(HEALTH_WORKFLOW)
+    report = steps["Report the failure on an issue"]["env"]
+    probe = steps["Run the probes in the backend and frontend containers"]["env"]
+    for name in ("HOST", "DEPLOY_USER", "DEPLOY_PATH"):
+        assert report[name] == probe[name], name
 
 
 def test_alert_body_is_untouched_when_the_host_is_unset():

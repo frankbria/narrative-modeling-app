@@ -156,6 +156,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
           title='[P1] [ops] Staging health probe is failing'
           # Search on the stable phrase, never the full title: the operator retitles
@@ -179,8 +181,12 @@ jobs:
           # ssh names the host in its errors, and Actions masks secrets only in the
           # log, never in an issue body this step posts to a public repo (#1150).
           # ssh lowercases the name before printing it, so redact that form too.
+          # The user is redacted only as ssh prints it (`user@host`): a bare `root`
+          # would rewrite unrelated text. backend_state.sh names the path on failure.
           body=${body//"$HOST"/<staging host>}
           body=${body//"${HOST,,}"/<staging host>}
+          [ -z "$DEPLOY_USER" ] || body=${body//"$DEPLOY_USER@"/<deploy user>@}
+          body=${body//"$DEPLOY_PATH"/<deploy path>}
           # `// empty`: on no match jq would print the 4-char string "null", which
           # is non-empty and would send the very first failure to `gh issue comment null`.
           # Comment on the OLDEST open alert so a duplicate never becomes the thread of record.
