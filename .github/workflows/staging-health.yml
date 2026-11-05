@@ -178,7 +178,9 @@ jobs:
             "$RUN_URL" "$verdict" "$probe" "$state" "$stderr")
           # ssh names the host in its errors, and Actions masks secrets only in the
           # log, never in an issue body this step posts to a public repo (#1150).
+          # ssh lowercases the name before printing it, so redact that form too.
           body=${body//"$HOST"/<staging host>}
+          body=${body//"${HOST,,}"/<staging host>}
           # `// empty`: on no match jq would print the 4-char string "null", which
           # is non-empty and would send the very first failure to `gh issue comment null`.
           # Comment on the OLDEST open alert so a duplicate never becomes the thread of record.

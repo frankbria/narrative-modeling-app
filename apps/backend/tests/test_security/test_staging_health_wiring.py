@@ -398,6 +398,14 @@ def test_alert_never_publishes_the_staging_host():
     assert report["env"]["HOST"] == "${{ secrets.HOST }}"
 
 
+def test_alert_redacts_the_lowercased_host_ssh_prints():
+    """ssh lowercases the name before it reports it, so an exact match would miss it."""
+    host = "Box-Name.Tail0000.ts.net"
+    error = f"ssh: Could not resolve hostname {host.lower()}: Name or service not known\n"
+    posted = _posted_alert(host, {"probe.err": error}).lower()
+    assert host.lower() not in posted
+
+
 def test_alert_body_is_untouched_when_the_host_is_unset():
     error = "ssh: connect to host port 22: Connection timed out\n"
     assert error.strip() in _posted_alert("", {"probe.err": error})
