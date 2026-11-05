@@ -155,6 +155,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HOST: ${{ secrets.HOST }}
         run: |
           title='[P1] [ops] Staging health probe is failing'
           # Search on the stable phrase, never the full title: the operator retitles
@@ -167,12 +168,17 @@ jobs:
             "not run") verdict="The probe did not run — an earlier step (tailnet or ssh) failed; see the run log.";;
             *) verdict="Probe exit status $status.";;
           esac
-          probe=$(cat /tmp/probe.txt 2>/dev/null); [ -n "$probe" ] || probe='(the probe printed nothing)'
-          state=$(cat /tmp/state.txt 2>/dev/null); [ -n "$state" ] || state='(not collected)'
-          stderr=$(tail -n 20 /tmp/probe.err 2>/dev/null); [ -n "$stderr" ] || stderr='(empty)'
+          # `|| true`: under the runner's `bash -e`, a missing file (the probe never
+          # ran) would end this step before it files anything.
+          probe=$(cat /tmp/probe.txt 2>/dev/null || true); [ -n "$probe" ] || probe='(the probe printed nothing)'
+          state=$(cat /tmp/state.txt 2>/dev/null || true); [ -n "$state" ] || state='(not collected)'
+          stderr=$(tail -n 20 /tmp/probe.err 2>/dev/null || true); [ -n "$stderr" ] || stderr='(empty)'
           # shellcheck disable=SC2016 # the backticks are literal markdown fences
           body=$(printf 'Run: %s\n\n%s\n\n## Probe\n```\n%s\n```\n\n## Backend container state\n```\n%s\n```\n\n<details><summary>probe stderr (last 20 lines)</summary>\n\n```\n%s\n```\n</details>\n\nSee docs/ops/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' \
             "$RUN_URL" "$verdict" "$probe" "$state" "$stderr")
+          # ssh names the host in its errors, and Actions masks secrets only in the
+          # log, never in an issue body this step posts to a public repo (#1150).
+          body=${body//"$HOST"/<staging host>}
           # `// empty`: on no match jq would print the 4-char string "null", which
           # is non-empty and would send the very first failure to `gh issue comment null`.
           # Comment on the OLDEST open alert so a duplicate never becomes the thread of record.

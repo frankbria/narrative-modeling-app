@@ -351,3 +351,61 @@ def test_frontend_probe_prints_a_report_or_a_fixed_phrase_and_nothing_else():
     assert dead.stdout.strip() == "frontend: unhealthy (the frontend container did not answer)"
     for run in (crashed, dead):
         assert "hunter2" not in run.stdout + run.stderr
+
+
+# --- #1150: ssh names the host in its errors, and the alert issue is public ---
+# GitHub masks secrets in the run log, not in an issue body the run posts itself.
+
+
+def _posted_alert(host: str, files: dict[str, str]) -> str:
+    """Run the real report step with a ``gh`` that records what it would post.
+
+    ``files`` are the earlier steps' outputs that exist (name under /tmp → text)."""
+    run = _steps(HEALTH_WORKFLOW)["Report the failure on an issue"]["run"]
+    with tempfile.TemporaryDirectory() as tmp:
+        bin_dir = Path(tmp) / "bin"
+        bin_dir.mkdir()
+        posted = Path(tmp) / "posted.txt"
+        fake_gh = bin_dir / "gh"
+        fake_gh.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" >> {posted}\n')
+        fake_gh.chmod(0o755)
+        for name, text in files.items():
+            (Path(tmp) / name).write_text(text)
+        # Actions runs an unlabelled `run:` as `bash -e {0}`.
+        subprocess.run(
+            ["bash", "-e", "-c", run.replace("/tmp/", f"{tmp}/")],
+            env={
+                **os.environ,
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                "HOST": host,
+                "RUN_URL": "https://example.invalid/run",
+            },
+            check=True,
+            timeout=30,
+        )
+        return posted.read_text()
+
+
+def test_alert_never_publishes_the_staging_host():
+    host = "box-name.tail0000.ts.net"
+    error = f"ssh: Could not resolve hostname {host}: Name or service not known\n"
+    posted = _posted_alert(
+        host, {"probe.status": "255", "probe.err": error, "state.txt": error}
+    )
+    assert "Could not resolve hostname" in posted, "the error itself must still be reported"
+    assert host not in posted
+    report = _steps(HEALTH_WORKFLOW)["Report the failure on an issue"]
+    assert report["env"]["HOST"] == "${{ secrets.HOST }}"
+
+
+def test_alert_body_is_untouched_when_the_host_is_unset():
+    error = "ssh: connect to host port 22: Connection timed out\n"
+    assert error.strip() in _posted_alert("", {"probe.err": error})
+
+
+def test_alert_is_filed_when_the_probe_never_ran():
+    """A tailnet or ssh-setup failure skips the probe step, so none of its files
+    exist. Those are the failures nobody notices otherwise."""
+    posted = _posted_alert("box.example", {})
+    assert "The probe did not run" in posted
+    assert "(the probe printed nothing)" in posted
