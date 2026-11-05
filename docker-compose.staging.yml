@@ -44,11 +44,11 @@ services:
       ENVIRONMENT: staging
       DEBUG: "false"
       # Observability (#273): structured JSON logs so req_id/level are queryable;
-      # Sentry is optional — an unset SENTRY_DSN leaves error tracking off.
+      # SENTRY_DSN is required (#785): an unset DSN used to switch error tracking off silently.
       LOG_LEVEL: info
       LOG_FORMAT: json
       APP_VERSION: ${APP_VERSION:-staging}
-      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN:?}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
       # Rate limiting (#483): nginx fronts this container and sets X-Real-IP from
       # $remote_addr, so the limiter may key anonymous requests on it. Without this
@@ -168,8 +168,8 @@ services:
         # https://dev.sheetpredict.app/api/v1 — baked in at build time.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         # Browser error reporting (#769 AC4), baked in like the API URL. The
-        # backend's DSN is reused; unset leaves the client SDK off.
-        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
+        # backend's DSN is reused.
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:?}
         # Same tag as the backend's ENVIRONMENT, or staging errors read as production.
         NEXT_PUBLIC_SENTRY_ENVIRONMENT: staging
     container_name: narrative-staging-frontend
@@ -183,8 +183,8 @@ services:
       # and www., so this cannot be baked in at build.
       ENVIRONMENT: staging
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      # Server/edge error reporting (instrumentation.ts); optional like the backend's.
-      SENTRY_DSN: ${SENTRY_DSN:-}
+      # Server/edge error reporting (instrumentation.ts), same DSN as the backend.
+      SENTRY_DSN: ${SENTRY_DSN:?}
       # NextAuth's MongoDB adapter (auth.ts -> lib/db.ts) connects at runtime;
       # lib/db.ts throws on startup without this.
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
