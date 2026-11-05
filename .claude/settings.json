@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
-    "quartermaster@eigenwise-toolshed": true
+    "quartermaster@eigenwise-toolshed": true,
+    "quality-gate@eigenwise-toolshed": true
   },
   "hooks": {
     "PreToolUse": [
