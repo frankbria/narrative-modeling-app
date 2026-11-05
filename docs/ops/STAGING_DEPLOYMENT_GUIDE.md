@@ -165,7 +165,7 @@ tailnet, SSHes to the box, and runs in the deploy path:
 | Secret | Value |
 | --- | --- |
 | `SSH_KEY` | Private key authorised for the deploy user (Step 2) |
-| `HOST` | The box's **tailnet** 100.x address; the public name hangs because port 22 is firewalled, and the MagicDNS name breaks when the tailnet is renamed (#1150) |
+| `HOST` | The box's bare **tailnet** machine name (no `.ts.net` suffix); the public name hangs because port 22 is firewalled, and the full MagicDNS name breaks when the tailnet is renamed (#1150) |
 | `SSH_KNOWN_HOSTS` | Pinned host key, labelled with the same `HOST` value: `ssh-keyscan -t ed25519 <HOST> \| gh secret set SSH_KNOWN_HOSTS --env Development` (verify the fingerprint out of band) |
 | `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client id (`tag:ci`) |
 | `TS_OAUTH_SECRET` | Tailscale OAuth client secret |
