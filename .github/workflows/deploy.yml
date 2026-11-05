@@ -13,8 +13,10 @@ name: Deploy (Staging)
 # `ufw` allows 22 only from the home subnet and `on tailscale0`. A GitHub-hosted
 # runner therefore CANNOT ssh to dev.briaanalytics.com; it joins the tailnet and
 # connects to the box's tailnet address instead. Consequences:
-#   * HOST must be the tailnet MagicDNS name (…​.ts.net) or 100.x address —
-#     setting it to dev.briaanalytics.com will hang and then fail.
+#   * HOST must be the box's 100.x tailnet address — setting it to
+#     dev.briaanalytics.com will hang and then fail. Not the MagicDNS name: that
+#     carries the tailnet's DNS suffix, which a tailnet rename changes, and every
+#     deploy and health probe then fails to resolve the host (#1150).
 #   * SSH_KNOWN_HOSTS must be labelled with that same HOST value.
 #   * The tailnet ACL must let `tag:ci` reach the staging box on port 22.
 # Humans on the home subnet can still ssh to dev.briaanalytics.com directly; only
@@ -25,7 +27,7 @@ name: Deploy (Staging)
 # secrets with a STAGING_ prefix. This is the single source of truth — do not
 # reintroduce repo-level STAGING_* secrets.
 #   SSH_KEY            - private key authorized for the deploy user on HOST (required)
-#   HOST               - staging box's TAILNET name/address, not its public DNS (required)
+#   HOST               - staging box's 100.x TAILNET address, not its public DNS (required)
 #   SSH_KNOWN_HOSTS    - pinned host key(s) for HOST; replaces live ssh-keyscan TOFU (required)
 #   TS_OAUTH_CLIENT_ID - Tailscale OAuth client id, tag:ci scope (required)
 #   TS_OAUTH_SECRET    - Tailscale OAuth client secret (required)
@@ -87,7 +89,7 @@ jobs:
       # the home subnet and `on tailscale0`), so a GitHub-hosted runner cannot SSH
       # in directly — that is what broke every deploy after 2026-07-30 01:11
       # (issue #384). The runner joins the tailnet instead. HOST must therefore be
-      # the box's tailnet MagicDNS name or 100.x address, NOT dev.briaanalytics.com.
+      # the box's 100.x tailnet address, NOT dev.briaanalytics.com.
       # Mirrors the working setup in frankbria/codeframe.
       - name: Connect to Tailscale
         if: steps.preflight.outputs.configured == 'true'
@@ -119,7 +121,7 @@ jobs:
           # "Host key verification failed" — that is the intended behaviour, not a
           # bug. Re-pin from a trusted session, verifying the fingerprint out of
           # band first, using the tailnet HOST value (labels must match HOST):
-          #   ssh-keyscan -H <tailnet-host> | gh secret set SSH_KNOWN_HOSTS --env Development
+          #   ssh-keyscan -t ed25519 <100.x HOST> | gh secret set SSH_KNOWN_HOSTS --env Development
           printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
 
       - name: Deploy over SSH
