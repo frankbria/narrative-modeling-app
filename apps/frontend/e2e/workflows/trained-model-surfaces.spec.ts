@@ -31,7 +31,8 @@ test.describe('A trained model', () => {
 
     await test.step('Training Jobs lists the run as completed', async () => {
       await page.getByRole('link', { name: 'Training Jobs' }).click();
-      await expect(page).toHaveURL(/\/training$/);
+      // The dev server compiles a route the first time it is asked for.
+      await expect(page).toHaveURL(/\/training$/, { timeout: 30000 });
       await expect(page.getByRole('heading', { name: 'Training Jobs' })).toBeVisible();
 
       // The model is saved a moment before its job is marked completed, and the
@@ -82,7 +83,7 @@ test.describe('A trained model', () => {
       const { name } = (await model.json()) as { name: string };
       await page.goto('/dashboard?skipOnboarding=true');
       await page.getByTestId('recent-models').getByRole('button', { name }).first().click();
-      await expect(page).toHaveURL(new RegExp(`/model/${modelId}$`));
+      await expect(page).toHaveURL(new RegExp(`/model/${modelId}$`), { timeout: 30000 });
     });
 
     await test.step('the Versions tab lists the model as version 1 of its family', async () => {
