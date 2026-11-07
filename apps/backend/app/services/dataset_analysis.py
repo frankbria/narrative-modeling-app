@@ -10,7 +10,6 @@ from typing import Any
 from pydantic import BaseModel
 
 LOW_QUALITY_SCORE = 0.8
-MAX_RECOMMENDATIONS = 5
 QUALITY_REPORT_RECOMMENDATIONS = 3
 
 
@@ -26,12 +25,12 @@ class DatasetAnalysisResponse(BaseModel):
     metadata: dict[str, Any]
 
 
-def _recommendations(quality_report: dict[str, Any]) -> list[str]:
+def _recommendations(quality_score: float | None, quality_report: dict[str, Any]) -> list[str]:
     recommendations = []
-    if quality_report.get("overall_quality_score", 1.0) < LOW_QUALITY_SCORE:
+    if quality_score is not None and quality_score < LOW_QUALITY_SCORE:
         recommendations.append("Consider data cleaning to improve overall quality score")
-    recommendations.extend(quality_report.get("recommendations", [])[:QUALITY_REPORT_RECOMMENDATIONS])
-    return list(dict.fromkeys(recommendations))[:MAX_RECOMMENDATIONS]
+    recommendations.extend((quality_report.get("recommendations") or [])[:QUALITY_REPORT_RECOMMENDATIONS])
+    return list(dict.fromkeys(recommendations))
 
 
 def _overview(row_count: int, column_count: int) -> dict[str, Any]:
@@ -42,17 +41,22 @@ def _overview(row_count: int, column_count: int) -> dict[str, Any]:
 
 def _quality(quality_score: float) -> dict[str, Any]:
     description = f"Overall data quality score is {quality_score:.2f} (0-1 scale)."
-    return {"type": "data_quality", "title": "Data Quality", "description": description, "details": {"overall_quality_score": quality_score}}
+    details = {"overall_quality_score": quality_score}
+    return {"type": "data_quality", "title": "Data Quality", "description": description, "details": details}
 
 
 def analyze_dataset(file_id: str, analysis_type: str, schema: dict[str, Any], quality_report: dict[str, Any]) -> DatasetAnalysisResponse:
-    """Facts about the dataset, labelled as not AI via ``metadata.ai_used``."""
+    """Facts about the dataset, labelled as not AI via ``metadata.ai_used``.
+
+    Processing stores explicit nulls (#981), so a null reads as missing.
+    """
     # shortcut: one statement per line, because the CRAP gate cannot verify a multi-line Python statement from coverage.py's LCOV; fold back once the gate maps them.
-    row_count, column_count = schema.get("row_count", 0), schema.get("column_count", 0)
+    row_count, column_count = schema.get("row_count") or 0, schema.get("column_count") or 0
     insights = [_overview(row_count, column_count)]
     quality_score = quality_report.get("overall_quality_score")
     if quality_score is not None:
         insights.append(_quality(quality_score))
     summary = f"This is a rule-based summary computed directly from the dataset ({row_count:,} rows, {column_count} columns)."
-    recommendations = _recommendations(quality_report)
-    return DatasetAnalysisResponse(file_id=file_id, analysis_type=analysis_type, summary=summary, insights=insights, recommendations=recommendations, metadata={"ai_used": False})
+    recommendations = _recommendations(quality_score, quality_report)
+    response = {"summary": summary, "insights": insights, "recommendations": recommendations, "metadata": {"ai_used": False}}
+    return DatasetAnalysisResponse(file_id=file_id, analysis_type=analysis_type, **response)

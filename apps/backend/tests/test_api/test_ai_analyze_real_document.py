@@ -71,6 +71,30 @@ async def test_a_low_quality_score_recommends_cleaning(setup_database, async_aut
 
 
 @pytest.mark.asyncio
+async def test_stored_nulls_read_as_missing(setup_database, async_authorized_client):
+    """Processing stores explicit nulls (#981); they must not turn the analysis into a 500."""
+    nulls = {"overall_quality_score": None, "recommendations": None}
+    doc = await _dataset(schema={"row_count": None, "column_count": None}, quality_report=nulls)
+
+    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
+
+    assert response.status_code == 200, response.text
+    assert "0 rows, 0 columns" in response.json()["summary"]
+    assert response.json()["recommendations"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_recommendation_is_listed_once(setup_database, async_authorized_client):
+    cleaning = "Consider data cleaning to improve overall quality score"
+    quality_report = {"overall_quality_score": 0.5, "recommendations": [cleaning, "Drop the id column"]}
+    doc = await _dataset(quality_report=quality_report)
+
+    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
+
+    assert response.json()["recommendations"] == [cleaning, "Drop the id column"]
+
+
+@pytest.mark.asyncio
 async def test_a_tenant_at_the_ai_limit_still_gets_the_analysis(setup_database, async_authorized_client):
     await UsageRecord(
         user_id=TEST_USER, period_key=metering.period_key_for(), metric="ai_calls",

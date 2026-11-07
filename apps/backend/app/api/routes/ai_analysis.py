@@ -70,7 +70,7 @@ async def _processed_upload(file_id: str, user_id: str, unprocessed: str) -> Use
     return user_data
 
 
-UNPROCESSED_FOR_ANALYSIS = "File must be processed before AI analysis. Please process the file first."
+_UNPROCESSED_FOR_ANALYSIS = "File must be processed before AI analysis. Please process the file first."
 
 
 @router.post("/analyze/{file_id}", response_model=DatasetAnalysisResponse)
@@ -84,7 +84,7 @@ async def analyze_with_ai(
     """
     # shortcut: one statement per line, because the CRAP gate cannot verify a multi-line Python statement from coverage.py's LCOV; fold back once the gate maps them.
     analysis_type = (request or AnalysisRequest(file_id=file_id)).analysis_type
-    user_data = await _processed_upload(file_id, current_user_id, UNPROCESSED_FOR_ANALYSIS)
+    user_data = await _processed_upload(file_id, current_user_id, _UNPROCESSED_FOR_ANALYSIS)
     try:
         return analyze_dataset(str(user_data.id), analysis_type, user_data.schema or {}, user_data.quality_report or {})
     except Exception:
