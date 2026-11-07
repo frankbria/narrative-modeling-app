@@ -44,7 +44,8 @@ test.describe('Dashboard error handling', () => {
     const pageErrors: Error[] = [];
     page.on('pageerror', (error) => pageErrors.push(error));
     await failList(page, 'datasets');
-    await failList(page, 'models');
+    // Recent Models reads `GET /ml/`, never the dead `/models` (#1069).
+    await failList(page, 'ml/');
     await page.reload();
 
     await expect(page.getByTestId('recent-datasets').getByText('Unable to load datasets')).toBeVisible();
