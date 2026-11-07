@@ -27,7 +27,6 @@ Every AI feature has a rule-based fallback, so the app works without an OpenAI k
 apps/
   backend/    FastAPI API: datasets, transformations, training, serving, billing
   frontend/   Next.js app (App Router, NextAuth v5, Tailwind v4)
-  mcp/        MCP server exposing the EDA summary tool to the backend
 docs/
   adr/        Architecture decision records (billing, plan limits and pricing)
   dev/        Local development, backend test infrastructure, E2E testing
@@ -78,9 +77,6 @@ cd apps/frontend && npm test && npm run type-check && npm run lint
 
 # E2E against the real stack
 cd apps/frontend && npm run test:e2e:smoke
-
-# MCP server
-cd apps/mcp && uv run pytest tests/
 ```
 
 `.github/workflows/ci.yml` runs all of these on every pull request; `CI Success` is the required check. See [docs/dev/TEST_INFRASTRUCTURE.md](docs/dev/TEST_INFRASTRUCTURE.md) and [docs/dev/E2E_TESTING_GUIDE.md](docs/dev/E2E_TESTING_GUIDE.md).

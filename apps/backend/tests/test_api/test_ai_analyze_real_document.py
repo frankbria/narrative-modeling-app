@@ -1,9 +1,8 @@
-"""#683: POST /ai/analyze against a real stored dataset.
+"""POST /ai/analyze against a real stored dataset (#683, #508).
 
-`test_ai_analysis.py` drove this route with a `MagicMock` dataset behind a patched
-`UserData.find_one`, under an id ("test-file-123") no real lookup could match. The
-route worked, but two things those tests could not see were wrong or unchecked: a
-rule-based fallback was charged as an AI call, and nothing ran the lookup itself.
+The analysis is rule-based: it is computed from the dataset's stored schema and
+quality report and calls no model, so it is not metered. The MCP server it once
+asked first was never deployed and was removed (#508), along with its probe.
 """
 import copy
 import json
@@ -12,18 +11,14 @@ from pathlib import Path
 import pytest
 
 from app.billing import metering
+from app.billing.plans import PlanTier, limits_for
+from app.models.usage import UsageRecord
 from app.models.user_data import UserData
-from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
 
 TEST_USER = "test_user_123"
 PROCESSED = json.loads(
     (Path(__file__).resolve().parents[4] / "apps/frontend/__tests__/fixtures/dataProcessResponse.json").read_text()
 )
-#: Patched through the instance's own dict: the service is one object shared by the
-#: whole suite. `monkeypatch.setattr(service, ...)` restores by setting the original
-#: bound method back as an instance attribute, which then outlives the test and
-#: bypasses any later patch of the class; `setitem` on `vars(service)` is deleted on undo.
-MCP = vars(mcp_service)
 
 
 async def _dataset(user_id: str = TEST_USER, **fields) -> UserData:
@@ -47,62 +42,55 @@ async def _dataset(user_id: str = TEST_USER, **fields) -> UserData:
     return doc
 
 
-def _from_mcp(seen: dict):
-    async def analyze_dataset(**kwargs):
-        seen.update(kwargs)
-        return MCPAnalysisResponse(
-            file_id=kwargs["dataset_id"], analysis_type=kwargs["analysis_type"], summary="Five rows, three columns.",
-            insights=[{"type": "data_overview", "title": "Overview", "description": "5 rows"}],
-            recommendations=["Collect more rows"], metadata={"mcp_available": True},
-        )
-
-    return analyze_dataset
-
-
 @pytest.mark.asyncio
-async def test_with_no_analysis_service_the_answer_is_rule_based_and_free(setup_database, async_authorized_client):
-    """Nothing is stubbed: the MCP server is not running here, as it is not in any
-    deployed environment (#508), so this is the answer every caller gets today."""
+async def test_the_analysis_is_rule_based_and_free(setup_database, async_authorized_client):
     doc = await _dataset()
-
-    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
-
-    body = response.json()
-    assert response.status_code == 200, response.text
-    assert body["metadata"] == {"mcp_available": False, "fallback_mode": True}
-    assert "5 rows, 3 columns" in body["summary"]
-    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
-
-
-@pytest.mark.asyncio
-async def test_an_analysis_from_the_service_is_passed_on_and_charged(
-    setup_database, async_authorized_client, monkeypatch
-):
-    doc = await _dataset()
-    seen: dict = {}
-    monkeypatch.setitem(MCP, "analyze_dataset", _from_mcp(seen))
 
     response = await async_authorized_client.post(
         f"/api/v1/ai/analyze/{doc.id}", json={"file_id": str(doc.id), "analysis_type": "quality"}
     )
 
+    body = response.json()
     assert response.status_code == 200, response.text
-    assert response.json()["summary"] == "Five rows, three columns."
-    assert response.json()["analysis_type"] == "quality"
-    assert seen["dataset_id"] == str(doc.id) and seen["user_id"] == TEST_USER
-    assert seen["schema"] == PROCESSED["schema"] and seen["sample_data"] == [{"age": 41, "churned": 0}]
-    assert await metering.usage_for(TEST_USER, "ai_calls") == 1
+    assert body["metadata"] == {"ai_used": False}
+    assert body["analysis_type"] == "quality"
+    assert "5 rows, 3 columns" in body["summary"]
+    assert [insight["type"] for insight in body["insights"]] == ["data_overview", "data_quality"]
+    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
 
 
 @pytest.mark.asyncio
-async def test_an_unprocessed_dataset_is_refused_and_not_charged(setup_database, async_authorized_client):
+async def test_a_low_quality_score_recommends_cleaning(setup_database, async_authorized_client):
+    quality_report = {**PROCESSED["quality_report"], "overall_quality_score": 0.5, "recommendations": []}
+    doc = await _dataset(quality_report=quality_report)
+
+    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["recommendations"] == ["Consider data cleaning to improve overall quality score"]
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_at_the_ai_limit_still_gets_the_analysis(setup_database, async_authorized_client):
+    await UsageRecord(
+        user_id=TEST_USER, period_key=metering.period_key_for(), metric="ai_calls",
+        units=limits_for(PlanTier.FREE).ai_calls,
+    ).insert()
+    doc = await _dataset()
+
+    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
+
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+async def test_an_unprocessed_dataset_is_refused(setup_database, async_authorized_client):
     doc = await _dataset(is_processed=False)
 
     response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
 
     assert response.status_code == 400
     assert "must be processed" in response.json()["detail"]
-    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
 
 
 @pytest.mark.asyncio
@@ -116,19 +104,7 @@ async def test_someone_elses_dataset_is_not_found(setup_database, async_authoriz
 
 
 @pytest.mark.asyncio
-async def test_a_failing_analysis_service_is_a_sanitised_500_and_not_charged(
-    setup_database, async_authorized_client, monkeypatch
-):
-    doc = await _dataset()
+async def test_the_mcp_probe_is_gone(setup_database, async_authorized_client):
+    response = await async_authorized_client.get("/api/v1/ai/health")
 
-    async def broken(**_kwargs):
-        raise RuntimeError("MCP service unavailable at mcp.internal:8765")
-
-    monkeypatch.setitem(MCP, "analyze_dataset", broken)
-
-    response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
-
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Internal server error" and response.json()["request_id"]
-    assert "mcp.internal" not in response.text
-    assert await metering.usage_for(TEST_USER, "ai_calls") == 0
+    assert response.status_code == 404

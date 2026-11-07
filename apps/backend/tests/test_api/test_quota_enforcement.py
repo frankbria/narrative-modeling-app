@@ -934,8 +934,6 @@ class TestAiQuota:
         [
             ("/api/v1/ai/summarize/{fid}",
              "app.services.dataset_summarization.dataset_summarization_service.generate_comprehensive_summary"),
-            ("/api/v1/ai/analyze/{fid}",
-             "app.services.mcp_integration.mcp_service.analyze_dataset"),
             ("/api/v1/ai/chat", "app.services.ai_chat.ai_chat_service.reply"),
             # orchestration: the 402 lands before the body is even validated
             ("/api/v1/ai/recommend-tools",

@@ -1,3 +1,0 @@
-startCommand: uv run python main.py
-buildCommand: uv sync
-rootDir: apps/mcp

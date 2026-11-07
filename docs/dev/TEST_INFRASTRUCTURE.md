@@ -100,8 +100,7 @@ other routes 404 there, so route tests use `async_authorized_client`.
   tests skip here and are enforced below.
 - `backend-integration`: `pytest tests/ -m integration --cov=app` with MongoDB and Redis
   (6380) as service containers, LocalStack from `docker-compose.test.yml`, and
-  `CI_REQUIRE_SERVICES=true`. It also runs `uv sync --frozen` in `apps/mcp` so the MCP SSE
-  round trip runs.
+  `CI_REQUIRE_SERVICES=true`.
 - `backend-lint` (`ruff check .`) and `backend-typecheck` (`mypy app/`).
 
 Together the two test jobs cover the whole tree except the `performance` benchmarks

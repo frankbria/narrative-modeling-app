@@ -1,5 +1,5 @@
 """
-API routes for AI-powered data analysis using MCP
+API routes for AI-powered data analysis
 """
 
 import logging
@@ -15,12 +15,12 @@ from app.billing.enforcement import quota
 from app.middleware.error_handlers import internal_error_message
 from app.models.user_data import UserData
 from app.services.ai_chat import ChatRequest, ai_chat_service
+from app.services.dataset_analysis import DatasetAnalysisResponse, analyze_dataset
 from app.services.dataset_summarization import (
     DatasetSummaryRequest,
     EnhancedAISummary,
     dataset_summarization_service,
 )
-from app.services.mcp_integration import MCPAnalysisResponse, mcp_service
 from app.utils.circuit_breaker import CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
@@ -70,56 +70,27 @@ async def _processed_upload(file_id: str, user_id: str, unprocessed: str) -> Use
     return user_data
 
 
-async def _analysis(user_data: UserData, user_id: str, analysis_type: str) -> MCPAnalysisResponse:
-    """Ask the analysis service about the dataset.
-
-    The MCP tool reads the dataset server-side from (dataset_id, user_id) and
-    authorizes ownership itself (#506); the stored schema, statistics and sample
-    enrich the summary and the fallback only.
-    """
-    return await mcp_service.analyze_dataset(
-        dataset_id=str(user_data.id),
-        user_id=user_id,  # the authenticated caller, not what the row says
-        schema=user_data.schema or {},
-        statistics=user_data.statistics or {},
-        quality_report=user_data.quality_report or {},
-        sample_data=(user_data.data_preview or [])[:50],
-        analysis_type=analysis_type,
-    )
-
-
-@router.post("/analyze/{file_id}", response_model=MCPAnalysisResponse, dependencies=[Depends(quota("ai_calls"))])
+@router.post("/analyze/{file_id}", response_model=DatasetAnalysisResponse)
 async def analyze_with_ai(
-    http_request: Request,
     file_id: str = Path(..., description="File ID"),
     request: AnalysisRequest | None = None,
     current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Perform AI-powered analysis on processed data using MCP tools
+    Rule-based analysis of a processed dataset. It calls no model, so it is not metered.
     """
-    # Use path parameter if request body not provided
     request = request or AnalysisRequest(file_id=file_id)
-
+    user_data = await _processed_upload(
+        file_id, current_user_id,
+        "File must be processed before AI analysis. Please process the file first.",
+    )
     try:
-        user_data = await _processed_upload(
-            file_id, current_user_id,
-            "File must be processed before AI analysis. Please process the file first.",
+        return analyze_dataset(
+            str(user_data.id), request.analysis_type, user_data.schema or {}, user_data.quality_report or {}
         )
-
-        analysis_result = await _analysis(user_data, current_user_id, request.analysis_type)
-        if analysis_result.metadata.get("fallback_mode"):
-            # The analysis service did not answer, so this is the rule-based summary
-            # computed here: nothing was bought, the reserved unit goes back (#461).
-            await enforcement.release(http_request)
-
-        return analysis_result
-
-    except HTTPException:
-        raise
     except Exception:
         logger.exception("POST /ai/analyze failed for %s", file_id)
-        raise HTTPException(status_code=500, detail=internal_error_message("The analysis"))
+        raise HTTPException(status_code=500, detail=internal_error_message("The analysis")) from None
 
 
 @router.get("/insights/{file_id}", dependencies=[Depends(quota("ai_calls"))])
@@ -176,7 +147,7 @@ async def chat_with_data(
     """
     Interactive chat with data using AI.
 
-    Not implemented (#274): the MCP-backed chat does not exist yet. Rather than
+    Not implemented (#274): dataset chat does not exist yet. Rather than
     return a fake "coming soon" 200 with canned suggestions, this signals 501.
     Use ``POST /analyze`` / ``POST /summarize`` for real AI analysis today.
     """
@@ -242,22 +213,3 @@ async def generate_ai_summary(
     except Exception:
         logger.exception("POST /ai/summarize failed for %s", file_id)
         raise HTTPException(status_code=500, detail=internal_error_message("The summary"))
-
-
-@router.get("/health")
-async def check_mcp_health(current_user_id: str = Depends(get_current_user_id)):
-    """
-    Check if MCP server is available and healthy.
-
-    Authenticated like every other handler in this router (#563): the answer is a
-    readout of internal deployment state, and each call is an outbound request to
-    the MCP server — neither is for anonymous callers. It is not a readiness
-    dependency of the app, so it does not live beside the probes in health.py.
-    """
-    is_healthy = await mcp_service.check_health()
-    
-    return {
-        "mcp_available": is_healthy,
-        "status": "healthy" if is_healthy else "unavailable",
-        "message": "MCP server is operational" if is_healthy else "MCP server is not responding"
-    }

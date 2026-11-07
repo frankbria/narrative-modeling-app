@@ -1,7 +1,7 @@
 name: CI
 
 # Primary pull-request gate for the monorepo (issue #150). Supersedes the old
-# unit-tests.yml: it runs the backend, frontend, and MCP checks plus backend
+# unit-tests.yml: it runs the backend and frontend checks plus backend
 # integration tests, and exposes a single aggregate `CI Success` status that
 # branch protection on `main` requires.
 #
@@ -20,7 +20,6 @@ name: CI
 #       a missing-service skip into a failure, so the S3/upload/OpenAI integration
 #       suites can never silently skip in the gate (#221).
 #   - frontend-* : NONE (build uses dummy env values; no real secrets).
-#   - mcp-tests  : NONE.
 #
 # Idempotent: every job is read-only against external state; re-running a commit
 # produces the same result. In-progress runs for a branch are cancelled when a
@@ -187,12 +186,6 @@ jobs:
       - name: Install dependencies
         working-directory: apps/backend
         run: uv sync
-      - name: Install the MCP server's dependencies
-        # The backend-to-MCP SSE round trip (test_mcp_integration_sse_localstack.py)
-        # starts apps/mcp/main.py; without its environment those tests skipped on every
-        # run, and CI_REQUIRE_SERVICES now fails them instead (#998).
-        working-directory: apps/mcp
-        run: uv sync --frozen
       - name: Start LocalStack (S3, required)
         working-directory: apps/backend
         # LocalStack is a HARD requirement of the gate (issue #221): the S3/upload
@@ -469,27 +462,6 @@ jobs:
             -color \
             -ignore 'shellcheck reported issue in this script: SC(2016|2086|2129|2001):info'
 
-  # ── MCP ────────────────────────────────────────────────────────────────────
-  mcp-tests:
-    name: MCP Tests
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.13'
-      - name: Install uv
-        run: pip install uv
-      - name: Install dependencies
-        working-directory: apps/mcp
-        run: uv sync
-      - name: Run MCP tests
-        # Scope to the app's own tests/ — the vendored fastmcp/tests are the
-        # upstream library's suite and are not part of this project's gate.
-        working-directory: apps/mcp
-        run: uv run pytest tests/ -v
-
   # ── E2E ────────────────────────────────────────────────────────────────────
   e2e-smoke:
     # Folded in from the former standalone smoke-tests.yml (issue #210) so the
@@ -662,18 +634,6 @@ jobs:
           uv export --frozen --no-emit-project --no-hashes \
             --format requirements-txt -o requirements-audit.txt
           uvx pip-audit -r requirements-audit.txt
-      - name: pip-audit (mcp)
-        # Runs even when the backend audit failed: a red backend step used to
-        # skip this one, hiding an mcp-only CVE (anyio, #784).
-        if: ${{ !cancelled() }}
-        working-directory: apps/mcp
-        # A second, independent lockfile. It pinned an advisory-affected
-        # cryptography (46.0.3, PYSEC-2026-3552) for as long as the backend did,
-        # and nothing looked: this job audited apps/backend only (#569).
-        run: |
-          uv export --frozen --no-emit-project --no-hashes \
-            --format requirements-txt -o requirements-audit.txt
-          uvx pip-audit -r requirements-audit.txt
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !cancelled() }}
         with:
@@ -708,7 +668,6 @@ jobs:
       - frontend-unit
       - frontend-adapter-compat
       - frontend-docker-build
-      - mcp-tests
       - shell-lint
       - e2e-smoke
     runs-on: ubuntu-latest

@@ -32,7 +32,7 @@ Tagline for `<title>` and OG: **Explained predictions from your spreadsheet.**
 
 **Secondary persona:** the analyst at a 50–2,000-person organisation with no data-science team who has been asked for a churn, attrition, renewal or demand model that a stakeholder will not accept as a black box. The shipped churn sample and existing screenshots tell this story.
 
-**Growth persona (not on the landing page yet):** the AI-native builder who wants "train, explain, deploy a tabular model" as a primitive callable from an agent (`apps/mcp`, currently one EDA tool).
+**Growth persona (not on the landing page yet):** the AI-native builder who wants "train, explain, deploy a tabular model" as a primitive callable from an agent (nothing serves it yet; the one-tool MCP server was removed, #508).
 
 **Anti-personas:** enterprise data teams; merchants whose churn is bundled into Shopify/HubSpot; anyone whose data lives only in a warehouse.
 

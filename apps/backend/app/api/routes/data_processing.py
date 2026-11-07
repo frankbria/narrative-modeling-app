@@ -611,8 +611,7 @@ async def export_processed_data(
 
         file_bytes = await s3_service.download_file_bytes(file_key)
 
-        # Offload the blocking pandas read/serialize off the event loop (same
-        # pattern as the MCP server's eda_summary, issue #255).
+        # Offload the blocking pandas read/serialize off the event loop (#255).
         df = await asyncio.to_thread(_read_source_dataframe, user_data, file_bytes)
         export_bytes = await asyncio.to_thread(_serialize_dataframe, df, format)
         export_key = f"exports/{current_user_id}/{file_id}/{export_filename}"

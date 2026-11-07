@@ -90,7 +90,6 @@ _MUST_BE_METERED = {
     # ai_analysis.py — the two 501 stubs (#274) are metered on purpose: the refund
     # middleware hands the unit back today, and the guard is already there when a
     # real model call lands behind them.
-    "/api/v1/ai/analyze/{file_id}",
     "/api/v1/ai/insights/{file_id}",
     "/api/v1/ai/chat/{file_id}",
     "/api/v1/ai/chat",  # the frontend proxy forwards here
@@ -110,7 +109,7 @@ _UPLOAD_SUMMARY = (
     "unit that starts it, 1:1 — one dataset, one summary."
 )
 _EXEMPT = {
-    "/api/v1/ai/health": "MCP liveness probe; calls no model.",
+    "/api/v1/ai/analyze/{file_id}": "Rule-based analysis of stored facts; calls no model (#508).",
     "/api/v1/ai/feedback": "Persists a recommendation rating; calls no model.",
     "/api/v1/ai/optimize-parameters": "Rule-based only; never touches the OpenAI client.",
     **{p: _NO_MODEL_ML for p in (

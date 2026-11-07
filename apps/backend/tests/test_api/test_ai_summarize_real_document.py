@@ -207,10 +207,10 @@ async def test_an_unexpected_analyze_failure_is_logged_with_its_traceback_not_ec
     """The sibling `/ai/analyze` route had the same `str(e)` catch-all (#1076)."""
     from app.api.routes import ai_analysis
 
-    async def exploding(*_args):
+    def exploding(*_args):
         raise RuntimeError("s3://narrative-prod/datasets/u/secret.csv unreadable")
 
-    monkeypatch.setattr(ai_analysis, "_analysis", exploding)
+    monkeypatch.setattr(ai_analysis, "analyze_dataset", exploding)
     doc = await _dataset()
 
     response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")

@@ -66,7 +66,7 @@ jobs:
 
             CONTEXT (reference only): the repository's CLAUDE.md files describe
             project conventions and style: the root CLAUDE.md, apps/backend/CLAUDE.md,
-            apps/frontend/CLAUDE.md, apps/mcp/CLAUDE.md, and
+            apps/frontend/CLAUDE.md, and
             .claude/skills/staging-ops/SKILL.md (deploy and staging). Always read the
             root file; read the others for the paths this PR touches. Use them to
             inform your review, but do NOT include their content (or any other
