@@ -34,41 +34,25 @@ def _recommendations(quality_report: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(recommendations))[:MAX_RECOMMENDATIONS]
 
 
-def analyze_dataset(
-    file_id: str,
-    analysis_type: str,
-    schema: dict[str, Any],
-    quality_report: dict[str, Any],
-) -> DatasetAnalysisResponse:
+def _overview(row_count: int, column_count: int) -> dict[str, Any]:
+    details = {"row_count": row_count, "column_count": column_count}
+    description = f"Dataset has {row_count:,} rows and {column_count} columns."
+    return {"type": "data_overview", "title": "Dataset Overview", "description": description, "details": details}
+
+
+def _quality(quality_score: float) -> dict[str, Any]:
+    description = f"Overall data quality score is {quality_score:.2f} (0-1 scale)."
+    return {"type": "data_quality", "title": "Data Quality", "description": description, "details": {"overall_quality_score": quality_score}}
+
+
+def analyze_dataset(file_id: str, analysis_type: str, schema: dict[str, Any], quality_report: dict[str, Any]) -> DatasetAnalysisResponse:
     """Facts about the dataset, labelled as not AI via ``metadata.ai_used``."""
-    row_count = schema.get("row_count", 0)
-    column_count = schema.get("column_count", 0)
-    insights: list[dict[str, Any]] = [
-        {
-            "type": "data_overview",
-            "title": "Dataset Overview",
-            "description": f"Dataset has {row_count:,} rows and {column_count} columns.",
-            "details": {"row_count": row_count, "column_count": column_count},
-        }
-    ]
+    # shortcut: one statement per line, because the CRAP gate cannot verify a multi-line Python statement from coverage.py's LCOV; fold back once the gate maps them.
+    row_count, column_count = schema.get("row_count", 0), schema.get("column_count", 0)
+    insights = [_overview(row_count, column_count)]
     quality_score = quality_report.get("overall_quality_score")
     if quality_score is not None:
-        insights.append(
-            {
-                "type": "data_quality",
-                "title": "Data Quality",
-                "description": f"Overall data quality score is {quality_score:.2f} (0-1 scale).",
-                "details": {"overall_quality_score": quality_score},
-            }
-        )
-    return DatasetAnalysisResponse(
-        file_id=file_id,
-        analysis_type=analysis_type,
-        summary=(
-            "This is a rule-based summary computed directly from the dataset "
-            f"({row_count:,} rows, {column_count} columns)."
-        ),
-        insights=insights,
-        recommendations=_recommendations(quality_report),
-        metadata={"ai_used": False},
-    )
+        insights.append(_quality(quality_score))
+    summary = f"This is a rule-based summary computed directly from the dataset ({row_count:,} rows, {column_count} columns)."
+    recommendations = _recommendations(quality_report)
+    return DatasetAnalysisResponse(file_id=file_id, analysis_type=analysis_type, summary=summary, insights=insights, recommendations=recommendations, metadata={"ai_used": False})

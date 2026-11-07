@@ -147,7 +147,7 @@ async def chat_with_data(
     """
     Interactive chat with data using AI.
 
-    Not implemented (#274): dataset chat does not exist yet. Rather than
+    Not implemented (#274): the MCP-backed chat does not exist yet. Rather than
     return a fake "coming soon" 200 with canned suggestions, this signals 501.
     Use ``POST /analyze`` / ``POST /summarize`` for real AI analysis today.
     """
