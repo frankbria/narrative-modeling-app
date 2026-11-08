@@ -47,9 +47,11 @@ export function QuickActions(props: QuickActionsProps) {
   );
 }
 
-function stripFill(completed: boolean, current: boolean): string {
+// Locked stages are an empty dashed cell, so "can't open yet" reads without colour.
+function stripFill(completed: boolean, current: boolean, accessible: boolean): string {
   if (current) return 'bg-highlight';
-  return completed ? 'bg-primary' : 'bg-border';
+  if (completed) return 'bg-primary';
+  return accessible ? 'bg-border' : 'border border-dashed border-muted-foreground';
 }
 const stageConfigOf = (id: StageConfig['id']) => WORKFLOW_STAGES.find((stage) => stage.id === id) ?? WORKFLOW_STAGES[0];
 // Locked stages leave the tab order.
@@ -67,7 +69,7 @@ function StageChip(props: StageChipProps) {
   const open = () => {
     if (accessible) onOpen(stage);
   };
-  const fill = stripFill(completed, current);
+  const fill = stripFill(completed, current, accessible);
   const label = chipLabel(current, accessible);
 
   // A native button: Enter and Space both open it, and a locked stage stays focusable
@@ -82,7 +84,7 @@ function StageChip(props: StageChipProps) {
         onClick={open}
         className={`group grid min-h-6 w-full content-center gap-1.5 rounded-md p-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${cursor(accessible)}`}
       >
-        <span className={`h-1.5 rounded-full ${fill}`} />
+        <span data-testid="stage-cell" className={`h-1.5 rounded-full ${fill}`} />
         <span className={`hidden truncate text-xs sm:block ${label}`}>{stage.tab}</span>
       </button>
     </li>

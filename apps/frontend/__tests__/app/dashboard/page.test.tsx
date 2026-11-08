@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
@@ -586,14 +587,16 @@ describe('DashboardPage', () => {
       expect(mockPush).not.toHaveBeenCalled();
     });
 
-    it('is a native button, so Enter and Space open a stage', async () => {
+    it.each(['{Enter}', ' '])('opens a stage from the keyboard (%s)', async (key) => {
       mockFetch.mockImplementation(api());
+      const user = userEvent.setup();
 
       render(<DashboardPage />);
 
-      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload your data file/i });
-      expect(uploadCard.tagName).toBe('BUTTON');
-      expect(uploadCard).toHaveAttribute('type', 'button');
+      screen.getByRole('button', { name: /Data Loading.*Upload your data file/i }).focus();
+      await user.keyboard(key);
+
+      expect(mockPush).toHaveBeenCalledWith('/upload');
     });
 
     it('marks inaccessible stages as disabled to assistive tech', async () => {
@@ -604,14 +607,15 @@ describe('DashboardPage', () => {
       expect(screen.getByRole('button', { name: /Data Profiling.*locked/i })).toHaveAttribute('aria-disabled', 'true');
     });
 
-    it('shows lock icon for inaccessible stages', async () => {
+    it('draws a locked stage as an empty dashed cell, a cue that does not rely on colour', async () => {
       mockFetch.mockImplementation(api());
 
       render(<DashboardPage />);
 
-      // The aria-label should indicate locked state
-      const lockedCards = screen.getAllByRole('button', { name: /locked/i });
-      expect(lockedCards.length).toBeGreaterThan(0);
+      const locked = screen.getByRole('button', { name: /Data Profiling.*locked/i });
+      expect(within(locked).getByTestId('stage-cell')).toHaveClass('border-dashed');
+      const open = screen.getByRole('button', { name: /^Data Loading:/ });
+      expect(within(open).getByTestId('stage-cell')).not.toHaveClass('border-dashed');
     });
 
     it('sets correct tabIndex based on accessibility', async () => {

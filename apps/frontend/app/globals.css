@@ -111,9 +111,10 @@
     /* The only token shipping without a -foreground pair once; `text-destructive-foreground`
        then generated no rule and the label inherited near-black on red. */
     --destructive-foreground: oklch(1 0 0);
-    --success: oklch(0.529 0.106 154.6);
+    /* Deep enough that status text on its own /10 tint stays above 4.5:1 on paper. */
+    --success: oklch(0.480 0.100 154.6);
     --success-foreground: oklch(1 0 0);
-    --warning: oklch(0.549 0.131 58.2);
+    --warning: oklch(0.500 0.120 58.2);
     --warning-foreground: oklch(1 0 0);
     --highlight: oklch(0.873 0.140 93.5);
     --highlight-foreground: oklch(0.246 0.025 232.5);

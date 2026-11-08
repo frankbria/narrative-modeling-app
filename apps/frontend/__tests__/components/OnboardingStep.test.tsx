@@ -270,25 +270,6 @@ describe('OnboardingStep', () => {
     expect(screen.getByText('Docker Container')).toBeInTheDocument();
   });
 
-  it('handles step type icon display correctly', () => {
-    const steps = [
-      { ...mockStep, step_type: 'welcome' },
-      { ...mockStep, step_type: 'upload_data' },
-      { ...mockStep, step_type: 'explore_data' },
-      { ...mockStep, step_type: 'train_model' },
-      { ...mockStep, step_type: 'make_predictions' },
-      { ...mockStep, step_type: 'export_model' },
-      { ...mockStep, step_type: 'completion' }
-    ];
-
-    steps.forEach(step => {
-      const { unmount } = render(<OnboardingStep {...mockProps} step={step} />);
-      // Icons are rendered as text emojis, check they exist
-      expect(document.body).toContainHTML('</span>'); // Some icon should be present
-      unmount();
-    });
-  });
-
   it('handles step type color coding correctly', () => {
     const { rerender } = render(<OnboardingStep {...mockProps} />);
     
