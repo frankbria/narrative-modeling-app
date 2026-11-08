@@ -351,7 +351,7 @@ export default function ModelMonitoringPage() {
                         'Avg Latency (ms)': b.avg_latency_ms,
                       })),
                       lines: [
-                        { dataKey: 'Requests', label: 'Requests', color: '#0D5C63' },
+                        { dataKey: 'Requests', label: 'Requests', color: 'var(--primary)' },
                         { dataKey: 'Errors', label: 'Errors', color: '#B42318' },
                         { dataKey: 'Avg Latency (ms)', label: 'Avg Latency (ms)', color: '#D9A441' },
                       ],

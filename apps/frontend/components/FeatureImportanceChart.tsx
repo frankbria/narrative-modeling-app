@@ -78,7 +78,7 @@ export function FeatureImportanceChart({
   const getBarColor = (score: number, selected: boolean) => {
     if (!selected) return '#9CA3AF' // Gray for unselected
 
-    if (score >= 0.8) return '#0D5C63' // Petrol for high importance
+    if (score >= 0.8) return 'var(--primary)' // Petrol for high importance
     if (score >= highlightThreshold) return '#5FB3B3' // Light petrol for medium importance
     return '#D9A441' // Amber for low importance
   }
@@ -102,7 +102,7 @@ export function FeatureImportanceChart({
         </div>
         <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#0D5C63' }}></div>
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'var(--primary)' }}></div>
             <span className="text-muted-foreground">High (≥0.8)</span>
           </div>
           <div className="flex items-center gap-2">

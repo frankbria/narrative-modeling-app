@@ -33,7 +33,6 @@ export function WorkflowBar() {
                   onClick={() => isAccessible && setCurrentStage(stage.id)}
                   disabled={!isAccessible}
                   title={stage.name}
-                  aria-label={stage.name}
                   aria-current={isCurrent ? 'step' : undefined}
                   className={cn(
                     'relative -mb-px flex items-center gap-1.5 whitespace-nowrap rounded-t-lg border border-b-0 border-border px-3 py-2 text-sm transition-colors',
@@ -59,6 +58,8 @@ export function WorkflowBar() {
                     </span>
                   )}
                   <span>{stage.tab}</span>
+                  {/* The name starts with the visible label, then the full stage name (WCAG 2.5.3). */}
+                  <span className="sr-only">{`, ${stage.name}`}</span>
                 </button>
               </li>
             );

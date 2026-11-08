@@ -59,7 +59,8 @@ describe('WorkflowBar sheet tabs (#185, design identity)', () => {
     const nav = container.querySelector('nav') as HTMLElement;
 
     WORKFLOW_STAGES.forEach((stage, index) => {
-      const tab = within(nav).getByRole('button', { name: stage.name });
+      // Label in name (WCAG 2.5.3): the accessible name begins with the visible tab label.
+      const tab = within(nav).getByRole('button', { name: new RegExp(`^(${index + 1} )?${stage.tab} ?, ${stage.name}$`) });
       expect(tab).toHaveAttribute('title', stage.name);
       expect(within(tab).getByText(stage.tab)).toBeInTheDocument();
       // A finished stage shows a check instead of its number.
@@ -73,8 +74,8 @@ describe('WorkflowBar sheet tabs (#185, design identity)', () => {
     const { container } = render(<WorkflowBar />);
     const nav = container.querySelector('nav') as HTMLElement;
 
-    expect(within(nav).getByRole('button', { name: 'Data Profiling' })).toHaveAttribute('aria-current', 'step');
-    expect(within(nav).getByRole('button', { name: 'Data Loading' })).not.toHaveAttribute('aria-current');
+    expect(within(nav).getByTitle('Data Profiling')).toHaveAttribute('aria-current', 'step');
+    expect(within(nav).getByTitle('Data Loading')).not.toHaveAttribute('aria-current');
   });
 
   it('scrolls the open stage tab into view on a narrow screen', () => {
@@ -83,7 +84,7 @@ describe('WorkflowBar sheet tabs (#185, design identity)', () => {
     render(<WorkflowBar />);
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute('aria-label', 'Data Profiling');
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute('title', 'Data Profiling');
   });
 
   it('preserves click-through on accessible stages', () => {

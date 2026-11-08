@@ -160,7 +160,7 @@ export function BarChart({
           
           <Bar 
             dataKey="value" 
-            fill={data.color || "#0D5C63"}
+            fill={data.color || "var(--primary)"}
             radius={[2, 2, 0, 0]}
             cursor="pointer"
           />

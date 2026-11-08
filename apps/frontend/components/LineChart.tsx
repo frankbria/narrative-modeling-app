@@ -76,7 +76,7 @@ export function LineChart({
   height = 400,
   onPointClick
 }: LineChartProps) {
-  const colors = ['#0D5C63', '#5FB3B3', '#D9A441', '#ff7c7c', '#8dd1e1', '#d084d0']
+  const colors = ['var(--primary)', '#5FB3B3', '#D9A441', '#ff7c7c', '#8dd1e1', '#d084d0']
 
   // recharts' onClick passes a CategoricalChartState; adapt it to the simpler
   // Record<string, unknown> shape exposed by this component's onPointClick prop.
@@ -130,7 +130,7 @@ export function LineChart({
           ))}
           
           {data.showBrush && (
-            <Brush dataKey="x" height={30} stroke="#0D5C63" />
+            <Brush dataKey="x" height={30} stroke="var(--primary)" />
           )}
         </RechartsLineChart>
       </ResponsiveContainer>

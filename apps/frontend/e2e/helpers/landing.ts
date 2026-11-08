@@ -19,7 +19,8 @@ const GUARD_SETTLE_MS = 1000;
  */
 export async function expectLandedOnStage(page: Page, url: RegExp, stage: string): Promise<void> {
   await expect(page).toHaveURL(url, { timeout: 30000 });
-  await expect(page.getByRole('button', { name: stage, exact: true })).toHaveAttribute('aria-current', 'step', { timeout: 15000 });
+  const tab = page.getByRole('navigation', { name: 'Workflow stages' }).getByTitle(stage, { exact: true });
+  await expect(tab).toHaveAttribute('aria-current', 'step', { timeout: 15000 });
   // A fixed wait on purpose: there is nothing to wait FOR when a guard does not fire, and
   // after a client-side transition the document is already idle. The guard redirects in
   // the effect that follows the workflow state loading, well inside this.

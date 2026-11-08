@@ -18,7 +18,7 @@ import { SiteFooter } from '@/components/SiteFooter'
 import { siteMetadata } from '@/lib/site'
 import { Schibsted_Grotesk } from 'next/font/google'
 
-// Self-hosted at build by next/font; globals.css reads the variable as --font-sans.
+// Self-hosted at build by next/font as --font-schibsted; globals.css maps --font-sans to it.
 const schibsted = Schibsted_Grotesk({ subsets: ['latin'], variable: '--font-schibsted', display: 'swap' })
 
 // Read per request, not at build: the same image serves dev. and www. (#766).

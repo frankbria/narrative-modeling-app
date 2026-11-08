@@ -124,7 +124,7 @@ export function ShapSummaryChart({
             tick={{ fontSize: 12 }}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="importance" fill="#14232B" />
+          <Bar dataKey="importance" fill="var(--foreground)" />
         </BarChart>
       </ResponsiveContainer>
     </div>

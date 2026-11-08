@@ -19,10 +19,11 @@ export interface ROCCurveChartProps {
   height?: number
 }
 
+// Petrol and ink follow the theme (custom properties), so dark mode keeps them visible.
 export const CURVE_COLORS = [
-  '#0D5C63', // petrol
+  'var(--primary)', // petrol
   '#D9A441', // amber
-  '#14232B', // ink
+  'var(--foreground)', // ink
   '#5FB3B3', // light petrol
   '#B42318', // red
   '#7D8F95', // slate

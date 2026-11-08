@@ -51,7 +51,7 @@ export function ScatterPlotChart({
   height = 400,
   onPointClick
 }: ScatterPlotChartProps) {
-  const colors = ['#0D5C63', '#5FB3B3', '#D9A441', '#ff7c7c', '#8dd1e1']
+  const colors = ['var(--primary)', '#5FB3B3', '#D9A441', '#ff7c7c', '#8dd1e1']
   
   // Group data by category if available
   const groupedData = data.data.reduce((acc, point) => {
