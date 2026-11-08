@@ -14,12 +14,13 @@ test('Review Data lists an uploaded dataset and opens it in Explore @smoke', asy
   const datasetId = await uploadTestDataset();
   try {
     await page.goto('/review');
-    const pick = page.getByRole('button', { name: /sample/i }).first();
+    // The newest upload is first, so .first() is the one just uploaded, not a leftover.
+    const pick = page.getByRole('button', { name: /sample\.csv/ }).first();
     await expect(pick).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/"detail"|value_error/)).toHaveCount(0);
 
     await pick.click();
-    await expect(page).toHaveURL(/\/explore\/[0-9a-f]{24}/, { timeout: 20000 });
+    await expect(page).toHaveURL(new RegExp(`/explore/${datasetId}`), { timeout: 20000 });
   } finally {
     await cleanupDataset(datasetId);
   }
