@@ -37,29 +37,37 @@ SCORE_DIMENSIONS = (
 )
 
 
+# Per dimension: (description keyword, fix) pairs tried in order, then the default fix.
+# Low cardinality is a property of the column, not a duplicate row, so uniqueness
+# defaults to no fix (#1172).
+_FIXES_BY_DIMENSION: dict[QualityDimension, tuple[tuple[tuple[str, TransformationType], ...], TransformationType | None]] = {
+    QualityDimension.COMPLETENESS: ((), TransformationType.FILL_MISSING),
+    QualityDimension.UNIQUENESS: (
+        (("duplicate", TransformationType.REMOVE_DUPLICATES),),
+        None,
+    ),
+    QualityDimension.VALIDITY: (
+        (("outlier", TransformationType.OUTLIER_REMOVAL),),
+        TransformationType.STANDARDIZE_FORMAT,
+    ),
+    QualityDimension.CONSISTENCY: (
+        (
+            ("casing", TransformationType.FIX_CASING),
+            ("non-numeric", TransformationType.TO_NUMERIC),
+            ("date", TransformationType.TO_DATETIME),
+        ),
+        TransformationType.STANDARDIZE_FORMAT,
+    ),
+}
+
+
 def _candidate_transformation(issue: "QualityIssue") -> TransformationType | None:
     """Map a quality issue to the transformation that would fix it, ignoring whether
     the engine can actually execute it (see ``_recommended_transformation`` for the
     executability filter)."""
+    keyword_fixes, default = _FIXES_BY_DIMENSION.get(issue.dimension, ((), None))
     desc = issue.description.lower()
-    if issue.dimension == QualityDimension.COMPLETENESS:
-        return TransformationType.FILL_MISSING
-    if issue.dimension == QualityDimension.UNIQUENESS:
-        # Low cardinality is a property of the column, not a duplicate row (#1172).
-        return TransformationType.REMOVE_DUPLICATES if "duplicate" in desc else None
-    if issue.dimension == QualityDimension.VALIDITY:
-        if "outlier" in desc:
-            return TransformationType.OUTLIER_REMOVAL
-        return TransformationType.STANDARDIZE_FORMAT
-    if issue.dimension == QualityDimension.CONSISTENCY:
-        if "casing" in desc:
-            return TransformationType.FIX_CASING
-        if "non-numeric" in desc:
-            return TransformationType.TO_NUMERIC
-        if "date" in desc:
-            return TransformationType.TO_DATETIME
-        return TransformationType.STANDARDIZE_FORMAT
-    return None
+    return next((fix for word, fix in keyword_fixes if word in desc), default)
 
 
 def _recommended_transformation(issue: "QualityIssue") -> TransformationType | None:
