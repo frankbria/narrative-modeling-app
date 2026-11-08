@@ -70,9 +70,6 @@ async def _processed_upload(file_id: str, user_id: str, unprocessed: str) -> Use
     return user_data
 
 
-_UNPROCESSED_FOR_ANALYSIS = "File must be processed before AI analysis. Please process the file first."
-
-
 @router.post("/analyze/{file_id}", response_model=DatasetAnalysisResponse)
 async def analyze_with_ai(
     file_id: str = Path(..., description="File ID"),
@@ -82,11 +79,18 @@ async def analyze_with_ai(
     """
     Rule-based analysis of a processed dataset. It calls no model, so it is not metered.
     """
-    # shortcut: one statement per line, because the CRAP gate cannot verify a multi-line Python statement from coverage.py's LCOV; fold back once the gate maps them.
-    analysis_type = (request or AnalysisRequest(file_id=file_id)).analysis_type
-    user_data = await _processed_upload(file_id, current_user_id, _UNPROCESSED_FOR_ANALYSIS)
+    request = request or AnalysisRequest(file_id=file_id)
+    user_data = await _processed_upload(
+        file_id, current_user_id,
+        "File must be processed before AI analysis. Please process the file first.",
+    )
     try:
-        return analyze_dataset(str(user_data.id), analysis_type, user_data.schema or {}, user_data.quality_report or {})
+        return analyze_dataset(
+            str(user_data.id),
+            request.analysis_type,
+            user_data.schema or {},
+            user_data.quality_report or {},
+        )
     except Exception:
         logger.exception("POST /ai/analyze failed for %s", file_id)
         raise HTTPException(status_code=500, detail=internal_error_message("The analysis")) from None
@@ -146,7 +150,7 @@ async def chat_with_data(
     """
     Interactive chat with data using AI.
 
-    Not implemented (#274): the MCP-backed chat does not exist yet. Rather than
+    Not implemented (#274): dataset chat does not exist yet. Rather than
     return a fake "coming soon" 200 with canned suggestions, this signals 501.
     Use ``POST /analyze`` / ``POST /summarize`` for real AI analysis today.
     """

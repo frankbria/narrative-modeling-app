@@ -15,10 +15,15 @@ trap 'rm -rf "$tmp"' EXIT
 changed="$(git -C "$root" diff --name-only "$(git -C "$root" merge-base main HEAD)")"
 : > "$out"
 
+# The backend LCOV is written from coverage's raw measured lines (python_lcov.py), not
+# its own LCOV report, which folds a multi-line statement onto its first line and left
+# the gate unable to verify such a body (#1160).
 if grep -q '^apps/backend/' <<<"$changed"; then
-  (cd "$root/apps/backend" && PYTHONPATH=. uv run pytest tests/ \
+  (cd "$root/apps/backend" && COVERAGE_FILE="$tmp/.coverage" PYTHONPATH=. uv run pytest tests/ \
     -m "not integration and not performance" -q -p no:cacheprovider \
-    --cov=app --cov-report="lcov:$tmp/backend.info" >"$tmp/backend.log" 2>&1) \
+    --cov=app --cov-report= >"$tmp/backend.log" 2>&1 \
+    && uv run python "$root/scripts/quality/python_lcov.py" \
+      --data-file "$tmp/.coverage" --source app --output "$tmp/backend.info") \
     || { cat "$tmp/backend.log" >&2; exit 1; }
   sed 's|^SF:|SF:apps/backend/|' "$tmp/backend.info" >> "$out"
 fi
