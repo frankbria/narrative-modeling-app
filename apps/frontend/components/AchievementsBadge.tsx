@@ -124,7 +124,7 @@ export function AchievementsBadge({
         pointer-events-none z-10
         before:content-[''] before:absolute before:top-full before:left-1/2 
         before:transform before:-translate-x-1/2 before:border-4 
-        before:border-transparent before:border-t-gray-900
+        before:border-transparent before:border-t-foreground
       ">
         <div className="font-medium">{achievement.title}</div>
         <div className="text-background/80 mt-1">{achievement.description}</div>

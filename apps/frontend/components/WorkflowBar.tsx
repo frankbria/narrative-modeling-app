@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils';
  * is raised onto the page with a petrol edge, finished ones carry a check. Only the
  * tab strip scrolls sideways on a narrow screen (#185), never the page.
  */
+// On a narrow screen the strip scrolls; bring the open stage's tab into view.
+const revealTab = (tab: HTMLButtonElement | null) => tab?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+
 export function WorkflowBar() {
   const { state, canAccessStage, setCurrentStage } = useWorkflow();
 
@@ -26,6 +29,7 @@ export function WorkflowBar() {
               <li key={stage.id} className="shrink-0">
                 <button
                   type="button"
+                  ref={isCurrent ? revealTab : undefined}
                   onClick={() => isAccessible && setCurrentStage(stage.id)}
                   disabled={!isAccessible}
                   title={stage.name}
@@ -33,7 +37,7 @@ export function WorkflowBar() {
                   aria-current={isCurrent ? 'step' : undefined}
                   className={cn(
                     'relative -mb-px flex items-center gap-1.5 whitespace-nowrap rounded-t-lg border border-b-0 border-border px-3 py-2 text-sm transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                     isCurrent
                       ? 'bg-card font-bold text-foreground shadow-[inset_0_3px_0_var(--primary)]'
                       : 'bg-background font-medium',

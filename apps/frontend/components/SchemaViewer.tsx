@@ -52,8 +52,8 @@ const dataTypeIcons: Record<string, React.ReactNode> = {
 const dataTypeColors: Record<string, string> = {
   integer: 'bg-primary text-primary-foreground',
   float: 'bg-primary text-primary-foreground',
-  string: 'bg-primary/60 text-primary-foreground',
-  text: 'bg-primary/60 text-primary-foreground',
+  string: 'bg-secondary text-foreground',
+  text: 'bg-secondary text-foreground',
   boolean: 'bg-accent text-accent-foreground',
   date: 'bg-accent text-accent-foreground',
   datetime: 'bg-accent text-accent-foreground',

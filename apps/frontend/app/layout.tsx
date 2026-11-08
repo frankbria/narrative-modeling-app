@@ -67,7 +67,10 @@ export default async function RootLayout({
                 {/* min-w-0: as a flex item of <body>, main's default min-width:auto would
                     adopt the WorkflowBar's intrinsic width and force whole-page horizontal
                     scroll on narrow viewports instead of letting the stage strip scroll (#185) */}
-                <main className="flex flex-1 min-w-0 min-h-screen flex-col lg:ml-64">
+                {/* The footer sits beside <main>, not in it: inside <main> it stops being
+                    the contentinfo landmark. */}
+                <div className="flex flex-1 min-w-0 min-h-screen flex-col lg:ml-64">
+                <main className="flex flex-1 min-w-0 flex-col">
                   <WorkflowBar />
                   <StageGuardBanner />
                   {/* Plan-limit surfaces (#767): the 80% warning and the one 402 dialog. */}
@@ -86,19 +89,22 @@ export default async function RootLayout({
                     </div>
                     <ConditionalAIChat />
                   </div>
-                  <SiteFooter className="lg:pr-80" />
                 </main>
+                <SiteFooter className="lg:pr-80" />
+                </div>
                 <FeedbackWidget />
               </>
             ) : (
+              <div className="flex flex-1 min-w-0 min-h-screen flex-col">
               <main
                 id="main-content"
                 tabIndex={-1}
-                className="flex-1 p-4 bg-background min-h-screen flex flex-col items-center justify-center-safe space-y-6 focus:outline-none"
+                className="flex-1 p-4 bg-background flex flex-col items-center justify-center-safe space-y-6 focus:outline-none"
               >
                 {children}
-                <SiteFooter className="mt-auto" />
               </main>
+              <SiteFooter />
+              </div>
             )}
           </WorkflowProvider>
         </SessionProvider>

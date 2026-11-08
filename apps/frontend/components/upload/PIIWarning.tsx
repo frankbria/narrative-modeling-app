@@ -58,7 +58,7 @@ function PIIDetections(props: { detections: FlaggedPIIReport['detections'] }) {
 const MASKED_IDLE = 'bg-primary text-primary-foreground hover:bg-primary/90';
 const MASKED_BUSY = 'bg-muted text-muted-foreground cursor-wait';
 const ORIGINAL_IDLE = 'bg-warning/10 hover:bg-warning/20 text-warning';
-const ORIGINAL_BUSY = 'bg-warning/60 cursor-wait text-warning-foreground';
+const ORIGINAL_BUSY = 'bg-muted text-muted-foreground cursor-wait';
 
 interface ChoiceProps {
   confirming: boolean;

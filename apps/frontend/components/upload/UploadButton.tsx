@@ -14,7 +14,7 @@ export function uploadButtonLabel(state: ButtonState): string {
 
 export function uploadButtonColour(state: ButtonState): string {
   if (state.success) return 'bg-success text-success-foreground cursor-default';
-  if (state.busy) return 'bg-primary/50 text-primary-foreground cursor-wait';
+  if (state.busy) return 'bg-muted text-muted-foreground cursor-wait';
   return state.large ? 'bg-warning text-warning-foreground hover:bg-warning/90' : 'bg-primary text-primary-foreground hover:bg-primary/90';
 }
 

@@ -13,9 +13,8 @@ test.describe('one product name (#765)', () => {
     authenticatedPage: page,
   }) => {
     await expect(page).toHaveTitle('SheetPredict');
-    await expect(
-      page.getByRole('complementary', { name: 'Sidebar' }).getByRole('heading', { level: 1 }),
-    ).toHaveText('SheetPredict');
+    // The sidebar's logo is one image named for the product.
+    await expect(page.getByRole('complementary', { name: 'Sidebar' }).getByRole('img', { name: 'SheetPredict' })).toBeVisible();
     await expect(page.getByTestId('dashboard')).toContainText('Welcome to SheetPredict.');
   });
 

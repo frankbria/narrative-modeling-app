@@ -47,7 +47,7 @@ const BANNED: [RegExp, string][] = [
   // The identity pass (petrol primary, highlighter, semantic status colours): no raw
   // Tailwind hue at all, in any variant, so one action colour and both themes hold.
   [
-    /\b(?:bg|text|border|ring|from|to|via|fill|stroke|divide|outline|placeholder|decoration)-(?:blue|indigo|purple|violet|sky|slate|gray|green|emerald|red|amber|yellow|orange|teal|cyan|pink|rose|lime|fuchsia|zinc|neutral|stone)-\d{2,3}\b/,
+    /\b(?:bg|text|border(?:-[trblxyse])?|ring|ring-offset|from|to|via|fill|stroke|divide|outline|placeholder|decoration|shadow|caret|accent)-(?:blue|indigo|purple|violet|sky|slate|gray|green|emerald|red|amber|yellow|orange|teal|cyan|pink|rose|lime|fuchsia|zinc|neutral|stone)-\d{2,3}\b/,
     'a semantic token (primary, success, warning, destructive, highlight, muted, border)',
   ],
 ]

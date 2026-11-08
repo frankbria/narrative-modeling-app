@@ -77,6 +77,15 @@ describe('WorkflowBar sheet tabs (#185, design identity)', () => {
     expect(within(nav).getByRole('button', { name: 'Data Loading' })).not.toHaveAttribute('aria-current');
   });
 
+  it('scrolls the open stage tab into view on a narrow screen', () => {
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<WorkflowBar />);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute('aria-label', 'Data Profiling');
+  });
+
   it('preserves click-through on accessible stages', () => {
     const { container } = render(<WorkflowBar />);
     const nav = container.querySelector('nav') as HTMLElement;

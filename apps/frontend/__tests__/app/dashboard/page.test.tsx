@@ -586,26 +586,22 @@ describe('DashboardPage', () => {
       expect(mockPush).not.toHaveBeenCalled();
     });
 
-    it('supports keyboard navigation for accessible stages', async () => {
+    it('is a native button, so Enter and Space open a stage', async () => {
       mockFetch.mockImplementation(api());
 
       render(<DashboardPage />);
 
       const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload your data file/i });
-      fireEvent.keyDown(uploadCard, { key: 'Enter' });
-
-      expect(mockPush).toHaveBeenCalledWith('/upload');
+      expect(uploadCard.tagName).toBe('BUTTON');
+      expect(uploadCard).toHaveAttribute('type', 'button');
     });
 
-    it('does not navigate on Enter for inaccessible stages', async () => {
+    it('marks inaccessible stages as disabled to assistive tech', async () => {
       mockFetch.mockImplementation(api());
 
       render(<DashboardPage />);
 
-      const profilingCard = screen.getByRole('button', { name: /Data Profiling.*locked/i });
-      fireEvent.keyDown(profilingCard, { key: 'Enter' });
-
-      expect(mockPush).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /Data Profiling.*locked/i })).toHaveAttribute('aria-disabled', 'true');
     });
 
     it('shows lock icon for inaccessible stages', async () => {
@@ -1162,6 +1158,17 @@ describe('DashboardPage', () => {
 
       fireEvent.click(screen.getByText('View All Models'));
       expect(mockPush).toHaveBeenCalledWith('/model');
+    });
+  });
+
+  describe('Quickstart', () => {
+    it('links to the Quickstart Guide from the resume card', async () => {
+      mockFetch.mockImplementation(api());
+
+      render(<DashboardPage />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Quickstart Guide/i }));
+      expect(mockPush).toHaveBeenCalledWith('/quickstart');
     });
   });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { type KeyboardEvent } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, type StageConfig } from '@/lib/types/workflow';
@@ -24,6 +24,7 @@ export function QuickActions(props: QuickActionsProps) {
   const upload = () => router.push('/upload');
   const train = () => router.push('/model');
   const deployments = () => router.push('/deploy');
+  const quickstart = () => router.push('/quickstart');
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -38,6 +39,9 @@ export function QuickActions(props: QuickActionsProps) {
       <Button variant="outline" size="sm" onClick={deployments} disabled={!canDeploy}>
         <Rocket size={14} />
         View Deployments
+      </Button>
+      <Button variant="ghost" size="sm" onClick={quickstart}>
+        Read the Quickstart Guide
       </Button>
     </div>
   );
@@ -63,29 +67,24 @@ function StageChip(props: StageChipProps) {
   const open = () => {
     if (accessible) onOpen(stage);
   };
-  const openOnEnter = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') open();
-  };
   const fill = stripFill(completed, current);
   const label = chipLabel(current, accessible);
 
+  // A native button: Enter and Space both open it, and a locked stage stays focusable
+  // out of the tab order (TAB_INDEX) so its "(locked)" name is still announced.
   return (
     <li className="min-w-0 flex-1">
-      <div
-        role="button"
+      <button
+        type="button"
         tabIndex={TAB_INDEX[`${accessible}`]}
+        aria-disabled={!accessible}
         aria-label={`${stage.name}: ${stage.description}${lockedSuffix(accessible)}`}
         onClick={open}
-        onKeyDown={openOnEnter}
-        className={`group grid gap-1.5 rounded-md p-1 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ${cursor(accessible)}`}
+        className={`group grid min-h-6 w-full content-center gap-1.5 rounded-md p-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${cursor(accessible)}`}
       >
         <span className={`h-1.5 rounded-full ${fill}`} />
-        <span
-          className={`hidden truncate text-xs sm:block ${label}`}
-        >
-          {stage.tab}
-        </span>
-      </div>
+        <span className={`hidden truncate text-xs sm:block ${label}`}>{stage.tab}</span>
+      </button>
     </li>
   );
 }
