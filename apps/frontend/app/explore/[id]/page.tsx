@@ -372,7 +372,7 @@ export default function DatasetAnalysisPage() {
   if (blocker || !dataset) return blocker
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto min-w-0 px-4 py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
@@ -419,35 +419,35 @@ export default function DatasetAnalysisPage() {
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 bg-card shadow-sm border">
-            <TabsTrigger value="overview" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 space-y-6">
+          <TabsList className="flex w-full justify-start overflow-x-auto bg-card shadow-sm border">
+            <TabsTrigger value="overview" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Database className="h-4 w-4" />
               Overview
             </TabsTrigger>
-            <TabsTrigger value="schema" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="schema" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <BarChart3 className="h-4 w-4" />
               Schema
             </TabsTrigger>
-            <TabsTrigger value="statistics" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="statistics" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <BarChart3 className="h-4 w-4" />
               Statistics
             </TabsTrigger>
-            <TabsTrigger value="visualizations" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="visualizations" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <TrendingUp className="h-4 w-4" />
               Visualizations
             </TabsTrigger>
-            <TabsTrigger value="quality" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="quality" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <CheckCircle2 className="h-4 w-4" />
               Quality
             </TabsTrigger>
-            <TabsTrigger value="insights" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger value="insights" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Brain className="h-4 w-4" />
               AI Insights
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6">
+          <TabsContent value="overview" className="min-w-0 space-y-6">
             <OverviewStats dataset={dataset} />
 
             <DataPreviewTable datasetId={dataset.id} onExport={handleExport} />
