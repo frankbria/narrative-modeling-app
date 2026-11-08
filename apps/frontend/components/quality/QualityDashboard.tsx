@@ -72,22 +72,33 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
 
   return (
     <div className="space-y-4" data-testid="quality-dashboard">
-      {/* Overall 0-100 score */}
+      {/* The one score; its parts sit underneath */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            ML-Readiness Score
+            Data quality score
             <span className={`text-3xl font-bold ${color}`} data-testid="quality-score">
               {report.score_0_100.toFixed(1)}
             </span>
           </CardTitle>
           <CardDescription>
-            <span className={color}>{label}</span> · {report.critical_issue_count} critical, {report.warning_count} warnings
+            <span className={color}>{label}</span>
             {report.partial && ' · partial (legacy report)'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Progress value={report.score_0_100} className="h-2" />
+          <div className="mt-4 space-y-3">
+            {Object.entries(report.component_scores).map(([dim, value]) => (
+              <div key={dim} data-testid={`component-${dim}`}>
+                <div className="mb-1 flex justify-between text-sm">
+                  <span className="capitalize">{dim}</span>
+                  <span>{value.toFixed(1)}</span>
+                </div>
+                <Progress value={value} className="h-1.5" />
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -119,24 +130,6 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
         </Card>
       )}
 
-      {/* Component scores */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Component Scores</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {Object.entries(report.component_scores).map(([dim, value]) => (
-            <div key={dim} data-testid={`component-${dim}`}>
-              <div className="mb-1 flex justify-between text-sm">
-                <span className="capitalize">{dim}</span>
-                <span>{value.toFixed(1)}</span>
-              </div>
-              <Progress value={value} className="h-1.5" />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
       {/* Actionable recommendations */}
       {report.actionable_recommendations.length > 0 && (
         <Card>
@@ -152,7 +145,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
                 <div className="text-sm">{rec.description}</div>
                 <div className="flex shrink-0 items-center gap-2">
                   <Badge className={severityColor[rec.severity] || ''}>{rec.severity}</Badge>
-                  <Badge variant="outline">{rec.transformation_type}</Badge>
+                  <Badge variant="outline">{rec.transformation_type.replace(/_/g, ' ')}</Badge>
                 </div>
               </div>
             ))}

@@ -69,6 +69,12 @@ function LogsToggle(props: { modelId: string; active: boolean }) {
 
 type Recommendation = TrainingStatus['algorithm_recommendations'][number];
 
+function explainability(score: number): string {
+  if (score >= 7) return 'Easy to explain';
+  if (score >= 4) return 'Somewhat easy to explain';
+  return 'Hard to explain';
+}
+
 function RecommendationCard(props: { rec: Recommendation }) {
   const { rec } = props;
   return (
@@ -76,7 +82,7 @@ function RecommendationCard(props: { rec: Recommendation }) {
       <div className="flex items-center justify-between">
         <span className="font-medium text-sm">{rec.algorithm_name}</span>
         <span className="text-xs text-muted-foreground">
-          Priority {rec.priority}/10 · Interpretability {rec.interpretability_score}/10
+          {explainability(rec.interpretability_score)}
         </span>
       </div>
       <p className="text-sm text-muted-foreground mt-1">{rec.explanation}</p>
@@ -84,8 +90,11 @@ function RecommendationCard(props: { rec: Recommendation }) {
   );
 }
 
-function Recommendations(props: { recommendations: Recommendation[] }) {
-  const { recommendations } = props;
+function Recommendations(props: { recommendations: Recommendation[]; ranAlgorithms: string[] }) {
+  // The selector suggests more algorithms than a quick run trains; list only those that ran.
+  const recommendations = props.recommendations.filter((rec) =>
+    props.ranAlgorithms.includes(rec.algorithm_name),
+  );
   if (recommendations.length === 0) return null;
   return (
     <div className="space-y-2">
@@ -116,7 +125,10 @@ function RunSummary(props: { status: TrainingStatus; run: TrainingRun }) {
       {status.explanation && (
         <p className="text-sm text-muted-foreground bg-muted rounded-lg p-3">{status.explanation}</p>
       )}
-      <Recommendations recommendations={status.algorithm_recommendations} />
+      <Recommendations
+        recommendations={status.algorithm_recommendations}
+        ranAlgorithms={status.model_comparison.map((row) => row.algorithm)}
+      />
       <KeptColumns columns={run.keepColumns} />
       <ExcludedColumnsPanel modelId={status.model_id} onRetrain={run.retrainKeeping} />
     </div>

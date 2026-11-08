@@ -78,7 +78,9 @@ describe('QualityDashboard', () => {
     expect(screen.getByText('ML Training Ready')).toBeInTheDocument()
     expect(screen.getByTestId('component-completeness')).toBeInTheDocument()
     expect(screen.getByText("Apply 'fill_missing' to age")).toBeInTheDocument()
-    expect(screen.getByText('fill_missing')).toBeInTheDocument()
+    expect(screen.getByText('fill missing')).toBeInTheDocument()
+    // One score, one issues list: no contradictory counts beside the score (#1172)
+    expect(screen.queryByText(/critical,/)).not.toBeInTheDocument()
   })
 
   it('renders the trend chart only when trend points exist', async () => {
