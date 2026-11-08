@@ -129,7 +129,7 @@ function ProfilingActions(props: {
 }) {
   const { dataset, profiled, onExport, onComplete, onContinue } = props
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <Button
         onClick={onExport}
         disabled={!dataset.is_processed}
@@ -374,7 +374,7 @@ export default function DatasetAnalysisPage() {
   return (
     <div className="container mx-auto min-w-0 px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Link href="/explore">
