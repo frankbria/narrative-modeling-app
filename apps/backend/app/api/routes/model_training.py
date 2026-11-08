@@ -1371,6 +1371,39 @@ def _best_comparison_score(job: TrainingJob) -> float | None:
     return max(valid_scores) if valid_scores else None
 
 
+def _jobs_query(user_id: str, status: str | None) -> dict[str, Any]:
+    """The Mongo filter for the jobs list: the caller's jobs, optionally by status."""
+    query: dict[str, Any] = {"user_id": user_id}
+    if status is None:
+        return query
+    try:
+        statuses = [JobStatus(s.strip()) for s in status.split(",") if s.strip()]
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid status filter: {status}")
+    if not statuses:
+        raise HTTPException(status_code=422, detail="Status filter must not be empty")
+    query["status"] = statuses[0] if len(statuses) == 1 else {"$in": statuses}
+    return query
+
+
+def _job_summary(job: TrainingJob, names: dict[str, str]) -> TrainingJobSummary:
+    return TrainingJobSummary(
+        model_id=job.model_id,
+        dataset_id=job.dataset_id,
+        dataset_name=names.get(job.dataset_id),
+        target_column=job.target_column,
+        status=job.status.value,
+        progress_percentage=job.progress.percentage,
+        current_stage=job.progress.current_stage,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        best_algorithm=job.best_algorithm,
+        best_score=_best_comparison_score(job),
+        elapsed_seconds=job.elapsed_seconds,
+    )
+
+
 # NOTE: registered before the dynamic GET /{model_id} route so "jobs" is never
 # captured as a model id.
 @router.get("/jobs", response_model=TrainingJobListResponse)
@@ -1394,19 +1427,7 @@ async def list_training_jobs(
     skip/limit pagination; ``total_count`` is the size of the filtered result
     set.
     """
-    query: dict[str, Any] = {"user_id": current_user_id}
-    if status is not None:
-        try:
-            statuses = [JobStatus(s.strip()) for s in status.split(",") if s.strip()]
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail=f"Invalid status filter: {status}"
-            )
-        if not statuses:
-            raise HTTPException(
-                status_code=422, detail="Status filter must not be empty"
-            )
-        query["status"] = statuses[0] if len(statuses) == 1 else {"$in": statuses}
+    query = _jobs_query(current_user_id, status)
 
     total_count = await TrainingJob.find(query).count()
     jobs = (
@@ -1419,24 +1440,7 @@ async def list_training_jobs(
 
     names = await dataset_names(current_user_id, {job.dataset_id for job in jobs})
     return TrainingJobListResponse(
-        jobs=[
-            TrainingJobSummary(
-                model_id=job.model_id,
-                dataset_id=job.dataset_id,
-                dataset_name=names.get(job.dataset_id),
-                target_column=job.target_column,
-                status=job.status.value,
-                progress_percentage=job.progress.percentage,
-                current_stage=job.progress.current_stage,
-                created_at=job.created_at,
-                started_at=job.started_at,
-                completed_at=job.completed_at,
-                best_algorithm=job.best_algorithm,
-                best_score=_best_comparison_score(job),
-                elapsed_seconds=job.elapsed_seconds,
-            )
-            for job in jobs
-        ],
+        jobs=[_job_summary(job, names) for job in jobs],
         total_count=total_count,
         limit=limit,
         skip=skip,

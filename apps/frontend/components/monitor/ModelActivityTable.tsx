@@ -61,14 +61,15 @@ function EmptyState() {
 }
 
 function ShowMore({ remaining, onClick }: { remaining: number; onClick: VoidFunction }) {
-  if (remaining <= 0) return null
-  return (
+  const button = (
     <div className="flex justify-center">
       <Button variant="outline" onClick={onClick}>
         Show more ({remaining} left)
       </Button>
     </div>
   )
+  const view = { true: null, false: button }
+  return view[`${remaining <= 0}` as 'true' | 'false']
 }
 
 function ModelTable({ models }: { models: MonitoredModel[] }) {
@@ -98,8 +99,8 @@ function ModelTable({ models }: { models: MonitoredModel[] }) {
   )
 }
 
-/** The newest-active models first; the rest load a page at a time. */
+/** Models that have answered predictions come first; the rest load a page at a time. */
 export function ModelActivityTable({ models }: { models: MonitoredModel[] }) {
-  if (models.length === 0) return <EmptyState />
-  return <ModelTable models={models} />
+  const view = { true: <EmptyState />, false: <ModelTable models={models} /> }
+  return view[`${models.length === 0}` as 'true' | 'false']
 }
