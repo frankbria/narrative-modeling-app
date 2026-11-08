@@ -2,6 +2,7 @@ import { TrainingProgress } from '@/components/training/TrainingProgress';
 import { CancelTrainingButton } from '@/components/training/CancelTrainingButton';
 import { Badge } from '@/components/ui/badge';
 import type { TrainingJobSummary } from '@/lib/services/model';
+import { datasetText } from './trainingJobs';
 
 interface InFlightCardProps {
   job: TrainingJobSummary;
@@ -16,7 +17,7 @@ function InFlightCard(props: InFlightCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium truncate">{job.target_column}</p>
-          <p className="text-xs text-muted-foreground truncate">Dataset {job.dataset_id}</p>
+          <p className="text-xs text-muted-foreground truncate">{datasetText(job)}</p>
         </div>
         <Badge variant="outline">{job.status}</Badge>
       </div>

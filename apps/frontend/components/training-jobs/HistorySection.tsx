@@ -12,6 +12,7 @@ import {
 import type { TrainingJobSummary } from '@/lib/services/model';
 import {
   algorithmText,
+  datasetText,
   durationText,
   scoreText,
   statusBadgeVariant,
@@ -31,7 +32,7 @@ function HistoryRow(props: HistoryRowProps) {
       </TableCell>
       <TableCell>
         <span className="font-medium">{job.target_column}</span>
-        <span className="block text-xs text-muted-foreground">Dataset {job.dataset_id}</span>
+        <span className="block text-xs text-muted-foreground">{datasetText(job)}</span>
       </TableCell>
       <TableCell>{durationText(job)}</TableCell>
       <TableCell>{algorithmText(job)}</TableCell>

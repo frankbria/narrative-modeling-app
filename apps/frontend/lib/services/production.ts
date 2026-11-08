@@ -97,6 +97,10 @@ export interface UsageStats {
   models: Array<{
     model_id: string
     name: string
+    algorithm?: string
+    target_column?: string
+    dataset_name?: string | null
+    created_at?: string
     is_active: boolean
     predictions_24h: number
     avg_latency_ms: number

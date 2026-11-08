@@ -117,6 +117,7 @@ from app.services.training_admission import (
     enforce_training_per_user_cap,
     training_semaphore,
 )
+from app.utils.dataset_names import dataset_names
 from app.utils.datetime import as_utc
 from app.utils.filenames import attachment_disposition
 from app.utils.heartbeat import heartbeat_pump
@@ -409,6 +410,7 @@ class TrainingJobSummary(BaseModel):
 
     model_id: str
     dataset_id: str
+    dataset_name: str | None = None  # None once the dataset is deleted
     target_column: str
     status: str
     progress_percentage: float
@@ -1415,11 +1417,13 @@ async def list_training_jobs(
         .to_list()
     )
 
+    names = await dataset_names(current_user_id, {job.dataset_id for job in jobs})
     return TrainingJobListResponse(
         jobs=[
             TrainingJobSummary(
                 model_id=job.model_id,
                 dataset_id=job.dataset_id,
+                dataset_name=names.get(job.dataset_id),
                 target_column=job.target_column,
                 status=job.status.value,
                 progress_percentage=job.progress.percentage,

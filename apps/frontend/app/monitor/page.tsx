@@ -10,26 +10,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { 
   Activity, 
   Loader2, 
-  Brain,
   Key,
-  TrendingUp,
-  Clock,
-  AlertCircle,
-  Zap
+  AlertCircle
 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { ModelActivityTable } from '@/components/monitor/ModelActivityTable'
+import { averageLatencyText, modelsWithPredictions } from '@/lib/monitoring'
 
 export default function MonitoringPage() {
   const { data: session } = useSession()
@@ -39,7 +28,6 @@ export default function MonitoringPage() {
   // which is a string and therefore stable, and keep `enabled` on the session
   // itself so the request still waits for auth.
   const userId = session?.user?.id
-  const router = useRouter()
   const [activeTab, setActiveTab] = useState('overview')
 
   const {
@@ -61,12 +49,6 @@ export default function MonitoringPage() {
   )
   const usageStats = monitoring?.stats ?? null
   const apiKeyUsage = monitoring?.keyUsage ?? []
-
-  const formatLatency = (ms: number) => {
-    if (ms < 1) return '<1ms'
-    if (ms < 1000) return `${Math.round(ms)}ms`
-    return `${(ms / 1000).toFixed(2)}s`
-  }
 
   if (!session) {
     return (
@@ -143,7 +125,7 @@ export default function MonitoringPage() {
           <CardContent>
             <div className="text-2xl font-bold">{usageStats.total_models}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {usageStats.active_models} active
+              {modelsWithPredictions(usageStats.models).length} received predictions
             </p>
           </CardContent>
         </Card>
@@ -186,13 +168,10 @@ export default function MonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatLatency(
-                usageStats.models.reduce((sum, m) => sum + m.avg_latency_ms, 0) / 
-                (usageStats.models.length || 1)
-              )}
+              {averageLatencyText(usageStats.models)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Across all models
+              Only models that made predictions
             </p>
           </CardContent>
         </Card>
@@ -214,69 +193,7 @@ export default function MonitoringPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {usageStats.models.length === 0 ? (
-                <div className="text-center py-8">
-                  <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No model activity in the last 24 hours</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Model Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Predictions (24h)</TableHead>
-                      <TableHead>Avg Latency</TableHead>
-                      <TableHead>Last Used</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {usageStats.models.map((model) => (
-                      <TableRow key={model.model_id}>
-                        <TableCell className="font-medium">{model.name}</TableCell>
-                        <TableCell>
-                          <Badge variant={model.is_active ? 'default' : 'secondary'}>
-                            {model.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                            <span>{model.predictions_24h.toLocaleString()}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-muted-foreground" />
-                            <span>{formatLatency(model.avg_latency_ms)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">
-                              {model.last_used_at 
-                                ? new Date(model.last_used_at).toLocaleString()
-                                : 'Never'
-                              }
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => router.push(`/monitor/${model.model_id}`)}
-                          >
-                            View Details
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+              <ModelActivityTable models={usageStats.models} />
             </CardContent>
           </Card>
         </TabsContent>

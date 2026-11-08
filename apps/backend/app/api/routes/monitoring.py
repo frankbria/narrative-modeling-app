@@ -11,6 +11,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.services.prediction_monitoring import PredictionMonitoringService
+from app.utils.dataset_names import dataset_names
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 
@@ -249,7 +250,8 @@ async def get_usage_overview(
     # Get predictions for each model
     total_predictions_24h = 0
     model_summaries = []
-    
+    names = await dataset_names(current_user_id, {m.dataset_id for m in models})
+
     for model in models:
         metrics = await monitoring_service.get_model_metrics(model.model_id, 24)
         total_predictions_24h += metrics["total_predictions"]
@@ -257,6 +259,10 @@ async def get_usage_overview(
         model_summaries.append({
             "model_id": model.model_id,
             "name": model.name,
+            "algorithm": model.algorithm,
+            "target_column": model.target_column,
+            "dataset_name": names.get(model.dataset_id),
+            "created_at": model.created_at,
             "is_active": model.is_active,
             "predictions_24h": metrics["total_predictions"],
             "avg_latency_ms": metrics["avg_latency_ms"],

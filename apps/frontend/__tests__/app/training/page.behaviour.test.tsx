@@ -96,6 +96,25 @@ describe('TrainingJobsPage behaviour', () => {
     expect(screen.queryByText('Loading training jobs…')).not.toBeInTheDocument();
   });
 
+  it('names the dataset by its file, never its id', async () => {
+    mockListTrainingJobs.mockImplementation((o?: { status?: string }) =>
+      Promise.resolve(
+        page(
+          isInFlight(o)
+            ? []
+            : [
+                job({ model_id: 'a', dataset_name: 'customers.csv' }),
+                job({ model_id: 'b', dataset_name: null }),
+              ]
+        )
+      )
+    );
+    render(<TrainingJobsPage />);
+    expect(await screen.findByText('customers.csv')).toBeInTheDocument();
+    expect(screen.getByText('Dataset no longer available')).toBeInTheDocument();
+    expect(screen.queryByText(/ds-1/)).not.toBeInTheDocument();
+  });
+
   it('shows the in-flight failure message', async () => {
     mockListTrainingJobs.mockImplementation((o?: { status?: string }) =>
       isInFlight(o) ? Promise.reject(new Error('boom')) : Promise.resolve(page([]))

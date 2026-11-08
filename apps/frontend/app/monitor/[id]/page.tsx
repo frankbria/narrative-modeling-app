@@ -36,6 +36,7 @@ import {
   LineChart as LineChartIcon
 } from 'lucide-react'
 import Link from 'next/link'
+import { formatLatency } from '@/lib/monitoring'
 import { LineChart } from '@/components/LineChart'
 import { BarChart } from '@/components/BarChart'
 
@@ -83,12 +84,6 @@ export default function ModelMonitoringPage() {
   const distribution = monitorData?.distribution ?? null
   const timeline = monitorData?.timeline ?? null
   const health = monitorData?.health ?? null
-
-  const formatLatency = (ms: number) => {
-    if (ms < 1) return '<1ms'
-    if (ms < 1000) return `${Math.round(ms)}ms`
-    return `${(ms / 1000).toFixed(2)}s`
-  }
 
   const formatPrediction = (prediction: unknown) => {
     if (typeof prediction === 'number') {
@@ -267,7 +262,7 @@ export default function ModelMonitoringPage() {
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
               <Zap className="h-5 w-5 text-warning" />
-              {formatLatency(metrics.avg_latency_ms)}
+              {formatLatency(metrics.avg_latency_ms, metrics.total_predictions)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Per prediction
@@ -411,7 +406,7 @@ export default function ModelMonitoringPage() {
                           </TableCell>
                         )}
                         <TableCell>
-                          {formatLatency(log.latency_ms)}
+                          {formatLatency(log.latency_ms, 1)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {log.api_key_id ? log.api_key_id.slice(0, 8) + '...' : 'UI'}
@@ -502,7 +497,7 @@ export default function ModelMonitoringPage() {
                     <div key={p} data-testid={`latency-${p}`}>
                       <p className="text-xs text-muted-foreground uppercase">{p}</p>
                       <p className="text-lg font-bold">
-                        {formatLatency(metrics.latency_percentiles?.[p] ?? 0)}
+                        {formatLatency(metrics.latency_percentiles?.[p] ?? 0, metrics.total_predictions)}
                       </p>
                     </div>
                   ))}
@@ -512,7 +507,7 @@ export default function ModelMonitoringPage() {
               <div>
                 <h4 className="text-sm font-medium mb-2">Response Time Trend</h4>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Average latency: {formatLatency(metrics.avg_latency_ms)} · Error rate:{' '}
+                  Average latency: {formatLatency(metrics.avg_latency_ms, metrics.total_predictions)} · Error rate:{' '}
                   {(metrics.error_rate * 100).toFixed(1)}% ({metrics.error_count} errors)
                 </p>
                 {metrics.avg_latency_ms < 100 ? (
