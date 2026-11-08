@@ -141,6 +141,30 @@ signed-in account is named at the bottom of the sidebar, so every frame is cropp
 each image before committing, and keep any address out of them. The page is
 `app/how-it-works/page.tsx`; its test checks that every image exists and stays small.
 
+### The README GIFs
+
+`docs/product/readme/*.gif` are cut from a capture's `churn-walkthrough.webm`, so they inherit its
+crop and show no account. Stage timings change with every run, so find them on a contact sheet
+(one frame every 3 s, timestamped, written to a scratch directory so no stray files land in the repo):
+
+```bash
+V=apps/frontend/public/how-it-works/churn-walkthrough.webm
+T=$(mktemp -d)
+ffmpeg -i $V -vf "fps=1/3,scale=320:-2,drawtext=text='%{pts\:hms}':x=4:y=4:fontsize=14:fontcolor=red" $T/sheet_%02d.png
+ffmpeg -pattern_type glob -i "$T/sheet_*.png" -filter_complex tile=5x6 $T/contact.png
+```
+
+Then cut each stage (start and end in seconds, a speed-up factor, width and frame rate). The README
+shows `start` (sample pick and profile), `prepare`, `features`, `train`, `evaluate` (ending on SHAP),
+`predict` and `deploy`, each under about 1.5 MB:
+
+```bash
+gif() { ffmpeg -y -ss $2 -to $3 -i $V -vf "setpts=PTS/$4,fps=$6,scale=$5:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff:max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 docs/product/readme/$1.gif; }
+gif train 39 60 2 960 8   # e.g. the training stage, at double speed
+```
+
+`hero.gif` is the whole walkthrough without the evaluation spinner, three times faster, at 800 px wide (about 2 MB, the one GIF over the stage budget). Every GIF stays in git history for good, so re-cut them only when the UI they show has changed.
+
 ## When a spec fails
 
 Read `error-context.md` and `trace.zip` under `test-results/` before retrying. A failure
