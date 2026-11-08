@@ -48,7 +48,7 @@ ground at every step.
 | | |
 | --- | --- |
 | ✅ **Validated, not vibes** | Algorithms are cross-validated against each other and against a baseline, with a plain-language note on why the winner won. |
-| 🔍 **Explained** | SHAP explanations for every model, and a model report that states only what was actually recorded. |
+| 🔍 **Explained** | SHAP explanations for each model you train, and a model report that states only what was actually recorded. |
 | 🔁 **Reproducible** | A full version history for your data, undo and redo, and every preparation step exportable as Python. |
 | 📦 **Yours to keep** | Export a trained model as self-contained Python or a Docker bundle, or call it from a secured REST endpoint. |
 | 🛡️ **Safe with real data** | PII is scanned on in-app uploads, the whole workflow runs without an AI key, and one click erases your data. |
@@ -90,7 +90,8 @@ features and let the model try combinations of columns.
 
 Choose a target column and SheetPredict works out whether it's a classification or regression problem.
 **Quick** mode trains a handful of fast, strong algorithms in a minute or so. **Comprehensive** mode runs
-the full catalogue (about ten algorithms) with hyperparameter tuning. You get a leaderboard with
+the full catalogue (gradient boosting, XGBoost, LightGBM, random forests, linear models, SVM and
+nearest neighbours) with hyperparameter tuning. You get a leaderboard with
 cross-validated and hold-out scores, plus a written explanation of the choice.
 
 <img src="docs/product/readme/train.gif" alt="Starting a Quick training run, watching progress, then the leaderboard and why the winning algorithm was chosen" width="100%">
@@ -124,8 +125,8 @@ Python or a Docker bundle; neither needs SheetPredict to run.
 
 ## Built to be trusted
 
-- **Your file never goes to an AI provider.** AI features see a statistical profile of your data plus
-  at most five sample rows. The in-app upload scans for personal information and asks before storing a
+- **Your file is never sent whole to an AI provider.** AI features see a statistical profile of your
+  data and at most five sample rows. The in-app upload scans for personal information and asks before storing a
   high-risk file; you can keep a masked copy instead.
 - **No AI key? Still works.** Summaries, guidance and analysis fall back to rule-based answers, so the
   whole workflow runs without an OpenAI key; only the chat assistant needs one. With a key, calls run
@@ -197,7 +198,7 @@ flowchart LR
 | **API** | Python 3.13, FastAPI, Pydantic, Beanie on MongoDB |
 | **ML** | pandas, scikit-learn, XGBoost, LightGBM, Optuna, SHAP |
 | **Storage** | MongoDB, S3 (LocalStack locally), Redis (optional) |
-| **Quality** | pytest, Jest, Playwright on the real stack, ruff, mypy, ESLint, a CRAP gate on every change |
+| **Quality** | pytest, Jest, Playwright on the real stack, ruff, mypy, ESLint, and a complexity-and-coverage gate on every change |
 
 ---
 
