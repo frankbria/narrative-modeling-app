@@ -11,6 +11,7 @@ from app.auth.nextauth_auth import get_current_user_id
 from app.models.api_key import APIKey
 from app.models.ml_model import MLModel
 from app.services.prediction_monitoring import PredictionMonitoringService
+from app.utils.dataset_names import dataset_names
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 
@@ -229,6 +230,27 @@ async def check_drift(
     )
 
 
+def _count_active(items: list[Any]) -> int:
+    return sum(1 for item in items if item.is_active)
+
+
+async def _model_summary(model: MLModel, dataset_name: str | None) -> dict[str, Any]:
+    """One overview row: what the model is plus its last-24h traffic."""
+    metrics = await monitoring_service.get_model_metrics(model.model_id, 24)
+    return {
+        "model_id": model.model_id,
+        "name": model.name,
+        "algorithm": model.algorithm,
+        "target_column": model.target_column,
+        "dataset_name": dataset_name,
+        "created_at": model.created_at,
+        "is_active": model.is_active,
+        "predictions_24h": metrics["total_predictions"],
+        "avg_latency_ms": metrics["avg_latency_ms"],
+        "last_used_at": model.last_used_at,
+    }
+
+
 @router.get("/overview", response_model=UsageStatsResponse)
 async def get_usage_overview(
     current_user_id: str = Depends(get_current_user_id)
@@ -238,40 +260,23 @@ async def get_usage_overview(
     # Get all user's models
     models = await MLModel.find({"user_id": current_user_id}).to_list()
     
-    total_models = len(models)
-    active_models = sum(1 for m in models if m.is_active)
-    
-    # Get API keys
     api_keys = await APIKey.find({"user_id": current_user_id}).to_list()
-    total_api_keys = len(api_keys)
-    active_api_keys = sum(1 for k in api_keys if k.is_active)
-    
-    # Get predictions for each model
-    total_predictions_24h = 0
-    model_summaries = []
-    
-    for model in models:
-        metrics = await monitoring_service.get_model_metrics(model.model_id, 24)
-        total_predictions_24h += metrics["total_predictions"]
-        
-        model_summaries.append({
-            "model_id": model.model_id,
-            "name": model.name,
-            "is_active": model.is_active,
-            "predictions_24h": metrics["total_predictions"],
-            "avg_latency_ms": metrics["avg_latency_ms"],
-            "last_used_at": model.last_used_at
-        })
-    
+
+    names = await dataset_names(current_user_id, {m.dataset_id for m in models})
+    model_summaries = [
+        await _model_summary(model, names.get(model.dataset_id)) for model in models
+    ]
+    total_predictions_24h = sum(m["predictions_24h"] for m in model_summaries)
+
     # Sort by predictions
     model_summaries.sort(key=lambda x: x["predictions_24h"], reverse=True)
     
     return UsageStatsResponse(
-        total_models=total_models,
-        active_models=active_models,
+        total_models=len(models),
+        active_models=_count_active(models),
         total_predictions_24h=total_predictions_24h,
-        total_api_keys=total_api_keys,
-        active_api_keys=active_api_keys,
+        total_api_keys=len(api_keys),
+        active_api_keys=_count_active(api_keys),
         models=model_summaries
     )
 

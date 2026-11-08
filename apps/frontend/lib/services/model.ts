@@ -121,6 +121,8 @@ export interface TrainingStatus {
 export interface TrainingJobSummary {
   model_id: string
   dataset_id: string
+  /** The dataset's file name; null once the dataset is deleted. */
+  dataset_name?: string | null
   target_column: string
   status: TrainingJobStatus
   progress_percentage: number // 0 - 100

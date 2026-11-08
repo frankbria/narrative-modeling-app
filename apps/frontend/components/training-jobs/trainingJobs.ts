@@ -92,3 +92,8 @@ export function algorithmText(job: TrainingJobSummary): string {
 export function scoreText(job: TrainingJobSummary): string {
   return job.best_score != null ? job.best_score.toFixed(3) : NO_VALUE;
 }
+
+/** The dataset's file name, never its id. */
+export function datasetText(job: TrainingJobSummary): string {
+  return job.dataset_name ?? 'Dataset no longer available';
+}
