@@ -54,7 +54,7 @@ def test_readme_states_the_same_license() -> None:
 
 @pytest.mark.parametrize(
     "manifest",
-    ["apps/backend/pyproject.toml", "apps/mcp/pyproject.toml", "apps/frontend/package.json"],
+    ["apps/backend/pyproject.toml", "apps/frontend/package.json"],
 )
 def test_every_package_manifest_declares_the_license(manifest: str) -> None:
     text = (REPO_ROOT / manifest).read_text(encoding="utf-8")

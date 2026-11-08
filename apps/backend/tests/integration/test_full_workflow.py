@@ -106,44 +106,6 @@ class TestFullWorkflow:
                     mock_dataset.statistics = process_data["statistics"]
                     mock_dataset.quality_report = process_data["quality_report"]
 
-        # Step 3: Get AI analysis
-        with patch('app.models.dataset.DatasetMetadata.get', new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_dataset
-
-            with patch('app.services.mcp_integration.mcp_service.analyze_dataset', new_callable=AsyncMock) as mock_analyze:
-                from app.services.mcp_integration import MCPAnalysisResponse
-                mock_analyze.return_value = MCPAnalysisResponse(
-                    file_id=dataset_id,
-                    analysis_type="comprehensive",
-                    summary="Customer purchase data with 100 records showing diverse buying patterns.",
-                    insights=[
-                        {
-                            "type": "pattern",
-                            "title": "Purchase Patterns",
-                            "description": "Average purchase amount is $500 with seasonal variations"
-                        },
-                        {
-                            "type": "demographic",
-                            "title": "Customer Demographics",
-                            "description": "Age range 20-119 with most customers between 40-60"
-                        }
-                    ],
-                    recommendations=[
-                        "Segment customers by purchase amount for targeted marketing",
-                        "Analyze seasonal trends in purchase dates"
-                    ],
-                    visualizations=None,
-                    metadata={"execution_time": 2.5}
-                )
-
-                response = await async_authorized_client.get(f"/api/v1/ai/analysis/{dataset_id}")
-
-                assert response.status_code == 200
-
-                analysis_data = response.json()
-                assert "Purchase Patterns" in str(analysis_data["insights"])
-                assert len(analysis_data["recommendations"]) == 2
-
         # Step 4: Get visualizations
         with patch('app.models.dataset.DatasetMetadata.get', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_dataset

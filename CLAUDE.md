@@ -8,7 +8,7 @@ SheetPredict — an AI-guided platform that helps non-expert analysts build, exp
 > This file holds durable conventions: the rule, where it lives, and the guard that enforces it. `#NNN` points at the PR with the story; per-issue history lives in git, not here.
 
 ## Where the rest lives
-Per-app conventions load when you work in that app: `apps/backend/CLAUDE.md` (FastAPI: routes, auth, models, datasets/S3, transformations, training, billing, jobs), `apps/frontend/CLAUDE.md` (Next.js: auth, Tailwind, middleware, pages, errors), `apps/mcp/CLAUDE.md`. Read the relevant one before changing code there.
+Per-app conventions load when you work in that app: `apps/backend/CLAUDE.md` (FastAPI: routes, auth, models, datasets/S3, transformations, training, billing, jobs), `apps/frontend/CLAUDE.md` (Next.js: auth, Tailwind, middleware, pages, errors). Read the relevant one before changing code there.
 
 ## Git hooks
 - `./scripts/install-git-hooks.sh` runs at session start (`SessionStart` hook) and symlinks `.githooks/pre-push`, which refuses a push updating the default branch (`enforce_admins` is false, so a direct push would succeed). Override: `git push --no-verify`.
@@ -19,7 +19,6 @@ Per-app conventions load when you work in that app: `apps/backend/CLAUDE.md` (Fa
 - Backend (full): `cd apps/backend && uv run pytest` — needs MongoDB on :27017; optional Redis (:6380) + LocalStack (:4566) via `docker compose -f docker-compose.test.yml up -d`.
 - Backend (PR gate): `cd apps/backend && PYTHONPATH=. uv run pytest tests/ -m "not integration and not performance" -v`. Selection is by **marker**, never by path.
 - Frontend: `cd apps/frontend && npm test` | `npm run type-check` | `npm run lint`
-- MCP: `cd apps/mcp && uv run pytest tests/`
 
 ### Test footguns
 - **Route tests use real documents (#267, #683):** `mock_async_client` mounts only health + secure_upload (other routes 404 vacuously). Use `async_authorized_client` with real Mongo docs and exact statuses. Seed datasets with `UserData(...).insert()` and processed state from captured `dataProcessResponse.json`; never a `MagicMock` dataset or a patched `save`. For X-API-Key routes insert a real `APIKey` and send the raw `sk_live_…`.
@@ -36,7 +35,7 @@ Per-app conventions load when you work in that app: `apps/backend/CLAUDE.md` (Fa
 
 ## CI & Test Suite Status
 - pytest always uses the **test** database (`tests/conftest.py::_app_uses_the_test_database`) and pins its own S3 settings (blank credentials, local `AWS_ENDPOINT_URL`; `test_suite_never_reaches_aws.py`) — read a credential in a fixture with `os.getenv(NAME) or "test"`.
-- **`ci.yml` is the PR gate:** backend (ruff `E`/`F`/`I`/`UP`, mypy, pytest by marker against Mongo), frontend (eslint, `tsc --noEmit`, `next build`, jest), MCP pytest, backend integration (`CI_REQUIRE_SERVICES=true`), `e2e-smoke`. **`CI Success` is the only required check.** Advisory: `backend-typecheck`, `perf-tests.yml`, `security-audit`, review bots. `e2e-tests.yml` runs the full suite nightly and opens/closes a `[P2] [testing] The nightly full e2e suite is failing` issue.
+- **`ci.yml` is the PR gate:** backend (ruff `E`/`F`/`I`/`UP`, mypy, pytest by marker against Mongo), frontend (eslint, `tsc --noEmit`, `next build`, jest), backend integration (`CI_REQUIRE_SERVICES=true`), `e2e-smoke`. **`CI Success` is the only required check.** Advisory: `backend-typecheck`, `perf-tests.yml`, `security-audit`, review bots. `e2e-tests.yml` runs the full suite nightly and opens/closes a `[P2] [testing] The nightly full e2e suite is failing` issue.
 - **Review bots — absent ≠ clean (#571, #626, #955):** a red `claude-review`, a GLM run that failed to start, or a "Reviewer failover" comment saying no reviewer produced a review (the GLM caller fails over Codex → Kimi → Z.ai and stays green) means no verdict. `review-bots-health.yml` (`scripts/ci/review_bots_health.sh`; add new reviewers to `WORKFLOWS`) opens/closes a `[P2] [infra] Review bot is failing at startup: <workflow>` issue, deduped on that phrase. Keep the GLM caller's `permissions:` in step with the pinned callee and never add a caller-level `concurrency:` group matching the callee's (`test_review_bots_health_wiring.py`). `claude-review` keeps its step `timeout-minutes: 9` below the job's 10 so the "did not complete" comment can post, and runs only for human PRs (Dependabot skips are by design).
 - **Staging access:** `ssh staging-ts '<cmd>'` only, with inline `python -c "…"` (opaque piped scripts are refused; `scripts/` isn't in the image). If refused or the alias is missing, don't retry variants — `gh workflow run staging-health.yml --ref <branch>` (exit 137 = boot loop). Split secret-needing verification into a code PR + an operator issue with exact commands.
 - **Wait for CI with `scripts/ci/wait_for_checks.sh <pr|sha>`** in the foreground with a bounded timeout (0 = `CI Success`, 1 = failure, 2 = timeout).

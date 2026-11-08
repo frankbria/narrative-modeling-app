@@ -63,25 +63,9 @@ class TestAiAnalysisObjectIdLookup:
         assert response.json()["model_used"] == "fallback"
 
     async def test_analyze_finds_a_document_by_its_string_id(
-        self, async_authorized_client, setup_database, monkeypatch
+        self, async_authorized_client, setup_database
     ):
         doc = await _seed_user_data()
-
-        async def _fake_analysis(*_args, **_kwargs):
-            from app.services.mcp_integration import MCPAnalysisResponse
-
-            return MCPAnalysisResponse(
-                success=True,
-                analysis={"rows": 2},
-                insights=["small sample"],
-                recommendations=[],
-            )
-
-        # On the instance's dict, so it is removed afterwards (a setattr on the shared
-        # service would leave the original behind as an instance attribute).
-        from app.services.mcp_integration import mcp_service
-
-        monkeypatch.setitem(vars(mcp_service), "analyze_dataset", _fake_analysis)
 
         response = await async_authorized_client.post(f"/api/v1/ai/analyze/{doc.id}")
 

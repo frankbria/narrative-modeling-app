@@ -106,7 +106,6 @@ credentials login is refused.
 ```bash
 cd apps/backend  && PYTHONPATH=. uv run pytest tests/ -m "not integration and not performance"
 cd apps/frontend && npm test && npm run type-check && npm run lint
-cd apps/mcp      && uv run pytest tests/
 ```
 
 Details: [TEST_INFRASTRUCTURE.md](TEST_INFRASTRUCTURE.md),
