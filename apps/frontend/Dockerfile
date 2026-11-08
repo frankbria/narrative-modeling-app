@@ -47,6 +47,7 @@ COPY . .
 # MONGODB_URI). Scoped to this RUN only — the runner stage gets its real
 # environment from docker-compose at runtime. No token (no secret, or an empty one)
 # means no upload and no maps; the final `find` removes any browser map an upload left behind (only .next/static is served).
+# The secret is not part of the cache key: a token change alone needs `build --no-cache`.
 RUN --mount=type=secret,id=sentry_auth_token,required=false \
     SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
     CI=true \
