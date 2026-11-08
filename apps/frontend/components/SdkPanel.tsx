@@ -121,7 +121,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
         <button
           type="button"
           onClick={handleDownloadPostman}
-          className="inline-flex items-center gap-1 text-sm text-blue-700 dark:text-blue-300 hover:underline"
+          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
         >
           <Download className="w-4 h-4" />
           Postman collection
@@ -132,8 +132,8 @@ export function SdkPanel({ modelId }: { modelId: string }) {
           another language without reloading. */}
       {(infoError || sourceError) && (
         <div className="mb-3" role="alert" aria-live="polite">
-          {infoError && <p className="text-sm text-red-600">{infoError}</p>}
-          {sourceError && <p className="text-sm text-red-600">{sourceError}</p>}
+          {infoError && <p className="text-sm text-destructive">{infoError}</p>}
+          {sourceError && <p className="text-sm text-destructive">{sourceError}</p>}
         </div>
       )}
 
@@ -149,7 +149,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
             onClick={() => setLanguage(lang)}
             className={`px-3 py-1.5 rounded text-sm font-medium ${
               language === lang
-                ? 'bg-blue-600 text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-card text-foreground hover:bg-muted border'
             }`}
           >
@@ -170,7 +170,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
             onClick={handleCopy}
             aria-label="Copy SDK source"
             disabled={!source}
-            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded text-white disabled:opacity-50"
+            className="p-1.5 bg-background/15 hover:bg-background/25 rounded text-background disabled:opacity-50"
           >
             {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
           </button>
@@ -182,12 +182,12 @@ export function SdkPanel({ modelId }: { modelId: string }) {
             }
             aria-label="Download SDK source"
             disabled={!source}
-            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded text-white disabled:opacity-50"
+            className="p-1.5 bg-background/15 hover:bg-background/25 rounded text-background disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
           </button>
         </div>
-        <pre className="bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto text-sm max-h-96">
+        <pre className="bg-foreground text-background p-4 rounded overflow-x-auto text-sm max-h-96">
           {source ??
             (sourceError ? '(Failed to load — see error above)' : 'Loading…')}
         </pre>

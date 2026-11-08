@@ -15,7 +15,7 @@ export function ErrorBanner(props: { actionError: string | null; featuresError: 
   return (
     <div
       data-testid="prediction-error"
-      className="mb-4 p-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-sm text-red-700 dark:text-red-300 flex items-center gap-2"
+      className="mb-4 p-3 rounded-lg border border-destructive/30 bg-destructive/10 text-sm text-destructive flex items-center gap-2"
     >
       <AlertTriangle className="w-4 h-4 shrink-0" />
       <span>{error}</span>
@@ -35,8 +35,8 @@ interface ModeButtonProps {
 function ModeButton(props: ModeButtonProps) {
   const { active } = props;
   const colour = active
-    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
-    : 'border-border hover:border-gray-400';
+    ? 'border-primary bg-primary/10'
+    : 'border-border hover:border-muted-foreground';
   return (
     <button
       type="button"
@@ -65,7 +65,7 @@ export function ModeToggle(props: {
           testId="single-prediction-link"
           active={mode === 'single'}
           onSelect={selectSingle}
-          icon={<Target className="w-8 h-8 text-blue-600 mx-auto mb-2" />}
+          icon={<Target className="w-8 h-8 text-primary mx-auto mb-2" />}
           title="Single Prediction"
           hint="Enter values manually for one prediction"
         />
@@ -73,7 +73,7 @@ export function ModeToggle(props: {
           testId="batch-prediction-link"
           active={mode === 'batch'}
           onSelect={selectBatch}
-          icon={<FileText className="w-8 h-8 text-green-600 mx-auto mb-2" />}
+          icon={<FileText className="w-8 h-8 text-success mx-auto mb-2" />}
           title="Batch Prediction"
           hint="Upload a CSV file for multiple predictions"
         />

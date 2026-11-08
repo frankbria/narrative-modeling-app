@@ -48,9 +48,9 @@ type HealthState = 'loading' | 'unreachable' | 'erroring' | 'alive'
 
 const STATE_ICONS: Record<HealthState, ReactNode> = {
   loading: <Activity className="h-5 w-5 animate-pulse" data-testid="health-icon-loading" />,
-  unreachable: <WifiOff className="h-5 w-5 text-red-500" data-testid="health-icon-unreachable" />,
-  erroring: <AlertCircle className="h-5 w-5 text-yellow-500" data-testid="health-icon-erroring" />,
-  alive: <CheckCircle2 className="h-5 w-5 text-green-500" data-testid="health-icon-alive" />,
+  unreachable: <WifiOff className="h-5 w-5 text-destructive" data-testid="health-icon-unreachable" />,
+  erroring: <AlertCircle className="h-5 w-5 text-warning" data-testid="health-icon-erroring" />,
+  alive: <CheckCircle2 className="h-5 w-5 text-success" data-testid="health-icon-alive" />,
 }
 
 const STATE_LABELS: Record<HealthState, string> = {
@@ -137,8 +137,8 @@ export function HealthMonitor(props: HealthMonitorProps) {
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg">
-                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+              <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
 

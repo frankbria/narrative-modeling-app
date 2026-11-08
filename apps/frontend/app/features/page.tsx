@@ -107,7 +107,7 @@ function Recorded(props: ShownProps) {
   if (!show) return null;
   return (
     <p data-testid="choice-recorded" className="text-sm flex items-center gap-2">
-      <CheckCircle2 className="w-4 h-4 text-green-600" />
+      <CheckCircle2 className="w-4 h-4 text-success" />
       This choice is recorded. Continue to Model Training below.
     </p>
   );
@@ -288,7 +288,7 @@ export default function FeaturesPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Sparkles className="w-6 h-6 text-yellow-500" />
+          <Sparkles className="w-6 h-6 text-warning" />
           Feature Engineering
         </h1>
         <ChoiceBody

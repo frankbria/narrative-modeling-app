@@ -6,6 +6,7 @@ import { signIn, useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Logo } from '@/components/brand/Logo'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,7 +81,10 @@ export default function SignInPage() {
   }
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted">
+    <div className="flex min-h-[80dvh] w-full flex-col items-center justify-center gap-6">
+      <Link href="/" className="text-2xl">
+        <Logo />
+      </Link>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
@@ -92,9 +96,9 @@ export default function SignInPage() {
           <SignInError code={searchParams.get('error')} />
           {isDevelopment && (
             <>
-              <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-md">
-                <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">Test User Login</p>
-                <p className="text-xs text-blue-600 mt-1">Use test credentials for E2E testing and development</p>
+              <div className="p-4 bg-primary/10 border border-primary/30 rounded-md">
+                <p className="text-sm text-primary font-medium">Test User Login</p>
+                <p className="text-xs text-primary mt-1">Use test credentials for E2E testing and development</p>
               </div>
 
               <div className="space-y-2">

@@ -35,15 +35,15 @@ interface Encouragement {
 }
 
 const STAT_TONES = {
-  blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 [&_strong]:text-blue-700 dark:[&_strong]:text-blue-300',
-  green: 'bg-green-50 dark:bg-green-950/40 text-green-600 [&_strong]:text-green-700 dark:[&_strong]:text-green-300',
+  blue: 'bg-primary/10 text-primary [&_strong]:text-primary',
+  green: 'bg-success/10 text-success [&_strong]:text-success',
 };
 
 const NOTE_TONES = {
-  blue: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 text-blue-800 dark:text-blue-200 [&_svg]:text-blue-600',
-  purple: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-900 text-purple-800 dark:text-purple-200 [&_svg]:text-purple-600',
-  green: 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-900 text-green-800 dark:text-green-200 [&_svg]:text-green-600',
-  orange: 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-900 text-orange-800 dark:text-orange-200 [&_svg]:text-orange-600',
+  blue: 'bg-primary/10 border-primary/30 text-primary [&_svg]:text-primary',
+  purple: 'bg-primary/10 border-primary/30 text-primary [&_svg]:text-primary',
+  green: 'bg-success/10 border-success/30 text-success [&_svg]:text-success',
+  orange: 'bg-warning/10 border-warning/30 text-warning [&_svg]:text-warning',
 };
 
 const ENCOURAGEMENTS: Encouragement[] = [
@@ -100,9 +100,9 @@ export function OnboardingProgress(props: OnboardingProgressProps) {
 const SKELETON = (
   <div className="space-y-4">
     <div className="animate-pulse space-y-2">
-      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-      <div className="h-8 bg-gray-200 rounded"></div>
-      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+      <div className="h-4 bg-muted rounded w-3/4"></div>
+      <div className="h-8 bg-muted rounded"></div>
+      <div className="h-4 bg-muted rounded w-1/2"></div>
     </div>
   </div>
 );
@@ -150,19 +150,19 @@ function AchievementsSummary(props: AchievementsProps) {
   return (
     <div className="space-y-2" data-testid="onboarding-achievements">
       <div className="flex flex-wrap items-center gap-2">
-        <Trophy className="h-4 w-4 shrink-0 text-yellow-500" />
+        <Trophy className="h-4 w-4 shrink-0 text-warning" />
         <span className="font-medium text-sm">Achievements</span>
         <Badge variant="secondary" className="text-xs whitespace-nowrap">
           {points} points
         </Badge>
       </div>
 
-      <div className="p-2 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-900 rounded-md">
+      <div className="p-2 bg-warning/10 border border-warning/30 rounded-md">
         <div className="flex items-center gap-2">
-          <Star className="h-4 w-4 shrink-0 text-yellow-600" />
+          <Star className="h-4 w-4 shrink-0 text-warning" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-yellow-800 dark:text-yellow-200 break-words">{latest.title}</div>
-            <div className="text-xs text-yellow-600">+{latest.points} points</div>
+            <div className="text-sm font-medium text-warning break-words">{latest.title}</div>
+            <div className="text-xs text-warning">+{latest.points} points</div>
           </div>
         </div>
       </div>

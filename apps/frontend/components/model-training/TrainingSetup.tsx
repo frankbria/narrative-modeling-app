@@ -7,19 +7,19 @@ import type { TrainingMode } from '@/lib/services/model';
 
 const TONES = {
   red: {
-    box: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900',
-    icon: 'text-red-600',
-    text: 'text-red-800 dark:text-red-200',
+    box: 'bg-destructive/10 border-destructive/30',
+    icon: 'text-destructive',
+    text: 'text-destructive',
   },
   blue: {
-    box: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900',
-    icon: 'text-blue-600',
-    text: 'text-blue-800 dark:text-blue-200',
+    box: 'bg-primary/10 border-primary/30',
+    icon: 'text-primary',
+    text: 'text-primary',
   },
   yellow: {
-    box: 'bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-900',
-    icon: 'text-yellow-600',
-    text: 'text-yellow-800 dark:text-yellow-200',
+    box: 'bg-warning/10 border-warning/30',
+    icon: 'text-warning',
+    text: 'text-warning',
   },
 };
 
@@ -71,11 +71,11 @@ export function TrainingNotices(props: { error: string | null; cancelled: boolea
 
 // An element, not a component: it takes nothing and never changes.
 const AUTO_ML_INTRO = (
-    <div className="p-4 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-900 flex items-start gap-3">
-      <Zap className="w-5 h-5 text-indigo-500 mt-0.5" />
-      <div className="text-sm text-indigo-900 dark:text-indigo-200">
+    <div className="p-4 bg-primary/10 rounded-lg border border-primary/30 flex items-start gap-3">
+      <Zap className="w-5 h-5 text-primary mt-0.5" />
+      <div className="text-sm text-primary">
         <p className="font-semibold">AI-guided AutoML</p>
-        <p className="mt-1 text-indigo-800 dark:text-indigo-200">
+        <p className="mt-1 text-primary">
           We automatically detect whether this is a classification or
           regression problem, train and cross-validate several algorithms
           (Logistic/Linear Regression, Random Forest, XGBoost and more),
@@ -100,7 +100,7 @@ function TargetColumn(props: TargetColumnProps) {
       <select
         value={value}
         onChange={change}
-        className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary"
       >
         <option value="">Select target column...</option>
         {columns.map((column) => (
@@ -119,8 +119,8 @@ function TargetColumn(props: TargetColumnProps) {
 function StartButton(props: { ready: boolean; onStart: VoidFunction }) {
   const { ready, onStart } = props;
   const colour = ready
-    ? 'bg-blue-600 text-white hover:bg-blue-700'
-    : 'bg-gray-300 text-muted-foreground cursor-not-allowed';
+    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    : 'bg-muted text-muted-foreground cursor-not-allowed';
   return (
     <div className="flex justify-end pt-4">
       <button

@@ -48,7 +48,7 @@ export default function PredictPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Target className="w-6 h-6 text-red-500" />
+          <Target className="w-6 h-6 text-destructive" />
           Make Predictions
         </h1>
 

@@ -35,7 +35,7 @@ const TRIGGER_BASE =
   'w-full h-9 px-3 py-1 text-sm text-left border rounded-md bg-transparent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 function triggerClass(error: string | undefined): string {
-  return TRIGGER_BASE + (error ? ' border-red-500' : ' border-input');
+  return TRIGGER_BASE + (error ? ' border-destructive' : ' border-input');
 }
 
 

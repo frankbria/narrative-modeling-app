@@ -25,8 +25,8 @@ function PIIRisk(props: { level: string }) {
   const { level } = props;
   return (
     <>
-      <Shield className="text-amber-500" size={16} />
-      <span className="text-sm text-amber-700 dark:text-amber-300 font-medium">
+      <Shield className="text-warning" size={16} />
+      <span className="text-sm text-warning font-medium">
         PII {level.toUpperCase()} RISK
       </span>
     </>
@@ -35,8 +35,8 @@ function PIIRisk(props: { level: string }) {
 
 const NO_PII = (
   <>
-    <CheckCircle className="text-green-500" size={16} />
-    <span className="text-sm text-green-700 dark:text-green-300 font-medium">NO PII DETECTED</span>
+    <CheckCircle className="text-success" size={16} />
+    <span className="text-sm text-success font-medium">NO PII DETECTED</span>
   </>
 );
 
@@ -60,9 +60,9 @@ export default function PreviewTable(props: { preview: PreviewData | null }) {
       <div className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gray-800">
+            <TableRow className="bg-foreground">
               {preview.headers.map((header, index) => (
-                <TableHead key={index} className="text-white font-semibold">{header}</TableHead>
+                <TableHead key={index} className="text-background font-semibold">{header}</TableHead>
               ))}
             </TableRow>
           </TableHeader>

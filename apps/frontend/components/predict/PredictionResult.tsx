@@ -5,7 +5,7 @@ import type { InputWarning, PredictResponse } from '@/lib/services/model';
 /** The result card of a single prediction: the value and what qualifies it. */
 
 const WARNING_BOX =
-  'mt-2 flex gap-2 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-2 text-sm text-amber-800 dark:text-amber-200';
+  'mt-2 flex gap-2 rounded-md border border-warning/30 bg-warning/10 p-2 text-sm text-warning';
 
 const WARNING_TEXT: Record<InputWarning, string> = {
   unseen: 'this value was not in the training data',
@@ -105,7 +105,7 @@ function Probabilities(props: { prediction: PredictResponse }) {
 function Contribution(props: { value: number }) {
   const { value } = props;
   const up = value >= 0;
-  const colour = up ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300';
+  const colour = up ? 'text-success' : 'text-destructive';
   return (
     <span className={`font-medium ${colour}`}>
       {up ? '+' : ''}
@@ -121,7 +121,7 @@ function Explanation(props: { prediction: PredictResponse }) {
   return (
     <div
       data-testid="prediction-explanation"
-      className="mt-4 border-t border-green-200 dark:border-green-900 pt-3"
+      className="mt-4 border-t border-success/30 pt-3"
     >
       <p className="text-sm font-medium text-foreground mb-1">What drove this prediction</p>
       <p className="text-sm text-muted-foreground mb-2">{explanation.explanation_text}</p>
@@ -142,15 +142,15 @@ export function PredictionResult(props: { prediction: PredictResponse }) {
   return (
     <div
       data-testid="prediction-result"
-      className="prediction-output mt-6 p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900"
+      className="prediction-output mt-6 p-4 bg-success/10 rounded-lg border border-success/30"
     >
       <h4 className="font-semibold mb-2 flex items-center gap-2">
-        <CheckCircle className="w-5 h-5 text-green-600" />
+        <CheckCircle className="w-5 h-5 text-success" />
         Prediction Result
       </h4>
       <div
         data-testid="prediction-value"
-        className="prediction-value text-2xl font-bold text-foreground"
+        className="prediction-value inline-block rounded px-2 text-2xl font-bold bg-highlight text-highlight-foreground"
       >
         {String(prediction.predictions?.[0])}
       </div>

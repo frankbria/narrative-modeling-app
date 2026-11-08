@@ -34,8 +34,16 @@
      __tests__/styles/themeTokens.test.ts. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* --font-sans is set by next/font in app/layout.tsx (Schibsted Grotesk). Pointing
+     here at a variable nothing defined is how every page rendered in Arial until the
+     identity pass. */
+  --font-sans: var(--font-schibsted), ui-sans-serif, system-ui, sans-serif;
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -81,54 +89,69 @@
 }
 
 @layer base {
+  /* SheetPredict identity: paper ground, ink text, petrol as the one action colour,
+     highlighter reserved for predictions and the stage you are on. Hex sources:
+     paper F4F6F5, ink 14232B, petrol 0D5C63, highlighter F4D35E, gridline D6DEDE. */
   :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.129 0.042 264.695);
+    --background: oklch(0.971 0.002 165.1);
+    --foreground: oklch(0.246 0.025 232.5);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.129 0.042 264.695);
+    --card-foreground: oklch(0.246 0.025 232.5);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.129 0.042 264.695);
-    --primary: oklch(0.208 0.042 265.755);
-    --primary-foreground: oklch(0.984 0.003 247.858);
-    --secondary: oklch(0.968 0.007 247.896);
-    --secondary-foreground: oklch(0.208 0.042 265.755);
-    --muted: oklch(0.968 0.007 247.896);
-    --muted-foreground: oklch(0.554 0.046 257.417);
-    --accent: oklch(0.968 0.007 247.896);
-    --accent-foreground: oklch(0.208 0.042 265.755);
-    --destructive: oklch(0.577 0.245 27.325);
-    /* The only token shipping without a -foreground pair; `text-destructive-foreground`
-       (button.tsx, badge.tsx, settings/api) therefore generated no rule and the label
-       inherited --card-foreground — near-black on red. Light text for the darker red. */
-    --destructive-foreground: oklch(0.984 0.003 247.858);
-    --border: oklch(0.929 0.013 255.508);
-    --input: oklch(0.929 0.013 255.508);
-    --ring: oklch(0.704 0.04 256.788);
-    --radius: 0.625rem;
+    --popover-foreground: oklch(0.246 0.025 232.5);
+    --primary: oklch(0.435 0.070 204.4);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.945 0.005 183.0);
+    --secondary-foreground: oklch(0.246 0.025 232.5);
+    --muted: oklch(0.945 0.005 183.0);
+    --muted-foreground: oklch(0.499 0.023 224.7);
+    --accent: oklch(0.943 0.013 196.9);
+    --accent-foreground: oklch(0.246 0.025 232.5);
+    --destructive: oklch(0.500 0.182 29.5);
+    /* The only token shipping without a -foreground pair once; `text-destructive-foreground`
+       then generated no rule and the label inherited near-black on red. */
+    --destructive-foreground: oklch(1 0 0);
+    /* Deep enough that status text on its own /10 tint stays above 4.5:1 on paper. */
+    --success: oklch(0.480 0.100 154.6);
+    --success-foreground: oklch(1 0 0);
+    --warning: oklch(0.500 0.120 58.2);
+    --warning-foreground: oklch(1 0 0);
+    --highlight: oklch(0.873 0.140 93.5);
+    --highlight-foreground: oklch(0.246 0.025 232.5);
+    --border: oklch(0.894 0.009 197.0);
+    --input: oklch(0.894 0.009 197.0);
+    --ring: oklch(0.435 0.070 204.4);
+    --radius: 0.5rem;
   }
 
   .dark {
-    --background: oklch(0.129 0.042 264.695);
-    --foreground: oklch(0.984 0.003 247.858);
-    --card: oklch(0.208 0.042 265.755);
-    --card-foreground: oklch(0.984 0.003 247.858);
-    --popover: oklch(0.208 0.042 265.755);
-    --popover-foreground: oklch(0.984 0.003 247.858);
-    --primary: oklch(0.929 0.013 255.508);
-    --primary-foreground: oklch(0.208 0.042 265.755);
-    --secondary: oklch(0.279 0.041 260.031);
-    --secondary-foreground: oklch(0.984 0.003 247.858);
-    --muted: oklch(0.279 0.041 260.031);
-    --muted-foreground: oklch(0.704 0.04 256.788);
-    --accent: oklch(0.279 0.041 260.031);
-    --accent-foreground: oklch(0.984 0.003 247.858);
-    --destructive: oklch(0.704 0.191 22.216);
-    /* Dark mode lightens --destructive to L=0.704, so this pair inverts the way
-       primary/primary-foreground already does rather than staying light-on-light. */
-    --destructive-foreground: oklch(0.208 0.042 265.755);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.551 0.027 264.364);
+    --background: oklch(0.210 0.019 228.0);
+    --foreground: oklch(0.944 0.007 197.0);
+    --card: oklch(0.250 0.023 225.0);
+    --card-foreground: oklch(0.944 0.007 197.0);
+    --popover: oklch(0.250 0.023 225.0);
+    --popover-foreground: oklch(0.944 0.007 197.0);
+    --primary: oklch(0.714 0.082 195.5);
+    --primary-foreground: oklch(0.210 0.019 228.0);
+    --secondary: oklch(0.292 0.026 220.8);
+    --secondary-foreground: oklch(0.944 0.007 197.0);
+    --muted: oklch(0.292 0.026 220.8);
+    --muted-foreground: oklch(0.750 0.022 208.1);
+    --accent: oklch(0.322 0.039 205.9);
+    --accent-foreground: oklch(0.944 0.007 197.0);
+    --destructive: oklch(0.713 0.147 29.3);
+    /* Dark mode lightens --destructive, so this pair inverts the way primary does. */
+    --destructive-foreground: oklch(0.210 0.019 228.0);
+    --success: oklch(0.743 0.129 156.7);
+    --success-foreground: oklch(0.210 0.019 228.0);
+    --warning: oklch(0.764 0.132 69.5);
+    --warning-foreground: oklch(0.210 0.019 228.0);
+    /* A touch deeper so the cell doesn't glare on the dark ground. */
+    --highlight: oklch(0.840 0.135 91.0);
+    --highlight-foreground: oklch(0.210 0.019 228.0);
+    --border: oklch(0.337 0.023 222.9);
+    --input: oklch(0.337 0.023 222.9);
+    --ring: oklch(0.714 0.082 195.5);
   }
 }
 
@@ -138,6 +161,13 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Native checkboxes, radios and sliders follow the action colour, not browser blue. */
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'],
+  progress {
+    accent-color: var(--primary);
   }
 }
 

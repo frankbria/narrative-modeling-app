@@ -100,13 +100,13 @@ export default function ModelMonitoringPage() {
   const healthStyle = (status: string) => {
     switch (status) {
       case 'healthy':
-        return { className: 'bg-green-500', Icon: CheckCircle2, label: 'Healthy' }
+        return { className: 'bg-success text-success-foreground', Icon: CheckCircle2, label: 'Healthy' }
       case 'degraded':
-        return { className: 'bg-yellow-500', Icon: AlertTriangle, label: 'Degraded' }
+        return { className: 'bg-warning text-warning-foreground', Icon: AlertTriangle, label: 'Degraded' }
       case 'unhealthy':
-        return { className: 'bg-red-500', Icon: AlertCircle, label: 'Unhealthy' }
+        return { className: 'bg-destructive text-destructive-foreground', Icon: AlertCircle, label: 'Unhealthy' }
       default:
-        return { className: 'bg-gray-400', Icon: Activity, label: 'No Data' }
+        return { className: 'bg-muted text-muted-foreground', Icon: Activity, label: 'No Data' }
     }
   }
 
@@ -226,9 +226,9 @@ export default function ModelMonitoringPage() {
                     data-testid="health-alert"
                   >
                     {alert.level === 'critical' ? (
-                      <AlertCircle className="h-4 w-4 text-red-500 mt-0.5" />
+                      <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
                     ) : (
-                      <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5" />
+                      <AlertTriangle className="h-4 w-4 text-warning mt-0.5" />
                     )}
                     <span>{alert.message}</span>
                   </div>
@@ -266,7 +266,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <Zap className="h-5 w-5 text-yellow-500" />
+              <Zap className="h-5 w-5 text-warning" />
               {formatLatency(metrics.avg_latency_ms)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -283,7 +283,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <Clock className="h-5 w-5 text-blue-500" />
+              <Clock className="h-5 w-5 text-primary" />
               {metrics.predictions_per_hour.toFixed(1)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -300,7 +300,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <Target className="h-5 w-5 text-green-500" />
+              <Target className="h-5 w-5 text-success" />
               {metrics.avg_confidence > 0 
                 ? `${(metrics.avg_confidence * 100).toFixed(1)}%`
                 : 'N/A'
@@ -351,9 +351,9 @@ export default function ModelMonitoringPage() {
                         'Avg Latency (ms)': b.avg_latency_ms,
                       })),
                       lines: [
-                        { dataKey: 'Requests', label: 'Requests', color: '#3b82f6' },
-                        { dataKey: 'Errors', label: 'Errors', color: '#ef4444' },
-                        { dataKey: 'Avg Latency (ms)', label: 'Avg Latency (ms)', color: '#f59e0b' },
+                        { dataKey: 'Requests', label: 'Requests', color: 'var(--primary)' },
+                        { dataKey: 'Errors', label: 'Errors', color: '#B42318' },
+                        { dataKey: 'Avg Latency (ms)', label: 'Avg Latency (ms)', color: '#D9A441' },
                       ],
                       xLabel: 'Time',
                       yLabel: 'Count / ms',
@@ -516,15 +516,15 @@ export default function ModelMonitoringPage() {
                   {(metrics.error_rate * 100).toFixed(1)}% ({metrics.error_count} errors)
                 </p>
                 {metrics.avg_latency_ms < 100 ? (
-                  <Badge variant="default" className="bg-green-500">
+                  <Badge variant="default" className="bg-success text-success-foreground">
                     Excellent Performance
                   </Badge>
                 ) : metrics.avg_latency_ms < 500 ? (
-                  <Badge variant="default" className="bg-blue-500">
+                  <Badge variant="default" className="bg-primary">
                     Good Performance
                   </Badge>
                 ) : (
-                  <Badge variant="default" className="bg-yellow-500">
+                  <Badge variant="default" className="bg-warning text-warning-foreground">
                     Consider Optimization
                   </Badge>
                 )}
@@ -561,25 +561,25 @@ export default function ModelMonitoringPage() {
                 <div className="space-y-2">
                   {metrics.predictions_per_hour < 1 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <AlertCircle className="h-4 w-4 text-yellow-500 mt-0.5" />
+                      <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
                       <p>Low usage detected. Consider promoting this model or reviewing its use case.</p>
                     </div>
                   )}
                   {metrics.avg_latency_ms > 1000 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5" />
+                      <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
                       <p>High latency detected. Consider optimizing the model or upgrading infrastructure.</p>
                     </div>
                   )}
                   {metrics.avg_confidence > 0 && metrics.avg_confidence < 0.7 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <AlertCircle className="h-4 w-4 text-yellow-500 mt-0.5" />
+                      <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
                       <p>Low average confidence. Review model performance and consider retraining.</p>
                     </div>
                   )}
                   {metrics.predictions_per_hour > 0 && metrics.avg_latency_ms < 100 && metrics.avg_confidence > 0.8 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <TrendingUp className="h-4 w-4 text-green-500 mt-0.5" />
+                      <TrendingUp className="h-4 w-4 text-success mt-0.5" />
                       <p>Model is performing well with good latency and confidence scores.</p>
                     </div>
                   )}

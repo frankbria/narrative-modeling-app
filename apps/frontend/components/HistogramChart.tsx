@@ -65,7 +65,7 @@ export function HistogramChart({ data, datasetId, column, bins = 50, height = 30
           <XAxis dataKey="bin" />
           <YAxis />
           <Tooltip />
-          <Bar dataKey="count" fill="#8884d8" />
+          <Bar dataKey="count" fill="var(--primary)" />
         </BarChart>
       </ResponsiveContainer>
     </div>

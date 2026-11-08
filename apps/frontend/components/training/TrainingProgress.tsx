@@ -165,8 +165,8 @@ export function TrainingProgress({
       } ${className}`}
     >
       {connectionLost && (
-        <Alert className="border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/40 text-yellow-800 dark:text-yellow-200">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+        <Alert className="border-warning/30 bg-warning/10 text-warning">
+          <AlertTriangle className="h-4 w-4 text-warning" />
           <AlertTitle>Connection lost — retrying</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-2">
             <span>Unable to reach the training status endpoint.</span>
@@ -182,7 +182,7 @@ export function TrainingProgress({
         <>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <Loader2 className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
+              <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
               <span className="text-sm font-medium truncate">
                 {status?.current_algorithm
                   ? `Training ${status.current_algorithm}`
@@ -210,8 +210,8 @@ export function TrainingProgress({
       )}
 
       {status?.status === 'completed' && (
-        <Alert className="border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/40 text-green-800 dark:text-green-200">
-          <CheckCircle className="h-4 w-4 text-green-600" />
+        <Alert className="border-success/30 bg-success/10 text-success">
+          <CheckCircle className="h-4 w-4 text-success" />
           <AlertTitle>Training complete</AlertTitle>
           <AlertDescription>
             {status.best_algorithm ? (
@@ -264,7 +264,7 @@ export function TrainingProgress({
                   key={row.algorithm}
                   className={
                     row.algorithm === status.best_algorithm
-                      ? 'bg-yellow-50 dark:bg-yellow-950/40 font-medium'
+                      ? 'bg-warning/10 font-medium'
                       : ''
                   }
                 >

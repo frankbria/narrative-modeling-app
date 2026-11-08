@@ -19,8 +19,8 @@ const FILTERS: { value: RecipeFilter; label: string }[] = [
   { value: 'popular', label: 'Popular' },
 ];
 
-const CHOSEN = 'bg-blue-600 text-white';
-const NOT_CHOSEN = 'bg-muted text-foreground hover:bg-gray-200';
+const CHOSEN = 'bg-primary text-primary-foreground';
+const NOT_CHOSEN = 'bg-muted text-foreground hover:bg-muted/80';
 const POPULAR_ICON = <Star className="w-4 h-4 inline mr-1" />;
 
 interface FilterButtonProps {
@@ -59,11 +59,11 @@ function RecipeCard(props: RecipeCardProps) {
     <button
       type="button"
       onClick={load}
-      className="block w-full text-left p-4 border rounded-lg hover:border-blue-400 transition-colors"
+      className="block w-full text-left p-4 border rounded-lg hover:border-primary/30 transition-colors"
     >
       <span className="flex items-start justify-between mb-2">
         <span className="font-medium">{recipe.name}</span>
-        {recipe.is_public && <Users className="w-4 h-4 text-gray-400" aria-label="Public recipe" />}
+        {recipe.is_public && <Users className="w-4 h-4 text-muted-foreground" aria-label="Public recipe" />}
       </span>
       <span className="block text-sm text-muted-foreground mb-2">{recipe.description}</span>
       <span className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -80,7 +80,7 @@ function RecipeCard(props: RecipeCardProps) {
 
 const SPINNER = (
   <div className="text-center py-8">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
   </div>
 );
 
@@ -116,7 +116,7 @@ function RecipeCards(props: RecipeCardsProps) {
         <RecipeCard key={recipe.id} recipe={recipe} onLoad={onLoad} />
       ))}
       {more && (
-        <button type="button" onClick={onMore} className="w-full py-2 text-sm text-blue-600 hover:underline">
+        <button type="button" onClick={onMore} className="w-full py-2 text-sm text-primary hover:underline">
           Show more recipes ({recipes.length} of {total})
         </button>
       )}

@@ -10,7 +10,6 @@ import { BookOpen, Clock, Play, Zap } from 'lucide-react';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 
 interface HighlightProps {
-  icon: string;
   title: string;
   text: string;
 }
@@ -27,25 +26,25 @@ export function OnboardingWelcome(props: { onStart: VoidFunction }) {
     <Card className="@container">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Zap className="h-6 w-6 text-blue-600" />
+          <Zap className="h-6 w-6 text-primary" />
           Welcome to SheetPredict!
         </CardTitle>
-        <CardDescription>Your AI-powered machine learning platform</CardDescription>
+        <CardDescription>From a spreadsheet to a model you can explain, in eight steps</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="text-center space-y-4">
           <div className="text-lg">
-            Ready to build your first machine learning model?
-            {' '}Our interactive tutorial will guide you through every step!
+            Build your first model with a guided walkthrough, or load a sample to see the
+            {' '}whole flow first.
           </div>
 
           <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4 text-center">
-            <Highlight icon="📊" title="Upload Data" text="Start with your CSV file" />
-            <Highlight icon="🤖" title="Train Models" text="AI finds the best algorithm" />
-            <Highlight icon="🚀" title="Make Predictions" text="Get insights from your data" />
+            <Highlight title="Upload data" text="A CSV or Excel file, up to 100 MB" />
+            <Highlight title="Train models" text="About ten algorithms, scored on held-out rows" />
+            <Highlight title="Make predictions" text="One row at a time or a whole file" />
           </div>
 
-          <Button onClick={onStart} size="lg" className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={onStart} size="lg">
             <Play className="mr-2 h-4 w-4" />
             Start Tutorial
           </Button>
@@ -76,10 +75,9 @@ export function OnboardingWelcome(props: { onStart: VoidFunction }) {
 }
 
 function Highlight(props: HighlightProps) {
-  const { icon, title, text } = props;
+  const { title, text } = props;
   return (
     <div className="p-4 border rounded-lg">
-      <div className="text-2xl mb-2">{icon}</div>
       <div className="font-medium">{title}</div>
       <div className="text-sm text-muted-foreground">{text}</div>
     </div>

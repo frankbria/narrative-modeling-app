@@ -32,72 +32,59 @@ function mockWorkflowState({
   });
 }
 
-describe('WorkflowBar layout (issue #185)', () => {
+describe('WorkflowBar sheet tabs (#185, design identity)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockWorkflowState();
   });
 
-  it('keeps the progress indicator outside the scroll container, pinned as a nav sibling', () => {
-    const { container } = render(<WorkflowBar />);
-
-    const progressLabel = screen.getByText('Progress:');
-    const progressIndicator = progressLabel.parentElement as HTMLElement;
-
-    // The progress indicator must never live inside a scrollable region
-    expect(progressLabel.closest('.overflow-x-auto')).toBeNull();
-    // ...and must resist flex compression
-    expect(progressIndicator.className).toContain('shrink-0');
-
-    // The nav itself must not be the scroll container
-    const nav = container.querySelector('nav') as HTMLElement;
-    expect(nav.className).not.toContain('overflow-x-auto');
-  });
-
-  it('scrolls only the stage strip: one scroll container holding all stage buttons', () => {
+  it('scrolls only the tab strip: one scroll container holding all stage buttons', () => {
     const { container } = render(<WorkflowBar />);
 
     const scrollContainers = container.querySelectorAll('.overflow-x-auto');
     expect(scrollContainers).toHaveLength(1);
 
     const strip = scrollContainers[0] as HTMLElement;
-    // Strip must be able to shrink inside the flex row
     expect(strip.className).toContain('min-w-0');
     expect(strip.className).toContain('flex-1');
+    expect(within(strip).getAllByRole('button')).toHaveLength(WORKFLOW_STAGES.length);
 
-    // All 8 stage buttons live inside the strip
-    const buttons = within(strip).getAllByRole('button');
-    expect(buttons).toHaveLength(WORKFLOW_STAGES.length);
+    // The nav itself must not be the scroll container
+    const nav = container.querySelector('nav') as HTMLElement;
+    expect(nav.className).not.toContain('overflow-x-auto');
   });
 
-  it('uses slim connectors instead of the w-8/sm:w-12 lines that forced overflow', () => {
-    const { container } = render(<WorkflowBar />);
-
-    expect(container.querySelector('.w-8')).toBeNull();
-    expect(container.querySelector('.sm\\:w-12')).toBeNull();
-
-    // ...and the slim connectors actually exist (one per gap between 8 stages)
-    expect(container.querySelectorAll('.w-2.sm\\:w-3')).toHaveLength(WORKFLOW_STAGES.length - 1);
-  });
-
-  it('shows the full name only on the current stage; other stages show number with a title tooltip', () => {
+  it('names every stage on its tab, not just the current one', () => {
     const { container } = render(<WorkflowBar />);
     const nav = container.querySelector('nav') as HTMLElement;
 
-    // Current stage shows its full name
-    const currentButton = within(nav).getByTitle('Data Profiling');
-    expect(within(currentButton).getByText('Data Profiling')).toBeInTheDocument();
-
-    // Non-current stages show their number, not their name, but keep a title tooltip
-    const firstButton = within(nav).getByTitle('Data Loading');
-    expect(within(firstButton).queryByText('Data Loading')).toBeNull();
-    expect(within(firstButton).getByText('1')).toBeInTheDocument();
-
-    // Every stage stays identifiable via its title attribute and accessible name
-    WORKFLOW_STAGES.forEach(stage => {
-      expect(within(nav).getByTitle(stage.name)).toBeInTheDocument();
-      expect(within(nav).getByRole('button', { name: stage.name })).toBeInTheDocument();
+    WORKFLOW_STAGES.forEach((stage, index) => {
+      // Label in name (WCAG 2.5.3): the accessible name begins with the visible tab label.
+      const tab = within(nav).getByRole('button', { name: new RegExp(`^(${index + 1} )?${stage.tab} ?, ${stage.name}$`) });
+      expect(tab).toHaveAttribute('title', stage.name);
+      expect(within(tab).getByText(stage.tab)).toBeInTheDocument();
+      // A finished stage shows a check instead of its number.
+      if (stage.id !== WorkflowStage.DATA_LOADING) {
+        expect(within(tab).getByText(`${index + 1}`)).toBeInTheDocument();
+      }
     });
+  });
+
+  it('marks the open stage as the current step', () => {
+    const { container } = render(<WorkflowBar />);
+    const nav = container.querySelector('nav') as HTMLElement;
+
+    expect(within(nav).getByTitle('Data Profiling')).toHaveAttribute('aria-current', 'step');
+    expect(within(nav).getByTitle('Data Loading')).not.toHaveAttribute('aria-current');
+  });
+
+  it('scrolls the open stage tab into view on a narrow screen', () => {
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<WorkflowBar />);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute('title', 'Data Profiling');
   });
 
   it('preserves click-through on accessible stages', () => {
@@ -119,16 +106,12 @@ describe('WorkflowBar layout (issue #185)', () => {
     expect(mockSetCurrentStage).not.toHaveBeenCalled();
   });
 
-  it('renders the progress count from completed stages', () => {
+  it('counts completed stages', () => {
     mockWorkflowState({
       completedStages: new Set([WorkflowStage.DATA_LOADING, WorkflowStage.DATA_PROFILING]),
     });
-    const { container } = render(<WorkflowBar />);
-    const nav = container.querySelector('nav') as HTMLElement;
+    render(<WorkflowBar />);
 
-    const progress = screen.getByText('Progress:').parentElement as HTMLElement;
-    expect(within(progress).getByText('2')).toBeInTheDocument();
-    expect(within(progress).getByText(`${WORKFLOW_STAGES.length}`)).toBeInTheDocument();
-    expect(nav).toContainElement(progress);
+    expect(screen.getByText(`2 of ${WORKFLOW_STAGES.length} stages done`)).toBeInTheDocument();
   });
 });

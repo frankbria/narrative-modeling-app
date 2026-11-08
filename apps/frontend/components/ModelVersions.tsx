@@ -115,14 +115,14 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12" role="status">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (error && !data) {
     return (
-      <div className="flex items-center gap-2 text-red-600 py-6">
+      <div className="flex items-center gap-2 text-destructive py-6">
         <AlertCircle className="h-5 w-5" /> {error}
       </div>
     )
@@ -148,7 +148,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="flex items-center gap-2 text-red-600 mb-3 text-sm">
+            <div className="flex items-center gap-2 text-destructive mb-3 text-sm">
               <AlertCircle className="h-4 w-4" /> {error}
             </div>
           )}
@@ -190,7 +190,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
                     </td>
                     <td className="py-2 pr-2">
                       {v.is_production ? (
-                        <Badge className="bg-green-600 hover:bg-green-600">
+                        <Badge className="bg-success text-success-foreground hover:bg-success">
                           <CheckCircle2 className="h-3 w-3 mr-1" /> Production
                         </Badge>
                       ) : v.is_active ? (

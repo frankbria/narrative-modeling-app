@@ -52,7 +52,7 @@ function UsageRow({
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <div
             className={`h-full rounded-full transition-all ${
-              nearing ? 'bg-amber-500' : 'bg-blue-600'
+              nearing ? 'bg-warning' : 'bg-primary'
             }`}
             style={{ width: `${pct}%` }}
             role="progressbar"

@@ -381,6 +381,6 @@ describe('TransformationConfigDialog multi-select', () => {
     renderWith(schema, {});
     await submit();
     await screen.findByText('Cols is required');
-    expect(screen.getByRole('button', { name: /select columns/i })).toHaveClass('border-red-500');
+    expect(screen.getByRole('button', { name: /select columns/i })).toHaveClass('border-destructive');
   });
 });

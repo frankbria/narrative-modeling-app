@@ -22,20 +22,20 @@ interface StepRowProps {
 }
 
 const STEP_ICON: Record<StepStatus, React.ReactNode> = {
-  completed: <CheckCircle className="h-5 w-5 shrink-0 text-green-500" />,
-  in_progress: <Play className="h-5 w-5 shrink-0 text-blue-500" />,
-  skipped: <SkipForward className="h-5 w-5 shrink-0 text-gray-400" />,
-  not_started: <Circle className="h-5 w-5 shrink-0 text-gray-300" />,
+  completed: <CheckCircle className="h-5 w-5 shrink-0 text-success" />,
+  in_progress: <Play className="h-5 w-5 shrink-0 text-primary" />,
+  skipped: <SkipForward className="h-5 w-5 shrink-0 text-muted-foreground" />,
+  not_started: <Circle className="h-5 w-5 shrink-0 text-muted-foreground/60" />,
 };
 
 const STATUS_COLOR: Record<StepStatus, string> = {
-  completed: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200',
-  in_progress: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200',
+  completed: 'bg-success/10 text-success',
+  in_progress: 'bg-primary/10 text-primary',
   skipped: 'bg-muted text-muted-foreground',
   not_started: 'bg-muted text-muted-foreground',
 };
 
-const CURRENT_ROW = 'bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900';
+const CURRENT_ROW = 'bg-primary/10 border border-primary/30';
 
 /**
  * The progress card and the list of steps (#809).

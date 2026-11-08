@@ -57,7 +57,7 @@ export default function ModelPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Brain className="w-6 h-6 text-indigo-500" />
+          <Brain className="w-6 h-6 text-primary" />
           Model Training
         </h1>
 

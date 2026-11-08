@@ -237,6 +237,9 @@ function Tile(props: TileProps) {
   )
 }
 
+// A zero count is not a problem, so only a nonzero one takes the warning colour.
+const countTone = (count: number, tone: string) => (count > 0 ? tone : 'text-foreground')
+
 function MissingValues(props: { summary: MissingValueSummary }) {
   const { summary } = props
   return (
@@ -247,15 +250,15 @@ function MissingValues(props: { summary: MissingValueSummary }) {
       <CardContent>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
-            <p className="text-2xl font-bold text-red-600">{summary.total_missing_values.toLocaleString()}</p>
+            <p className={`text-2xl font-bold ${countTone(summary.total_missing_values, 'text-destructive')}`}>{summary.total_missing_values.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Total Missing</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-yellow-600">{summary.columns_with_missing}</p>
+            <p className={`text-2xl font-bold ${countTone(summary.columns_with_missing, 'text-warning')}`}>{summary.columns_with_missing}</p>
             <p className="text-sm text-muted-foreground">Columns Affected</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-green-600">{summary.complete_columns}</p>
+            <p className="text-2xl font-bold text-foreground">{summary.complete_columns}</p>
             <p className="text-sm text-muted-foreground">Complete Columns</p>
           </div>
         </div>
@@ -289,7 +292,7 @@ function IssueRow(props: ColumnProps) {
         <p className="font-medium">{col.column_name}</p>
         <p className="text-sm text-muted-foreground">{issueText(col)}</p>
       </div>
-      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+      <AlertTriangle className="h-5 w-5 text-warning" />
     </div>
   )
 }

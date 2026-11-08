@@ -11,16 +11,16 @@ import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { erasureApi } from '@/lib/services/erasure';
 import { COMPANY } from '@/lib/legal/company';
-import { HelpCard, QuickActions, StageCards, WorkflowProgress } from '@/components/dashboard/StageOverview';
+import { ResumeCard } from '@/components/dashboard/StageOverview';
 import { RecentDatasets, RecentModels, type DatasetItem, type ModelItem } from '@/components/dashboard/RecentLists';
 
 type EraseDialogProps = { dataset: DatasetItem; onClose: VoidFunction; onErased: VoidFunction };
 
 const HEADER = (
-  <div className="mb-8">
-    <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+  <div className="mb-6">
+    <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Dashboard</h1>
     <p className="text-muted-foreground mt-2">
-      Welcome to {COMPANY.serviceName}. Track your progress through the 8-stage ML workflow.
+      Welcome to {COMPANY.serviceName}. Pick up your project, or start a new one from a spreadsheet.
     </p>
   </div>
 );
@@ -133,11 +133,9 @@ export default function DashboardPage() {
   const exploreSample = (datasetId: string) => router.push(`/explore/${datasetId}`);
 
   return (
-    <div className="max-w-7xl mx-auto p-6" data-testid="dashboard">
+    <div className="max-w-5xl mx-auto p-2 sm:p-6" data-testid="dashboard">
       {HEADER}
-      <QuickActions canTrain={hasDatasets} canDeploy={canDeploy} />
-      <WorkflowProgress />
-      <StageCards />
+      <ResumeCard canTrain={hasDatasets} canDeploy={canDeploy} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <RecentDatasets
@@ -156,8 +154,6 @@ export default function DashboardPage() {
           canTrain={hasDatasets}
         />
       </div>
-
-      <HelpCard />
 
       <Dialog open={samplesOpen} onOpenChange={setSamplesOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">

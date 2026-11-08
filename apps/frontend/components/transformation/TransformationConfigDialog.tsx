@@ -82,7 +82,7 @@ function FieldError(props: FieldErrorProps) {
   const { name, error } = props;
   if (!error) return null;
   return (
-    <p id={`${name}-error`} className="text-sm text-red-500 flex items-center gap-1">
+    <p id={`${name}-error`} className="text-sm text-destructive flex items-center gap-1">
       <AlertCircle className="w-4 h-4" />
       {error}
     </p>
@@ -94,7 +94,7 @@ function FieldLabel(props: FieldLabelProps) {
   return (
     <Label htmlFor={name} className="flex items-center gap-1">
       {label}
-      {required ? <span className="text-red-500">*</span> : null}
+      {required ? <span className="text-destructive">*</span> : null}
     </Label>
   );
 }
@@ -286,9 +286,9 @@ function ErrorBanner(props: { message: string | undefined }) {
   const { message } = props;
   if (!message) return null;
   return (
-    <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md flex items-start gap-2">
-      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-      <p className="text-sm text-red-700 dark:text-red-300">{message}</p>
+    <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-md flex items-start gap-2">
+      <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+      <p className="text-sm text-destructive">{message}</p>
     </div>
   );
 }

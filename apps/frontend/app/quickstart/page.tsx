@@ -222,7 +222,7 @@ export default function QuickstartPage() {
                     <ul className="space-y-1">
                       {stage.actions.map((action, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                          <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                          <CheckCircle className="h-4 w-4 text-success mt-0.5 shrink-0" />
                           <span>{action}</span>
                         </li>
                       ))}

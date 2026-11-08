@@ -73,7 +73,7 @@ function StepOrWelcome(props: { flow: OnboardingFlow }) {
 const LOADING = (
   <div className="container mx-auto px-4 py-8">
     <div className="flex items-center justify-center h-64">
-      <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
     </div>
   </div>
 );
@@ -98,10 +98,10 @@ function LoadError(props: { onRetry: VoidFunction }) {
 function Celebration(props: { show: boolean }) {
   if (!props.show) return null;
   return (
-    <Alert className="mb-6 border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40">
-      <Star className="h-4 w-4 text-green-600" />
-      <AlertDescription className="text-green-800 dark:text-green-200">
-        🎉 Amazing! You&apos;ve earned new achievements! Keep going!
+    <Alert className="mb-6 border-success/30 bg-success/10">
+      <Star className="h-4 w-4 text-success" />
+      <AlertDescription className="text-foreground">
+        You earned a new achievement.
       </AlertDescription>
     </Alert>
   );

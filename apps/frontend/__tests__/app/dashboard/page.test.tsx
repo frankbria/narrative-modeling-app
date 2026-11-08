@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
@@ -128,7 +129,7 @@ describe('DashboardPage', () => {
       render(<DashboardPage />);
 
       expect(screen.getByTestId('workflow-progress')).toBeInTheDocument();
-      expect(screen.getByText('Workflow Progress')).toBeInTheDocument();
+      expect(screen.getByText('Continue where you left off')).toBeInTheDocument();
       expect(screen.getByText(/0 of 8 stages completed/)).toBeInTheDocument();
     });
 
@@ -142,9 +143,7 @@ describe('DashboardPage', () => {
       // Navigation cards contain all workflow stages - check within the navigation section
       const navCards = screen.getByTestId('navigation-cards');
       WORKFLOW_STAGES.forEach((stage) => {
-        // Use getAllByText since stage names may appear in multiple places
-        const elements = within(navCards).getAllByText(stage.name);
-        expect(elements.length).toBeGreaterThan(0);
+        expect(within(navCards).getByRole('button', { name: new RegExp(`^${stage.name}:`) })).toBeInTheDocument();
       });
     });
 
@@ -203,7 +202,7 @@ describe('DashboardPage', () => {
       expect(screen.getByText(/8 of 8 stages completed/)).toBeInTheDocument();
     });
 
-    it('displays completed stages with green styling', async () => {
+    it('fills completed stages in the strip with the primary colour', async () => {
       mockWorkflowContext.state = createMockWorkflowState({
         completedStages: new Set([WorkflowStage.DATA_LOADING]),
         currentStage: WorkflowStage.DATA_PROFILING,
@@ -215,11 +214,11 @@ describe('DashboardPage', () => {
 
       // Find within workflow progress section
       const workflowProgress = screen.getByTestId('workflow-progress');
-      const dataLoadingBadge = within(workflowProgress).getByText('Data Loading').closest('div');
-      expect(dataLoadingBadge).toHaveClass('bg-green-100', 'text-green-800');
+      const dataLoadingCell = within(workflowProgress).getByRole('button', { name: /^Data Loading:/ });
+      expect(dataLoadingCell.firstElementChild).toHaveClass('bg-primary');
     });
 
-    it('displays current stage with blue styling', async () => {
+    it('marks the current stage in the strip with the highlighter', async () => {
       mockWorkflowContext.state = createMockWorkflowState({
         currentStage: WorkflowStage.DATA_PROFILING,
         completedStages: new Set([WorkflowStage.DATA_LOADING]),
@@ -231,8 +230,8 @@ describe('DashboardPage', () => {
 
       // Find within workflow progress section
       const workflowProgress = screen.getByTestId('workflow-progress');
-      const profilingBadge = within(workflowProgress).getByText('Data Profiling').closest('div');
-      expect(profilingBadge).toHaveClass('bg-blue-100', 'text-blue-800');
+      const profilingCell = within(workflowProgress).getByRole('button', { name: /^Data Profiling:/ });
+      expect(profilingCell.firstElementChild).toHaveClass('bg-highlight');
     });
   });
 
@@ -535,10 +534,10 @@ describe('DashboardPage', () => {
 
       await waitFor(() => {
         const trainedBadge = screen.getByText('trained');
-        expect(trainedBadge).toHaveClass('bg-green-100', 'text-green-800');
+        expect(trainedBadge).toHaveClass('bg-success/10', 'text-success');
 
         const deployedBadge = screen.getByText('deployed');
-        expect(deployedBadge).toHaveClass('bg-blue-100', 'text-blue-800');
+        expect(deployedBadge).toHaveClass('bg-primary/10', 'text-primary');
       });
     });
 
@@ -588,36 +587,35 @@ describe('DashboardPage', () => {
       expect(mockPush).not.toHaveBeenCalled();
     });
 
-    it('supports keyboard navigation for accessible stages', async () => {
+    it.each(['{Enter}', ' '])('opens a stage from the keyboard (%s)', async (key) => {
       mockFetch.mockImplementation(api());
+      const user = userEvent.setup();
 
       render(<DashboardPage />);
 
-      const uploadCard = screen.getByRole('button', { name: /Data Loading.*Upload your data file/i });
-      fireEvent.keyDown(uploadCard, { key: 'Enter' });
+      screen.getByRole('button', { name: /Data Loading.*Upload your data file/i }).focus();
+      await user.keyboard(key);
 
       expect(mockPush).toHaveBeenCalledWith('/upload');
     });
 
-    it('does not navigate on Enter for inaccessible stages', async () => {
+    it('marks inaccessible stages as disabled to assistive tech', async () => {
       mockFetch.mockImplementation(api());
 
       render(<DashboardPage />);
 
-      const profilingCard = screen.getByRole('button', { name: /Data Profiling.*locked/i });
-      fireEvent.keyDown(profilingCard, { key: 'Enter' });
-
-      expect(mockPush).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /Data Profiling.*locked/i })).toHaveAttribute('aria-disabled', 'true');
     });
 
-    it('shows lock icon for inaccessible stages', async () => {
+    it('draws a locked stage as an empty dashed cell, a cue that does not rely on colour', async () => {
       mockFetch.mockImplementation(api());
 
       render(<DashboardPage />);
 
-      // The aria-label should indicate locked state
-      const lockedCards = screen.getAllByRole('button', { name: /locked/i });
-      expect(lockedCards.length).toBeGreaterThan(0);
+      const locked = screen.getByRole('button', { name: /Data Profiling.*locked/i });
+      expect(within(locked).getByTestId('stage-cell')).toHaveClass('border-dashed');
+      const open = screen.getByRole('button', { name: /^Data Loading:/ });
+      expect(within(open).getByTestId('stage-cell')).not.toHaveClass('border-dashed');
     });
 
     it('sets correct tabIndex based on accessibility', async () => {
@@ -1167,25 +1165,14 @@ describe('DashboardPage', () => {
     });
   });
 
-  describe('Help Section', () => {
-    it('renders help section', async () => {
+  describe('Quickstart', () => {
+    it('links to the Quickstart Guide from the resume card', async () => {
       mockFetch.mockImplementation(api());
 
       render(<DashboardPage />);
 
-      expect(screen.getByText('Need help getting started?')).toBeInTheDocument();
-      expect(screen.getByText('Start with Data Upload')).toBeInTheDocument();
-    });
-
-    it('navigates to upload when clicking help button', async () => {
-      mockFetch.mockImplementation(api());
-
-      render(<DashboardPage />);
-
-      const helpButton = screen.getByText('Start with Data Upload');
-      fireEvent.click(helpButton);
-
-      expect(mockPush).toHaveBeenCalledWith('/upload');
+      fireEvent.click(screen.getByRole('button', { name: /Quickstart Guide/i }));
+      expect(mockPush).toHaveBeenCalledWith('/quickstart');
     });
   });
 

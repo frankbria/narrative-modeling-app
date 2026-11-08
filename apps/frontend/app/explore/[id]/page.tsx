@@ -71,12 +71,12 @@ function ProcessingStatus(props: { dataset: ProcessedDataset }) {
   return (
     <div className="flex items-center gap-4 text-muted-foreground">
       {dataset.is_processed ? (
-        <div className="flex items-center gap-1 text-green-600">
+        <div className="flex items-center gap-1 text-success">
           <CheckCircle2 className="h-4 w-4" />
           <span className="text-sm">Processed</span>
         </div>
       ) : (
-        <div className="flex items-center gap-1 text-yellow-600">
+        <div className="flex items-center gap-1 text-warning">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm">Processing...</span>
         </div>
@@ -139,12 +139,12 @@ function ProfilingActions(props: {
         Export Data
       </Button>
       {dataset.is_processed && !profiled && (
-        <Button onClick={onComplete} className="bg-green-600 hover:bg-green-700 text-white">
+        <Button onClick={onComplete}>
           Complete & Continue to Data Preparation
         </Button>
       )}
       {profiled && (
-        <Button onClick={onContinue} className="bg-blue-600 hover:bg-blue-700 text-white">
+        <Button onClick={onContinue}>
           Continue to Data Preparation
         </Button>
       )}

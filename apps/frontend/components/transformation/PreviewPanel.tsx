@@ -15,7 +15,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
     return (
       <div className="w-96 bg-card border-l flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
           <p className="text-sm text-muted-foreground">Loading preview...</p>
         </div>
       </div>
@@ -48,8 +48,8 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
               onClick={() => setShowBefore(true)}
               className={`px-3 py-1 text-sm rounded ${
                 showBefore
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-muted text-foreground hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground hover:bg-muted/80'
               }`}
             >
               Before
@@ -58,8 +58,8 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
               onClick={() => setShowBefore(false)}
               className={`px-3 py-1 text-sm rounded ${
                 !showBefore
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-muted text-foreground hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground hover:bg-muted/80'
               }`}
             >
               After
@@ -95,7 +95,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
                   {row.map((cell: any, cellIdx: number) => (
                     <td key={cellIdx} className="px-2 py-2">
                       {cell === null || cell === undefined ? (
-                        <span className="text-gray-400 italic">null</span>
+                        <span className="text-muted-foreground italic">null</span>
                       ) : (
                         String(cell)
                       )}

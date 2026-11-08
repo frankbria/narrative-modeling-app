@@ -31,16 +31,16 @@ export function OnboardingComplete(props: OnboardingCompleteProps) {
       <Card className="max-w-2xl mx-auto text-center">
         <CardHeader>
           <div className="flex justify-center mb-4">
-            <Trophy className="h-16 w-16 text-yellow-500" />
+            <Trophy className="h-16 w-16 text-warning" />
           </div>
-          <CardTitle className="text-2xl">Congratulations! 🎉</CardTitle>
+          <CardTitle className="text-2xl">You built a model</CardTitle>
           <CardDescription>You&apos;ve completed the onboarding tutorial</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-3 gap-4 text-center">
-            <Figure value={status.completed_steps} label="Steps Completed" tone="text-blue-600" />
-            <Figure value={achievements.length} label="Achievements" tone="text-green-600" />
-            <Figure value={status.time_spent_minutes} label="Minutes Spent" tone="text-purple-600" />
+            <Figure value={status.completed_steps} label="Steps Completed" tone="text-primary" />
+            <Figure value={achievements.length} label="Achievements" tone="text-primary" />
+            <Figure value={status.time_spent_minutes} label="Minutes Spent" tone="text-primary" />
           </div>
 
           {earned}

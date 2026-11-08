@@ -92,9 +92,9 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
   const getDifficultyColor = (level: string) => {
     switch (level) {
-      case 'beginner': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
-      case 'intermediate': return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
-      case 'advanced': return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
+      case 'beginner': return 'bg-success/10 text-success';
+      case 'intermediate': return 'bg-warning/10 text-warning';
+      case 'advanced': return 'bg-destructive/10 text-destructive';
       default: return 'bg-muted text-foreground';
     }
   };
@@ -110,9 +110,9 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
   const getDatasetIcon = (datasetId: string) => {
     switch (datasetId) {
-      case 'customer_churn': return <Users className="h-8 w-8 text-blue-500" />;
-      case 'house_prices': return <Home className="h-8 w-8 text-green-500" />;
-      case 'marketing_response': return <TrendingUp className="h-8 w-8 text-purple-500" />;
+      case 'customer_churn': return <Users className="h-8 w-8 text-primary" />;
+      case 'house_prices': return <Home className="h-8 w-8 text-success" />;
+      case 'marketing_response': return <TrendingUp className="h-8 w-8 text-primary" />;
       default: return <Database className="h-8 w-8 text-muted-foreground" />;
     }
   };
@@ -123,11 +123,11 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
         {[1, 2, 3].map((i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader>
-              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              <div className="h-4 bg-muted rounded w-3/4"></div>
+              <div className="h-3 bg-muted rounded w-1/2"></div>
             </CardHeader>
             <CardContent>
-              <div className="h-20 bg-gray-200 rounded"></div>
+              <div className="h-20 bg-muted rounded"></div>
             </CardContent>
           </Card>
         ))}
@@ -157,7 +157,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
       {loadError && (
         <div
           role="alert"
-          className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-800 dark:text-red-200"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           {loadError}
         </div>
@@ -172,7 +172,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
             key={dataset.dataset_id} 
             className={`cursor-pointer transition-all hover:shadow-md ${
               selectedDataset?.dataset_id === dataset.dataset_id 
-                ? 'ring-2 ring-blue-500 border-blue-500' 
+                ? 'ring-2 ring-ring border-primary' 
                 : ''
             }`}
             onClick={() => setSelectedDataset(dataset)}
@@ -206,15 +206,15 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
               {/* Dataset Stats */}
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div>
-                  <div className="font-medium text-blue-600">{dataset.rows.toLocaleString()}</div>
+                  <div className="font-medium text-primary">{dataset.rows.toLocaleString()}</div>
                   <div className="text-muted-foreground">Rows</div>
                 </div>
                 <div>
-                  <div className="font-medium text-green-600">{dataset.columns}</div>
+                  <div className="font-medium text-success">{dataset.columns}</div>
                   <div className="text-muted-foreground">Columns</div>
                 </div>
                 <div>
-                  <div className="font-medium text-purple-600">{dataset.size_mb}MB</div>
+                  <div className="font-medium text-primary">{dataset.size_mb}MB</div>
                   <div className="text-muted-foreground">Size</div>
                 </div>
               </div>
@@ -239,7 +239,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                   <span className="text-muted-foreground">
                     {dataset.problem_type === 'regression' ? 'Quick-mode R²:' : 'Quick-mode accuracy:'}
                   </span>
-                  <span className="font-medium text-green-600">
+                  <span className="font-medium text-success">
                     {dataset.problem_type === 'regression'
                       ? `${dataset.expected_accuracy.toFixed(2)}+`
                       : `${(dataset.expected_accuracy * 100).toFixed(0)}%+`}
@@ -290,7 +290,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
       {/* Dataset Detail Modal/Panel */}
       {selectedDataset && (
-        <Card className="border-2 border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40">
+        <Card className="border-2 border-primary/30 bg-primary/10">
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>
@@ -305,7 +305,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                 variant="ghost" 
                 size="sm"
               >
-                ✕
+                Close
               </Button>
             </div>
           </CardHeader>
@@ -317,7 +317,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
               <ul className="space-y-1">
                 {selectedDataset.learning_objectives.map((objective, index) => (
                   <li key={index} className="flex items-start gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <CheckCircle className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
                     <span>{objective}</span>
                   </li>
                 ))}

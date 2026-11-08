@@ -9,12 +9,8 @@
  * because it leaves the app; the legal links use next/link so they
  * client-navigate like every other internal link here.
  *
- * Positioning is not cosmetic. `Sidebar` is `fixed left-0 w-64 z-30` with
- * `justify-between`, so its API Keys / Admin / theme controls sit in this exact
- * corner when signed in. This strip therefore clears the sidebar's width at
- * `lg+` (where the sidebar is pinned rather than a drawer) and stays *below* it
- * on z, so an open mobile drawer covers the strip rather than the strip
- * covering — and swallowing the clicks of — the controls underneath.
+ * It sits in the page flow at the end of the main column, never `fixed`: a floating
+ * strip covered cards and the sidebar's controls before the identity pass.
  */
 
 import { Fragment } from 'react'
@@ -23,26 +19,22 @@ import { PUBLIC_LINKS } from '@/lib/publicLinks'
 
 const SOURCE_URL = 'https://github.com/frankbria/narrative-modeling-app'
 
-export function SiteFooter({ withSidebar = false }: { withSidebar?: boolean }) {
+export function SiteFooter({ className = '' }: { className?: string }) {
   return (
-    <footer
-      className={`pointer-events-none fixed bottom-2 z-20 flex items-center gap-2 max-w-[calc(100vw-1rem)] flex-wrap rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur-sm ${
-        withSidebar ? 'left-2 lg:left-[17rem]' : 'left-2'
-      }`}
-    >
+    <footer className={`flex w-full flex-wrap items-center gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground ${className}`}>
       <a
         href={SOURCE_URL}
         target="_blank"
         rel="noopener noreferrer"
         title="Licensed under the Apache License 2.0. Get the source code."
-        className="pointer-events-auto hover:text-foreground hover:underline"
+        className="hover:text-foreground hover:underline"
       >
         Apache-2.0 · Source
       </a>
       {PUBLIC_LINKS.map((link) => (
         <Fragment key={link.href}>
           <span aria-hidden="true">·</span>
-          <Link href={link.href} className="pointer-events-auto hover:text-foreground hover:underline">
+          <Link href={link.href} className="hover:text-foreground hover:underline">
             {link.label}
           </Link>
         </Fragment>

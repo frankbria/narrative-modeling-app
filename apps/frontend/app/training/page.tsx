@@ -15,9 +15,9 @@ function ErrorNotice(props: ErrorNoticeProps) {
   const { message } = props;
   if (!message) return null;
   return (
-    <div className="p-3 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 flex items-start gap-2">
-      <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-      <p className="text-sm text-red-800 dark:text-red-200">{message}</p>
+    <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30 flex items-start gap-2">
+      <AlertCircle className="w-5 h-5 text-destructive mt-0.5" />
+      <p className="text-sm text-destructive">{message}</p>
     </div>
   );
 }
@@ -56,7 +56,7 @@ export default function TrainingJobsPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6 space-y-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ListChecks className="w-6 h-6 text-indigo-500" />
+          <ListChecks className="w-6 h-6 text-primary" />
           Training Jobs
         </h1>
         <ErrorNotice message={inFlight.error ?? history.error} />

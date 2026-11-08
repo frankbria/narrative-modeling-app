@@ -186,7 +186,7 @@ describe('OnboardingStep', () => {
     
     render(<OnboardingStep {...mockProps} step={completedStep} />);
     
-    expect(screen.getByText('✅ Step completed successfully!')).toBeInTheDocument();
+    expect(screen.getByText('Step completed successfully!')).toBeInTheDocument();
     expect(screen.getByText('Completed')).toBeInTheDocument();
   });
 
@@ -207,7 +207,7 @@ describe('OnboardingStep', () => {
 
     render(<OnboardingStep {...mockProps} step={welcomeStep} />);
 
-    expect(screen.getByText('Welcome to the Platform! 🚀')).toBeInTheDocument();
+    expect(screen.getByText('Before you start')).toBeInTheDocument();
     // The "Watch Introduction" button was a dead-end (no player) and is removed.
     expect(screen.queryByText('Watch Introduction')).not.toBeInTheDocument();
   });
@@ -221,7 +221,7 @@ describe('OnboardingStep', () => {
     
     render(<OnboardingStep {...mockProps} step={exploreStep} />);
     
-    expect(screen.getByText('Understand Your Data 📊')).toBeInTheDocument();
+    expect(screen.getByText('Understand Your Data')).toBeInTheDocument();
     expect(screen.getByText('Statistics')).toBeInTheDocument();
     expect(screen.getByText('Quality Check')).toBeInTheDocument();
     expect(screen.getByText('Visualizations')).toBeInTheDocument();
@@ -236,7 +236,7 @@ describe('OnboardingStep', () => {
     
     render(<OnboardingStep {...mockProps} step={trainStep} />);
     
-    expect(screen.getByText('Train Your Model 🤖')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Train Your Model' })).toBeInTheDocument();
     expect(screen.getByText(/AutoML technology will/)).toBeInTheDocument();
     expect(screen.getByText('Start Training')).toBeInTheDocument();
   });
@@ -250,10 +250,10 @@ describe('OnboardingStep', () => {
     
     render(<OnboardingStep {...mockProps} step={predictStep} />);
     
-    expect(screen.getByText('Make Predictions 🎯')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Make Predictions' })).toBeInTheDocument();
     expect(screen.getByText(/put it to work/)).toBeInTheDocument();
     // Use getAllByText since there are multiple instances of this text
-    expect(screen.getAllByText('Make Predictions')).toHaveLength(2); // Title and button
+    expect(screen.getAllByText('Make Predictions')).toHaveLength(3); // Title, content heading and button
   });
 
   it('renders export model step content correctly', () => {
@@ -265,39 +265,20 @@ describe('OnboardingStep', () => {
     
     render(<OnboardingStep {...mockProps} step={exportStep} />);
     
-    expect(screen.getByText('Export & Deploy 📦')).toBeInTheDocument();
-    expect(screen.getByText('🐍 Python Code')).toBeInTheDocument();
-    expect(screen.getByText('🐳 Docker Container')).toBeInTheDocument();
-  });
-
-  it('handles step type icon display correctly', () => {
-    const steps = [
-      { ...mockStep, step_type: 'welcome' },
-      { ...mockStep, step_type: 'upload_data' },
-      { ...mockStep, step_type: 'explore_data' },
-      { ...mockStep, step_type: 'train_model' },
-      { ...mockStep, step_type: 'make_predictions' },
-      { ...mockStep, step_type: 'export_model' },
-      { ...mockStep, step_type: 'completion' }
-    ];
-
-    steps.forEach(step => {
-      const { unmount } = render(<OnboardingStep {...mockProps} step={step} />);
-      // Icons are rendered as text emojis, check they exist
-      expect(document.body).toContainHTML('</span>'); // Some icon should be present
-      unmount();
-    });
+    expect(screen.getByRole('heading', { level: 3, name: 'Export & Deploy' })).toBeInTheDocument();
+    expect(screen.getByText('Python Code')).toBeInTheDocument();
+    expect(screen.getByText('Docker Container')).toBeInTheDocument();
   });
 
   it('handles step type color coding correctly', () => {
     const { rerender } = render(<OnboardingStep {...mockProps} />);
     
     // Check that step badges have appropriate styling
-    expect(screen.getByText('Step 2')).toHaveClass('bg-green-100', 'text-green-800');
+    expect(screen.getByText('Step 2')).toHaveClass('bg-success/10', 'text-success');
     
     const welcomeStep = { ...mockStep, step_type: 'welcome', order: 1 };
     rerender(<OnboardingStep {...mockProps} step={welcomeStep} />);
-    expect(screen.getByText('Step 1')).toHaveClass('bg-blue-100', 'text-blue-800');
+    expect(screen.getByText('Step 1')).toHaveClass('bg-primary/10', 'text-primary');
   });
 });
 describe('OnboardingStep — navigation goes through the router (#550)', () => {

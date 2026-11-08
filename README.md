@@ -1,6 +1,6 @@
 <div align="center">
 
-<img alt="SheetPredict" src="apps/frontend/public/logo.svg" width="320">
+<img alt="SheetPredict: spreadsheet in, a model you can defend out" src="docs/product/readme/banner.png" width="100%">
 
 <br><br>
 

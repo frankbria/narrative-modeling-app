@@ -6,7 +6,7 @@ import type { FieldValidationError, FieldValues } from './predictionForm';
 
 /** The single-prediction form: one field per raw input feature, then the result. */
 
-const FIELD = 'w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500';
+const FIELD = 'w-full p-2 border rounded-lg focus:ring-2 focus:ring-ring';
 
 /**
  * Index-based ids are inherently ID-safe and unique: a raw name with spaces would
@@ -21,7 +21,7 @@ function fieldAttrs(feature: ModelFeatureDescriptor, index: number, error: strin
     ...base,
     'aria-invalid': true,
     'aria-describedby': `field-error-${index}`,
-    className: `${FIELD} border-red-400`,
+    className: `${FIELD} border-destructive`,
   };
 }
 
@@ -63,7 +63,7 @@ function FieldError(props: { index: number; name: string; error: string | null }
     <p
       id={`field-error-${index}`}
       role="alert"
-      className="mt-1 text-xs text-red-600"
+      className="mt-1 text-xs text-destructive"
       data-testid={`field-error-${name}`}
     >
       {error}
@@ -104,8 +104,8 @@ function SubmitButton(props: { loading: boolean; formValid: boolean; onSubmit: V
   const { loading, formValid, onSubmit } = props;
   const enabled = !loading && formValid;
   const colour = enabled
-    ? 'bg-blue-600 text-white hover:bg-blue-700'
-    : 'bg-gray-300 text-muted-foreground cursor-not-allowed';
+    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    : 'bg-muted text-muted-foreground cursor-not-allowed';
   return (
     <button
       type="button"

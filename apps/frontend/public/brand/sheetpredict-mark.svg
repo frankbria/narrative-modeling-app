@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="SheetPredict">
+  <title>SheetPredict</title>
+  <rect x="2" y="2" width="20" height="20" rx="3.5" fill="#0D5C63"/>
+  <path d="M12 2v20M2 12h20" stroke="#F4F6F5" stroke-width="2.2"/>
+  <rect x="17" y="17" width="13" height="13" rx="2.5" fill="#F4D35E" stroke="#F4F6F5" stroke-width="2.4"/>
+  <rect x="26.6" y="26.6" width="4.4" height="4.4" rx="0.8" fill="#0D5C63"/>
+</svg>

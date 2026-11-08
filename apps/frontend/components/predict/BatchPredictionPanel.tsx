@@ -16,7 +16,7 @@ function FilePicker(props: { file: File | null; setFile: BatchPrediction['setFil
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] || null);
   return (
     <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-      <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+      <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
       <input
         type="file"
         accept=".csv"
@@ -27,7 +27,7 @@ function FilePicker(props: { file: File | null; setFile: BatchPrediction['setFil
       />
       <label
         htmlFor="batch-file-input"
-        className="cursor-pointer text-blue-600 hover:text-blue-700 font-medium"
+        className="cursor-pointer text-primary hover:text-primary/80 font-medium"
       >
         Click to upload CSV file
       </label>
@@ -39,7 +39,7 @@ function FilePicker(props: { file: File | null; setFile: BatchPrediction['setFil
 function ExpectedFormat(props: { features: ModelFeatureDescriptor[] }) {
   const names = props.features.map((f) => f.name).join(', ');
   return (
-    <div className="p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg">
+    <div className="p-4 bg-primary/10 rounded-lg">
       <h4 className="font-semibold mb-2">Expected Format</h4>
       <p className="text-sm text-foreground">
         Your CSV should have columns matching the feature names:
@@ -61,8 +61,8 @@ function BatchProgress(props: { progress: BatchJobProgressResponse | null }) {
         </span>
         <span className="font-medium">{progress.percentage_complete.toFixed(0)}%</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-2.5">
-        <div className="bg-blue-600 h-2.5 rounded-full transition-all" style={{ width }} />
+      <div className="w-full bg-muted rounded-full h-2.5">
+        <div className="bg-primary h-2.5 rounded-full transition-all" style={{ width }} />
       </div>
     </div>
   );
@@ -71,7 +71,7 @@ function BatchProgress(props: { progress: BatchJobProgressResponse | null }) {
 function BatchFailure(props: { message?: string | null }) {
   const message = props.message ?? 'unknown error';
   return (
-    <div className="p-4 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900 text-sm text-red-700 dark:text-red-300">
+    <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/30 text-sm text-destructive">
       Batch prediction failed: {message}
     </div>
   );
@@ -122,7 +122,7 @@ function FlaggedRows(props: { testId: string; count: unknown; one: string; many:
   return (
     <p
       data-testid={props.testId}
-      className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200"
+      className="flex items-center gap-2 text-xs text-warning"
     >
       <AlertTriangle className="w-4 h-4 shrink-0" />
       {count} {count === 1 ? props.one : props.many}
@@ -135,10 +135,10 @@ function BatchSummary(props: { summary: Summary; onDownload: VoidFunction }) {
   return (
     <div
       data-testid="batch-summary"
-      className="p-4 bg-green-50 dark:bg-green-950/40 rounded-lg border border-green-200 dark:border-green-900 space-y-3"
+      className="p-4 bg-success/10 rounded-lg border border-success/30 space-y-3"
     >
       <h4 className="font-semibold flex items-center gap-2">
-        <CheckCircle className="w-5 h-5 text-green-600" />
+        <CheckCircle className="w-5 h-5 text-success" />
         Batch prediction complete
       </h4>
       <div className="grid grid-cols-3 gap-3 text-sm">
@@ -166,7 +166,7 @@ function BatchSummary(props: { summary: Summary; onDownload: VoidFunction }) {
         type="button"
         data-testid="download-predictions"
         onClick={props.onDownload}
-        className="w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700"
+        className="w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
       >
         <FileText className="w-5 h-5" />
         Download Results CSV
@@ -187,8 +187,8 @@ function BatchOutcome(props: { batch: BatchPrediction }) {
 function StartButton(props: { ready: boolean; loading: boolean; onStart: VoidFunction }) {
   const { ready, loading, onStart } = props;
   const colour = ready
-    ? 'bg-blue-600 text-white hover:bg-blue-700'
-    : 'bg-gray-300 text-muted-foreground cursor-not-allowed';
+    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+    : 'bg-muted text-muted-foreground cursor-not-allowed';
   return (
     <button
       type="button"

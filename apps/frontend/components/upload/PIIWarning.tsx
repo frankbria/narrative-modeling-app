@@ -9,15 +9,15 @@ function PIISummary(props: { report: FlaggedPIIReport }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
       <div className="text-center">
-        <div className="text-2xl font-bold text-amber-600">{report.total_pii_columns}</div>
+        <div className="text-2xl font-bold text-warning">{report.total_pii_columns}</div>
         <div className="text-sm text-muted-foreground">Columns With PII</div>
       </div>
       <div className="text-center">
-        <div className="text-2xl font-bold text-red-600">{report.risk_level.toUpperCase()}</div>
+        <div className="text-2xl font-bold text-destructive">{report.risk_level.toUpperCase()}</div>
         <div className="text-sm text-muted-foreground">Risk Level</div>
       </div>
       <div className="text-center">
-        <div className="text-2xl font-bold text-blue-600">{report.high_risk_columns}</div>
+        <div className="text-2xl font-bold text-primary">{report.high_risk_columns}</div>
         <div className="text-sm text-muted-foreground">High-Risk Columns</div>
       </div>
     </div>
@@ -36,7 +36,7 @@ function PIIDetections(props: { detections: FlaggedPIIReport['detections'] }) {
           <div key={index} className="flex items-center justify-between bg-muted p-2 rounded">
             <span className="text-sm font-medium text-foreground">{detection.column}</span>
             <div className="flex items-center space-x-2">
-              <span className="text-xs bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 px-2 py-1 rounded">
+              <span className="text-xs bg-destructive/10 text-destructive px-2 py-1 rounded">
                 {detection.type}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -55,10 +55,10 @@ function PIIDetections(props: { detections: FlaggedPIIReport['detections'] }) {
   );
 }
 
-const MASKED_IDLE = 'bg-green-600 hover:bg-green-700';
-const MASKED_BUSY = 'bg-green-400 cursor-wait';
-const ORIGINAL_IDLE = 'bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 dark:hover:bg-orange-900/60 text-orange-800 dark:text-orange-200';
-const ORIGINAL_BUSY = 'bg-orange-400 cursor-wait text-white';
+const MASKED_IDLE = 'bg-primary text-primary-foreground hover:bg-primary/90';
+const MASKED_BUSY = 'bg-muted text-muted-foreground cursor-wait';
+const ORIGINAL_IDLE = 'bg-warning/10 hover:bg-warning/20 text-warning';
+const ORIGINAL_BUSY = 'bg-muted text-muted-foreground cursor-wait';
 
 interface ChoiceProps {
   confirming: boolean;
@@ -79,7 +79,7 @@ function PIIChoices(props: ChoiceProps) {
       <button
         onClick={uploadMasked}
         disabled={confirming}
-        className={`flex-1 px-4 py-3 rounded-md text-white font-medium transition-colors flex items-center justify-center space-x-2 ${masked}`}
+        className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${masked}`}
       >
         <Shield size={16} />
         <span>{maskedLabel}</span>
@@ -113,12 +113,12 @@ export default function PIIWarning(props: WarningProps) {
   const { show, report, confirming, onConfirm, onCancel } = props;
   if (!show || !report) return null;
   return (
-    <div className="mb-6 p-6 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-lg" role="status" aria-live="polite">
+    <div className="mb-6 p-6 bg-warning/10 border border-warning/30 rounded-lg" role="status" aria-live="polite">
       <div className="flex items-center mb-4">
-        <Shield className="text-amber-500 mr-3" size={24} />
+        <Shield className="text-warning mr-3" size={24} />
         <div>
-          <h3 className="font-bold text-amber-800 dark:text-amber-200 text-lg">Sensitive Data Detected</h3>
-          <p className="text-amber-700 dark:text-amber-300">
+          <h3 className="font-bold text-warning text-lg">Sensitive Data Detected</h3>
+          <p className="text-warning">
             We&apos;ve detected potentially sensitive information in your file that may require special handling.
           </p>
         </div>

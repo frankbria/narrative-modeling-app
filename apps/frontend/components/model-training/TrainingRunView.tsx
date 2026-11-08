@@ -25,8 +25,8 @@ export function StartingRun() {
 // An element, not a component: it takes nothing and never changes.
 const RUN_HEADING = (
     <div className="text-center">
-      <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-full mb-4">
-        <Brain className="w-8 h-8 text-blue-600 animate-pulse" />
+      <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
+        <Brain className="w-8 h-8 text-primary animate-pulse" />
       </div>
       <h2 className="text-xl font-semibold mb-2">Training Your Model</h2>
       <p className="text-muted-foreground">
@@ -59,7 +59,7 @@ function LogsToggle(props: { modelId: string; active: boolean }) {
   const flip = () => setShowLogs((show) => !show);
   return (
     <div className="space-y-2">
-      <button onClick={flip} className="text-sm font-medium text-blue-600 hover:text-blue-700">
+      <button onClick={flip} className="text-sm font-medium text-primary hover:text-primary/80">
         {showLogs ? 'Hide Logs' : 'Show Logs'}
       </button>
       {showLogs && <TrainingLogs modelId={props.modelId} isActive={props.active} />}

@@ -57,13 +57,13 @@ export default function TransformationSidebar(props: TransformationSidebarProps 
       <div className="p-4 border-b bg-card">
         <h2 className="text-lg font-semibold mb-3">Transformations</h2>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <input
             type="text"
             placeholder="Search transformations..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
@@ -130,7 +130,7 @@ function CategorySection(props: {
               onDragStart={(e) => onDragStart(e, transformation.type)}
               onClick={() => onAdd?.(transformation.type, transformation.label)}
               aria-label={`Add ${transformation.label}`}
-              className="w-full text-left p-3 mb-2 bg-card rounded-lg border border-border cursor-move hover:border-blue-400 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-left p-3 mb-2 bg-card rounded-lg border border-border cursor-move hover:border-primary/30 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <div className="font-medium text-sm">{transformation.label}</div>
               <div className="text-xs text-muted-foreground mt-1">

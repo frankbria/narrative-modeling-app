@@ -49,10 +49,10 @@ type EmptyModelsProps = { canTrain: boolean };
 const ROW = 'flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors';
 
 const STATUS_COLORS: Record<string, string> = {
-  training: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200',
-  trained: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200',
-  deployed: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200',
-  failed: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
+  training: 'bg-warning/10 text-warning',
+  trained: 'bg-success/10 text-success',
+  deployed: 'bg-primary/10 text-primary',
+  failed: 'bg-destructive/10 text-destructive',
 };
 
 function statusColor(status: string): string {
@@ -87,10 +87,10 @@ function stopHere(e: SyntheticEvent) {
 function skeletonRow(i: number) {
   return (
     <div key={i} className="animate-pulse flex items-center gap-3">
-      <div className="h-10 w-10 bg-gray-200 rounded" />
+      <div className="h-10 w-10 bg-muted rounded" />
       <div className="flex-1 space-y-2">
-        <div className="h-4 bg-gray-200 rounded w-3/4" />
-        <div className="h-3 bg-gray-200 rounded w-1/2" />
+        <div className="h-4 bg-muted rounded w-3/4" />
+        <div className="h-3 bg-muted rounded w-1/2" />
       </div>
     </div>
   );
@@ -104,7 +104,7 @@ function ListState(props: ListStateProps) {
   if (loading) return LIST_SKELETON;
   if (!error) return children;
   return (
-    <div className="flex items-center gap-2 text-red-600 py-4">
+    <div className="flex items-center gap-2 text-destructive py-4">
       <AlertCircle size={16} />
       <span className="text-sm">{error}</span>
       <Button variant="ghost" size="sm" onClick={onRetry} className="ml-2">
@@ -128,8 +128,8 @@ function DatasetRow(props: DatasetRowProps) {
 
   return (
     <div className={ROW} onClick={open} role="button" tabIndex={0} onKeyDown={openOnEnter}>
-      <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded">
-        <Database size={16} className="text-blue-600" />
+      <div className="p-2 bg-primary/10 rounded">
+        <Database size={16} className="text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm text-foreground truncate">{dataset.filename}</p>
@@ -137,7 +137,7 @@ function DatasetRow(props: DatasetRowProps) {
           {dataset.num_rows.toLocaleString()} rows, {dataset.num_columns} columns
         </p>
       </div>
-      <span className="text-xs text-gray-400">{formatRelativeTime(dataset.created_at)}</span>
+      <span className="text-xs text-muted-foreground">{formatRelativeTime(dataset.created_at)}</span>
       <button
         type="button"
         aria-label={`Delete dataset ${dataset.filename}`}
@@ -227,18 +227,20 @@ function ModelRow(props: ModelRowProps) {
 
   return (
     <div className={ROW} onClick={open} role="button" tabIndex={0} onKeyDown={openOnEnter}>
-      <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded">
-        <Brain size={16} className="text-purple-600" />
+      <div className="p-2 bg-primary/10 rounded">
+        <Brain size={16} className="text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm text-foreground truncate">{model.name}</p>
-        <div className="flex items-center gap-2">
+        {/* Runs of one dataset share a name; the time tells them apart. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 whitespace-nowrap">
           <span className="text-xs text-muted-foreground">{model.algorithm}</span>
+          <span className="text-xs text-muted-foreground">{formatRelativeTime(model.created_at)}</span>
           <span className={`text-xs px-1.5 py-0.5 rounded ${statusColor(model.status)}`}>{model.status}</span>
         </div>
       </div>
       {model.test_score !== null && (
-        <span className="text-xs font-medium text-green-600">{(model.test_score * 100).toFixed(1)}%</span>
+        <span className="text-sm font-semibold text-foreground">{(model.test_score * 100).toFixed(1)}%</span>
       )}
     </div>
   );
@@ -268,7 +270,7 @@ function EmptyModels(props: EmptyModelsProps) {
 
   return (
     <div className="text-center py-8">
-      <Brain size={32} className="mx-auto text-gray-300 mb-3" />
+      <Brain size={32} className="mx-auto text-muted-foreground mb-3" />
       <p className="text-muted-foreground text-sm mb-4">No models trained yet</p>
       <Button size="sm" onClick={train} disabled={!canTrain}>
         <Sparkles size={14} className="mr-1" />

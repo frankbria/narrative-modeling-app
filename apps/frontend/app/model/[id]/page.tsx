@@ -113,15 +113,15 @@ export default function ModelDetailPage() {
   const getProblemTypeColor = (type: string) => {
     switch (type) {
       case 'binary_classification':
-        return 'bg-blue-500'
+        return 'bg-primary text-primary-foreground'
       case 'multiclass_classification':
-        return 'bg-purple-500'
+        return 'bg-primary/15 text-primary'
       case 'regression':
-        return 'bg-green-500'
+        return 'bg-accent text-accent-foreground'
       case 'time_series':
-        return 'bg-orange-500'
+        return 'bg-muted text-foreground'
       default:
-        return 'bg-gray-500'
+        return 'bg-muted text-muted-foreground'
     }
   }
 

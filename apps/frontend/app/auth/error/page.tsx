@@ -48,13 +48,13 @@ export default function AuthErrorPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
-            <AlertCircle className="w-6 h-6 text-red-600" />
+          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertCircle className="w-6 h-6 text-destructive" />
           </div>
           <CardTitle className="text-2xl font-bold">
             {error === 'AccessDenied' ? 'Invite Required' : 'Authentication Error'}
           </CardTitle>
-          <CardDescription className="text-red-600">
+          <CardDescription className="text-destructive">
             {errorMessage}
           </CardDescription>
         </CardHeader>

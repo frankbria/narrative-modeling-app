@@ -42,7 +42,7 @@ export default function PreparePage() {
           <p className="text-muted-foreground mb-4">Please complete the data loading step first.</p>
           <button
             onClick={() => router.push('/upload')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
           >
             Go to Data Loading
           </button>

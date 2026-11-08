@@ -78,7 +78,7 @@ export function BoxplotChart({ data }: BoxplotChartProps) {
               y={getY(value)}
               textAnchor="end"
               dominantBaseline="middle"
-              className="fill-gray-600"
+              className="fill-muted-foreground"
               style={{ fontSize: '10px' }}
             >
               {fmt(value)}

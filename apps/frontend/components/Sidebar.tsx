@@ -5,9 +5,10 @@ import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 
 import { useSession, signOut } from 'next-auth/react'
 import type { Session } from 'next-auth'
 import Link from 'next/link'
-import { Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { LayoutDashboard, Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { COMPANY } from '@/lib/legal/company'
+import { Logo } from '@/components/brand/Logo'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,10 +18,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-const LINK = 'flex items-center space-x-2 hover:bg-gray-800 p-2 rounded'
+const LINK = 'flex items-center gap-2.5 rounded-md px-2.5 py-2 font-medium text-foreground transition-colors hover:bg-card'
+// The page you are on: a white "selected cell" with the petrol edge.
+const ACTIVE = 'bg-card font-bold text-primary shadow-[inset_3px_0_0_var(--primary)]'
+
+const isCurrent = (pathname: string | null, href: string) => Boolean(pathname?.startsWith(href))
 
 const MENU_ITEMS = [
-  { name: 'Load Data', icon: <Upload size={20} />, href: '/upload' },
+  { name: 'Dashboard', icon: <LayoutDashboard size={18} />, href: '/dashboard' },
+  { name: 'Load Data', icon: <Upload size={18} />, href: '/upload' },
   { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
   { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
   { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
@@ -54,7 +60,7 @@ function DrawerToggle(props: ToggleProps) {
       aria-label={label}
       aria-expanded={open}
       aria-controls="app-sidebar"
-      className="fixed top-3 left-3 z-40 rounded-md bg-gray-900 p-2 text-white shadow-lg lg:hidden"
+      className="fixed top-3 left-3 z-50 rounded-md border border-border bg-card p-2 text-foreground shadow-sm lg:hidden"
     >
       <Icon size={20} />
     </button>
@@ -65,7 +71,7 @@ function Avatar(props: AvatarProps) {
   const { image, name } = props
   if (image) return <img src={image} alt={name} className="w-8 h-8 rounded-full" />
   return (
-    <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+    <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
       <User size={16} />
     </div>
   )
@@ -77,12 +83,12 @@ function AccountMenu(props: AccountMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="w-full justify-start text-left hover:bg-gray-800">
-          <div className="flex items-center space-x-3">
+        <Button variant="ghost" className="h-auto w-full min-w-0 justify-start overflow-hidden px-2 py-1.5 text-left hover:bg-card">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <Avatar image={account.image} name={name} />
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate">{name}</p>
-              <p className="text-xs text-gray-400 truncate">{account.email}</p>
+              <p className="text-xs text-muted-foreground truncate">{account.email}</p>
             </div>
           </div>
         </Button>
@@ -109,19 +115,19 @@ function AccountMenu(props: AccountMenuProps) {
 function SidebarFooter(props: FooterProps) {
   const { session, onNavigate } = props
   return (
-    <div className="space-y-2 border-t border-gray-700 pt-4">
+    <div className="space-y-1 border-t border-border pt-4">
       <div className="p-2">
         <AccountMenu account={session?.user} onNavigate={onNavigate} />
       </div>
       <Link href="/settings/api" onClick={onNavigate} className={LINK}>
-        <Key size={20} />
+        <Key size={18} />
         <span>API Keys</span>
       </Link>
       {/* Admins only (#477): the flag is computed server-side in auth.ts;
           middleware.ts guards the route itself, this just hides the door. */}
       {session?.isAdmin && (
         <Link href="/admin" onClick={onNavigate} className={LINK}>
-          <Shield size={20} />
+          <Shield size={18} />
           <span>Admin</span>
         </Link>
       )}
@@ -136,6 +142,7 @@ function SidebarFooter(props: FooterProps) {
 
 export default function Sidebar() {
   const { data: session } = useSession()
+  const pathname = usePathname()
 
   // Below `lg` the sidebar is an off-canvas drawer toggled by a hamburger; at
   // `lg`+ it's always pinned (issue #282).
@@ -157,7 +164,13 @@ export default function Sidebar() {
     hamburgerRef.current?.focus()
   }
   const navLink = (item: MenuItem) => (
-    <Link key={item.name} href={item.href} onClick={close} className={LINK}>
+    <Link
+      key={item.name}
+      href={item.href}
+      onClick={close}
+      aria-current={isCurrent(pathname, item.href) ? 'page' : undefined}
+      className={isCurrent(pathname, item.href) ? `${LINK} ${ACTIVE}` : LINK}
+    >
       {item.icon}
       <span>{item.name}</span>
     </Link>
@@ -168,7 +181,7 @@ export default function Sidebar() {
       <DrawerToggle open={open} onToggle={toggle} buttonRef={hamburgerRef} />
 
       {/* Backdrop closes the drawer on mobile */}
-      {open && <div onClick={close} aria-hidden="true" className="fixed inset-0 z-20 bg-black/40 lg:hidden" />}
+      {open && <div onClick={close} aria-hidden="true" className="fixed inset-0 z-20 bg-foreground/30 lg:hidden" />}
 
       <aside
         ref={navRef}
@@ -178,13 +191,16 @@ export default function Sidebar() {
         // `invisible` (visibility:hidden) — not just an off-canvas transform —
         // so the closed drawer's links leave the tab order and AT below lg;
         // `lg:visible`/`lg:translate-x-0` keep it always-open on desktop.
-        className={`fixed top-0 left-0 h-screen w-64 bg-gray-900 text-white flex flex-col justify-between p-4 z-30 transform transition-transform lg:visible lg:translate-x-0 ${
+        style={{ ['--logo-surface' as string]: 'var(--muted)' }}
+        className={`fixed top-0 left-0 h-dvh w-64 overflow-y-auto border-r border-border bg-muted text-foreground flex flex-col justify-between p-4 z-30 transform transition-transform lg:visible lg:translate-x-0 ${
           open ? 'visible translate-x-0' : 'invisible -translate-x-full'
         }`}
       >
         <div>
-          <h1 className="text-xl font-bold mb-6">{COMPANY.serviceName}</h1>
-          <nav className="space-y-2" aria-label="Main navigation">
+          <Link href="/dashboard" onClick={close} className="mb-6 block px-1 text-xl">
+            <Logo />
+          </Link>
+          <nav className="space-y-0.5" aria-label="Main navigation">
             {MENU_ITEMS.map(navLink)}
           </nav>
         </div>

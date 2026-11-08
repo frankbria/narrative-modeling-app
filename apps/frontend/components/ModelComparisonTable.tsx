@@ -92,7 +92,7 @@ export function ModelComparisonTable({ models }: ModelComparisonTableProps) {
               <TableCell className="font-medium">
                 {formatMetricName(metric)}
                 {isLowerBetter(metric) && (
-                  <span className="ml-1 text-xs text-gray-400">(lower is better)</span>
+                  <span className="ml-1 text-xs text-muted-foreground">(lower is better)</span>
                 )}
               </TableCell>
               {models.map((model, index) => {
@@ -103,7 +103,7 @@ export function ModelComparisonTable({ models }: ModelComparisonTableProps) {
                     key={model.model_id}
                     data-testid={`cell-${metric}-${model.model_id}`}
                     data-best={isBest ? 'true' : 'false'}
-                    className={isBest ? 'text-green-600 font-semibold' : undefined}
+                    className={isBest ? 'text-success font-semibold' : undefined}
                   >
                     {value === null ? (
                       '—'
@@ -111,7 +111,7 @@ export function ModelComparisonTable({ models }: ModelComparisonTableProps) {
                       <span className="inline-flex items-center gap-2">
                         {value.toFixed(4)}
                         {isBest && (
-                          <Badge className="bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/40">
+                          <Badge className="bg-success/10 text-success hover:bg-success/10">
                             Best
                           </Badge>
                         )}

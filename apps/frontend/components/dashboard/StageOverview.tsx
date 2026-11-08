@@ -1,189 +1,112 @@
 'use client';
 
-import React, { type KeyboardEvent } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, type StageConfig } from '@/lib/types/workflow';
 import { buildStageUrl } from '@/lib/utils/stageValidation';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import {
-  Upload,
-  BarChart3,
-  Wrench,
-  Sparkles,
-  Brain,
-  LineChart,
-  Target,
-  Rocket,
-  ArrowRight,
-  Database,
-  CheckCircle,
-  Lock,
-} from 'lucide-react';
+import { Upload, Brain, Rocket, ArrowRight } from 'lucide-react';
 
-// Icon mapping for workflow stages
-const STAGE_ICONS: Record<string, React.ElementType> = {
-  Upload,
-  BarChart3,
-  Wrench,
-  Sparkles,
-  Brain,
-  LineChart,
-  Target,
-  Rocket,
-};
-
-type Tone = 'done' | 'current' | 'pending';
 type QuickActionsProps = { canTrain: boolean; canDeploy: boolean };
-type StageCardProps = {
+type StageChipProps = {
   stage: StageConfig;
   completed: boolean;
   current: boolean;
   accessible: boolean;
   onOpen(stage: StageConfig): void;
 };
-type BadgeProps = { completed: boolean; accessible: boolean };
 
-const PILL: Record<Tone, string> = {
-  done: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200',
-  current: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200',
-  pending: 'bg-muted text-muted-foreground',
-};
-const TILE: Record<Tone, { box: string; icon: string }> = {
-  done: { box: 'bg-green-100 dark:bg-green-900/40', icon: 'text-green-600' },
-  current: { box: 'bg-blue-100 dark:bg-blue-900/40', icon: 'text-blue-600' },
-  pending: { box: 'bg-muted', icon: 'text-muted-foreground' },
-};
-const ACCESS = {
-  open: { dim: '', tabIndex: 0, suffix: '' },
-  locked: { dim: 'opacity-60', tabIndex: -1, suffix: ' (locked)' },
-};
-
-// A completed stage reads as done even while it is the current one.
-function toneOf(completed: boolean, current: boolean): Tone {
-  if (completed) return 'done';
-  if (current) return 'current';
-  return 'pending';
-}
-
+/** The secondary ways in: a new dataset, training, deployments. */
 export function QuickActions(props: QuickActionsProps) {
   const { canTrain, canDeploy } = props;
   const router = useRouter();
   const upload = () => router.push('/upload');
   const train = () => router.push('/model');
   const deployments = () => router.push('/deploy');
+  const quickstart = () => router.push('/quickstart');
 
   return (
-    <Card className="mb-6">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg">Quick Actions</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap gap-4">
-          <Button onClick={upload} className="flex items-center gap-2">
-            <Upload size={16} />
-            Upload New Dataset
-            <ArrowRight size={16} />
-          </Button>
-          <Button variant="secondary" onClick={train} disabled={!canTrain} className="flex items-center gap-2">
-            <Brain size={16} />
-            Train Model
-            <ArrowRight size={16} />
-          </Button>
-          <Button variant="outline" onClick={deployments} disabled={!canDeploy} className="flex items-center gap-2">
-            <Rocket size={16} />
-            View Deployments
-            <ArrowRight size={16} />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex flex-wrap gap-2">
+      <Button variant="outline" size="sm" onClick={upload}>
+        <Upload size={14} />
+        Upload New Dataset
+      </Button>
+      <Button variant="outline" size="sm" onClick={train} disabled={!canTrain}>
+        <Brain size={14} />
+        Train Model
+      </Button>
+      <Button variant="outline" size="sm" onClick={deployments} disabled={!canDeploy}>
+        <Rocket size={14} />
+        View Deployments
+      </Button>
+      <Button variant="ghost" size="sm" onClick={quickstart}>
+        Read the Quickstart Guide
+      </Button>
+    </div>
   );
 }
 
-export function WorkflowProgress() {
-  const { state } = useWorkflow();
-  const done = state.completedStages;
-  const pill = (stage: StageConfig) => {
-    const tone = toneOf(done.has(stage.id), state.currentStage === stage.id);
-    return (
-      <div key={stage.id} className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${PILL[tone]}`}>
-        {tone === 'done' && <CheckCircle size={12} />}
-        {stage.name}
-      </div>
-    );
-  };
-
-  return (
-    <Card className="mb-6" data-testid="workflow-progress">
-      <CardHeader>
-        <CardTitle className="text-lg">Workflow Progress</CardTitle>
-        <CardDescription>
-          {done.size} of {WORKFLOW_STAGES.length} stages completed
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Progress value={(done.size / WORKFLOW_STAGES.length) * 100} className="h-3 mb-4" />
-        <div className="flex flex-wrap gap-2">{WORKFLOW_STAGES.map(pill)}</div>
-      </CardContent>
-    </Card>
-  );
+// Locked stages are an empty dashed cell, so "can't open yet" reads without colour.
+function stripFill(completed: boolean, current: boolean, accessible: boolean): string {
+  if (current) return 'bg-highlight';
+  if (completed) return 'bg-primary';
+  return accessible ? 'bg-border' : 'border border-dashed border-muted-foreground';
 }
+const stageConfigOf = (id: StageConfig['id']) => WORKFLOW_STAGES.find((stage) => stage.id === id) ?? WORKFLOW_STAGES[0];
+// Locked stages leave the tab order.
+const TAB_INDEX = { true: 0, false: -1 };
+const labelWeight = (current: boolean) => (current ? 'font-bold text-foreground' : 'text-muted-foreground');
+const labelHover = (accessible: boolean) => (accessible ? 'group-hover:text-foreground' : '');
+const chipLabel = (current: boolean, accessible: boolean) => `${labelWeight(current)} ${labelHover(accessible)}`;
+const lockedSuffix = (accessible: boolean) => (accessible ? '' : ' (locked)');
+const cursor = (accessible: boolean) => (accessible ? 'cursor-pointer' : 'cursor-not-allowed');
 
-function StageBadge(props: BadgeProps) {
-  const { completed, accessible } = props;
-  if (completed) return <CheckCircle size={18} className="text-green-500" />;
-  if (!accessible) return <Lock size={18} className="text-gray-400" />;
-  return null;
-}
-
-function StageCard(props: StageCardProps) {
+// One cell of the stage strip: done cells are petrol, the open stage is the
+// highlighter cell, locked ones are blank.
+function StageChip(props: StageChipProps) {
   const { stage, completed, current, accessible, onOpen } = props;
-  const Icon = STAGE_ICONS[stage.icon] || Database;
-  const tile = TILE[toneOf(completed, current)];
-  const access = accessible ? ACCESS.open : ACCESS.locked;
-  const ring = current ? 'ring-2 ring-blue-500' : '';
   const open = () => {
     if (accessible) onOpen(stage);
   };
-  const openOnEnter = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') open();
-  };
+  const fill = stripFill(completed, current, accessible);
+  const label = chipLabel(current, accessible);
 
+  // A native button: Enter and Space both open it, and a locked stage stays focusable
+  // out of the tab order (TAB_INDEX) so its "(locked)" name is still announced.
   return (
-    <Card
-      className={`cursor-pointer transition-all hover:shadow-md ${access.dim} ${ring}`}
-      onClick={open}
-      role="button"
-      tabIndex={access.tabIndex}
-      aria-label={`${stage.name}: ${stage.description}${access.suffix}`}
-      onKeyDown={openOnEnter}
-    >
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-2">
-          <div className={`p-2 rounded-lg ${tile.box}`}>
-            <Icon size={20} className={tile.icon} />
-          </div>
-          <StageBadge completed={completed} accessible={accessible} />
-        </div>
-        <h3 className="font-semibold text-foreground text-sm mb-1">{stage.name}</h3>
-        <p className="text-xs text-muted-foreground">{stage.description}</p>
-      </CardContent>
-    </Card>
+    <li className="min-w-0 flex-1">
+      <button
+        type="button"
+        tabIndex={TAB_INDEX[`${accessible}`]}
+        aria-disabled={!accessible}
+        aria-label={`${stage.name}: ${stage.description}${lockedSuffix(accessible)}`}
+        onClick={open}
+        className={`group grid min-h-6 w-full content-center gap-1.5 rounded-md p-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${cursor(accessible)}`}
+      >
+        <span data-testid="stage-cell" className={`h-1.5 rounded-full ${fill}`} />
+        <span className={`hidden truncate text-xs sm:block ${label}`}>{stage.tab}</span>
+      </button>
+    </li>
   );
 }
 
-export function StageCards() {
+/**
+ * The one progress surface on the dashboard: where you are, what is next, and the
+ * eight stages as a strip you can jump through. It replaced a progress bar, a row
+ * of stage pills and a grid of stage tiles that all said the same thing.
+ */
+export function ResumeCard(props: QuickActionsProps) {
   const router = useRouter();
   const { state, canAccessStage } = useWorkflow();
+  const done = state.completedStages;
+  const current = stageConfigOf(state.currentStage);
   const open = (stage: StageConfig) => router.push(buildStageUrl(stage.id, state.datasetId));
-  const card = (stage: StageConfig) => (
-    <StageCard
+  const chip = (stage: StageConfig) => (
+    <StageChip
       key={stage.id}
       stage={stage}
-      completed={state.completedStages.has(stage.id)}
+      completed={done.has(stage.id)}
       current={state.currentStage === stage.id}
       accessible={canAccessStage(stage.id)}
       onOpen={open}
@@ -191,39 +114,29 @@ export function StageCards() {
   );
 
   return (
-    <div className="mb-6" data-testid="navigation-cards">
-      <h2 className="text-lg font-semibold text-foreground mb-4">Workflow Stages</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">{WORKFLOW_STAGES.map(card)}</div>
-    </div>
-  );
-}
-
-export function HelpCard() {
-  const router = useRouter();
-  const quickstart = () => router.push('/quickstart');
-  const upload = () => router.push('/upload');
-
-  return (
-    <Card className="mt-6">
-      <CardContent className="py-4">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h3 className="font-semibold text-foreground">Need help getting started?</h3>
-            <p className="text-sm text-muted-foreground">
-              Follow the 8-stage workflow to build and deploy your ML models.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={quickstart}>
-              Read the Quickstart Guide
-            </Button>
-            <Button onClick={upload}>
-              Start with Data Upload
-              <ArrowRight size={14} className="ml-1" />
-            </Button>
-          </div>
+    <section
+      className="mb-6 rounded-xl border border-border bg-card p-5 shadow-[inset_4px_0_0_var(--primary)] sm:p-6"
+      data-testid="workflow-progress"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-muted-foreground">Continue where you left off</p>
+          <h2 className="mt-1 text-xl font-bold text-foreground">{current.name}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {current.description}. {done.size} of {WORKFLOW_STAGES.length} stages completed.
+          </p>
         </div>
-      </CardContent>
-    </Card>
+        <Button onClick={() => open(current)}>
+          Open {current.tab}
+          <ArrowRight size={16} />
+        </Button>
+      </div>
+      <ol className="mt-5 flex gap-1" data-testid="navigation-cards" aria-label="Workflow stages">
+        {WORKFLOW_STAGES.map(chip)}
+      </ol>
+      <div className="mt-5 border-t border-border pt-4">
+        <QuickActions {...props} />
+      </div>
+    </section>
   );
 }

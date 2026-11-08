@@ -113,7 +113,7 @@ describe('OnboardingPage flow (#809)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /mark as complete/i }));
 
-    expect(await screen.findByText(/you.ve earned new achievements/i)).toBeInTheDocument();
+    expect(await screen.findByText(/you earned a new achievement/i)).toBeInTheDocument();
     expect(api.completeStep).toHaveBeenCalledWith('upload_data', expect.any(Object));
     await waitFor(() => expect(api.getStatus).toHaveBeenCalledTimes(2));
   });
@@ -126,7 +126,7 @@ describe('OnboardingPage flow (#809)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /mark as complete/i }));
     await waitFor(() => expect(api.completeStep).toHaveBeenCalledTimes(1));
     expect(api.getStatus).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/earned new achievements/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/earned a new achievement/i)).not.toBeInTheDocument();
 
     api.completeStep.mockRejectedValueOnce(new Error('502'));
     fireEvent.click(screen.getByRole('button', { name: /mark as complete/i }));
@@ -151,7 +151,7 @@ describe('OnboardingPage flow (#809)', () => {
     serve({ status: { is_onboarding_complete: true, completed_steps: 3, time_spent_minutes: 21 }, achievements: [BADGE] });
     render(<OnboardingPage />);
 
-    expect(await screen.findByText('Congratulations! 🎉')).toBeInTheDocument();
+    expect(await screen.findByText('You built a model')).toBeInTheDocument();
     expect(screen.getByText('Steps Completed').previousElementSibling).toHaveTextContent('3');
     expect(screen.getByText('Minutes Spent').previousElementSibling).toHaveTextContent('21');
     expect(screen.getByText('Your Achievements')).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe('OnboardingPage flow (#809)', () => {
     serve({ status: { is_onboarding_complete: true } });
     render(<OnboardingPage />);
 
-    expect(await screen.findByText('Congratulations! 🎉')).toBeInTheDocument();
+    expect(await screen.findByText('You built a model')).toBeInTheDocument();
     expect(screen.queryByText('Your Achievements')).not.toBeInTheDocument();
   });
 

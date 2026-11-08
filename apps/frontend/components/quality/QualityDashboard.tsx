@@ -20,16 +20,16 @@ interface QualityDashboardProps {
 }
 
 function scoreLabel(score: number): { label: string; color: string } {
-  if (score >= 90) return { label: 'Excellent', color: 'text-green-600' }
-  if (score >= 70) return { label: 'Good', color: 'text-green-600' }
-  if (score >= 50) return { label: 'Fair', color: 'text-yellow-600' }
-  return { label: 'Poor', color: 'text-red-600' }
+  if (score >= 90) return { label: 'Excellent', color: 'text-success' }
+  if (score >= 70) return { label: 'Good', color: 'text-success' }
+  if (score >= 50) return { label: 'Fair', color: 'text-warning' }
+  return { label: 'Poor', color: 'text-destructive' }
 }
 
 const severityColor: Record<string, string> = {
-  high: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
-  medium: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200',
-  low: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200',
+  high: 'bg-destructive/10 text-destructive',
+  medium: 'bg-warning/10 text-warning',
+  low: 'bg-primary/10 text-primary',
 }
 
 export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
@@ -103,9 +103,9 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
               <div key={gate.gate_name} className="flex items-center justify-between" data-testid="quality-gate">
                 <div className="flex items-center gap-2">
                   {gate.passed ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <CheckCircle2 className="h-4 w-4 text-success" />
                   ) : (
-                    <AlertCircle className="h-4 w-4 text-yellow-600" />
+                    <AlertCircle className="h-4 w-4 text-warning" />
                   )}
                   <span className="text-sm font-medium">{gate.gate_name}</span>
                 </div>
@@ -180,7 +180,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
                   x: p.version_number != null ? `v${p.version_number}` : `step ${i + 1}`,
                   score: p.score_after as number,
                 })),
-                lines: [{ dataKey: 'score', label: 'Quality Score', color: '#82ca9d' }],
+                lines: [{ dataKey: 'score', label: 'Quality Score', color: '#5FB3B3' }],
                 xLabel: 'Version',
                 yLabel: 'Score (0-100)',
               }}
