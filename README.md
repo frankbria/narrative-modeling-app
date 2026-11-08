@@ -4,7 +4,7 @@
 
 <br><br>
 
-**Turn a spreadsheet into a validated, explained, deployable model in minutes, and see how it got there.**
+**SheetPredict turns a spreadsheet into a validated, explained, deployable model in minutes — and shows its work.**
 
 Upload a CSV or Excel file. SheetPredict profiles it, helps you clean it, trains and cross-validates
 several algorithms, explains the winner, and serves it from a secured prediction endpoint.

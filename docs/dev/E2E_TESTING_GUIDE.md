@@ -145,12 +145,13 @@ each image before committing, and keep any address out of them. The page is
 
 `docs/product/readme/*.gif` are cut from a capture's `churn-walkthrough.webm`, so they inherit its
 crop and show no account. Stage timings change with every run, so find them on a contact sheet
-(one frame every 3 s, timestamped):
+(one frame every 3 s, timestamped, written to a scratch directory so no stray files land in the repo):
 
 ```bash
 V=apps/frontend/public/how-it-works/churn-walkthrough.webm
-ffmpeg -i $V -vf "fps=1/3,scale=320:-2,drawtext=text='%{pts\:hms}':x=4:y=4:fontsize=14:fontcolor=red" sheet_%02d.png
-ffmpeg -pattern_type glob -i 'sheet_*.png' -filter_complex tile=5x6 contact.png
+T=$(mktemp -d)
+ffmpeg -i $V -vf "fps=1/3,scale=320:-2,drawtext=text='%{pts\:hms}':x=4:y=4:fontsize=14:fontcolor=red" $T/sheet_%02d.png
+ffmpeg -pattern_type glob -i "$T/sheet_*.png" -filter_complex tile=5x6 $T/contact.png
 ```
 
 Then cut each stage (start and end in seconds, a speed-up factor, width and frame rate). The README
@@ -162,7 +163,7 @@ gif() { ffmpeg -y -ss $2 -to $3 -i $V -vf "setpts=PTS/$4,fps=$6,scale=$5:-1:flag
 gif train 39 60 2 960 8   # e.g. the training stage, at double speed
 ```
 
-`hero.gif` is the whole walkthrough without the evaluation spinner, three times faster, at 800 px wide.
+`hero.gif` is the whole walkthrough without the evaluation spinner, three times faster, at 800 px wide (about 2 MB, the one GIF over the stage budget). Every GIF stays in git history for good, so re-cut them only when the UI they show has changed.
 
 ## When a spec fails
 
