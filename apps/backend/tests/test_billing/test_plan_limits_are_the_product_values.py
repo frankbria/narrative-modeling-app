@@ -67,7 +67,8 @@ def test_code_defaults_match_adr_003(default_plans):
             )
 
 
-_SKIP_DIRS = {"node_modules", ".venv", ".next", "__pycache__", ".git"}
+# "worktrees": agent git worktrees under .claude/ are full untracked copies of the repo.
+_SKIP_DIRS = {"node_modules", ".venv", ".next", "__pycache__", ".git", "worktrees"}
 #: The one sanctioned override: every e2e test shares one user (#550).
 _SANCTIONED = {"apps/frontend/test-e2e.sh"}
 
