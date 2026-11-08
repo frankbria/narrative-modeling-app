@@ -34,21 +34,30 @@ ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT=
 ENV NEXT_PUBLIC_SENTRY_ENVIRONMENT=$NEXT_PUBLIC_SENTRY_ENVIRONMENT
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Source maps for Sentry (#1158). Not secret, and only in the builder stage. The token is
+# a secret mount below, never an ARG or ENV, so `docker history` never shows it.
+ARG SENTRY_ORG=
+ARG SENTRY_PROJECT=
+ARG SENTRY_RELEASE=
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Build-time-only dummies, mirroring ci.yml's "Production build" env: `next
 # build` imports route modules for page-data collection, and auth.ts/lib/db.ts
 # need these to exist (CI=true is lib/db.ts's escape hatch for a missing
 # MONGODB_URI). Scoped to this RUN only — the runner stage gets its real
-# environment from docker-compose at runtime.
-RUN CI=true \
+# environment from docker-compose at runtime. No token (no secret, or an empty one)
+# means no upload and no maps; the final `find` removes any browser map an upload left behind (only .next/static is served).
+RUN --mount=type=secret,id=sentry_auth_token,required=false \
+    SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
+    CI=true \
     NEXTAUTH_SECRET=build-time-dummy-not-used-at-runtime \
     NEXTAUTH_URL=http://localhost:3000 \
     GOOGLE_CLIENT_ID=dummy-client-id \
     GOOGLE_CLIENT_SECRET=dummy-client-secret \
     GITHUB_ID=dummy-client-id \
     GITHUB_SECRET=dummy-client-secret \
-    npm run build
+    npm run build \
+    && find .next/static -name '*.map' -delete
 
 # ── runner: minimal runtime image ──────────────────────────────────────────
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runner

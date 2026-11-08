@@ -39,6 +39,7 @@ fails if compose interpolates a secret this table does not name.
 | `STRIPE_SECRET_KEY` | yes | | | Stripe dashboard | |
 | `STRIPE_WEBHOOK_SECRET` | yes | | | Stripe dashboard → the webhook endpoint's signing secret | a trailing newline mismatches every signature (#457) |
 | `SENTRY_DSN` | yes | yes | | Sentry project | optional; the frontend also bakes it in at build as `NEXT_PUBLIC_SENTRY_DSN`, so a new DSN needs a deploy that rebuilds the image (`up -d --build`), not only a recreate |
+| `SENTRY_AUTH_TOKEN_FILE` | | build only | | Sentry → Settings → Auth Tokens (scope `project:releases`); the token lives in that file on the box, not in `.env.staging` | read only by the frontend image build (a BuildKit secret, never in a layer) to upload source maps (#1158). A new token takes effect at the next deploy that rebuilds the image (`up -d --build`). Empty or missing: no upload, still a working build |
 
 `INVITE_ALLOWLIST`, `ADMIN_EMAILS`, the `STRIPE_PRICE_*` ids and the URL/origin
 variables are configuration, not credentials; they travel the same path but need
