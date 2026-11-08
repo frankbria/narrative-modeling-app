@@ -1,200 +1,66 @@
-import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { getAuthToken } from '@/lib/auth-helpers';
+import { API_URL } from '@/lib/constants';
+import { apiError } from '@/lib/services/apiError';
+import { useAsyncData } from '@/lib/hooks/useAsyncData';
 
 interface AISummary {
-  overview: string;
-  issues: string[];
-  relationships: string[];
-  suggestions: string[];
   rawMarkdown: string;
-}
-
-interface SummaryCache {
-  [key: string]: {
-    data: AISummary;
-    timestamp: number;
-  };
 }
 
 // Cache duration in milliseconds (5 minutes)
 const CACHE_DURATION = 5 * 60 * 1000;
 
 // In-memory cache for AI summaries
-const summaryCache: SummaryCache = {};
+const summaryCache: Record<string, { data: AISummary; timestamp: number }> = {};
+
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/** GET a user_data path; a 404 means "nothing there yet", not a failure. */
+async function getOrNull(path: string): Promise<Record<string, unknown> | null> {
+  const response = await fetch(`${API_URL}/user_data/${path}`, {
+    headers: { Authorization: `Bearer ${await getAuthToken()}` },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw await apiError(response, 'We could not load the analysis of your data.');
+  return response.json();
+}
+
+/** Anything that is not a dataset id (the chat passes the user id) means "my latest dataset". */
+async function resolveDatasetId(id: string): Promise<string | null> {
+  if (OBJECT_ID.test(id)) return id;
+  const latest = await getOrNull('latest');
+  return typeof latest?._id === 'string' ? latest._id : null;
+}
+
+async function loadSummary(id: string): Promise<AISummary | null> {
+  const cached = summaryCache[id];
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) return cached.data;
+
+  const datasetId = await resolveDatasetId(id);
+  const data = datasetId ? ((await getOrNull(`${datasetId}/ai-summary`)) as AISummary | null) : null;
+  if (data) summaryCache[id] = { data, timestamp: Date.now() };
+  return data;
+}
 
 /**
  * Hook to fetch and use the AI summary context for a dataset
- * @param datasetId The ID of the dataset or user ID
+ * @param datasetId The ID of the dataset, or of the user (meaning their latest dataset)
  * @returns Object containing the context string, raw markdown, and loading/error states
  */
 export function useDatasetChatContext(datasetId: string | null) {
-  const { data: session, status } = useSession();
-  // `session` is a NEW OBJECT every render, so keying the effect below on it
-  // re-ran it on every render — 547 requests to /ai-summary in 12s on /review,
-  // behind a permanent "Analyzing" spinner (#402). The id is a string.
-  const userId = session?.user?.id;
-  const isSessionLoaded = status !== 'loading';
-  const [contextString, setContextString] = useState<string | null>(null);
-  const [rawMarkdown, setRawMarkdown] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isAvailable, setIsAvailable] = useState<boolean>(false);
-
-  useEffect(() => {
-    const fetchAISummary = async () => {
-      if (!datasetId) {
-        setContextString(null);
-        setRawMarkdown(null);
-        setIsAvailable(false);
-        return;
-      }
-
-      // Check if we have a cached version that's still valid
-      const now = Date.now();
-      const cachedData = summaryCache[datasetId];
-      
-      if (cachedData && (now - cachedData.timestamp < CACHE_DURATION)) {
-        setContextString(cachedData.data.rawMarkdown);
-        setRawMarkdown(cachedData.data.rawMarkdown);
-        setIsAvailable(true);
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Check if session is loaded and available
-        // Checks `userId` rather than `session`: the effect keys on the id, and
-        // depending on the session object re-ran this on every render (#402).
-        if (!isSessionLoaded || !userId) {
-          console.warn('Session not loaded or not available');
-          setError('Authentication not available. Please sign in to access this feature.');
-          setIsAvailable(false);
-          setIsLoading(false);
-          return;
-        }
-
-        // First, check if this is a user ID and get the latest dataset for this user
-        let actualDatasetId = datasetId;
-        
-        // If the ID looks like a user ID (starts with 'user_'), we need to fetch the latest dataset
-        if (datasetId.startsWith('user_')) {
-          // Ensure the URL has a protocol
-          let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-          if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-            backendUrl = `http://${backendUrl}`;
-          }
-          
-          
-          try {
-            // Get the token first to check if authentication is available
-            const token = await getAuthToken();
-            if (!token) {
-              console.warn('No authentication token available');
-              setError('Authentication token not available. Please sign in again.');
-              setIsAvailable(false);
-              setIsLoading(false);
-              return;
-            }
-            
-            // Fetch the latest dataset for this user
-            const userDataResponse = await fetch(`${backendUrl}/user_data/latest`, {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            
-            if (userDataResponse.ok) {
-              const userData = await userDataResponse.json();
-              if (userData && userData._id) {
-                actualDatasetId = userData._id;
-              } else {
-                // No dataset found for this user
-                setIsAvailable(false);
-                setContextString(null);
-                setRawMarkdown(null);
-                setIsLoading(false);
-                return;
-              }
-            } else {
-              // Error fetching user data
-              const errorText = await userDataResponse.text();
-              console.error('Error fetching user data:', errorText);
-              
-              // Check if it's an authentication error
-              if (errorText.includes('Authentication service is not properly configured')) {
-                setError('Authentication service is not properly configured. Please contact the administrator.');
-              } else {
-                setError(`Failed to fetch user data: ${errorText}`);
-              }
-              
-              setIsAvailable(false);
-              setIsLoading(false);
-              return;
-            }
-          } catch (authError) {
-            console.error('Authentication error:', authError);
-            setError('Authentication error. Please sign in again.');
-            setIsAvailable(false);
-            setIsLoading(false);
-            return;
-          }
-        }
-        
-        // Now fetch the AI summary with the actual dataset ID
-        let backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-        if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-          backendUrl = `http://${backendUrl}`;
-        }
-        
-        
-        const token = await getAuthToken();
-        const response = await fetch(`${backendUrl}/user_data/${actualDatasetId}/ai-summary`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (response.status === 404) {
-          // AI summary not found - this is not an error, just not available yet
-          setIsAvailable(false);
-          setContextString(null);
-          setRawMarkdown(null);
-        } else if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to fetch AI summary: ${errorText}`);
-        } else {
-          const data: AISummary = await response.json();
-          
-          // Cache the result
-          summaryCache[datasetId] = {
-            data,
-            timestamp: Date.now()
-          };
-          
-          setContextString(data.rawMarkdown);
-          setRawMarkdown(data.rawMarkdown);
-          setIsAvailable(true);
-        }
-      } catch (err) {
-        console.error('Error fetching AI summary:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch AI summary');
-        setIsAvailable(false);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchAISummary();
-  }, [datasetId, userId, isSessionLoaded]);
+  // `session` is a NEW OBJECT every render, so keying on it re-fetched forever (#402).
+  const userId = useSession().data?.user?.id;
+  const summary = useAsyncData(() => loadSummary(datasetId as string), [datasetId, userId], {
+    enabled: !!datasetId && !!userId,
+  });
+  const rawMarkdown = summary.data?.rawMarkdown ?? null;
 
   return {
-    contextString,
+    contextString: rawMarkdown,
     rawMarkdown,
-    isLoading,
-    error,
-    isAvailable
+    isLoading: summary.loading,
+    error: summary.error,
+    isAvailable: rawMarkdown !== null,
   };
 }
