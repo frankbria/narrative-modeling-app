@@ -15,7 +15,7 @@ const FIELD = 'w-full p-2 border rounded-lg focus:ring-2 focus:ring-ring';
  * selectors.
  */
 function fieldAttrs(feature: ModelFeatureDescriptor, index: number, error: string | null) {
-  const base = { id: `field-${index}`, name: feature.name, 'data-feature': feature.name };
+  const base = { id: `field-${index}`, name: feature.name, required: true, 'data-feature': feature.name };
   if (!error) return { ...base, className: `${FIELD} border-border` };
   return {
     ...base,
@@ -91,9 +91,10 @@ function FeatureField(props: FeatureFieldProps) {
   };
   return (
     <div>
-      <label className="block text-sm font-medium mb-1" htmlFor={attrs.id}>
-        {feature.name}
-      </label>
+      <div className="mb-1 flex gap-1 text-sm font-medium">
+        <label htmlFor={attrs.id}>{feature.name}</label>
+        <span aria-hidden="true" className="text-primary">*</span>
+      </div>
       <FieldControl feature={feature} attrs={attrs} />
       <FieldError index={index} name={feature.name} error={error} />
     </div>
@@ -152,6 +153,9 @@ export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
   return (
     <div className="space-y-4">
       <h3 className="font-semibold text-lg">Enter Feature Values</h3>
+      <p className="text-sm text-muted-foreground">
+        <span aria-hidden="true" className="text-primary">*</span> Every field is required.
+      </p>
       <div className="grid grid-cols-2 gap-4">
         {features.map((feature, index) => (
           <FeatureField
@@ -166,8 +170,8 @@ export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
           />
         ))}
       </div>
-      {props.prediction && <PredictionResult prediction={props.prediction} />}
       <SubmitButton loading={props.loading} formValid={props.formValid} onSubmit={props.onSubmit} />
+      {props.prediction && <PredictionResult prediction={props.prediction} />}
     </div>
   );
 }

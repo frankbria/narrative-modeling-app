@@ -143,6 +143,19 @@ describe('ModelPage training wiring', () => {
       });
     });
 
+    it('starts with the column to predict chosen on the Features stage', async () => {
+      mockWorkflowContext.state.stageData = {
+        [WorkflowStage.FEATURE_ENGINEERING]: {
+          selectedFeatures: ['x1', 'x2'],
+          excludedFeatures: [],
+          targetColumn: 'target',
+        },
+      } as Record<WorkflowStage, unknown>;
+      render(<ModelPage />);
+
+      await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('target'));
+    });
+
     it('sends feature_config.create_interactions only when the stage switched it on (#974)', async () => {
       mockWorkflowContext.state.stageData = {
         [WorkflowStage.FEATURE_ENGINEERING]: {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
@@ -9,11 +9,13 @@ import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { Switch } from '@/components/ui/switch';
+import { useTargetChoice } from '@/lib/features/useTargetChoice';
 import { loadColumns } from '@/lib/services/datasetColumns';
 import {
   choiceOf,
   interactionsOn,
   recordedChoice,
+  recordedTarget,
   sameChoice,
   startingSelection,
   type ColumnChoice,
@@ -108,7 +110,7 @@ function Recorded(props: ShownProps) {
   return (
     <p data-testid="choice-recorded" className="text-sm flex items-center gap-2">
       <CheckCircle2 className="w-4 h-4 text-success" />
-      This choice is recorded. Continue to Model Training below.
+      Your choice is saved. Continue to Model Training below.
     </p>
   );
 }
@@ -136,56 +138,80 @@ function InteractionsSwitch(props: InteractionsSwitchProps) {
   );
 }
 
+interface TargetPickerProps {
+  columns: string[];
+  target: string;
+  onChange(column: string): void;
+}
+
+function TargetPicker(props: TargetPickerProps) {
+  const { columns, target, onChange } = props;
+  const change = (e: React.ChangeEvent<HTMLSelectElement>) => onChange(e.target.value);
+  return (
+    <div className="p-3 border border-primary/30 bg-primary/5 rounded-lg">
+      <label htmlFor="target-column" className="block text-sm font-medium mb-1">
+        Column to predict
+      </label>
+      <select
+        id="target-column"
+        value={target}
+        onChange={change}
+        className="w-full p-2 border border-border rounded-lg focus:ring-[3px] focus:ring-ring/50 focus:border-primary"
+      >
+        <option value="">Select the column to predict...</option>
+        {columns.map((column) => (
+          <option key={column} value={column}>
+            {column}
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-muted-foreground mt-1">
+        This is the answer the model learns to give. It is never one of the columns it learns from.
+      </p>
+    </div>
+  );
+}
+
 interface ColumnChoiceFormProps {
   columns: string[];
+  features: string[];
   selected: string[];
+  target: string;
   interactions: boolean;
   recorded: boolean;
   onToggle(column: string): void;
+  onTarget(column: string): void;
   onInteractions(on: boolean): void;
-  onRecord: VoidFunction;
 }
 
 function ColumnChoiceForm(props: ColumnChoiceFormProps) {
-  const { columns, selected, interactions, recorded, onToggle, onInteractions, onRecord } = props;
-  const enough = selected.length >= MIN_COLUMNS;
-  const summary = `${selected.length} of ${columns.length} columns selected`;
-  const action = `Use these ${selected.length} columns`;
+  const { columns, features, selected, target, interactions, recorded, onToggle, onTarget, onInteractions } = props;
+  const summary = `${selected.length} of ${features.length} columns selected`;
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Choose the columns the model may learn from. A column you leave out is never shown to
-        the model. You pick the column to predict in the next step, and it is never used as a
-        feature, whatever you choose here. Identifiers, dates and empty columns are set aside
-        automatically at training.
+        Pick the column to predict, then choose the other columns the model may learn from. A
+        column you leave out is never shown to the model. Identifiers, dates and empty columns
+        are set aside automatically at training.
       </p>
+      <TargetPicker columns={columns} target={target} onChange={onTarget} />
       <p className="text-sm font-medium">{summary}</p>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {columns.map((column) => (
+        {features.map((column) => (
           <ColumnBox key={column} column={column} checked={selected.includes(column)} onToggle={onToggle} />
         ))}
       </div>
       <InteractionsSwitch on={interactions} onChange={onInteractions} />
-      <TooFew show={!enough} />
+      <TooFew show={selected.length < MIN_COLUMNS} />
       <Recorded show={recorded} />
-      <div className="flex justify-end">
-        <button
-          onClick={onRecord}
-          disabled={!enough || recorded}
-          data-testid="use-columns-button"
-          className="px-6 py-2 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
-        >
-          {action}
-        </button>
-      </div>
     </div>
   );
 }
 
 /** What completing the stage stores: the choice, and when it was made. */
-function stageRecord(columns: string[], selection: Selection) {
-  const choice = choiceOf(columns, selection.selected);
-  return { ...choice, createInteractions: selection.interactions, timestamp: new Date().toISOString() };
+function stageRecord(selection: Selection) {
+  const choice = choiceOf(selection.features, selection.selected);
+  return { ...choice, targetColumn: selection.target, createInteractions: selection.interactions, timestamp: new Date().toISOString() };
 }
 
 interface Edited {
@@ -199,7 +225,11 @@ interface EditedSwitch {
 }
 
 interface Selection {
+  /** The columns the model may learn from: every column but the target. */
+  features: string[];
   selected: string[];
+  target: string;
+  setTarget(column: string): void;
   toggle(column: string): void;
   interactions: boolean;
   setInteractions(on: boolean): void;
@@ -211,9 +241,12 @@ function useSelection(
   columns: string[],
   recorded: ColumnChoice | null,
   recordedInteractions: boolean,
+  recordedColumn: string,
 ): Selection {
   const [edited, setEdited] = useState<Edited | null>(null);
   const [switchEdit, setSwitchEdit] = useState<EditedSwitch | null>(null);
+  const { target, setTarget } = useTargetChoice(datasetId, recordedColumn);
+  const features = columns.filter((column) => column !== target);
   const mine = edited !== null && edited.datasetId === datasetId;
   const current = mine ? edited.names : startingSelection(columns, recorded);
   const toggle = (column: string) => {
@@ -223,7 +256,29 @@ function useSelection(
   const switchIsMine = switchEdit !== null && switchEdit.datasetId === datasetId;
   const interactions = switchIsMine ? switchEdit.on : recordedInteractions;
   const setInteractions = (on: boolean) => setSwitchEdit({ datasetId, on });
-  return { selected: columns.filter((column) => current.includes(column)), toggle, interactions, setInteractions };
+  const selected = features.filter((column) => current.includes(column));
+  return { features, selected, target, setTarget, toggle, interactions, setInteractions };
+}
+
+/** Whether the stage holds this selection; saves it as it is made, so Continue is the one confirmation. */
+function useSavedChoice(
+  selection: Selection,
+  stageData: unknown,
+  recorded: ColumnChoice | null,
+  save: (stage: WorkflowStage, data: unknown) => void,
+): boolean {
+  const saved =
+    sameChoice(recorded, selection.selected) &&
+    interactionsOn(stageData) === selection.interactions &&
+    recordedTarget(stageData) === selection.target;
+  const complete = Boolean(selection.target) && selection.selected.length >= MIN_COLUMNS;
+  const key = [selection.target, selection.interactions, ...selection.selected].join('\u0000');
+  useEffect(() => {
+    if (!saved && complete) save(WorkflowStage.FEATURE_ENGINEERING, stageRecord(selection));
+    // The key stands for the selection; saving on a new object identity would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved, complete, key]);
+  return saved;
 }
 
 interface ChoiceBodyProps {
@@ -231,7 +286,6 @@ interface ChoiceBodyProps {
   columns: string[];
   selection: Selection;
   recorded: boolean;
-  onRecord: VoidFunction;
   onRetry: VoidFunction;
 }
 
@@ -248,12 +302,14 @@ function ChoiceBody(props: ChoiceBodyProps) {
   return (
     <ColumnChoiceForm
       columns={columns}
+      features={selection.features}
       selected={selection.selected}
+      target={selection.target}
       interactions={selection.interactions}
       recorded={props.recorded}
       onToggle={selection.toggle}
+      onTarget={selection.setTarget}
       onInteractions={selection.setInteractions}
-      onRecord={props.onRecord}
     />
   );
 }
@@ -277,10 +333,9 @@ export default function FeaturesPage() {
   const columns = load.data ?? [];
   const stageData = state.stageData[WorkflowStage.FEATURE_ENGINEERING];
   const recorded = recordedChoice(stageData);
-  const selection = useSelection(datasetId, columns, recorded, interactionsOn(stageData));
-  const isRecorded = sameChoice(recorded, selection.selected) && interactionsOn(stageData) === selection.interactions;
+  const selection = useSelection(datasetId, columns, recorded, interactionsOn(stageData), recordedTarget(stageData));
+  const isRecorded = useSavedChoice(selection, stageData, recorded, completeStage);
   const goToUpload = () => router.push('/upload');
-  const record = () => completeStage(WorkflowStage.FEATURE_ENGINEERING, stageRecord(columns, selection));
 
   if (!datasetId) return <NoDataset onUpload={goToUpload} />;
 
@@ -296,7 +351,6 @@ export default function FeaturesPage() {
           columns={columns}
           selection={selection}
           recorded={isRecorded}
-          onRecord={record}
           onRetry={load.reload}
         />
         <StageNavigation

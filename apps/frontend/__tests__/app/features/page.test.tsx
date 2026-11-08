@@ -66,6 +66,10 @@ beforeEach(() => {
   mockFetch.mockResolvedValue(answer(userData(COLUMNS)));
 });
 
+function pickTarget(column: string) {
+  fireEvent.change(screen.getByLabelText('Column to predict'), { target: { value: column } });
+}
+
 async function loaded() {
   await waitFor(() => expect(screen.getByLabelText('plan')).toBeInTheDocument());
 }
@@ -81,24 +85,35 @@ describe('Feature Engineering page', () => {
     );
     for (const column of COLUMNS) expect(screen.getByLabelText(column)).toBeChecked();
     expect(screen.getByText('4 of 4 columns selected')).toBeInTheDocument();
+    expect(mockCompleteStage).not.toHaveBeenCalled();
     const called = mockFetch.mock.calls.map(([url]) => String(url));
     expect(called.filter((url) => /features\/(suggestions|generate)/.test(url))).toEqual([]);
   });
 
-  it('records the selection and what was left out, and only then lets the user continue', async () => {
+  it('keeps the column to predict apart from the features, and saves the choice as it is made', async () => {
     render(<FeaturesPage />);
     await loaded();
     expect(screen.getByTestId('stage-navigation')).toHaveAttribute('data-ready', 'false');
 
-    fireEvent.click(screen.getByLabelText('region'));
-    fireEvent.click(screen.getByRole('button', { name: 'Use these 3 columns' }));
+    pickTarget('bought');
 
-    expect(mockCompleteStage).toHaveBeenCalledWith(
+    expect(screen.queryByLabelText('bought')).not.toBeInTheDocument();
+    expect(screen.getByText('3 of 3 columns selected')).toBeInTheDocument();
+    expect(mockCompleteStage).toHaveBeenLastCalledWith(
       WorkflowStage.FEATURE_ENGINEERING,
       expect.objectContaining({
-        selectedFeatures: ['plan', 'spend', 'bought'],
-        excludedFeatures: ['region'],
+        targetColumn: 'bought',
+        selectedFeatures: ['plan', 'region', 'spend'],
+        excludedFeatures: [],
       }),
+    );
+
+    fireEvent.click(screen.getByLabelText('region'));
+
+    expect(screen.queryByRole('button', { name: /Use these/ })).not.toBeInTheDocument();
+    expect(mockCompleteStage).toHaveBeenLastCalledWith(
+      WorkflowStage.FEATURE_ENGINEERING,
+      expect.objectContaining({ selectedFeatures: ['plan', 'spend'], excludedFeatures: ['region'] }),
     );
   });
 
@@ -106,8 +121,9 @@ describe('Feature Engineering page', () => {
     mockWorkflow.state.completedStages = new Set([WorkflowStage.FEATURE_ENGINEERING]);
     mockWorkflow.state.stageData = {
       [WorkflowStage.FEATURE_ENGINEERING]: {
-        selectedFeatures: ['plan', 'spend', 'bought'],
+        selectedFeatures: ['plan', 'spend'],
         excludedFeatures: ['region'],
+        targetColumn: 'bought',
       },
     };
     render(<FeaturesPage />);
@@ -127,10 +143,13 @@ describe('Feature Engineering page', () => {
     render(<FeaturesPage />);
     await loaded();
 
-    for (const column of ['plan', 'region', 'spend']) fireEvent.click(screen.getByLabelText(column));
+    pickTarget('bought');
+    fireEvent.click(screen.getByLabelText('plan'));
+    mockCompleteStage.mockClear();
+    fireEvent.click(screen.getByLabelText('region'));
 
     expect(screen.getByText('Select at least 2 columns.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use these 1 columns' })).toBeDisabled();
+    expect(mockCompleteStage).not.toHaveBeenCalled();
   });
 
   describe('the interaction features switch (#974)', () => {
@@ -144,10 +163,10 @@ describe('Feature Engineering page', () => {
       expect(toggle).not.toBeChecked();
       expect(screen.getByText(/lengthen training/)).toBeInTheDocument();
 
+      pickTarget('bought');
       fireEvent.click(toggle);
-      fireEvent.click(screen.getByRole('button', { name: 'Use these 4 columns' }));
 
-      expect(mockCompleteStage).toHaveBeenCalledWith(
+      expect(mockCompleteStage).toHaveBeenLastCalledWith(
         WorkflowStage.FEATURE_ENGINEERING,
         expect.objectContaining({ createInteractions: true, excludedFeatures: [] }),
       );
@@ -157,9 +176,9 @@ describe('Feature Engineering page', () => {
       render(<FeaturesPage />);
       await loaded();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Use these 4 columns' }));
+      pickTarget('bought');
 
-      expect(mockCompleteStage).toHaveBeenCalledWith(
+      expect(mockCompleteStage).toHaveBeenLastCalledWith(
         WorkflowStage.FEATURE_ENGINEERING,
         expect.objectContaining({ createInteractions: false }),
       );
@@ -169,8 +188,9 @@ describe('Feature Engineering page', () => {
       mockWorkflow.state.completedStages = new Set([WorkflowStage.FEATURE_ENGINEERING]);
       mockWorkflow.state.stageData = {
         [WorkflowStage.FEATURE_ENGINEERING]: {
-          selectedFeatures: COLUMNS,
+          selectedFeatures: ['plan', 'region', 'spend'],
           excludedFeatures: [],
+          targetColumn: 'bought',
           createInteractions: true,
         },
       };
