@@ -44,20 +44,15 @@ const BANNED: [RegExp, string][] = [
   [/(?<!dark:)\bbg-gray-100\b/, 'bg-muted'],
   [/(?<!dark:)\bborder-gray-200\b/, 'border-border'],
   [/(?<!dark:)\bborder-gray-300\b/, 'border-border'],
+  // The identity pass (petrol primary, highlighter, semantic status colours): no raw
+  // Tailwind hue at all, in any variant, so one action colour and both themes hold.
+  [
+    /\b(?:bg|text|border|ring|from|to|via|fill|stroke|divide|outline|placeholder|decoration)-(?:blue|indigo|purple|violet|sky|slate|gray|green|emerald|red|amber|yellow|orange|teal|cyan|pink|rose|lime|fuchsia|zinc|neutral|stone)-\d{2,3}\b/,
+    'a semantic token (primary, success, warning, destructive, highlight, muted, border)',
+  ],
 ]
 
-/**
- * The sidebar is deliberately dark in BOTH themes, so its greys are the design,
- * not an oversight. Anything added here needs the same justification.
- */
-const EXEMPT = new Set([
-  'components/Sidebar.tsx',
-  'components/SidebarWrapper.tsx',
-  // Renders only inside the always-dark Sidebar, so its greys are the design too.
-  // Listed explicitly rather than passing by accident because its class names
-  // happen to fall outside BANNED — extending that list should not fail this file.
-  'components/ThemeToggle.tsx',
-])
+const EXEMPT = new Set<string>([])
 
 describe('semantic colours, not hard-coded light ones (#407)', () => {
   const files = globSync('{app,components}/**/*.tsx', {

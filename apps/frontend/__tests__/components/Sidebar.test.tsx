@@ -15,9 +15,9 @@ jest.mock('next-auth/react', () => ({
 
 describe('Sidebar navigation', () => {
   // #765: the sidebar carried a name of its own, a third beside the title's and onboarding's.
-  it('is headed by the product name', () => {
+  it('is headed by the product logo, linking home', () => {
     render(<Sidebar />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(COMPANY.serviceName);
+    expect(screen.getByRole('link', { name: COMPANY.serviceName })).toHaveAttribute('href', '/dashboard');
   });
 
   it('links to the training jobs dashboard after Build Model', () => {

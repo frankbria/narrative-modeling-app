@@ -55,15 +55,15 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
   const getStatusColor = () => {
     switch (progress.status) {
       case 'initializing':
-        return 'text-blue-600'
+        return 'text-primary'
       case 'uploading':
-        return 'text-blue-600'
+        return 'text-primary'
       case 'completed':
-        return 'text-green-600'
+        return 'text-success'
       case 'error':
-        return 'text-red-600'
+        return 'text-destructive'
       case 'paused':
-        return 'text-yellow-600'
+        return 'text-warning'
       default:
         return 'text-muted-foreground'
     }
@@ -116,7 +116,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           {progress.status === 'uploading' && onPause && (
             <button
               onClick={onPause}
-              className="p-2 text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-950/40 rounded-md transition-colors"
+              className="p-2 text-warning hover:bg-warning/10 rounded-md transition-colors"
               title="Pause Upload"
             >
               <Pause size={16} />
@@ -125,7 +125,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           {progress.status === 'paused' && onResume && (
             <button
               onClick={onResume}
-              className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md transition-colors"
+              className="p-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
               title="Resume Upload"
             >
               <Play size={16} />
@@ -134,7 +134,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           {(progress.status === 'uploading' || progress.status === 'paused') && onCancel && (
             <button
               onClick={onCancel}
-              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors"
+              className="p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
               title="Cancel Upload"
             >
               <XCircle size={16} />
@@ -155,16 +155,16 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
             <span>Overall Progress</span>
             <span>{Math.round(progress.progress)}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+          <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
             <div 
               className={`h-full transition-all duration-300 ${
                 progress.status === 'completed' 
-                  ? 'bg-green-500' 
+                  ? 'bg-success' 
                   : progress.status === 'error'
-                  ? 'bg-red-500'
+                  ? 'bg-destructive'
                   : progress.status === 'paused'
-                  ? 'bg-yellow-500'
-                  : 'bg-blue-500'
+                  ? 'bg-warning'
+                  : 'bg-primary'
               }`}
               style={{ width: `${progress.progress}%` }}
             />
@@ -177,16 +177,16 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
             <span>Chunks Uploaded</span>
             <span>{progress.uploadedChunks} / {progress.totalChunks}</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-muted rounded-full h-2">
             <div 
-              className="bg-blue-400 h-full rounded-full transition-all duration-300"
+              className="bg-primary h-full rounded-full transition-all duration-300"
               style={{ width: `${(progress.uploadedChunks / progress.totalChunks) * 100}%` }}
             />
           </div>
         </div>
 
         {/* Upload Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border">
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
               <HardDrive className="text-muted-foreground" size={16} />
@@ -230,9 +230,9 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
 
         {/* Error Message */}
         {progress.status === 'error' && progress.error && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-md">
-            <p className="text-sm text-red-700 dark:text-red-300 font-medium">Error Details:</p>
-            <p className="text-sm text-red-600 mt-1">{progress.error}</p>
+          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md">
+            <p className="text-sm text-destructive font-medium">Error Details:</p>
+            <p className="text-sm text-destructive mt-1">{progress.error}</p>
           </div>
         )}
       </div>

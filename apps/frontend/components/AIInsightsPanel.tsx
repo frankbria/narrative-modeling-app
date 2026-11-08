@@ -211,7 +211,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                <CheckCircle className="h-8 w-8 mx-auto mb-2 text-success" />
                 <p>No significant issues detected</p>
               </div>
             )}

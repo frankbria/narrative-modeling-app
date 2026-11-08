@@ -134,7 +134,7 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
                   <span className="w-28 text-sm font-mono truncate">{label}</span>
                   <div className="flex-1 bg-muted rounded h-3">
                     <div
-                      className="bg-red-500 h-3 rounded"
+                      className="bg-destructive h-3 rounded"
                       style={{ width: `${Math.min(100, rate * 100)}%` }}
                     />
                   </div>

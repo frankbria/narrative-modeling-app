@@ -135,7 +135,7 @@ export function ExcludedColumnsPanel(props: ExcludedColumnsPanelProps) {
         data-testid="retrain-keeping"
         onClick={retrain}
         disabled={keep.length === 0}
-        className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-muted-foreground disabled:cursor-not-allowed"
+        className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
       >
         <RefreshCw className="w-4 h-4" />
         Retrain keeping {keep.length} column{keep.length === 1 ? '' : 's'}

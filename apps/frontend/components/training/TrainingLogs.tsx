@@ -23,8 +23,8 @@ interface TrainingLogsProps {
 
 const LEVEL_STYLES: Record<TrainingLogEntry['level'], string> = {
   info: 'text-muted-foreground',
-  warning: 'text-amber-700 dark:text-amber-300',
-  error: 'text-red-700 dark:text-red-300',
+  warning: 'text-warning',
+  error: 'text-destructive',
 };
 
 function matchesFilter(entry: TrainingLogEntry, filter: LevelFilter): boolean {
@@ -128,7 +128,7 @@ export function TrainingLogs({
                 key={`${entry.timestamp}-${index}`}
                 className="flex items-start gap-2"
               >
-                <span className="text-gray-400 shrink-0">
+                <span className="text-muted-foreground shrink-0">
                   {formatTimestamp(entry.timestamp)}
                 </span>
                 {entry.stage && (

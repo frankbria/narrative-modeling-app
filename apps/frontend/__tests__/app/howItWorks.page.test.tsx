@@ -40,7 +40,8 @@ describe('How it works page', () => {
 
   it('serves screenshots that exist under public/how-it-works and stay small', () => {
     render(<HowItWorksPage />)
-    for (const shot of screen.getAllByRole('img')) {
+    // The nav's logo is an img role too; only <img> elements are screenshots.
+    for (const shot of screen.getAllByRole('img').filter((element) => element.tagName === 'IMG')) {
       const src = shot.getAttribute('src') ?? ''
       expect(src).toMatch(/^\/how-it-works\//)
       const file = join(PUBLIC, src)

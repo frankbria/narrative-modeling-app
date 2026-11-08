@@ -20,14 +20,14 @@ export interface ROCCurveChartProps {
 }
 
 export const CURVE_COLORS = [
-  '#3B82F6', // blue
-  '#10B981', // green
-  '#F59E0B', // amber
-  '#8B5CF6', // violet
-  '#EF4444', // red
-  '#14B8A6', // teal
-  '#EC4899', // pink
-  '#6366F1' // indigo
+  '#0D5C63', // petrol
+  '#D9A441', // amber
+  '#14232B', // ink
+  '#5FB3B3', // light petrol
+  '#B42318', // red
+  '#7D8F95', // slate
+  '#3F8C91', // mid petrol
+  '#8A6D1E', // deep amber
 ]
 
 // Per-series dash patterns (issue #282): a colour-independent channel so ROC/PR

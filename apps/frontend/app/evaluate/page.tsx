@@ -48,7 +48,7 @@ function MetricCard({ label, value }: { label: string; value: number }) {
     <div className="bg-muted rounded-lg p-4">
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm text-muted-foreground">{label}</span>
-        <Target className="w-4 h-4 text-gray-400" />
+        <Target className="w-4 h-4 text-muted-foreground" />
       </div>
       <div className="text-2xl font-bold text-foreground">{value.toFixed(4)}</div>
     </div>
@@ -102,17 +102,17 @@ function ModelReportCard({ explanation }: { explanation: AIExplanation }) {
     {
       title: 'Strengths',
       items: explanation.strengths,
-      icon: <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+      icon: <CheckCircle className="w-4 h-4 text-success mt-0.5 shrink-0" />
     },
     {
       title: 'Concerns',
       items: explanation.concerns,
-      icon: <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+      icon: <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
     },
     {
       title: 'Recommendations',
       items: explanation.recommendations,
-      icon: <Lightbulb className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+      icon: <Lightbulb className="w-4 h-4 text-primary mt-0.5 shrink-0" />
     }
   ];
 
@@ -122,7 +122,7 @@ function ModelReportCard({ explanation }: { explanation: AIExplanation }) {
         <div className="flex items-center justify-between">
           <CardTitle>Model Report Card</CardTitle>
           {explanation.generated_by === 'openai' ? (
-            <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/40">
+            <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
               AI-generated
             </Badge>
           ) : (
@@ -249,7 +249,7 @@ function CompareTab({ datasetId }: { datasetId?: string }) {
             </ul>
           )}
           {error && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}
@@ -325,7 +325,7 @@ export default function EvaluatePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -381,7 +381,7 @@ export default function EvaluatePage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <LineChartIcon className="w-6 h-6 text-purple-500" />
+            <LineChartIcon className="w-6 h-6 text-primary" />
             <div>
               <h1 className="text-2xl font-bold">Model Evaluation</h1>
               <div className="flex items-center gap-2 mt-1">
@@ -418,9 +418,9 @@ export default function EvaluatePage() {
 
         {/* Partial-evaluation banner */}
         {evaluation.partial && (
-          <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900 flex items-start gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-800 dark:text-amber-200">
+          <div className="mb-6 p-4 bg-warning/10 rounded-lg border border-warning/30 flex items-start gap-2">
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+            <p className="text-sm text-warning">
               Detailed evaluation artifacts aren&apos;t available for this model (trained
               before evaluation persistence). Showing stored training metrics.
             </p>

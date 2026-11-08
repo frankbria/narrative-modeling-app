@@ -46,7 +46,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
         </p>
         <p className="text-sm mt-1">
           {feature.selected ? (
-            <span className="text-green-600 font-medium">✓ Selected</span>
+            <span className="text-success font-medium">✓ Selected</span>
           ) : (
             <span className="text-muted-foreground">Not selected</span>
           )}
@@ -78,9 +78,9 @@ export function FeatureImportanceChart({
   const getBarColor = (score: number, selected: boolean) => {
     if (!selected) return '#9CA3AF' // Gray for unselected
 
-    if (score >= 0.8) return '#10B981' // Green for high importance
-    if (score >= highlightThreshold) return '#3B82F6' // Blue for medium importance
-    return '#F59E0B' // Orange for low importance
+    if (score >= 0.8) return '#0D5C63' // Petrol for high importance
+    if (score >= highlightThreshold) return '#5FB3B3' // Light petrol for medium importance
+    return '#D9A441' // Amber for low importance
   }
 
   if (chartData.length === 0) {
@@ -102,20 +102,20 @@ export function FeatureImportanceChart({
         </div>
         <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-green-500"></div>
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#0D5C63' }}></div>
             <span className="text-muted-foreground">High (≥0.8)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#5FB3B3' }}></div>
             <span className="text-muted-foreground">Medium (≥{highlightThreshold})</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#D9A441' }}></div>
             <span className="text-muted-foreground">Low (&lt;{highlightThreshold})</span>
           </div>
           {!showOnlySelected && (
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-gray-400"></div>
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#9CA3AF' }}></div>
               <span className="text-muted-foreground">Unselected</span>
             </div>
           )}

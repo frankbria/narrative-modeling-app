@@ -75,7 +75,7 @@ export function ModelPerformanceChart({
                 </div>
                 <div className="w-full bg-secondary rounded-full h-2">
                   <div
-                    className="bg-green-500 h-2 rounded-full transition-all"
+                    className="bg-success h-2 rounded-full transition-all"
                     style={{ width: `${testScore * 100}%` }}
                   />
                 </div>
@@ -130,33 +130,33 @@ export function ModelPerformanceChart({
               <h4 className="text-sm font-medium">Performance Analysis</h4>
               {testScore >= 0.9 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                  <span className="text-green-600">Excellent performance</span>
+                  <TrendingUp className="h-4 w-4 text-success" />
+                  <span className="text-success">Excellent performance</span>
                 </div>
               )}
               {testScore >= 0.8 && testScore < 0.9 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <TrendingUp className="h-4 w-4 text-blue-500" />
-                  <span className="text-blue-600">Good performance</span>
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  <span className="text-primary">Good performance</span>
                 </div>
               )}
               {testScore >= 0.7 && testScore < 0.8 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Activity className="h-4 w-4 text-yellow-500" />
-                  <span className="text-yellow-600">Moderate performance</span>
+                  <Activity className="h-4 w-4 text-warning" />
+                  <span className="text-warning">Moderate performance</span>
                 </div>
               )}
               {testScore < 0.7 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Activity className="h-4 w-4 text-orange-500" />
-                  <span className="text-orange-600">Consider improving features or data</span>
+                  <Activity className="h-4 w-4 text-warning" />
+                  <span className="text-warning">Consider improving features or data</span>
                 </div>
               )}
               
               {Math.abs(cvScore - testScore) > 0.1 && (
                 <div className="flex items-center gap-2 text-sm mt-2">
-                  <Activity className="h-4 w-4 text-yellow-500" />
-                  <span className="text-yellow-600">
+                  <Activity className="h-4 w-4 text-warning" />
+                  <span className="text-warning">
                     Possible {cvScore > testScore ? 'overfitting' : 'underfitting'}
                   </span>
                 </div>

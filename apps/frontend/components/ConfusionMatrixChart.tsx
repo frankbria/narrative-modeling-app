@@ -102,14 +102,14 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
               x={(numLabels * cellSize) / 2}
               y={-labelHeight + 12}
               textAnchor="middle"
-              className="text-xs font-semibold fill-gray-700"
+              className="text-xs font-semibold fill-foreground"
             >
               Predicted
             </text>
             <text
               transform={`translate(${-labelWidth + 12}, ${(numLabels * cellSize) / 2}) rotate(-90)`}
               textAnchor="middle"
-              className="text-xs font-semibold fill-gray-700"
+              className="text-xs font-semibold fill-foreground"
             >
               Actual
             </text>
@@ -121,7 +121,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
                 x={j * cellSize + cellSize / 2}
                 y={-10}
                 textAnchor="middle"
-                className="text-xs font-medium fill-gray-700"
+                className="text-xs font-medium fill-foreground"
               >
                 {label}
               </text>
@@ -135,7 +135,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
                 y={i * cellSize + cellSize / 2}
                 textAnchor="end"
                 dominantBaseline="middle"
-                className="text-xs font-medium fill-gray-700"
+                className="text-xs font-medium fill-foreground"
               >
                 {label}
               </text>
@@ -190,7 +190,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
                       y={i * cellSize + cellSize / 2 + 12}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      className="text-xs pointer-events-none fill-gray-600"
+                      className="text-xs pointer-events-none fill-muted-foreground"
                     >
                       {pct.toFixed(1)}%
                     </text>
@@ -207,7 +207,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
       {selected !== null && (
         <div
           data-testid="confusion-cell-detail"
-          className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-sm"
+          className="mt-4 p-4 bg-primary/10 border border-primary/30 rounded-lg text-sm"
         >
           <h4 className="font-semibold text-foreground mb-2">Cell detail</h4>
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2">

@@ -63,7 +63,7 @@ export function CancelTrainingButton({
         variant="outline"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className={`text-red-600 hover:text-red-700 ${className}`}
+        className={`text-destructive hover:text-destructive/80 ${className}`}
       >
         <X className="w-4 h-4 mr-2" />
         Cancel Training
@@ -79,7 +79,7 @@ export function CancelTrainingButton({
             </DialogDescription>
           </DialogHeader>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <DialogFooter>
             <Button

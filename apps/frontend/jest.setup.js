@@ -75,6 +75,7 @@ jest.mock('next/navigation', () => ({
     id: 'test-dataset-id'
   }),
   useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/',
 }))
 
 // Mock next-auth

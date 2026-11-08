@@ -142,7 +142,7 @@ export default function DeployPage() {
       <div className="max-w-4xl mx-auto">
         <div className="bg-card rounded-lg shadow-md p-8">
           <div className="text-center mb-8">
-            <Rocket className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+            <Rocket className="w-16 h-16 text-primary mx-auto mb-4" />
             <h1 className="text-3xl font-bold mb-2">Deploy Your Model</h1>
             <p className="text-muted-foreground">
               Deploy your trained model to production with one click
@@ -156,14 +156,14 @@ export default function DeployPage() {
               source (P0.31/P0.32), not a made-up figure on this page. */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="text-center p-4">
-              <Cloud className="w-12 h-12 text-blue-500 mx-auto mb-2" />
+              <Cloud className="w-12 h-12 text-primary mx-auto mb-2" />
               <h3 className="font-semibold mb-1">REST API Endpoint</h3>
               <p className="text-sm text-muted-foreground">
                 A secured POST /predict endpoint for your model
               </p>
             </div>
             <div className="text-center p-4">
-              <Shield className="w-12 h-12 text-green-500 mx-auto mb-2" />
+              <Shield className="w-12 h-12 text-success mx-auto mb-2" />
               <h3 className="font-semibold mb-1">Secure API</h3>
               <p className="text-sm text-muted-foreground">
                 API key authentication and rate limiting
@@ -195,7 +195,7 @@ export default function DeployPage() {
             <button
               onClick={handleDeploy}
               disabled={loading}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+              className="px-8 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-medium disabled:opacity-50"
             >
               {loading ? 'Deploying...' : 'Deploy Model'}
             </button>
@@ -209,7 +209,7 @@ export default function DeployPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
           <h2 className="text-2xl font-semibold mb-2">Deploying Your Model</h2>
           <p className="text-muted-foreground">This may take a few moments...</p>
         </div>
@@ -221,7 +221,7 @@ export default function DeployPage() {
     <div className="max-w-4xl mx-auto">
       <div className="bg-card rounded-lg shadow-md p-8">
         <div className="text-center mb-8">
-          <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-2">Model Deployed Successfully!</h1>
           <p className="text-muted-foreground">
             Your model is now available via REST API
@@ -234,14 +234,14 @@ export default function DeployPage() {
               <h3 className="font-semibold mb-4">API Endpoint</h3>
               {deployment.deployment_endpoint ? (
                 <div className="flex items-center gap-2 mb-2">
-                  <code className="flex-1 bg-gray-800 text-green-400 p-3 rounded font-mono text-sm">
+                  <code className="flex-1 bg-foreground text-background p-3 rounded font-mono text-sm">
                     {deployment.deployment_endpoint}
                   </code>
                   <button
                     type="button"
                     onClick={() => copyToClipboard(deployment.deployment_endpoint!)}
                     aria-label="Copy API endpoint"
-                    className="p-2 hover:bg-gray-200 rounded"
+                    className="p-2 hover:bg-muted rounded"
                   >
                     <Copy className="w-5 h-5" />
                   </button>
@@ -253,20 +253,20 @@ export default function DeployPage() {
               )}
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-950/40 rounded-lg p-6">
+            <div className="bg-primary/10 rounded-lg p-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Example Request</h3>
                 <a
                   href={docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-blue-700 dark:text-blue-300 hover:underline"
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                 >
                   <BookOpen className="w-4 h-4" />
                   View interactive API docs
                 </a>
               </div>
-              <pre className="bg-gray-800 text-gray-100 p-4 rounded overflow-x-auto text-sm">
+              <pre className="bg-foreground text-background p-4 rounded overflow-x-auto text-sm">
 {`curl -X POST ${deployment.deployment_endpoint ?? '<deployment-endpoint>'}/predict \\
   -H "X-API-Key: <your-api-key>" \\
   -H "Content-Type: application/json" \\
@@ -305,7 +305,7 @@ export default function DeployPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-muted rounded-lg p-4">
                 <h4 className="font-medium mb-2">Status</h4>
-                <span className="inline-flex items-center gap-1 text-green-600">
+                <span className="inline-flex items-center gap-1 text-success">
                   <CheckCircle className="w-4 h-4" />
                   Active
                 </span>

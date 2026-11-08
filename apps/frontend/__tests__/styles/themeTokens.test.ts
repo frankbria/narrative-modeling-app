@@ -43,6 +43,9 @@ const THEME_TOKENS = [
   'muted', 'muted-foreground',
   'accent', 'accent-foreground',
   'destructive', 'destructive-foreground',
+  'success', 'success-foreground',
+  'warning', 'warning-foreground',
+  'highlight', 'highlight-foreground',
   'border', 'input', 'ring',
 ]
 
@@ -200,6 +203,8 @@ describe('ported v3 config survives', () => {
   })
 })
 
+const RUNTIME_FONT_VARIABLES = ['font-schibsted']
+
 describe('@theme inline maps nothing that is undefined (#399)', () => {
   // Generalises the #345 lesson past the hand-maintained THEME_TOKENS list.
   // `@theme inline { --color-x: var(--x) }` with `--x` never defined compiles
@@ -226,13 +231,19 @@ describe('@theme inline maps nothing that is undefined (#399)', () => {
     )
   })()
 
+  it('loads every runtime font variable it maps (the Geist one never was, so pages rendered in Arial)', () => {
+    const layout = readFileSync(join(__dirname, '..', '..', 'app', 'layout.tsx'), 'utf8')
+    for (const name of RUNTIME_FONT_VARIABLES) expect(layout).toContain(`variable: '--${name}'`)
+  })
+
   it('finds mappings to check', () => {
     expect(mappings.length).toBeGreaterThan(10)
   })
 
   it('every mapped token is defined somewhere', () => {
-    // Font tokens come from next/font at runtime, not from a CSS declaration.
-    const runtimeProvided = new Set(['font-geist-sans', 'font-geist-mono'])
+    // Font tokens come from next/font at runtime, not from a CSS declaration; the
+    // next test holds app/layout.tsx to actually providing each one.
+    const runtimeProvided = new Set(RUNTIME_FONT_VARIABLES)
     const dangling = mappings
       .filter((m) => !defined.has(m.token) && !runtimeProvided.has(m.token))
       .map((m) => `--${m.alias} -> var(--${m.token})`)

@@ -12,6 +12,8 @@ export enum WorkflowStage {
 export interface StageConfig {
   id: WorkflowStage;
   name: string;
+  /** One-word label for the sheet tab in the stage bar. */
+  tab: string;
   description: string;
   icon: string; // Lucide icon name
   route: string;
@@ -80,6 +82,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.DATA_LOADING,
     name: 'Data Loading',
+    tab: 'Load',
     description: 'Upload your data file',
     icon: 'Upload',
     route: '/upload',
@@ -88,6 +91,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.DATA_PROFILING,
     name: 'Data Profiling',
+    tab: 'Profile',
     description: 'Explore and understand your data',
     icon: 'BarChart3',
     route: '/explore',
@@ -96,6 +100,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.DATA_PREPARATION,
     name: 'Data Preparation',
+    tab: 'Prepare',
     description: 'Clean and transform your data',
     icon: 'Wrench',
     route: '/prepare',
@@ -104,6 +109,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.FEATURE_ENGINEERING,
     name: 'Feature Engineering',
+    tab: 'Features',
     description: 'Create and select features for modeling',
     icon: 'Sparkles',
     route: '/features',
@@ -112,6 +118,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.MODEL_TRAINING,
     name: 'Model Training',
+    tab: 'Train',
     description: 'Train and optimize ML models',
     icon: 'Brain',
     route: '/model',
@@ -120,6 +127,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.MODEL_EVALUATION,
     name: 'Model Evaluation',
+    tab: 'Evaluate',
     description: 'Evaluate model performance',
     icon: 'LineChart',
     route: '/evaluate',
@@ -128,6 +136,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.PREDICTION,
     name: 'Prediction',
+    tab: 'Predict',
     description: 'Make predictions with your model',
     icon: 'Target',
     route: '/predict',
@@ -136,6 +145,7 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   {
     id: WorkflowStage.DEPLOYMENT,
     name: 'Deployment',
+    tab: 'Deploy',
     description: 'Deploy your model to production',
     icon: 'Rocket',
     route: '/deploy',

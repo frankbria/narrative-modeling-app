@@ -50,20 +50,20 @@ const dataTypeIcons: Record<string, React.ReactNode> = {
 }
 
 const dataTypeColors: Record<string, string> = {
-  integer: 'bg-blue-500',
-  float: 'bg-blue-600',
-  string: 'bg-green-500',
-  text: 'bg-green-600',
-  boolean: 'bg-purple-500',
-  date: 'bg-orange-500',
-  datetime: 'bg-orange-600',
-  email: 'bg-pink-500',
-  phone: 'bg-pink-600',
-  url: 'bg-indigo-500',
-  currency: 'bg-yellow-500',
-  percentage: 'bg-yellow-600',
-  categorical: 'bg-gray-500',
-  unknown: 'bg-gray-400',
+  integer: 'bg-primary text-primary-foreground',
+  float: 'bg-primary text-primary-foreground',
+  string: 'bg-primary/60 text-primary-foreground',
+  text: 'bg-primary/60 text-primary-foreground',
+  boolean: 'bg-accent text-accent-foreground',
+  date: 'bg-accent text-accent-foreground',
+  datetime: 'bg-accent text-accent-foreground',
+  email: 'bg-primary/15 text-primary',
+  phone: 'bg-primary/15 text-primary',
+  url: 'bg-primary/15 text-primary',
+  currency: 'bg-primary/30 text-foreground',
+  percentage: 'bg-primary/30 text-foreground',
+  categorical: 'bg-muted-foreground text-background',
+  unknown: 'bg-muted text-muted-foreground',
 }
 
 export function SchemaViewer({ schema }: SchemaViewerProps) {
@@ -115,7 +115,7 @@ export function SchemaViewer({ schema }: SchemaViewerProps) {
                   <TableCell className="font-medium">{column.name}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <div className={`p-1 rounded ${getDataTypeColor(column.data_type)} text-white`}>
+                      <div className={`p-1 rounded ${getDataTypeColor(column.data_type)}`}>
                         {getDataTypeIcon(column.data_type)}
                       </div>
                       <span className="text-sm">{column.data_type}</span>
@@ -139,9 +139,9 @@ export function SchemaViewer({ schema }: SchemaViewerProps) {
                   <TableCell>
                     <div className="flex items-center gap-1">
                       {column.null_percentage > 0 && (
-                        <AlertCircle className="h-3 w-3 text-yellow-500" />
+                        <AlertCircle className="h-3 w-3 text-warning" />
                       )}
-                      <span className={column.null_percentage > 10 ? 'text-yellow-600 font-medium' : ''}>
+                      <span className={column.null_percentage > 10 ? 'text-warning font-medium' : ''}>
                         {column.null_percentage.toFixed(1)}%
                       </span>
                     </div>

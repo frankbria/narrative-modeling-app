@@ -29,7 +29,7 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
         <button
           onClick={onPreview}
           disabled={busy}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          className="px-4 py-2 border border-input bg-card text-foreground rounded-lg font-semibold hover:bg-accent disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center gap-2"
         >
           <Play className="w-4 h-4" />
           Preview
@@ -37,7 +37,7 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
         <button
           onClick={onApply}
           disabled={busy}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center gap-2"
         >
           <CheckCircle className="w-4 h-4" />
           Apply & Continue
@@ -88,7 +88,7 @@ function ViewButton(props: {
       type="button"
       onClick={() => onSelect(view)}
       aria-pressed={selected}
-      className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+      className={`px-3 py-1.5 rounded flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
         selected ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground'
       }`}
     >

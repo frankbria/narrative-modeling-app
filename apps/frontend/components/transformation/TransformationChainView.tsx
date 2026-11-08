@@ -273,7 +273,7 @@ export function TransformationChainView({
                 tabIndex={0}
                 className={`cursor-move transition-opacity ${
                   draggedIndex === index ? 'opacity-50' : 'opacity-100'
-                } hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                } hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring`}
                 role="listitem"
                 aria-label={`Step ${index + 1} of ${transformations.length}: ${step.label}`}
                 aria-posinset={index + 1}
@@ -293,7 +293,7 @@ export function TransformationChainView({
                     <div className="flex-1 flex items-center gap-2 min-w-0">
                       <button
                         onClick={() => toggleExpand(step.id)}
-                        className="flex-shrink-0 p-0 hover:bg-muted rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-shrink-0 p-0 hover:bg-muted rounded focus:outline-none focus:ring-2 focus:ring-ring"
                         aria-label={
                           expandedSteps.has(step.id)
                             ? `Collapse step ${index + 1} details`

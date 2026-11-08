@@ -196,7 +196,7 @@ describe('OnboardingProgress', () => {
     expect(progressBar).toBeInTheDocument();
     
     // Check stat cards have correct colors - need to go up to the container div
-    expect(screen.getByText('3').closest('.bg-blue-50')).toBeInTheDocument();
-    expect(screen.getByText('25').closest('.bg-green-50')).toBeInTheDocument();
+    expect(screen.getByText('3').closest('.bg-primary\\/10')).toBeInTheDocument();
+    expect(screen.getByText('25').closest('.bg-success\\/10')).toBeInTheDocument();
   });
 });

@@ -16,6 +16,10 @@ import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
 import { siteMetadata } from '@/lib/site'
+import { Schibsted_Grotesk } from 'next/font/google'
+
+// Self-hosted at build by next/font; globals.css reads the variable as --font-sans.
+const schibsted = Schibsted_Grotesk({ subsets: ['latin'], variable: '--font-schibsted', display: 'swap' })
 
 // Read per request, not at build: the same image serves dev. and www. (#766).
 export function generateMetadata(): Metadata {
@@ -44,13 +48,13 @@ export default async function RootLayout({
     // suppressHydrationWarning: next-themes writes the resolved class onto <html>
     // in a pre-hydration script, so the server markup and the first client render
     // legitimately differ on this one attribute (#407).
-    <html lang="en" suppressHydrationWarning>
-      <body className={`flex antialiased`}>
+    <html lang="en" className={schibsted.variable} suppressHydrationWarning>
+      <body className="flex font-sans antialiased">
         {/* Skip-to-content link — first focusable element, visible only on focus
             so keyboard users can bypass the nav (WCAG 2.4.1 / issue #282). */}
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-white focus:shadow-lg"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
         >
           Skip to main content
         </a>
@@ -63,7 +67,7 @@ export default async function RootLayout({
                 {/* min-w-0: as a flex item of <body>, main's default min-width:auto would
                     adopt the WorkflowBar's intrinsic width and force whole-page horizontal
                     scroll on narrow viewports instead of letting the stage strip scroll (#185) */}
-                <main className="flex flex-1 min-w-0 min-h-screen flex-col">
+                <main className="flex flex-1 min-w-0 min-h-screen flex-col lg:ml-64">
                   <WorkflowBar />
                   <StageGuardBanner />
                   {/* Plan-limit surfaces (#767): the 80% warning and the one 402 dialog. */}
@@ -76,12 +80,13 @@ export default async function RootLayout({
                     <div
                       id="main-content"
                       tabIndex={-1}
-                      className="flex-1 p-4 bg-muted lg:ml-64 lg:mr-80 focus:outline-none"
+                      className="flex-1 p-4 bg-background lg:mr-80 focus:outline-none"
                     >
                       {children}
                     </div>
                     <ConditionalAIChat />
                   </div>
+                  <SiteFooter className="lg:pr-80" />
                 </main>
                 <FeedbackWidget />
               </>
@@ -89,14 +94,12 @@ export default async function RootLayout({
               <main
                 id="main-content"
                 tabIndex={-1}
-                className="flex-1 p-4 bg-muted min-h-screen flex flex-col items-center justify-center-safe space-y-6 focus:outline-none"
+                className="flex-1 p-4 bg-background min-h-screen flex flex-col items-center justify-center-safe space-y-6 focus:outline-none"
               >
                 {children}
+                <SiteFooter className="mt-auto" />
               </main>
             )}
-            {/* Licence and source link plus the Terms/Privacy links, visible
-                to all network users, authenticated or not. */}
-            <SiteFooter withSidebar={!!session} />
           </WorkflowProvider>
         </SessionProvider>
         </ThemeProvider>

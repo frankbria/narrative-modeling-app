@@ -51,30 +51,30 @@ export function BoxplotModal({ isOpen, onClose, columnName, boxplotData }: Boxpl
             {/* Display a simple boxplot visualization using divs */}
             <div className="flex flex-col items-center justify-center h-full">
               <div className="w-full max-w-md">
-                <div className="relative h-8 bg-blue-100 dark:bg-blue-900/40 rounded-t-md">
+                <div className="relative h-8 bg-primary/10 rounded-t-md">
                   {/* Median line */}
                   <div 
-                    className="absolute h-8 w-1 bg-blue-600 left-1/2 transform -translate-x-1/2"
+                    className="absolute h-8 w-1 bg-primary left-1/2 transform -translate-x-1/2"
                     style={{ top: 0 }}
                   ></div>
                 </div>
-                <div className="h-2 bg-blue-200"></div>
-                <div className="h-2 bg-blue-300"></div>
-                <div className="h-2 bg-blue-400"></div>
-                <div className="h-2 bg-blue-500"></div>
-                <div className="h-2 bg-blue-600"></div>
-                <div className="h-2 bg-blue-700"></div>
-                <div className="h-2 bg-blue-800"></div>
-                <div className="h-2 bg-blue-900"></div>
-                <div className="h-2 bg-blue-950"></div>
-                <div className="h-2 bg-gray-900"></div>
-                <div className="h-2 bg-gray-800"></div>
-                <div className="h-2 bg-gray-700"></div>
-                <div className="h-2 bg-gray-600"></div>
-                <div className="h-2 bg-gray-500"></div>
-                <div className="h-2 bg-gray-400"></div>
-                <div className="h-2 bg-gray-300"></div>
-                <div className="h-2 bg-gray-200"></div>
+                <div className="h-2 bg-primary/20"></div>
+                <div className="h-2 bg-primary/30"></div>
+                <div className="h-2 bg-primary/40"></div>
+                <div className="h-2 bg-primary/50"></div>
+                <div className="h-2 bg-primary/60"></div>
+                <div className="h-2 bg-primary/70"></div>
+                <div className="h-2 bg-primary/80"></div>
+                <div className="h-2 bg-primary/90"></div>
+                <div className="h-2 bg-primary"></div>
+                <div className="h-2 bg-foreground"></div>
+                <div className="h-2 bg-foreground/80"></div>
+                <div className="h-2 bg-foreground/70"></div>
+                <div className="h-2 bg-foreground/60"></div>
+                <div className="h-2 bg-muted-foreground"></div>
+                <div className="h-2 bg-muted-foreground/70"></div>
+                <div className="h-2 bg-muted-foreground/50"></div>
+                <div className="h-2 bg-muted-foreground/30"></div>
                 <div className="h-2 bg-muted rounded-b-md"></div>
               </div>
               <div className="mt-4 text-center">

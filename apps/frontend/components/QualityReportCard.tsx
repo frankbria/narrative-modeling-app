@@ -46,15 +46,15 @@ const dimensionIcons: Record<string, React.ReactNode> = {
 }
 
 const getScoreColor = (score: number): string => {
-  if (score >= 0.9) return 'text-green-600'
-  if (score >= 0.7) return 'text-yellow-600'
-  return 'text-red-600'
+  if (score >= 0.9) return 'text-success'
+  if (score >= 0.7) return 'text-warning'
+  return 'text-destructive'
 }
 
 const getScoreIcon = (score: number) => {
-  if (score >= 0.9) return <CheckCircle2 className="h-5 w-5 text-green-600" />
-  if (score >= 0.7) return <AlertCircle className="h-5 w-5 text-yellow-600" />
-  return <XCircle className="h-5 w-5 text-red-600" />
+  if (score >= 0.9) return <CheckCircle2 className="h-5 w-5 text-success" />
+  if (score >= 0.7) return <AlertCircle className="h-5 w-5 text-warning" />
+  return <XCircle className="h-5 w-5 text-destructive" />
 }
 
 export function QualityReportCard({ report }: QualityReportProps) {
@@ -171,7 +171,7 @@ export function QualityReportCard({ report }: QualityReportProps) {
             <ul className="space-y-2">
               {report.recommendations.map((recommendation, index) => (
                 <li key={index} className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                  <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
                   <span className="text-sm">{recommendation}</span>
                 </li>
               ))}

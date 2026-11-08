@@ -74,14 +74,14 @@ export default function ExploreDataPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin mr-2 text-blue-600" />
+        <Loader2 className="h-6 w-6 animate-spin mr-2 text-primary" />
         <span>Loading data...</span>
       </div>
     )
   }
 
   if (error) {
-    return <div className="text-red-500 p-6">{error}</div>
+    return <div className="text-destructive p-6">{error}</div>
   }
 
   return (

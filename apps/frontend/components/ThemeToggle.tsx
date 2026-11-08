@@ -22,13 +22,6 @@ const OPTIONS = [
  *
  * Implements the APG radiogroup keyboard pattern: one tab stop for the group,
  * arrows move and select (selection follows focus), Home/End jump to the ends.
- *
- * The colours here are deliberately fixed rather than semantic, and this is the
- * real reason the file is in `semanticColours.test.ts`'s EXEMPT set. The control
- * lives inside the Sidebar, which is dark in BOTH themes, so it needs a constant
- * white overlay: `bg-card` would follow the global theme and resolve to a light
- * card colour in light mode, or blend into the sidebar in dark. `bg-white/15` is
- * correct here specifically — do not "fix" it back to a token.
  */
 const noSubscription = () => () => {}
 
@@ -50,7 +43,7 @@ export function ThemeToggle() {
     <div
       role="radiogroup"
       aria-label="Colour theme"
-      className="flex items-center gap-1 rounded-md border border-white/10 p-1"
+      className="flex items-center gap-1 rounded-md border border-border p-1"
     >
       {OPTIONS.map(({ value, label, Icon }, index) => {
         const selected = hydrated && theme === value
@@ -91,8 +84,8 @@ export function ThemeToggle() {
             onClick={() => setTheme(value)}
             className={`flex flex-1 items-center justify-center rounded p-1.5 transition-colors ${
               selected
-                ? 'bg-white/15 text-white'
-                : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                ? 'bg-card text-primary shadow-sm'
+                : 'text-muted-foreground hover:bg-card hover:text-foreground'
             }`}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />

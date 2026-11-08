@@ -150,7 +150,7 @@ export function FeedbackWidget() {
         onClick={() => setIsOpen(true)}
         data-testid="feedback-widget-button"
         aria-label="Give feedback"
-        className="fixed bottom-6 right-6 z-50 rounded-full shadow-lg gap-2"
+        className="fixed bottom-20 right-4 z-50 rounded-full shadow-lg gap-2 lg:bottom-6 lg:right-6"
       >
         <MessageSquarePlus className="h-4 w-4" />
         Feedback
@@ -182,7 +182,7 @@ export function FeedbackWidget() {
 
       {status === 'success' ? (
         <div className="p-4 text-center" data-testid="feedback-success">
-          <CheckCircle className="mx-auto h-10 w-10 text-green-600" />
+          <CheckCircle className="mx-auto h-10 w-10 text-success" />
           <p className="mt-2 font-medium text-foreground">Thanks for your feedback!</p>
           <div className="mt-4 flex justify-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={resetForm}>
@@ -208,11 +208,11 @@ export function FeedbackWidget() {
                   aria-label={`Rate ${value} star${value === 1 ? '' : 's'}`}
                   aria-pressed={rating >= value}
                   data-testid={`feedback-star-${value}`}
-                  className="text-gray-300 hover:text-yellow-400"
+                  className="text-muted-foreground hover:text-primary"
                 >
                   <Star
                     className={`h-6 w-6 ${
-                      rating >= value ? 'fill-yellow-400 text-yellow-400' : ''
+                      rating >= value ? 'fill-primary text-primary' : ''
                     }`}
                   />
                 </button>
@@ -262,7 +262,7 @@ export function FeedbackWidget() {
 
           {status === 'error' && errorMessage && (
             <p
-              className="text-sm text-red-600"
+              className="text-sm text-destructive"
               role="alert"
               data-testid="feedback-error"
             >

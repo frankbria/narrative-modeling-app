@@ -13,9 +13,9 @@ export function uploadButtonLabel(state: ButtonState): string {
 }
 
 export function uploadButtonColour(state: ButtonState): string {
-  if (state.success) return 'bg-green-500 cursor-default';
-  if (state.busy) return 'bg-blue-300 cursor-wait';
-  return state.large ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600';
+  if (state.success) return 'bg-success text-success-foreground cursor-default';
+  if (state.busy) return 'bg-primary/50 text-primary-foreground cursor-wait';
+  return state.large ? 'bg-warning text-warning-foreground hover:bg-warning/90' : 'bg-primary text-primary-foreground hover:bg-primary/90';
 }
 
 export default function UploadButton(props: { show: boolean; state: ButtonState; onUpload: VoidFunction }) {
@@ -27,7 +27,7 @@ export default function UploadButton(props: { show: boolean; state: ButtonState;
         onClick={onUpload}
         disabled={state.busy || state.success}
         data-testid="upload-button"
-        className={`px-6 py-3 rounded-md text-white font-semibold transition-all ${uploadButtonColour(state)}`}
+        className={`px-6 py-3 rounded-md font-semibold transition-all ${uploadButtonColour(state)}`}
       >
         {uploadButtonLabel(state)}
       </button>

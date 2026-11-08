@@ -97,13 +97,13 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
   return (
     <div
       className={`bg-card rounded-lg shadow-md border-2 min-w-[200px] ${
-        selected ? 'border-blue-500' : 'border-border'
+        selected ? 'border-primary' : 'border-border'
       }`}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="w-3 h-3 !bg-gray-400"
+        className="w-3 h-3 !bg-muted-foreground"
       />
       
       <div className="p-3">
@@ -146,7 +146,7 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
       <Handle
         type="source"
         position={Position.Bottom}
-        className="w-3 h-3 !bg-gray-400"
+        className="w-3 h-3 !bg-muted-foreground"
       />
     </div>
   );

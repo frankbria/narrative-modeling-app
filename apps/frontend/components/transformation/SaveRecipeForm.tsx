@@ -6,7 +6,7 @@ interface SaveRecipeFormProps {
   onSave(name: string, description: string, isPublic: boolean): void;
 }
 
-const FIELD = 'w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
+const FIELD = 'w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring';
 
 /** Name the current pipeline and save it as a recipe, for this account or for everyone. */
 export default function SaveRecipeForm(props: SaveRecipeFormProps) {
@@ -60,7 +60,7 @@ export default function SaveRecipeForm(props: SaveRecipeFormProps) {
         <button
           onClick={save}
           disabled={incomplete}
-          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Save Recipe
         </button>

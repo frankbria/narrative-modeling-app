@@ -71,9 +71,9 @@ interface GroupStyle {
 }
 
 const GROUPS: GroupStyle[] = [
-  { type: 'numeric', title: 'Numeric', titleClassName: 'text-green-700 dark:text-green-300', showOrder: true },
-  { type: 'categorical', title: 'Categorical', titleClassName: 'text-blue-700 dark:text-blue-300', showOrder: false },
-  { type: 'datetime', title: 'DateTime', titleClassName: 'text-purple-700 dark:text-purple-300', showOrder: false },
+  { type: 'numeric', title: 'Numeric', titleClassName: 'text-success', showOrder: true },
+  { type: 'categorical', title: 'Categorical', titleClassName: 'text-primary', showOrder: false },
+  { type: 'datetime', title: 'DateTime', titleClassName: 'text-accent-foreground', showOrder: false },
 ]
 
 interface ColumnPickerProps {

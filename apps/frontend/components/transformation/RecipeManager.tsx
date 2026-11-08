@@ -14,7 +14,7 @@ interface RecipeManagerProps {
   onLoad(recipe: SavedRecipe): void;
 }
 
-const ACTIVE_TAB = 'text-blue-600 border-b-2 border-blue-600';
+const ACTIVE_TAB = 'text-primary border-b-2 border-primary';
 const INACTIVE_TAB = 'text-muted-foreground hover:text-foreground';
 const TAB_ICON = 'w-4 h-4 inline mr-2';
 

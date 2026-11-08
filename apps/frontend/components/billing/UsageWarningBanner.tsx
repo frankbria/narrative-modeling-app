@@ -61,8 +61,8 @@ export function UsageWarningBanner() {
 
   return (
     <div role="status" data-testid="usage-warning-banner" className="mx-auto max-w-5xl mt-3 px-4">
-      <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
-        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+      <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
         <p className="flex-1">
           You have used {items.join(' and ')}.{' '}
           <Link href="/settings/billing" className="font-medium underline">
@@ -73,7 +73,7 @@ export function UsageWarningBanner() {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss usage warning"
-          className="shrink-0 text-amber-600 hover:text-amber-900"
+          className="shrink-0 text-warning hover:text-warning/80"
         >
           <X className="h-4 w-4" />
         </button>

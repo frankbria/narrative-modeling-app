@@ -528,7 +528,7 @@ describe('TransformationChainView', () => {
 
       const cards = container.querySelectorAll('[role="listitem"]');
       cards.forEach((card) => {
-        expect(card).toHaveClass('focus:ring-2', 'focus:ring-blue-500');
+        expect(card).toHaveClass('focus:ring-2', 'focus:ring-ring');
       });
     });
   });

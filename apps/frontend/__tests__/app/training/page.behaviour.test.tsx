@@ -146,10 +146,10 @@ describe('TrainingJobsPage behaviour', () => {
     render(<TrainingJobsPage />);
     await screen.findByText('tenure');
     const badge = (text: string) => screen.getAllByText(text).find((el) => el.className.includes('rounded-full'))!;
-    expect(badge('completed')).toHaveClass('bg-green-600');
+    expect(badge('completed')).toHaveClass('bg-success');
     expect(badge('failed')).toHaveClass('bg-destructive');
     expect(badge('cancelled')).toHaveClass('bg-secondary');
-    expect(badge('pending')).not.toHaveClass('bg-primary', 'bg-green-600', 'bg-destructive', 'bg-secondary');
+    expect(badge('pending')).not.toHaveClass('bg-primary', 'bg-success', 'bg-destructive', 'bg-secondary');
   });
 
   it('refreshes the in-flight list every ten seconds', async () => {

@@ -81,7 +81,7 @@ function FilterSelect(props: FilterSelectProps) {
       aria-label="Filter by status"
       value={value}
       onChange={handleChange}
-      className="p-2 text-sm border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      className="p-2 text-sm border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-primary"
     >
       <option value="all">All</option>
       <option value="completed">Completed</option>

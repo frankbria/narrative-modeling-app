@@ -51,27 +51,14 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
   const getStepTypeColor = (stepType: string) => {
     switch (stepType) {
-      case 'welcome': return 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200';
-      case 'upload_data': return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200';
-      case 'explore_data': return 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200';
-      case 'train_model': return 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200';
-      case 'make_predictions': return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200';
-      case 'export_model': return 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200';
-      case 'completion': return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200';
+      case 'welcome': return 'bg-primary/10 text-primary';
+      case 'upload_data': return 'bg-success/10 text-success';
+      case 'explore_data': return 'bg-primary/10 text-primary';
+      case 'train_model': return 'bg-warning/10 text-warning';
+      case 'make_predictions': return 'bg-primary/10 text-primary';
+      case 'export_model': return 'bg-primary/10 text-primary';
+      case 'completion': return 'bg-warning/10 text-warning';
       default: return 'bg-muted text-foreground';
-    }
-  };
-
-  const getStepTypeIcon = (stepType: string) => {
-    switch (stepType) {
-      case 'welcome': return '👋';
-      case 'upload_data': return '📁';
-      case 'explore_data': return '🔍';
-      case 'train_model': return '🤖';
-      case 'make_predictions': return '🎯';
-      case 'export_model': return '📦';
-      case 'completion': return '🎉';
-      default: return '📋';
     }
   };
 
@@ -87,11 +74,10 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             {/* Welcome-video placeholder removed (#281): no player or video
                 content existed, so the "Watch Introduction" button was inert. */}
             <div className="prose dark:prose-invert max-w-none">
-              <h3>Welcome to the Platform! 🚀</h3>
+              <h3>Before you start</h3>
               <p>
-                You&apos;re about to discover how easy it is to build machine learning models 
-                without any coding experience. Our AI-powered platform will guide you 
-                through every step of the process.
+                This walkthrough takes one spreadsheet from upload to a deployed model.
+                Each step explains what it does to your data before it does it.
               </p>
               
               <h4>What makes us different:</h4>
@@ -179,7 +165,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         return (
           <div className="space-y-4">
             <div className="prose dark:prose-invert max-w-none">
-              <h3>Understand Your Data 📊</h3>
+              <h3>Understand Your Data</h3>
               <p>
                 Data exploration is crucial for building great models. Our platform 
                 automatically analyzes your data and provides insights.
@@ -190,7 +176,6 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <div className="text-2xl mb-2">📈</div>
                     <h4 className="font-medium">Statistics</h4>
                     <p className="text-sm text-muted-foreground">
                       View summary statistics for all columns
@@ -202,7 +187,6 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <div className="text-2xl mb-2">🔍</div>
                     <h4 className="font-medium">Quality Check</h4>
                     <p className="text-sm text-muted-foreground">
                       Identify missing values and outliers
@@ -214,7 +198,6 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <div className="text-2xl mb-2">📊</div>
                     <h4 className="font-medium">Visualizations</h4>
                     <p className="text-sm text-muted-foreground">
                       Create charts to understand patterns
@@ -237,7 +220,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         return (
           <div className="space-y-4">
             <div className="prose dark:prose-invert max-w-none">
-              <h3>Train Your Model 🤖</h3>
+              <h3>Train Your Model</h3>
               <p>
                 This is where the magic happens! Our AutoML technology will:
               </p>
@@ -270,16 +253,16 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         return (
           <div className="space-y-4">
             <div className="prose dark:prose-invert max-w-none">
-              <h3>Make Predictions 🎯</h3>
+              <h3>Make Predictions</h3>
               <p>
                 Now that your model is trained, it&apos;s time to put it to work! 
                 You can make predictions on new data and see your model in action.
               </p>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-lg">
-              <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-2">What you&apos;ll see:</h4>
-              <ul className="text-blue-800 dark:text-blue-200 text-sm space-y-1">
+            <div className="bg-primary/10 p-4 rounded-lg">
+              <h4 className="font-medium text-primary mb-2">What you&apos;ll see:</h4>
+              <ul className="text-primary text-sm space-y-1">
                 <li>• Prediction values for your inputs</li>
                 <li>• Confidence scores showing model certainty</li>
                 <li>• Feature importance rankings</li>
@@ -300,7 +283,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         return (
           <div className="space-y-4">
             <div className="prose dark:prose-invert max-w-none">
-              <h3>Export & Deploy 📦</h3>
+              <h3>Export & Deploy</h3>
               <p>
                 Ready to use your model in production? Export it in multiple 
                 formats for different use cases.
@@ -310,7 +293,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
                 <CardContent className="pt-6">
-                  <h4 className="font-medium mb-2">🐍 Python Code</h4>
+                  <h4 className="font-medium mb-2">Python Code</h4>
                   <p className="text-sm text-muted-foreground mb-3">
                     Standalone Python class for integration
                   </p>
@@ -322,7 +305,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
               <Card>
                 <CardContent className="pt-6">
-                  <h4 className="font-medium mb-2">🐳 Docker Container</h4>
+                  <h4 className="font-medium mb-2">Docker Container</h4>
                   <p className="text-sm text-muted-foreground mb-3">
                     Ready-to-deploy API container
                   </p>
@@ -349,7 +332,6 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="text-2xl">{getStepTypeIcon(step.step_type)}</div>
             <div>
               <CardTitle className="flex items-center gap-2">
                 {step.title}
@@ -370,10 +352,10 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         </div>
 
         {step.status === 'completed' && (
-          <Alert className="border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/40">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800 dark:text-green-200">
-              ✅ Step completed successfully!
+          <Alert className="border-success/30 bg-success/10">
+            <CheckCircle className="h-4 w-4 text-success" />
+            <AlertDescription className="text-success">
+              Step completed successfully!
             </AlertDescription>
           </Alert>
         )}
@@ -397,7 +379,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <ol className="space-y-2">
               {step.instructions.map((instruction, index) => (
                 <li key={index} className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded-full flex items-center justify-center text-sm font-medium">
+                  <span className="flex-shrink-0 w-6 h-6 bg-primary/10 text-primary rounded-full flex items-center justify-center text-sm font-medium">
                     {index + 1}
                   </span>
                   <span>{instruction}</span>
@@ -411,7 +393,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <ul className="space-y-2">
               {step.completion_criteria.map((criteria, index) => (
                 <li key={index} className="flex items-start gap-2">
-                  <Target className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                  <Target className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                   <span>{criteria}</span>
                 </li>
               ))}
@@ -490,7 +472,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
           {step.status === 'completed' && (
             <Button variant="outline" className="flex-1" disabled>
-              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+              <CheckCircle className="mr-2 h-4 w-4 text-success" />
               Completed
             </Button>
           )}

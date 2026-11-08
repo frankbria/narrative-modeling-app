@@ -156,12 +156,12 @@ export function AIChat() {
       >
         {isPageLoading ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground text-center">Loading dataset analysis...</p>
           </div>
         ) : isContextLoading ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground text-center">Analyzing your dataset...</p>
           </div>
         ) : (
@@ -174,7 +174,7 @@ export function AIChat() {
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${
                     message.role === 'user'
-                      ? 'bg-blue-500 text-white'
+                      ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-foreground'
                   }`}
                 >
@@ -188,9 +188,9 @@ export function AIChat() {
                 <div className="max-w-[80%] rounded-lg p-3 bg-muted text-foreground">
                   <div className="flex items-center space-x-2">
                     <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                     <span className="text-sm text-muted-foreground">Thinking...</span>
                   </div>
@@ -209,12 +209,12 @@ export function AIChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
-            className="flex-1 p-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-muted text-foreground placeholder-gray-500"
+            className="flex-1 p-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring bg-muted text-foreground placeholder-muted-foreground"
             disabled={isContextLoading || isSubmitting || isPageLoading}
           />
           <button
             type="submit"
-            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isContextLoading || isSubmitting || isPageLoading}
           >
             {isSubmitting ? (

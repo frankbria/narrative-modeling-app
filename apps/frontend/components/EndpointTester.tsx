@@ -97,7 +97,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="sk_live_..."
-          className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-ring"
         />
       </div>
 
@@ -114,7 +114,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
                   data-feature={feature.name}
                   value={values[feature.name] ?? ''}
                   onChange={(e) => setValues((p) => ({ ...p, [feature.name]: e.target.value }))}
-                  className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-ring"
                 >
                   <option value="">—</option>
                   {feature.options.map((opt) => (
@@ -130,7 +130,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
                   type={feature.type === 'number' ? 'number' : 'text'}
                   value={values[feature.name] ?? ''}
                   onChange={(e) => setValues((p) => ({ ...p, [feature.name]: e.target.value }))}
-                  className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 border border-border rounded-lg focus:ring-2 focus:ring-ring"
                 />
               )}
             </div>
@@ -143,7 +143,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
         onClick={runTest}
         disabled={loading}
         data-testid="run-endpoint-test"
-        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
       >
         <Play className="w-4 h-4" />
         {loading ? 'Sending...' : 'Send Test Request'}
@@ -152,7 +152,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       {error && (
         <div
           data-testid="endpoint-tester-error"
-          className="mt-4 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-sm text-red-700 dark:text-red-300"
+          className="mt-4 flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive"
         >
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
@@ -162,9 +162,9 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
       {result && (
         <div
           data-testid="endpoint-tester-result"
-          className="mt-4 p-3 bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900 rounded-lg"
+          className="mt-4 p-3 bg-success/10 border border-success/30 rounded-lg"
         >
-          <div className="flex items-center gap-2 font-semibold text-green-700 dark:text-green-300">
+          <div className="flex items-center gap-2 font-semibold text-success">
             <CheckCircle className="w-4 h-4" />
             Prediction
           </div>

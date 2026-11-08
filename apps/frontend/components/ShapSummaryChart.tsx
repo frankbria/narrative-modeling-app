@@ -94,7 +94,7 @@ export function ShapSummaryChart({
           </p>
         </div>
         {explainerType && (
-          <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">
+          <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">
             {explainerType} explainer
           </span>
         )}
@@ -103,7 +103,7 @@ export function ShapSummaryChart({
       {plainLanguage && (
         <p
           data-testid="shap-plain-language"
-          className="mb-3 text-sm text-foreground bg-purple-50 dark:bg-purple-950/40 border border-purple-100 rounded-md px-3 py-2"
+          className="mb-3 text-sm text-foreground bg-primary/10 border border-primary/30 rounded-md px-3 py-2"
         >
           {plainLanguage}
         </p>
@@ -124,7 +124,7 @@ export function ShapSummaryChart({
             tick={{ fontSize: 12 }}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="importance" fill="#8B5CF6" />
+          <Bar dataKey="importance" fill="#14232B" />
         </BarChart>
       </ResponsiveContainer>
     </div>

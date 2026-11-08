@@ -33,7 +33,7 @@ describe('robots.txt', () => {
     process.env.NEXTAUTH_URL = 'https://www.sheetpredict.app'
     const result = robots()
     const [rule] = rulesOf(result)
-    // A crawler that renders / must also fetch /_next/static, /logo.svg and /og-image.png;
+    // A crawler that renders / must also fetch /_next/static and /og-image.png;
     // the app pages it could reach only redirect to sign-in.
     expect(rule.allow).toBe('/')
     expect(rule.disallow).toEqual(['/api/', '/auth/'])

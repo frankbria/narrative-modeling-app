@@ -35,7 +35,7 @@ describe('StageNavigation', () => {
 
     const button = screen.getByTestId('continue-button');
     expect(button).toBeDisabled();
-    expect(screen.getByTestId('continue-hint')).toHaveTextContent(/complete this step/i);
+    expect(screen.getByTestId('continue-hint')).toHaveTextContent(/finish this step to unlock/i);
     expect(button).toHaveTextContent(/Continue to Feature Engineering/i);
   });
 

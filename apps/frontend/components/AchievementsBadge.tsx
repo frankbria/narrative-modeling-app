@@ -40,29 +40,29 @@ export function AchievementsBadge({
     // Specific achievement icons
     switch (achievementId) {
       case 'first_upload':
-        return <Database className={`${iconSize} text-blue-500`} />;
+        return <Database className={`${iconSize} text-primary`} />;
       case 'first_model':
-        return <Brain className={`${iconSize} text-purple-500`} />;
+        return <Brain className={`${iconSize} text-primary`} />;
       case 'onboarding_complete':
-        return <Crown className={`${iconSize} text-yellow-500`} />;
+        return <Crown className={`${iconSize} text-warning`} />;
       case 'data_explorer':
-        return <Target className={`${iconSize} text-green-500`} />;
+        return <Target className={`${iconSize} text-success`} />;
       case 'prediction_master':
-        return <Zap className={`${iconSize} text-orange-500`} />;
+        return <Zap className={`${iconSize} text-warning`} />;
       case 'model_export':
-        return <Rocket className={`${iconSize} text-red-500`} />;
+        return <Rocket className={`${iconSize} text-primary`} />;
       default:
         // Default icons by type
         return type === 'milestone' 
-          ? <Trophy className={`${iconSize} text-yellow-500`} />
-          : <Star className={`${iconSize} text-blue-500`} />;
+          ? <Trophy className={`${iconSize} text-warning`} />
+          : <Star className={`${iconSize} text-primary`} />;
     }
   };
 
   const getAchievementColor = (type: string) => {
     return type === 'milestone'
-      ? 'bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-800'
-      : 'bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-800';
+      ? 'bg-gradient-to-r from-primary/20 to-primary/10 text-primary border-primary'
+      : 'bg-gradient-to-r from-primary/10 to-primary/5 text-primary border-primary/30';
   };
 
   const getSizeClasses = () => {
@@ -107,8 +107,8 @@ export function AchievementsBadge({
           <span className={`
             ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold
             ${achievement.type === 'milestone' 
-              ? 'bg-yellow-200 text-yellow-800 dark:text-yellow-200' 
-              : 'bg-blue-200 text-blue-800 dark:text-blue-200'
+              ? 'bg-primary text-primary-foreground' 
+              : 'bg-primary/20 text-primary'
             }
           `}>
             +{achievement.points}
@@ -119,7 +119,7 @@ export function AchievementsBadge({
       {/* Tooltip */}
       <div className="
         absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2
-        bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap
+        bg-foreground text-background text-xs rounded-lg px-3 py-2 whitespace-nowrap
         opacity-0 group-hover:opacity-100 transition-opacity duration-200
         pointer-events-none z-10
         before:content-[''] before:absolute before:top-full before:left-1/2 
@@ -127,12 +127,12 @@ export function AchievementsBadge({
         before:border-transparent before:border-t-gray-900
       ">
         <div className="font-medium">{achievement.title}</div>
-        <div className="text-gray-300 mt-1">{achievement.description}</div>
-        <div className="text-gray-400 mt-1 text-xs">
+        <div className="text-background/80 mt-1">{achievement.description}</div>
+        <div className="text-background/70 mt-1 text-xs">
           Earned {formatEarnedDate(achievement.earned_at)}
         </div>
         {showPoints && (
-          <div className="text-yellow-300 mt-1 text-xs font-medium">
+          <div className="text-background mt-1 text-xs font-medium">
             {achievement.points} points
           </div>
         )}
