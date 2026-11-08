@@ -575,12 +575,12 @@ export default function TransformationPipeline(props: TransformationPipelineProp
   }, [history, restoreSnapshot]);
 
   return (
-    <div className="flex h-full">
+    <div className="@container flex h-full min-w-0">
       {/* Sidebar */}
       <TransformationSidebar types={transformationTypes} onAdd={addTransformation} />
 
       {/* Main Canvas */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <PipelineToolbar
           busy={loading || nodes.length === 0}
           onPreview={handlePreviewTransformation}
@@ -598,8 +598,8 @@ export default function TransformationPipeline(props: TransformationPipelineProp
         <ActionStatus error={error} notice={notice} />
 
         {/* Canvas/Chain and Preview */}
-        <div className="flex-1 flex">
-          <div className="flex-1 relative">
+        <div className="flex min-w-0 flex-1 flex-col @3xl:flex-row">
+          <div className="relative min-h-64 min-w-0 flex-1">
             {viewMode === 'chain' ? (
               <div className="h-full overflow-y-auto p-4">
                 <TransformationChainView

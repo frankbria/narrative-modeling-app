@@ -13,7 +13,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
 
   if (loading) {
     return (
-      <div className="w-96 bg-card border-l flex items-center justify-center">
+      <div className="w-full @3xl:w-96 bg-card border-t @3xl:border-t-0 @3xl:border-l flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
           <p className="text-sm text-muted-foreground">Loading preview...</p>
@@ -24,7 +24,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
 
   if (!preview) {
     return (
-      <div className="w-96 bg-card border-l flex items-center justify-center">
+      <div className="w-full @3xl:w-96 bg-card border-t @3xl:border-t-0 @3xl:border-l flex items-center justify-center">
         <div className="text-center text-muted-foreground">
           <Eye className="w-12 h-12 mx-auto mb-2 opacity-20" />
           <p className="text-sm">No preview available</p>
@@ -39,7 +39,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
   const rows = data?.data || [];
 
   return (
-    <div className="w-96 bg-card border-l flex flex-col">
+    <div className="flex max-h-[60vh] w-full min-w-0 flex-col border-t bg-card @3xl:w-96 @3xl:border-l @3xl:border-t-0" data-testid="preview-panel">
       <div className="p-4 border-b">
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold">Preview</h3>
@@ -74,7 +74,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
         )}
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" data-testid="preview-scroll">
         {columns.length > 0 ? (
           <table className="w-full text-xs">
             <thead className="bg-muted sticky top-0">

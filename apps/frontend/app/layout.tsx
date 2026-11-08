@@ -79,11 +79,13 @@ export default async function RootLayout({
                   <div className="flex flex-1">
                     {/* Sidebar/chat are `fixed`; reserve their gutters only at lg+
                         where they're pinned. Below lg the sidebar is a drawer and
-                        content is full-width (issue #282). */}
+                        content is full-width (issue #282). min-w-0: as a flex item its
+                        default min-width:auto grew to fit any wide table, scroll box
+                        or not, and pushed the whole page sideways on a phone (#1176). */}
                     <div
                       id="main-content"
                       tabIndex={-1}
-                      className="flex-1 p-4 bg-background lg:mr-80 focus:outline-none"
+                      className="min-w-0 flex-1 p-4 bg-background lg:mr-80 focus:outline-none"
                     >
                       {children}
                     </div>

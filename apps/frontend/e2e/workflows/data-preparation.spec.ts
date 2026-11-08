@@ -165,4 +165,29 @@ test.describe('Data Preparation stage views', () => {
       await expect(authenticatedPage.getByText(/No transformations added yet/i)).toBeVisible();
     });
   }
+
+  // #1169 / #1176: a wide preview table scrolls inside its own box; the page body
+  // never scrolls sideways (jsdom lays nothing out, so only a browser can see this).
+  test('neither Prepare at desktop width nor Explore on a phone scrolls the page sideways @smoke', async ({ page }) => {
+    // The elements sticking out past the viewport, outermost first, so a failure names its cause.
+    const sideways = () =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll('body *'))
+          .filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1 && !el.closest('[class*="overflow-x-auto"],[class*="overflow-auto"]'))
+          .filter((el, _, all) => !all.some((other) => other !== el && el.contains(other)))
+          .slice(0, 8)
+          .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 80)} right=${Math.round(el.getBoundingClientRect().right)}`),
+      );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openPrepare(page, datasetId);
+    await expect(page.getByRole('table').first()).toBeVisible({ timeout: 15000 });
+    expect(await sideways()).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/explore/${datasetId}`);
+    await expect(page.getByRole('table').first()).toBeVisible({ timeout: 30000 });
+    expect(await sideways()).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
 });

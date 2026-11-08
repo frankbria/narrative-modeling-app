@@ -145,10 +145,10 @@ interface PreviewCardProps extends PagerProps {
 function PreviewCard(props: PreviewCardProps) {
   const { preview, page, onPage, onExport } = props
   return (
-    <Card>
+    <Card className="min-w-0">
       <PreviewHeader preview={preview} onExport={onExport} />
       <CardContent>
-        <div className="rounded-md border">
+        <div className="max-h-[60vh] overflow-auto rounded-md border" data-testid="preview-scroll">
           <Table>
             <TableHeader>
               <TableRow>

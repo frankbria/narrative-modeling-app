@@ -24,7 +24,7 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
   const { busy, onPreview, onApply, viewMode, onViewChange } = props;
   const { onRecipes, canUndo, canRedo, onUndo, onRedo, onExport } = props;
   return (
-    <div className="bg-card border-b p-4 flex items-center justify-between">
+    <div className="bg-card border-b p-4 flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-4">
         <button
           onClick={onPreview}
@@ -46,17 +46,21 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
 
       <div className="flex items-center gap-2">
         <ViewToggle viewMode={viewMode} onViewChange={onViewChange} />
-        <button onClick={onRecipes} className="p-2 hover:bg-muted rounded" title="Manage Recipes">
+        <button onClick={onRecipes} className="flex items-center gap-1 p-2 hover:bg-muted rounded" title="Manage Recipes" aria-label="Manage Recipes">
           <Save className="w-5 h-5" />
+          <span className="hidden text-sm @3xl:inline">Recipes</span>
         </button>
-        <button onClick={onUndo} disabled={!canUndo} className="p-2 hover:bg-muted rounded disabled:opacity-50" title="Undo">
+        <button onClick={onUndo} disabled={!canUndo} className="flex items-center gap-1 p-2 hover:bg-muted rounded disabled:opacity-50" title="Undo" aria-label="Undo">
           <Undo className="w-5 h-5" />
+          <span className="hidden text-sm @3xl:inline">Undo</span>
         </button>
-        <button onClick={onRedo} disabled={!canRedo} className="p-2 hover:bg-muted rounded disabled:opacity-50" title="Redo">
+        <button onClick={onRedo} disabled={!canRedo} className="flex items-center gap-1 p-2 hover:bg-muted rounded disabled:opacity-50" title="Redo" aria-label="Redo">
           <Redo className="w-5 h-5" />
+          <span className="hidden text-sm @3xl:inline">Redo</span>
         </button>
-        <button onClick={onExport} className="p-2 hover:bg-muted rounded" title="Export as Code">
+        <button onClick={onExport} className="flex items-center gap-1 p-2 hover:bg-muted rounded" title="Export as Code" aria-label="Export as Code">
           <Code className="w-5 h-5" />
+          <span className="hidden text-sm @3xl:inline">Export</span>
         </button>
       </div>
     </div>
