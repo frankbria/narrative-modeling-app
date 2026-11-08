@@ -182,10 +182,12 @@ test.describe('Data Preparation stage views', () => {
     await openPrepare(page, datasetId);
     await expect(page.getByRole('table').first()).toBeVisible({ timeout: 15000 });
     expect(await sideways()).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/explore/${datasetId}`);
     await expect(page.getByRole('table').first()).toBeVisible({ timeout: 30000 });
     expect(await sideways()).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 });

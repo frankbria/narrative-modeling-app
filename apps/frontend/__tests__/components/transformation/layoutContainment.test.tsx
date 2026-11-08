@@ -5,8 +5,8 @@ import PipelineToolbar from '@/components/transformation/PipelineToolbar';
 import { DataPreviewTable } from '@/components/DataPreviewTable';
 
 // jsdom has no layout engine: these pin the classes that contain the overflow.
-// Real-browser check: e2e textLayoutProblems on /prepare (1440px) and /explore/{id} (390px)
-// must report no horizontal page scroll, and Continue must sit within the first screens.
+// The real-browser check is e2e/workflows/data-preparation.spec.ts: /prepare at 1440px and
+// /explore/{id} at 390px must not scroll the page sideways.
 const rows = Array.from({ length: 100 }, (_, i) => [i, 'x']);
 const preview = { before: { columns: ['a', 'b'], data: rows }, after: { columns: ['a', 'b'], data: rows } };
 
