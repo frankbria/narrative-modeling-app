@@ -395,6 +395,11 @@ jobs:
             --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 \
             -t narrative-frontend:ci \
             apps/frontend
+      - name: The image serves no source map
+        # Browser maps go to Sentry or nowhere (#1158); anything under .next/static is public.
+        run: |
+          maps=$(docker run --rm --entrypoint sh narrative-frontend:ci -c 'find /app/.next/static -name "*.map"')
+          if [ -n "$maps" ]; then echo "::error::source maps in the served static tree:"; echo "$maps"; exit 1; fi
 
   shell-lint:
     name: Shell Lint (shellcheck)

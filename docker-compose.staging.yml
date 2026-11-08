@@ -172,6 +172,14 @@ services:
         NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:?}
         # Same tag as the backend's ENVIRONMENT, or staging errors read as production.
         NEXT_PUBLIC_SENTRY_ENVIRONMENT: staging
+        # Source-map upload (#1158): optional; with no token the build uploads nothing and
+        # emits no maps. The release matches the backend's APP_VERSION.
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
+        SENTRY_RELEASE: ${APP_VERSION:-staging}
+      # A build secret, never a build arg: it stays out of the image's layers and history.
+      secrets:
+        - sentry_auth_token
     container_name: narrative-staging-frontend
     restart: unless-stopped
     ports:
@@ -261,3 +269,9 @@ networks:
   narrative-network:
     driver: bridge
     name: narrative-staging-network
+
+# The Sentry token for the frontend build's source-map upload (#1158), read from a file on
+# the box so it is never in .env.staging or an image layer. Unset: /dev/null, no upload.
+secrets:
+  sentry_auth_token:
+    file: ${SENTRY_AUTH_TOKEN_FILE:-/dev/null}
