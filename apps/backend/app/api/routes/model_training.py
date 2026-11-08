@@ -1371,17 +1371,23 @@ def _best_comparison_score(job: TrainingJob) -> float | None:
     return max(valid_scores) if valid_scores else None
 
 
-def _jobs_query(user_id: str, status: str | None) -> dict[str, Any]:
-    """The Mongo filter for the jobs list: the caller's jobs, optionally by status."""
-    query: dict[str, Any] = {"user_id": user_id}
-    if status is None:
-        return query
+def _parse_statuses(status: str) -> list[JobStatus]:
+    """A comma-separated status filter as JobStatus values; 422 when invalid or empty."""
     try:
         statuses = [JobStatus(s.strip()) for s in status.split(",") if s.strip()]
     except ValueError:
         raise HTTPException(status_code=422, detail=f"Invalid status filter: {status}")
     if not statuses:
         raise HTTPException(status_code=422, detail="Status filter must not be empty")
+    return statuses
+
+
+def _jobs_query(user_id: str, status: str | None) -> dict[str, Any]:
+    """The Mongo filter for the jobs list: the caller's jobs, optionally by status."""
+    query: dict[str, Any] = {"user_id": user_id}
+    if status is None:
+        return query
+    statuses = _parse_statuses(status)
     query["status"] = statuses[0] if len(statuses) == 1 else {"$in": statuses}
     return query
 
