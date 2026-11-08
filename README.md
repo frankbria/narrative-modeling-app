@@ -80,11 +80,11 @@ recipe and run it on the next file.
 
 ### 3 · Choose your features
 
-Pick the columns the model may learn from. Identifiers, dates and empty columns are detected and set
+Pick the column to predict, then the columns the model may learn from. Identifiers, dates and empty columns are detected and set
 aside for you, so an ID column can't quietly leak the answer. If you want, switch on interaction
 features and let the model try combinations of columns.
 
-<img src="docs/product/readme/features.gif" alt="The feature selection page with every usable column listed and the interaction-features switch" width="100%">
+<img src="docs/product/readme/features.gif" alt="Choosing the column to predict, then the columns the model may learn from, with the interaction-features switch" width="100%">
 
 ### 4 · Train with AutoML
 
@@ -98,12 +98,14 @@ cross-validated and hold-out scores, plus a written explanation of the choice.
 
 ### 5 · Evaluate and explain
 
-See how the model really performs: accuracy, precision, recall, F1, ROC AUC and a confusion matrix for
-classifiers, and error metrics for regression, all compared against a baseline. A model report card
+The page opens on a plain verdict: how often the model is right on rows it never saw, whether it beats
+always guessing the most common answer, and which columns drive it. Below that come accuracy, precision,
+recall, F1 and ROC AUC as percentages with a line on what each means, and a confusion matrix with a
+reading of what it missed. Regression gets R² and error metrics. A model report card
 spells out strengths, cautions and next steps. Feature importance and SHAP impact show what drives the
 predictions, in a form you can put in front of a reviewer.
 
-<img src="docs/product/readme/evaluate.gif" alt="The evaluation dashboard: metrics, the model report card, feature importance and SHAP impact" width="100%">
+<img src="docs/product/readme/evaluate.gif" alt="The evaluation verdict: 83% of predictions correct, the baseline it beats and its main drivers, then plain-language metrics and the model report card" width="100%">
 
 ### 6 · Predict
 
@@ -111,7 +113,7 @@ Score a single record from a form, or upload a CSV for batch predictions. Each r
 confidence and the factors behind it. Inputs the model has never seen, or that are missing, are flagged
 rather than silently guessed.
 
-<img src="docs/product/readme/predict.gif" alt="Entering one customer's details and getting a churn prediction with its confidence and drivers" width="100%">
+<img src="docs/product/readme/predict.gif" alt="Entering one customer's details and getting a churn prediction with its confidence and the drivers in plain words, such as contract_type is Month-to-month" width="100%">
 
 ### 7 · Deploy
 
