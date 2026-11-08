@@ -1,5 +1,6 @@
 'use client';
 
+import { TrainingScoreTable } from './TrainingScoreTable';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -249,37 +250,7 @@ export function TrainingProgress({
       )}
 
       {!compact && status && status.model_comparison.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground border-b">
-                <th className="py-2 pr-4">Algorithm</th>
-                <th className="py-2 pr-4">CV Score</th>
-                <th className="py-2">Test Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {status.model_comparison.map((row) => (
-                <tr
-                  key={row.algorithm}
-                  className={
-                    row.algorithm === status.best_algorithm
-                      ? 'bg-warning/10 font-medium'
-                      : ''
-                  }
-                >
-                  <td className="py-2 pr-4">{row.algorithm}</td>
-                  <td className="py-2 pr-4">
-                    {row.cv_score != null ? row.cv_score.toFixed(3) : '—'}
-                  </td>
-                  <td className="py-2">
-                    {row.test_score != null ? row.test_score.toFixed(3) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TrainingScoreTable status={status} />
       )}
     </div>
   );

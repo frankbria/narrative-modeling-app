@@ -45,7 +45,8 @@ def _candidate_transformation(issue: "QualityIssue") -> TransformationType | Non
     if issue.dimension == QualityDimension.COMPLETENESS:
         return TransformationType.FILL_MISSING
     if issue.dimension == QualityDimension.UNIQUENESS:
-        return TransformationType.REMOVE_DUPLICATES
+        # Low cardinality is a property of the column, not a duplicate row (#1172).
+        return TransformationType.REMOVE_DUPLICATES if "duplicate" in desc else None
     if issue.dimension == QualityDimension.VALIDITY:
         if "outlier" in desc:
             return TransformationType.OUTLIER_REMOVAL

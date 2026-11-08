@@ -414,3 +414,24 @@ class TestRecommendationsAreExecutable:
                     produced.add(rec)
         assert produced
         assert produced <= set(TransformationEngine.TRANSFORMATION_CLASSES)
+
+
+class TestRemoveDuplicatesOnlyWhenItApplies:
+    """#1172: a low-cardinality column is not a duplicate-row problem."""
+
+    async def test_low_cardinality_columns_get_no_remove_duplicates(self, quality_service):
+        df = pd.DataFrame({
+            "region": ["north", "south"] * 600,
+            "tier": ["a", "b", "c"] * 400,
+        })
+        report = await quality_service.assess_quality(df, {"region": "string", "tier": "string"})
+
+        assert any("Low cardinality" in i.description for i in report.warnings + report.critical_issues)
+        assert "remove_duplicates" not in {r.transformation_type for r in report.actionable_recommendations}
+
+    async def test_duplicate_identifiers_still_get_remove_duplicates(self, quality_service):
+        df = pd.DataFrame({"customer_id": [1, 1, 2, 2, 3, 3] * 5, "spend": range(30)})
+        report = await quality_service.assess_quality(df, {"customer_id": "integer", "spend": "integer"})
+
+        rec = next(r for r in report.actionable_recommendations if r.transformation_type == "remove_duplicates")
+        assert rec.affected_columns == ["customer_id"]
