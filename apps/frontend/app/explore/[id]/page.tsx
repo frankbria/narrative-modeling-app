@@ -139,7 +139,7 @@ function ProfilingActions(props: {
         Export Data
       </Button>
       {dataset.is_processed && !profiled && (
-        <Button onClick={onComplete}>
+        <Button onClick={onComplete} className="h-auto whitespace-normal text-left">
           Complete & Continue to Data Preparation
         </Button>
       )}

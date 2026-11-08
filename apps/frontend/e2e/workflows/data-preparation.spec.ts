@@ -174,7 +174,8 @@ test.describe('Data Preparation stage views', () => {
       page.evaluate(() =>
         Array.from(document.querySelectorAll('body *'))
           .filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1 && !el.closest('[class*="overflow-x-auto"],[class*="overflow-auto"]'))
-          .slice(0, 5)
+          .filter((el, _, all) => !all.some((other) => other !== el && el.contains(other)))
+          .slice(0, 8)
           .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 80)} right=${Math.round(el.getBoundingClientRect().right)}`),
       );
     await page.setViewportSize({ width: 1440, height: 900 });
