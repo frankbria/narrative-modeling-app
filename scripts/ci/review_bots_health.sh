@@ -62,11 +62,19 @@ mark_unreviewed() {
       then "no_review" else .conclusion end]'
 }
 
-# The NO_REVIEW comments since $1, as [{pr, at}].
+# stdin: issue comments as the API returns them. stdout: the callee's NO_REVIEW comments
+# as [{pr, at}]. Only the workflow's own bot under the failover heading counts, so a person
+# quoting the phrase cannot turn a reviewed run into an alert.
+failover_comments() {
+  jq -c --arg phrase "$NO_REVIEW" '[.[]
+    | select(.user.login == "github-actions[bot]" and (.body | startswith("### Reviewer failover")) and (.body | contains($phrase)))
+    | {pr: (.issue_url | split("/") | last | tonumber), at: .created_at}]'
+}
+
+# The callee's NO_REVIEW comments since $1 (an `updated_at` filter, a superset of the
+# comments created since then), as [{pr, at}].
 no_review_comments() {
-  gh api --paginate "repos/{owner}/{repo}/issues/comments?since=$1&per_page=100" \
-    --jq ".[] | select(.body | contains(\"$NO_REVIEW\")) | {pr: (.issue_url | split(\"/\") | last | tonumber), at: .created_at}" \
-    | jq -s -c .
+  gh api --paginate "repos/{owner}/{repo}/issues/comments?since=$1&per_page=100" --jq '.[]' | jq -s -c . | failover_comments
 }
 
 # stdin: runs. stdout: the runs, `conclusion` turned into `no_review` where it applies.
@@ -74,7 +82,7 @@ no_review_comments() {
 # looked up, so a healthy window costs one comments call. Looked up from the run's commit:
 # a run's own `pull_requests` is empty once its pull request is merged.
 with_no_review() {
-  local runs since comments ids id prs
+  local runs since comments ids id sha prs
   runs=$(cat)
   since=$(printf '%s' "$runs" | jq -r 'map(select(.conclusion == "success") | .startedAt) | min // empty')
   [ -n "$since" ] || { printf '%s' "$runs"; return; }
@@ -82,7 +90,8 @@ with_no_review() {
   ids=$(jq -rn --argjson runs "$runs" --argjson c "$comments" \
     '$runs[] | select(.conclusion == "success") | . as $r | select(any($c[]; .at >= $r.startedAt and .at <= $r.updatedAt)) | .databaseId')
   for id in $ids; do
-    prs=$(gh api "repos/{owner}/{repo}/commits/$(jq -rn --argjson runs "$runs" --argjson id "$id" '$runs[] | select(.databaseId == $id) | .headSha')/pulls" --jq '[.[].number]')
+    sha=$(jq -rn --argjson runs "$runs" --argjson id "$id" '$runs[] | select(.databaseId == $id) | .headSha')
+    prs=$(gh api "repos/{owner}/{repo}/commits/$sha/pulls" --jq '[.[].number]')
     runs=$(printf '%s' "$runs" | jq -c --argjson id "$id" --argjson prs "$prs" 'map(if .databaseId == $id then .prs = $prs else . end)')
   done
   jq -n --argjson runs "$runs" --argjson c "$comments" '{runs: $runs, comments: $c}' | mark_unreviewed \
@@ -130,6 +139,19 @@ CASES
 ["failure"]|{"comments":[{"pr":7,"at":"2026-11-01T10:05:00Z"}],"runs":[{"conclusion":"failure","prs":[7],"startedAt":"2026-11-01T10:00:00Z","updatedAt":"2026-11-01T10:06:00Z"}]}
 ["success"]|{"comments":[{"pr":7,"at":"2026-11-01T10:05:00Z"}],"runs":[{"conclusion":"success","prs":[7],"startedAt":"2026-11-01T12:00:00Z","updatedAt":"2026-11-01T12:06:00Z"}]}
 ["success","no_review"]|{"comments":[{"pr":7,"at":"2026-11-01T10:05:00Z"}],"runs":[{"conclusion":"success","startedAt":"2026-11-01T12:00:00Z","updatedAt":"2026-11-01T12:06:00Z"},{"conclusion":"success","prs":[7],"startedAt":"2026-11-01T10:00:00Z","updatedAt":"2026-11-01T10:06:00Z"}]}
+CASES
+  # Which comments are the callee's: its bot, its failover heading, the phrase.
+  while IFS='|' read -r expected input; do
+    got=$(printf '%s' "$input" | failover_comments)
+    if [ "$got" != "$expected" ]; then
+      echo "FAIL: expected $expected, got $got, for $input"
+      failed=1
+    fi
+  done <<'CASES'
+[{"pr":7,"at":"2026-11-01T10:05:00Z"}]|[{"user":{"login":"github-actions[bot]"},"body":"### Reviewer failover\n**No reviewer produced a review for this commit** — not clean.","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
+[]|[{"user":{"login":"someone"},"body":"### Reviewer failover\n**No reviewer produced a review for this commit**","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
+[]|[{"user":{"login":"github-actions[bot]"},"body":"Quoting it: No reviewer produced a review for this commit","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
+[]|[{"user":{"login":"github-actions[bot]"},"body":"### Reviewer failover\n- Codex: reviewed","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
 CASES
   [ "$failed" -eq 0 ] && echo "review_bots_health self-check: ok"
   return "$failed"
