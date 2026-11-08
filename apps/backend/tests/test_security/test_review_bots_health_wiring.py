@@ -31,8 +31,10 @@ def test_the_watcher_runs_on_a_schedule_with_the_permissions_it_uses():
     watcher = _workflow("review-bots-health.yml")
 
     assert watcher[True]["schedule"], "PyYAML reads the `on:` key as True"
-    # Reading run conclusions and opening an issue; nothing else.
-    assert watcher["permissions"] == {"contents": "read", "actions": "read", "issues": "write"}
+    # Reading run conclusions and their pull requests' comments, and opening an issue.
+    assert watcher["permissions"] == {
+        "contents": "read", "actions": "read", "issues": "write", "pull-requests": "read",
+    }
 
 
 def test_every_reviewer_workflow_is_watched():

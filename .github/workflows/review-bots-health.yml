@@ -13,6 +13,7 @@ permissions:
   contents: read
   actions: read
   issues: write
+  pull-requests: read # which pull request a green run's "no reviewer" comment belongs to (#1149)
 
 concurrency:
   group: review-bots-health
