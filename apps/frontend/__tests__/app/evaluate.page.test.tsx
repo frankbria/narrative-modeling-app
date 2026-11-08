@@ -205,9 +205,14 @@ describe('EvaluatePage', () => {
     expect(mockGetEvaluation).toHaveBeenCalledWith('m1')
 
     // Classification metric cards
+    const verdict = screen.getByTestId('verdict-panel')
+    expect(verdict).toHaveTextContent('91%')
+    expect(verdict).toHaveTextContent('Beats always guessing the most common answer (58%)')
+    expect(verdict).toHaveTextContent('Mostly driven by age and income.')
     expect(screen.getByText('Accuracy')).toBeInTheDocument()
-    expect(screen.getByText('0.9100')).toBeInTheDocument()
-    expect(screen.getByText('ROC AUC')).toBeInTheDocument()
+    expect(screen.getByText('Ranking ability')).toBeInTheDocument()
+    expect(screen.getByText('95%')).toBeInTheDocument()
+    expect(screen.queryByText('0.9100')).not.toBeInTheDocument()
 
     // Model report card driven by the AI explanation
     expect(
@@ -229,9 +234,10 @@ describe('EvaluatePage', () => {
     render(<EvaluatePage />)
 
     expect(await screen.findByText('Price Model')).toBeInTheDocument()
-    expect(screen.getByText('MAE')).toBeInTheDocument()
-    expect(screen.getByText('3.2000')).toBeInTheDocument()
-    expect(screen.getByText('R²')).toBeInTheDocument()
+    expect(screen.getByTestId('verdict-panel')).toHaveTextContent('84%')
+    expect(screen.getByText('Typical miss')).toBeInTheDocument()
+    expect(screen.getByText('3.20')).toBeInTheDocument()
+    expect(screen.getByText('Variation explained')).toBeInTheDocument()
     expect(screen.getByText('Rule-based')).toBeInTheDocument()
 
     expect(
@@ -270,6 +276,18 @@ describe('EvaluatePage', () => {
 
     expect(await screen.findByText(/failed to load evaluation/i)).toBeInTheDocument()
     expect(screen.getByText('Model not found')).toBeInTheDocument()
+
+    mockGetEvaluation.mockResolvedValue(classificationEvaluation)
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }))
+    expect(await screen.findByText('Churn Model')).toBeInTheDocument()
+  })
+
+  it('says what is being calculated while loading', async () => {
+    mockGetEvaluation.mockReturnValue(new Promise(() => {}))
+
+    render(<EvaluatePage />)
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/checking how well your model predicts/i)
   })
 
   it('shows the no-data state when no evaluation is returned', async () => {

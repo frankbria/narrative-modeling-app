@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConfusionMatrixData } from '@/lib/types/evaluation'
+import { confusionReading } from '@/components/evaluate/evaluationReading'
 
 export interface ConfusionMatrixChartProps {
   data: ConfusionMatrixData
@@ -17,9 +18,8 @@ interface SelectedCell {
  * Interactive confusion-matrix heatmap (issue #79).
  *
  * SVG grid following the CorrelationHeatmap precedent: responsive sizing via
- * ResizeObserver, HSL color scale with intensity normalized by the actual-class
- * (row) total. Correct predictions (diagonal) use a blue scale, errors a red
- * scale. Cells are keyboard-focusable; clicking (or pressing Enter/Space)
+ * ResizeObserver, theme-token ramp with intensity normalized by the actual-class
+ * (row) total. Correct predictions (diagonal) use primary, errors destructive. Cells are keyboard-focusable; clicking (or pressing Enter/Space)
  * selects a cell and shows a drill-down detail panel below the grid.
  */
 export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChartProps) {
@@ -56,12 +56,9 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
   const rowPercent = (row: number, count: number): number =>
     rowTotals[row] > 0 ? (count / rowTotals[row]) * 100 : 0
 
-  const getColor = (row: number, col: number, count: number) => {
-    const intensity = rowTotals[row] > 0 ? count / rowTotals[row] : 0
-    // Blue scale for correct predictions (diagonal), red scale for errors.
-    const hue = row === col ? 217 : 0
-    return `hsl(${hue}, 80%, ${95 - intensity * 45}%)`
-  }
+  // Light ramp: the fill never gets dark enough to hide the foreground text.
+  const heatOpacity = (row: number, count: number) =>
+    0.06 + (rowTotals[row] > 0 ? count / rowTotals[row] : 0) * 0.34
 
   const handleSelect = (row: number, col: number) => {
     setSelected({ row, col })
@@ -169,8 +166,9 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
                       y={i * cellSize}
                       width={cellSize}
                       height={cellSize}
-                      fill={getColor(i, j, count)}
-                      stroke={isSelected ? '#1d4ed8' : 'white'}
+                      fill={i === j ? 'var(--primary)' : 'var(--destructive)'}
+                      fillOpacity={heatOpacity(i, count)}
+                      stroke={isSelected ? 'var(--primary)' : 'var(--card)'}
                       strokeWidth={isSelected ? 3 : 1}
                     />
                     <text
@@ -178,10 +176,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
                       y={i * cellSize + cellSize / 2 - 6}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      className="text-sm font-semibold pointer-events-none"
-                      style={{
-                        fill: pct > 60 ? '#1f2937' : '#374151',
-                      }}
+                      className="text-sm font-semibold pointer-events-none fill-foreground"
                     >
                       {count}
                     </text>
@@ -190,7 +185,7 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
                       y={i * cellSize + cellSize / 2 + 12}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      className="text-xs pointer-events-none fill-muted-foreground"
+                      className="text-xs pointer-events-none fill-foreground"
                     >
                       {pct.toFixed(1)}%
                     </text>
@@ -201,6 +196,8 @@ export function ConfusionMatrixChart({ data, onCellClick }: ConfusionMatrixChart
           </g>
         </svg>
       </div>
+
+      <p className="mt-3 text-sm text-foreground">{confusionReading(data)}</p>
 
       {/* aria-live wrapper stays mounted so the panel's appearance is announced */}
       <div aria-live="polite">

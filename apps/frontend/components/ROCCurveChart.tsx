@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts'
+import { rocReading } from '@/components/evaluate/evaluationReading'
 import type { CurvePoint, ROCCurveData } from '@/lib/types/evaluation'
 
 export interface ROCCurveChartProps {
@@ -102,6 +103,7 @@ export function ROCCurveChart({ data, height = 400 }: ROCCurveChartProps) {
     '. Each class is drawn with a distinct colour and line-dash pattern.'
 
   return (
+    <div>
     <div role="img" aria-label={ariaLabel}>
     <ResponsiveContainer width="100%" height={height}>
       <LineChart margin={{ top: 10, right: 30, left: 10, bottom: 25 }}>
@@ -147,6 +149,8 @@ export function ROCCurveChart({ data, height = 400 }: ROCCurveChartProps) {
         ))}
       </LineChart>
     </ResponsiveContainer>
+    </div>
+    <p className="mt-2 text-sm text-foreground">{rocReading(data)}</p>
     </div>
   )
 }
