@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { describeDriver, driverText } from './driverLabel';
 import type { InputWarning, PredictResponse } from '@/lib/services/model';
 
 /** The result card of a single prediction: the value and what qualifies it. */
@@ -102,33 +103,30 @@ function Probabilities(props: { prediction: PredictResponse }) {
   );
 }
 
+const EFFECT_TEXT = {
+  true: 'pushes the result up',
+  false: 'pushes the result down',
+};
+
+/** Which way the input pushed. The size is a model-internal number, so it is not shown. */
 function Contribution(props: { value: number }) {
-  const { value } = props;
-  const up = value >= 0;
+  const up = props.value >= 0;
   const colour = up ? 'text-success' : 'text-destructive';
-  return (
-    <span className={`font-medium ${colour}`}>
-      {up ? '+' : ''}
-      {value.toFixed(3)}
-    </span>
-  );
+  return <span className={`font-medium ${colour}`}>{EFFECT_TEXT[`${up}`]}</span>;
 }
 
-/** Plain-language explanation + feature contributions (#83). */
+/** What drove the prediction, in the dataset's own column names and values (#83, #1170). */
 function Explanation(props: { prediction: PredictResponse }) {
-  const explanation = props.prediction.explanations?.[0];
+  const { prediction } = props;
+  const explanation = prediction.explanations?.[0];
   if (!explanation) return null;
   return (
-    <div
-      data-testid="prediction-explanation"
-      className="mt-4 border-t border-success/30 pt-3"
-    >
-      <p className="text-sm font-medium text-foreground mb-1">What drove this prediction</p>
-      <p className="text-sm text-muted-foreground mb-2">{explanation.explanation_text}</p>
+    <div data-testid="prediction-explanation" className="mt-4 border-t border-border pt-3">
+      <p className="text-sm font-medium text-foreground mb-2">What drove this prediction</p>
       <div className="space-y-1">
         {explanation.top_features.map((f) => (
-          <div key={f.feature_name} className="flex justify-between text-sm">
-            <span>{f.feature_name}</span>
+          <div key={f.feature_name} className="flex justify-between gap-4 text-sm">
+            <span>{driverText(describeDriver(f.feature_name, prediction.feature_names), f.feature_value)}</span>
             <Contribution value={f.contribution} />
           </div>
         ))}
@@ -137,16 +135,27 @@ function Explanation(props: { prediction: PredictResponse }) {
   );
 }
 
+/** A new result is brought into view: the form above it is long. */
+function useScrollIntoView(prediction: PredictResponse) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [prediction]);
+  return ref;
+}
+
 export function PredictionResult(props: { prediction: PredictResponse }) {
   const { prediction } = props;
+  const ref = useScrollIntoView(prediction);
   return (
     <div
+      ref={ref}
       data-testid="prediction-result"
-      className="prediction-output mt-6 p-4 bg-success/10 rounded-lg border border-success/30"
+      className="prediction-output mt-6 p-4 bg-card rounded-lg border border-border"
     >
       <h4 className="font-semibold mb-2 flex items-center gap-2">
-        <CheckCircle className="w-5 h-5 text-success" />
-        Prediction Result
+        <CheckCircle className="w-5 h-5 text-primary" />
+        Predicted {prediction.model_info.target_column}
       </h4>
       <div
         data-testid="prediction-value"

@@ -54,3 +54,9 @@ export function excludedFromTraining(stageData: unknown, targetColumn: string): 
   const leftOut = recordedChoice(stageData)?.excludedFeatures ?? [];
   return leftOut.filter((column) => column !== targetColumn);
 }
+
+/** The column to predict the stage recorded, or '' when none was. */
+export function recordedTarget(stageData: unknown): string {
+  const target = (stageData as Record<string, unknown> | null | undefined)?.targetColumn;
+  return typeof target === 'string' ? target : '';
+}

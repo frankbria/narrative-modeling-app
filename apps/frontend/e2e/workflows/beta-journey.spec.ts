@@ -319,7 +319,7 @@ test.describe.serial('Beta launch readiness — full journey (#152)', () => {
     await expect(page).toHaveURL(/\/features$/, { timeout: 15000 });
 
     // Criterion 4: Get AI-powered feature suggestions and apply them.
-    await page.getByTestId('use-columns-button').click();
+    await page.getByLabel('Column to predict').selectOption('target');
     const featuresContinue = page.getByTestId('continue-button');
     await expect(featuresContinue).toBeEnabled({ timeout: 15000 });
     await featuresContinue.click();

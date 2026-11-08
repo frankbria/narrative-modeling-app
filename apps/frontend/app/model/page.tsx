@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import { recordedTarget } from '@/lib/features/columnChoice';
+import { useTargetChoice } from '@/lib/features/useTargetChoice';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
@@ -37,7 +39,10 @@ export default function ModelPage() {
   const { state } = useWorkflow();
   // Guard: redirect (with a message) if this stage is not accessible yet.
   useStageGuard(WorkflowStage.MODEL_TRAINING);
-  const [targetColumn, setTargetColumn] = useState('');
+  const { target: targetColumn, setTarget: setTargetColumn } = useTargetChoice(
+    state.datasetId,
+    recordedTarget(state.stageData[WorkflowStage.FEATURE_ENGINEERING]),
+  );
   // Training mode (issue #101): null until the user picks one.
   const [modeChoice, setModeChoice] = useState<TrainingMode | null>(null);
   const options = useTrainingOptions(state.datasetId);

@@ -269,16 +269,18 @@ describe('PredictPage — enrichment panels (#83)', () => {
     expect(await screen.findByTestId('prediction-interval')).toHaveTextContent('1.20 – 3.40');
   });
 
-  it('renders the feature-contribution panel with signed contributions', async () => {
+  it('names drivers by column and value, with a direction instead of a number', async () => {
     svc.predict.mockResolvedValue({
       ...basePredictResponse,
+      feature_names: ['age', 'contract_type'],
       explanations: [
         {
-          explanation_text: 'age pushed the prediction toward yes',
+          explanation_text: 'contract_type_Month-to-month (increased the result)',
           method: 'tree_importance',
           top_features: [
-            { feature_name: 'age', contribution: 0.42 },
-            { feature_name: 'city', contribution: -0.13 },
+            { feature_name: 'contract_type_Month-to-month', contribution: 2.505, feature_value: 1 },
+            { feature_name: 'age', contribution: -0.13 },
+            { feature_name: 'contract_type_Two year', contribution: 0.2, feature_value: 0 },
           ],
         },
       ],
@@ -287,10 +289,31 @@ describe('PredictPage — enrichment panels (#83)', () => {
     fireEvent.click(screen.getByTestId('make-prediction'));
 
     const panel = await screen.findByTestId('prediction-explanation');
-    expect(panel).toHaveTextContent('age pushed the prediction toward yes');
-    expect(panel).toHaveTextContent('age');
-    expect(panel).toHaveTextContent('+0.420'); // positive contribution keeps a + sign
-    expect(panel).toHaveTextContent('-0.130'); // negative contribution
+    expect(panel).toHaveTextContent('contract_type is Month-to-month');
+    expect(panel).toHaveTextContent('contract_type is not Two year');
+    expect(panel).not.toHaveTextContent('contract_type_');
+    expect(panel).not.toHaveTextContent('2.505');
+    expect(panel).toHaveTextContent('pushes the result up');
+    expect(panel).toHaveTextContent('pushes the result down');
+  });
+
+  it('titles the result with the target and places it after the button', async () => {
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    const result = await screen.findByTestId('prediction-result');
+    expect(result).toHaveTextContent('Predicted churn');
+    expect(
+      screen.getByTestId('make-prediction').compareDocumentPosition(result) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('marks every input as required', async () => {
+    render(<PredictPage />);
+    expect(await screen.findByLabelText('age')).toBeRequired();
+    expect(screen.getByLabelText('city')).toBeRequired();
+    expect(screen.getByText(/Every field is required/)).toBeInTheDocument();
   });
 });
 

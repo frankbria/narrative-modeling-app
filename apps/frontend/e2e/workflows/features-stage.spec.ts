@@ -25,15 +25,15 @@ test.describe('Feature Engineering stage', () => {
     await page.goto('/features');
     const age = page.getByRole('checkbox', { name: 'age', exact: true });
     await expect(age).toBeChecked({ timeout: 30000 });
-    await expect(page.getByRole('checkbox', { name: 'purchased', exact: true })).toBeChecked();
     await expect(page.getByTestId('continue-button')).toBeDisabled();
+    await page.getByLabel('Column to predict').selectOption('purchased');
+    await expect(page.getByRole('checkbox', { name: 'purchased', exact: true })).toHaveCount(0);
 
     await age.uncheck();
     const interactions = page.getByRole('switch', { name: 'Also try interaction features' });
     await expect(interactions).not.toBeChecked();
     await interactions.click();
     await expect(interactions).toBeChecked();
-    await page.getByTestId('use-columns-button').click();
     await expect(page.getByTestId('choice-recorded')).toBeVisible();
     await page.getByTestId('continue-button').click();
 

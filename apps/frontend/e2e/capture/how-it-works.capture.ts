@@ -88,7 +88,8 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
     await shoot('data_preparation');
     await next(/\/features/);
 
-    await page.getByRole('button', { name: /^Use these \d+ columns$/ }).click();
+    await page.getByLabel('Column to predict').selectOption('churn');
+    await expect(page.getByTestId('choice-recorded')).toBeVisible();
     await shoot('feature_engineering');
     await next(/\/model/);
 
