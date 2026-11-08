@@ -1,10 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useAsyncData } from '@/lib/hooks/useAsyncData';
-import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
-import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import {
@@ -17,11 +14,9 @@ import {
 } from 'lucide-react';
 import { modelService, type ModelInfo } from '@/lib/services/model';
 import {
-  isClassificationMetrics,
   type AIExplanation,
   type ModelComparisonResponse,
-  type ModelEvaluationResponse,
-  type ShapSummaryResponse
+  type ModelEvaluationResponse
 } from '@/lib/types/evaluation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +29,11 @@ import { PRCurveChart } from '@/components/PRCurveChart';
 import { ModelComparisonTable } from '@/components/ModelComparisonTable';
 import { FeatureImportanceChart } from '@/components/FeatureImportanceChart';
 import { ShapSummaryChart } from '@/components/ShapSummaryChart';
+import { EvaluateError, EvaluateLoading } from '@/components/evaluate/EvaluateStates';
+import { MetricList } from '@/components/evaluate/MetricList';
+import { VerdictPanel } from '@/components/evaluate/VerdictPanel';
+import { buildVerdict, featureScores, metricRows, modelTitle, shapToShow, tabFlags, when } from '@/components/evaluate/evaluationReading';
+import { evaluateView, useEvaluation, type EvaluateView, type Evaluation } from '@/components/evaluate/useEvaluation';
 import { exportEvaluationCSV, exportEvaluationPDF } from '@/lib/utils/export';
 
 const MIN_COMPARE = 2;
@@ -55,39 +55,11 @@ function MetricCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function MetricCards({ evaluation }: { evaluation: ModelEvaluationResponse }) {
-  const { metrics } = evaluation;
-  if (!metrics) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {Object.entries(evaluation.stored_metrics).map(([key, value]) => (
-          <MetricCard key={key} label={formatMetricLabel(key)} value={value} />
-        ))}
-      </div>
-    );
-  }
-
-  const cards: Array<[string, number]> = isClassificationMetrics(metrics)
-    ? [
-        ['Accuracy', metrics.accuracy],
-        ['Precision (weighted)', metrics.precision_weighted],
-        ['Recall (weighted)', metrics.recall_weighted],
-        ['F1 (weighted)', metrics.f1_weighted],
-        ...(metrics.roc_auc !== null ? [['ROC AUC', metrics.roc_auc] as [string, number]] : []),
-        ...(metrics.log_loss !== null ? [['Log Loss', metrics.log_loss] as [string, number]] : [])
-      ]
-    : [
-        ['MAE', metrics.mae],
-        ['MSE', metrics.mse],
-        ['RMSE', metrics.rmse],
-        ['R²', metrics.r2],
-        ...(metrics.mape !== null ? [['MAPE', metrics.mape] as [string, number]] : [])
-      ];
-
+function StoredMetricCards({ metrics }: { metrics: Record<string, number> }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {cards.map(([label, value]) => (
-        <MetricCard key={label} label={label} value={value} />
+      {Object.entries(metrics).map(([key, value]) => (
+        <MetricCard key={key} label={formatMetricLabel(key)} value={value} />
       ))}
     </div>
   );
@@ -273,213 +245,148 @@ function CompareTab({ datasetId }: { datasetId?: string }) {
   );
 }
 
-export default function EvaluatePage() {
-  const { state, completeStage, requestStageRedirect } = useWorkflow();
-  const router = useRouter();
-  const { ready } = useStageGuard(WorkflowStage.MODEL_EVALUATION);
+type ReadyEvaluation = Evaluation & { evaluation: ModelEvaluationResponse };
 
-  const {
-    data: evaluationData,
-    loading,
-    error,
-  } = useAsyncData(
-    async () => {
-      const data = await modelService.getEvaluation(state.modelId as string);
-      // SHAP summary is best-effort enrichment (issue #80): a failure (or a
-      // model with no SHAP support) must never block the evaluation view.
-      let shapData: ShapSummaryResponse | null = null;
-      try {
-        shapData = await modelService.getShapSummary(state.modelId as string);
-      } catch {
-        shapData = null;
-      }
-      return { evaluation: data, shap: shapData };
-    },
-    [state.modelId],
-    { enabled: ready && !!state.modelId },
+function Header({ evaluation }: { evaluation: ModelEvaluationResponse }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div className="flex items-center gap-3">
+        <LineChartIcon className="w-6 h-6 text-primary" />
+        <div>
+          <h1 className="text-2xl font-bold">Model Evaluation</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-sm text-foreground">
+              {modelTitle(evaluation)}
+            </span>
+            {when(evaluation.algorithm, (name) => <Badge variant="secondary">{name}</Badge>)}
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => exportEvaluationCSV(evaluation)}
+          aria-label="Export CSV"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          CSV
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => exportEvaluationPDF(evaluation)}
+          aria-label="Export PDF"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          PDF
+        </Button>
+      </div>
+    </div>
   );
+}
 
-  const evaluation = evaluationData?.evaluation ?? null;
-  const shap = evaluationData?.shap ?? null;
+const PARTIAL_BANNER = (
+  <div className="mb-6 p-4 bg-warning/10 rounded-lg border border-warning/30 flex items-start gap-2">
+    <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+    <p className="text-sm text-warning">
+      Detailed evaluation artifacts aren&apos;t available for this model (trained
+      before evaluation persistence). Showing stored training metrics.
+    </p>
+  </div>
+);
 
-  // Stage access (with a helpful redirect) is handled by useStageGuard above.
-  useEffect(() => {
-    if (!ready) return;
-    if (!state.modelId) {
-      // Accessible but no trained model in state — send the user back to train.
-      requestStageRedirect(
-        WorkflowStage.MODEL_TRAINING,
-        'Train a model before evaluating it.'
-      );
-    }
-  }, [ready, state.modelId, requestStageRedirect]);
+function Overview({ ev }: { ev: ReadyEvaluation }) {
+  const { evaluation, shap } = ev;
+  const verdict = buildVerdict(evaluation);
+  const scores = featureScores(evaluation.feature_importance);
+  return (
+    <>
+      {when(verdict, (v) => <VerdictPanel verdict={v} />)}
+      {when(verdict, () => <MetricList rows={metricRows(evaluation)} />)}
+      {when(!verdict, () => <StoredMetricCards metrics={evaluation.stored_metrics} />)}
+      {when(evaluation.ai_explanation, (e) => <ModelReportCard explanation={e} />)}
+      {when(scores.length > 0, () => <FeatureImportanceChart features={scores} height={360} />)}
+      {when(
+        shapToShow(shap),
+        (s) => (
+          <ShapSummaryChart
+            features={s.feature_importance}
+            plainLanguage={s.plain_language}
+            explainerType={s.explainer_type}
+            height={360}
+          />
+        )
+      )}
+    </>
+  );
+}
 
-  const handleProceedToPrediction = () => {
-    completeStage(WorkflowStage.MODEL_EVALUATION, {
-      evaluationComplete: true,
-      metrics: evaluation?.metrics ?? evaluation?.stored_metrics,
-      timestamp: new Date().toISOString()
-    });
-  };
+function Curves({ evaluation }: { evaluation: ModelEvaluationResponse }) {
+  return (
+    <>
+      {when(
+        evaluation.roc_curve,
+        (roc) => (
+          <div data-testid="roc-curve">
+            <h3 className="font-semibold text-lg mb-2">ROC Curve</h3>
+            <ROCCurveChart data={roc} />
+          </div>
+        )
+      )}
+      {when(
+        evaluation.pr_curve,
+        (pr) => (
+          <div>
+            <h3 className="font-semibold text-lg mb-2">Precision-Recall Curve</h3>
+            <PRCurveChart data={pr} />
+          </div>
+        )
+      )}
+    </>
+  );
+}
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center max-w-md">
-          <h2 className="text-2xl font-semibold mb-2">Failed to Load Evaluation</h2>
-          <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={() => router.push('/model')}>Go to Model Training</Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!evaluation) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-2">No Evaluation Data</h2>
-          <p className="text-muted-foreground mb-4">Model evaluation data is not available.</p>
-          <Button onClick={() => router.push('/model')}>Go to Model Training</Button>
-        </div>
-      </div>
-    );
-  }
-
-  const metrics = evaluation.metrics;
-  const isClassification = metrics !== null && isClassificationMetrics(metrics);
-  const showConfusionTab = isClassification && evaluation.confusion_matrix !== null;
-  const showCurvesTab =
-    isClassification && (evaluation.roc_curve !== null || evaluation.pr_curve !== null);
-
-  const featureScores = evaluation.feature_importance
-    ? (() => {
-        const entries = Object.entries(evaluation.feature_importance).sort(
-          ([, a], [, b]) => b - a
-        );
-        const max = entries.length > 0 ? entries[0][1] : 0;
-        return entries.map(([name, value], index) => ({
-          feature_name: name,
-          score: max > 0 ? value / max : 0,
-          rank: index + 1,
-          selected: true
-        }));
-      })()
-    : null;
-
+function ReadyView({ ev }: { ev: ReadyEvaluation }) {
+  const { evaluation } = ev;
+  const tabs = tabFlags(evaluation);
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <LineChartIcon className="w-6 h-6 text-primary" />
-            <div>
-              <h1 className="text-2xl font-bold">Model Evaluation</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm text-foreground">
-                  {evaluation.model_name ?? evaluation.model_id}
-                </span>
-                {evaluation.algorithm && (
-                  <Badge variant="secondary">{evaluation.algorithm}</Badge>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportEvaluationCSV(evaluation)}
-              aria-label="Export CSV"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              CSV
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportEvaluationPDF(evaluation)}
-              aria-label="Export PDF"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              PDF
-            </Button>
-          </div>
-        </div>
-
-        {/* Partial-evaluation banner */}
-        {evaluation.partial && (
-          <div className="mb-6 p-4 bg-warning/10 rounded-lg border border-warning/30 flex items-start gap-2">
-            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
-            <p className="text-sm text-warning">
-              Detailed evaluation artifacts aren&apos;t available for this model (trained
-              before evaluation persistence). Showing stored training metrics.
-            </p>
-          </div>
-        )}
-
+        <Header evaluation={evaluation} />
+        {when(evaluation.partial, () => PARTIAL_BANNER)}
         <Tabs defaultValue="overview">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            {showConfusionTab && (
-              <TabsTrigger value="confusion-matrix">Confusion Matrix</TabsTrigger>
-            )}
-            {showCurvesTab && <TabsTrigger value="curves">Curves</TabsTrigger>}
+            {when(tabs.confusion, () => <TabsTrigger value="confusion-matrix">Confusion Matrix</TabsTrigger>)}
+            {when(tabs.curves, () => <TabsTrigger value="curves">Curves</TabsTrigger>)}
             <TabsTrigger value="compare">Compare</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6 mt-4">
-            <MetricCards evaluation={evaluation} />
-            {evaluation.ai_explanation && (
-              <ModelReportCard explanation={evaluation.ai_explanation} />
-            )}
-            {featureScores && featureScores.length > 0 && (
-              <FeatureImportanceChart features={featureScores} height={360} />
-            )}
-            {shap && !shap.partial && shap.feature_importance.length > 0 && (
-              <ShapSummaryChart
-                features={shap.feature_importance}
-                plainLanguage={shap.plain_language}
-                explainerType={shap.explainer_type}
-                height={360}
-              />
-            )}
+            <Overview ev={ev} />
           </TabsContent>
 
-          {showConfusionTab && evaluation.confusion_matrix && (
-            <TabsContent value="confusion-matrix" className="mt-4">
-              <ConfusionMatrixChart data={evaluation.confusion_matrix} />
-            </TabsContent>
+          {when(
+            tabs.confusion,
+            (matrix) => (
+              <TabsContent value="confusion-matrix" className="mt-4">
+                <ConfusionMatrixChart data={matrix} />
+              </TabsContent>
+            )
           )}
 
-          {showCurvesTab && (
-            <TabsContent value="curves" className="space-y-8 mt-4">
-              {evaluation.roc_curve && (
-                <div data-testid="roc-curve">
-                  <h3 className="font-semibold text-lg mb-2">ROC Curve</h3>
-                  <ROCCurveChart data={evaluation.roc_curve} />
-                </div>
-              )}
-              {evaluation.pr_curve && (
-                <div>
-                  <h3 className="font-semibold text-lg mb-2">Precision-Recall Curve</h3>
-                  <PRCurveChart data={evaluation.pr_curve} />
-                </div>
-              )}
-            </TabsContent>
+          {when(
+            tabs.curves,
+            () => (
+              <TabsContent value="curves" className="space-y-8 mt-4">
+                <Curves evaluation={evaluation} />
+              </TabsContent>
+            )
           )}
 
           <TabsContent value="compare" className="mt-4">
-            <CompareTab datasetId={state.datasetId} />
+            <CompareTab datasetId={ev.datasetId} />
           </TabsContent>
         </Tabs>
 
@@ -490,9 +397,38 @@ export default function EvaluatePage() {
           currentStage={WorkflowStage.MODEL_EVALUATION}
           ready
           continueLabel="Continue to Prediction"
-          onContinue={handleProceedToPrediction}
+          onContinue={ev.proceed}
         />
       </div>
     </div>
   );
+}
+
+interface ViewProps {
+  ev: Evaluation;
+  onBack: () => void;
+}
+
+const VIEWS: Record<EvaluateView, (props: ViewProps) => React.ReactElement> = {
+  loading: () => <EvaluateLoading />,
+  error: ({ ev, onBack }) => (
+    <EvaluateError message={ev.error as string} onRetry={ev.reload} onBack={onBack} />
+  ),
+  empty: ({ onBack }) => (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold mb-2">No Evaluation Data</h2>
+        <p className="text-muted-foreground mb-4">Model evaluation data is not available.</p>
+        <Button onClick={onBack}>Go to Model Training</Button>
+      </div>
+    </div>
+  ),
+  ready: ({ ev }) => <ReadyView ev={ev as ReadyEvaluation} />
+};
+
+export default function EvaluatePage() {
+  const router = useRouter();
+  const ev = useEvaluation();
+  const View = VIEWS[evaluateView(ev)];
+  return <View ev={ev} onBack={() => router.push('/model')} />;
 }

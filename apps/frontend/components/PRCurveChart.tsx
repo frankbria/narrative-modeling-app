@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts'
+import { prReading } from '@/components/evaluate/evaluationReading'
 import type { PRCurveData } from '@/lib/types/evaluation'
 import { CURVE_COLORS, CURVE_DASH, CurvePointTooltip } from '@/components/ROCCurveChart'
 
@@ -45,6 +46,7 @@ export function PRCurveChart({ data, height = 400 }: PRCurveChartProps) {
     '. Each class is drawn with a distinct colour and line-dash pattern.'
 
   return (
+    <div>
     <div role="img" aria-label={ariaLabel}>
     <ResponsiveContainer width="100%" height={height}>
       <LineChart margin={{ top: 10, right: 30, left: 10, bottom: 25 }}>
@@ -85,6 +87,8 @@ export function PRCurveChart({ data, height = 400 }: PRCurveChartProps) {
         ))}
       </LineChart>
     </ResponsiveContainer>
+    </div>
+    <p className="mt-2 text-sm text-foreground">{prReading(data)}</p>
     </div>
   )
 }

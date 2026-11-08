@@ -15,6 +15,14 @@ const data: ConfusionMatrixData = {
 }
 
 describe('ConfusionMatrixChart', () => {
+  it('says in one sentence which real class was missed most', () => {
+    render(<ConfusionMatrixChart data={data} />)
+
+    expect(
+      screen.getByText('Of 50 rows that really were "yes", the model missed 6.')
+    ).toBeInTheDocument()
+  })
+
   it('renders a focusable cell per matrix entry with counts', () => {
     render(<ConfusionMatrixChart data={data} />)
 
