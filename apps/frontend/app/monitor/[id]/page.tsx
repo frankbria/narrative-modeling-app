@@ -23,7 +23,7 @@ import {
 import { HugeiconsIcon } from '@/components/ui/icon'
 import { Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Clock01Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
-import { formatLatency } from '@/lib/monitoring'
+import { formatLatency, latencyVerdict } from '@/lib/monitoring'
 import { LineChart } from '@/components/LineChart'
 import { BarChart } from '@/components/BarChart'
 
@@ -140,6 +140,7 @@ export default function ModelMonitoringPage() {
 
   const hs = health ? healthStyle(health.status) : null
   const HealthIcon = hs?.Icon
+  const verdict = latencyVerdict(metrics.avg_latency_ms, metrics.total_predictions)
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -497,17 +498,9 @@ export default function ModelMonitoringPage() {
                   Average latency: {formatLatency(metrics.avg_latency_ms, metrics.total_predictions)} · Error rate:{' '}
                   {(metrics.error_rate * 100).toFixed(1)}% ({metrics.error_count} errors)
                 </p>
-                {metrics.avg_latency_ms < 100 ? (
-                  <Badge variant="default" className="bg-success text-success-foreground">
-                    Excellent Performance
-                  </Badge>
-                ) : metrics.avg_latency_ms < 500 ? (
-                  <Badge variant="default" className="bg-primary">
-                    Good Performance
-                  </Badge>
-                ) : (
-                  <Badge variant="default" className="bg-warning text-warning-foreground">
-                    Consider Optimization
+                {verdict && (
+                  <Badge variant="default" className={verdict.className}>
+                    {verdict.label}
                   </Badge>
                 )}
               </div>

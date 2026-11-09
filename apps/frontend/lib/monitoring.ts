@@ -15,6 +15,18 @@ export function formatLatency(ms: number, predictions: number): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
+const LATENCY_VERDICTS = [
+  { below: 100, label: 'Excellent Performance', className: 'bg-success text-success-foreground' },
+  { below: 500, label: 'Good Performance', className: 'bg-primary' },
+  { below: Infinity, label: 'Consider Optimization', className: 'bg-warning text-warning-foreground' },
+]
+
+/** How fast the model answers; nothing to judge before its first prediction (#1188). */
+export function latencyVerdict(ms: number, predictions: number) {
+  if (predictions <= 0) return undefined
+  return LATENCY_VERDICTS.find((verdict) => ms < verdict.below)
+}
+
 /** Models that answered at least one prediction in the window. */
 export function modelsWithPredictions(models: MonitoredModel[]): MonitoredModel[] {
   return models.filter((m) => m.predictions_24h > 0)

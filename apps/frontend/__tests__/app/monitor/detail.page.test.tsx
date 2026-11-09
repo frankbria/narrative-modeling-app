@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ModelMonitoringPage from '@/app/monitor/[id]/page'
 import { ProductionService } from '@/lib/services/production'
 import { ModelService } from '@/lib/services/model'
@@ -108,6 +108,39 @@ it('renders the deployment health badge and active alerts', async () => {
   const alerts = await screen.findAllByTestId('health-alert')
   expect(alerts).toHaveLength(2)
   expect(screen.getByText(/Error rate 12.0% exceeds 5%/)).toBeInTheDocument()
+})
+
+it('judges latency only once the model has made predictions (#1188)', async () => {
+  mockProd.getModelMetrics.mockResolvedValue({
+    model_id: 'model_123',
+    model_name: 'Churn Model',
+    total_predictions: 0,
+    error_count: 0,
+    avg_latency_ms: 0,
+    latency_percentiles: { p50: 0, p90: 0, p95: 0, p99: 0 },
+    predictions_per_hour: 0,
+    avg_confidence: 0,
+    error_rate: 0,
+    time_window_hours: 24,
+  })
+  render(<ModelMonitoringPage />)
+  const tab = await screen.findByRole('tab', { name: 'Performance' })
+  fireEvent.mouseDown(tab)
+  fireEvent.mouseUp(tab)
+  fireEvent.click(tab)
+
+  expect(await screen.findByText(/Average latency:/)).toBeInTheDocument()
+  expect(screen.queryByText(/Excellent Performance|Good Performance|Consider Optimization/)).not.toBeInTheDocument()
+})
+
+it('judges a slow model once it has predictions', async () => {
+  render(<ModelMonitoringPage />)
+  const tab = await screen.findByRole('tab', { name: 'Performance' })
+  fireEvent.mouseDown(tab)
+  fireEvent.mouseUp(tab)
+  fireEvent.click(tab)
+
+  expect(await screen.findByText('Consider Optimization')).toBeInTheDocument()
 })
 
 it('requests the timeline and health endpoints on load', async () => {
