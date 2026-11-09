@@ -125,7 +125,13 @@ async function globalSetup(config: FullConfig) {
     // One saved session per isolated user (#743), for the specs that change
     // account-scoped state and must not share the user above.
     for (const user of ISOLATED_USERS) {
-      const isolated = await signInAs(browser, baseURL!, isolatedEmail(user), testPassword);
+      // A stalled sign-in must fail the run naming the user, not wait out the job's timeout.
+      const isolated = await Promise.race([
+        signInAs(browser, baseURL!, isolatedEmail(user), testPassword),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`signing in the isolated user "${user}" took over 60s`)), 60_000).unref(),
+        ),
+      ]);
       await isolated.storageState({ path: isolatedState(user) });
       await isolated.close();
     }
