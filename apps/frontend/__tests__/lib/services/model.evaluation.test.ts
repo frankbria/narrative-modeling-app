@@ -13,6 +13,7 @@ const evaluationFixture: ModelEvaluationResponse = {
   model_name: 'Churn Model',
   algorithm: 'random_forest',
   problem_type: 'binary_classification',
+  target_column: null,
   partial: false,
   evaluation_on_calibration_set: false,
   metrics: {

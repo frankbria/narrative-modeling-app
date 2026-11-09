@@ -267,6 +267,18 @@ describe('PredictPage — enrichment panels (#83)', () => {
     fireEvent.click(screen.getByTestId('make-prediction'));
 
     expect(await screen.findByTestId('prediction-interval')).toHaveTextContent('1.20 – 3.40');
+    // A regression value is a quantity, not a class: it stays bare (#1187).
+    expect(screen.getByTestId('prediction-value')).toHaveTextContent(/^3\.14$/);
+  });
+
+  it('names a bare 0/1 class against the target (#1187)', async () => {
+    svc.predict.mockResolvedValue({ ...basePredictResponse, predictions: [1], class_labels: ['0', '1'] });
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^churn = 1$/);
+    expect(screen.getByText('churn = 0:')).toBeInTheDocument();
+    expect(screen.getByText('churn = 1:')).toBeInTheDocument();
   });
 
   it('names drivers by column and value, with a direction instead of a number', async () => {

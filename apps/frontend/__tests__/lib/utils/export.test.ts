@@ -31,6 +31,7 @@ const classificationEvaluation: ModelEvaluationResponse = {
   model_name: 'Churn, "v2"',
   algorithm: 'random_forest',
   problem_type: 'binary_classification',
+  target_column: null,
   partial: false,
   evaluation_on_calibration_set: false,
   metrics: {
@@ -68,6 +69,7 @@ const regressionEvaluation: ModelEvaluationResponse = {
   model_name: null,
   algorithm: 'linear_regression',
   problem_type: 'regression',
+  target_column: null,
   partial: false,
   evaluation_on_calibration_set: false,
   metrics: { mae: 3.2, mse: 16.8, rmse: 4.1, r2: 0.84, mape: null },

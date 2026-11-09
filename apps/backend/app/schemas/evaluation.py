@@ -101,6 +101,9 @@ class ModelEvaluationResponse(BaseModel):
     model_name: str | None = None
     algorithm: str | None = None
     problem_type: str
+    target_column: str | None = Field(
+        None, description="The column the model predicts; names numeric classes (#1187)"
+    )
     partial: bool = Field(
         False,
         description=(

@@ -73,6 +73,8 @@ export interface ModelEvaluationResponse {
   model_name: string | null
   algorithm: string | null
   problem_type: string
+  /** The column the model predicts; names numeric classes (#1187). */
+  target_column: string | null
   /**
    * True when evaluation artifacts are unavailable (models trained before
    * issue #79) and only stored scalar metrics are returned.
