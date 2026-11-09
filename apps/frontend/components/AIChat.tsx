@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
 import { useSession } from 'next-auth/react'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Loading03Icon, SentIcon } from '@hugeicons/core-free-icons'
 import ReactMarkdown from 'react-markdown'
 import { apiError, QuotaExceededError } from '@/lib/services/apiError'

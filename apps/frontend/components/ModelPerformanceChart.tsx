@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Activity01Icon, Analytics01Icon, ChartIncreaseIcon } from '@hugeicons/core-free-icons'
 
 interface ModelPerformanceChartProps {

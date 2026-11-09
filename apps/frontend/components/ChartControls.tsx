@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Badge } from '@/components/ui/badge'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Cancel01Icon, Download01Icon, Refresh01Icon } from '@hugeicons/core-free-icons'
 
 export interface ChartFilter {

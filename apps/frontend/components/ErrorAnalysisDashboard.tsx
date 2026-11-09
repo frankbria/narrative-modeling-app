@@ -7,7 +7,7 @@ import type { ConfusionPair } from '@/lib/types/evaluation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Alert02Icon, Idea01Icon, Loading03Icon, Target02Icon } from '@hugeicons/core-free-icons'
 
 interface ErrorAnalysisDashboardProps {

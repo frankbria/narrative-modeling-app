@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Shield01Icon, ViewIcon, ViewOffIcon } from '@hugeicons/core-free-icons';
 import type { FlaggedPIIReport } from '@/lib/types/api';
 

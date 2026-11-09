@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Loading03Icon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
 import type { DatasetListItem } from '@/lib/services/datasetList'

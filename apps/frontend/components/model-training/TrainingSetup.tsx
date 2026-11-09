@@ -1,5 +1,6 @@
 import React from 'react';
-import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
 import { AlertCircleIcon, InformationCircleIcon, PlayCircleIcon, ZapIcon } from '@hugeicons/core-free-icons';
 import { TrainingModeSelector } from '@/components/TrainingModeSelector';
 import type { TrainingMode } from '@/lib/services/model';

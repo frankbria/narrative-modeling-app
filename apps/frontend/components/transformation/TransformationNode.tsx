@@ -2,7 +2,7 @@
 
 import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Cancel01Icon, Settings02Icon } from '@hugeicons/core-free-icons';
 import type { ParameterValue } from '@/lib/types/recipe';
 

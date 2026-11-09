@@ -2,7 +2,8 @@ import React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
 import { Analytics01Icon, ArrowRight01Icon, Brain01Icon, ChartLineData01Icon, CheckmarkCircle01Icon, Rocket01Icon, SparklesIcon, Target02Icon, Upload04Icon, Wrench01Icon } from '@hugeicons/core-free-icons';
 
 interface QuickstartStage {

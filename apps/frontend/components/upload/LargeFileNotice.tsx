@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { HardDriveIcon } from '@hugeicons/core-free-icons';
 import { CHUNKED_UPLOAD_THRESHOLD, formatFileSize } from './uploadFlow';
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Loading03Icon } from '@hugeicons/core-free-icons'
 import axios from 'axios'
 import { Button } from '@/components/ui/button'

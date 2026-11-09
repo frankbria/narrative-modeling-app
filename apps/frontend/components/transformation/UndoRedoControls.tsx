@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Redo03Icon, Undo03Icon } from '@hugeicons/core-free-icons';
 
 interface UndoRedoControlsProps {

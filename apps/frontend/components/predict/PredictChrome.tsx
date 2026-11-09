@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Alert02Icon, FileEditIcon, Target02Icon } from '@hugeicons/core-free-icons';
 
 /** The prediction page's frame: its error banner and the single/batch switch. */

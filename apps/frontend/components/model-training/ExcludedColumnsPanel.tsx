@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Refresh01Icon } from '@hugeicons/core-free-icons';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { modelService } from '@/lib/services/model';

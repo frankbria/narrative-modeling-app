@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon, CheckmarkCircle02Icon, SparklesIcon } from '@hugeicons/core-free-icons';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';

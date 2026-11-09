@@ -4,7 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowRight01Icon, BookOpen01Icon, ChampionIcon } from '@hugeicons/core-free-icons';
 import { AchievementsBadge } from '@/components/AchievementsBadge';
 import type { Achievement, OnboardingStatus } from './types';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { CheckmarkCircle01Icon, FileEditIcon } from '@hugeicons/core-free-icons';
 
 export const FILE_TYPE_CARDS = (

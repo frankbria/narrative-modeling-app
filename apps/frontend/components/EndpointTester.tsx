@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { modelService } from '@/lib/services/model';
 import type { ModelFeatureDescriptor } from '@/lib/services/model';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon, CheckmarkCircle01Icon, PlayIcon } from '@hugeicons/core-free-icons';
 
 /**

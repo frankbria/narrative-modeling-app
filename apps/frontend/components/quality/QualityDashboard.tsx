@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { AlertCircleIcon, CancelCircleIcon, ChartIncreaseIcon, CheckmarkCircle02Icon, Wrench01Icon } from '@hugeicons/core-free-icons'
 import { LineChart } from '@/components/LineChart'
 import { QualityService } from '@/lib/services/quality'

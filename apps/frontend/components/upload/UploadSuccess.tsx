@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowRight01Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 
 /** The banner shown once a file is stored, with the way on to Explore. */

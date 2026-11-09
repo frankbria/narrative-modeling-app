@@ -11,7 +11,7 @@
  */
 
 import React, { useState } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowLeft01Icon, ArrowRight01Icon, CheckmarkCircle01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';

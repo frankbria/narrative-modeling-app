@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { BookOpen01Icon, Clock01Icon, PlayIcon, ZapIcon } from '@hugeicons/core-free-icons';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 

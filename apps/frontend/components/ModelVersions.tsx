@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ModelComparisonTable } from '@/components/ModelComparisonTable'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { AlertCircleIcon, CheckmarkCircle02Icon, GitBranchIcon, Loading03Icon } from '@hugeicons/core-free-icons'
 
 interface ModelVersionsProps {

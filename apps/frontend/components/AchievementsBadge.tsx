@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Brain01Icon, ChampionIcon, CrownIcon, Database01Icon, Rocket01Icon, StarIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons';
 
 interface Achievement {

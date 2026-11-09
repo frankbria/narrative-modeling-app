@@ -13,7 +13,7 @@ import { LeftOutColumns } from '@/components/model-training/LeftOutColumns';
 import { StartingRun, TrainingRunView } from '@/components/model-training/TrainingRunView';
 import { chosenMode, useTrainingOptions } from '@/components/model-training/useTrainingOptions';
 import { useTrainingRun, type TrainingRun } from '@/components/model-training/useTrainingRun';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Brain01Icon } from '@hugeicons/core-free-icons';
 import { useSession } from 'next-auth/react';
 

@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from 'react'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Analytics01Icon, Loading03Icon } from '@hugeicons/core-free-icons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { DatasetStatistics } from '@/lib/types/api'

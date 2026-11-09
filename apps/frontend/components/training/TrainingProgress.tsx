@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Alert02Icon, CancelCircleIcon, CheckmarkCircle01Icon, Loading03Icon, RotateLeft01Icon } from '@hugeicons/core-free-icons';
 import { modelService, TrainingStatus } from '@/lib/services/model';
 

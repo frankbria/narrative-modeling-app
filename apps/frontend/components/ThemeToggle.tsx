@@ -2,7 +2,7 @@
 
 import { useRef, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { ComputerIcon, Moon02Icon, Sun03Icon } from '@hugeicons/core-free-icons'
 
 const OPTIONS = [

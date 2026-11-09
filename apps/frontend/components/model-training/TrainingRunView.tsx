@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Brain01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { TrainingProgress } from '@/components/training/TrainingProgress';
 import { TrainingLogs } from '@/components/training/TrainingLogs';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Alert02Icon, CheckmarkCircle01Icon, FileEditIcon, SentIcon, Upload04Icon } from '@hugeicons/core-free-icons';
 import type {
   BatchJobProgressResponse,

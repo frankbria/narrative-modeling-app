@@ -9,7 +9,7 @@ import { WorkflowStage } from '@/lib/types/workflow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ChartColumnIcon, ChartIncreaseIcon, CheckmarkCircle01Icon, Database01Icon, Download01Icon, Home01Icon, Target02Icon, UserGroupIcon, ViewIcon } from '@hugeicons/core-free-icons';
 
 interface SampleDataset {

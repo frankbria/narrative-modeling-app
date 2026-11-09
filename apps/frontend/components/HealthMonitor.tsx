@@ -1,6 +1,6 @@
 'use client'
 
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Activity01Icon, AlertCircleIcon, CheckmarkCircle02Icon, Clock01Icon, ServerStack01Icon, WifiOff01Icon } from '@hugeicons/core-free-icons'
 import { useEffect, type ReactNode } from 'react'
 

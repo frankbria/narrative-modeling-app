@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { SentIcon } from '@hugeicons/core-free-icons';
 import type { ModelFeatureDescriptor, PredictResponse } from '@/lib/services/model';
 import { PredictionResult } from './PredictionResult';

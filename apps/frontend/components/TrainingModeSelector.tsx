@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { SparklesIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons';
 import type { TrainingMode } from '@/lib/services/model';
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ViewIcon } from '@hugeicons/core-free-icons';
 
 interface PreviewPanelProps {

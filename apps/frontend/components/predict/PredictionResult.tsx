@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Alert02Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { describeDriver, driverText } from './driverLabel';
 import type { InputWarning, PredictResponse } from '@/lib/services/model';

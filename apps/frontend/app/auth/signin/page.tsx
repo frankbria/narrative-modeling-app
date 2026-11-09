@@ -10,7 +10,7 @@ import { Logo } from '@/components/brand/Logo'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { HugeiconsIcon } from "@/components/ui/icon";
 import { Loading03Icon, Mail01Icon } from "@hugeicons/core-free-icons";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
 import Link from "next/link";

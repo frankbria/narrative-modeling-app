@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon } from '@hugeicons/core-free-icons';
 
 export default function UploadErrorAlert(props: { message: string | null }) {

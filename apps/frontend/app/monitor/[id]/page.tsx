@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Clock01Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { formatLatency } from '@/lib/monitoring'

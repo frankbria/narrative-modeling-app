@@ -31,7 +31,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Activity01Icon, Add01Icon, AlertCircleIcon, Calendar03Icon, Copy01Icon, Delete02Icon, InformationCircleIcon, Key01Icon, Loading03Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 export default function APIKeysPage() {
   const { data: session } = useSession()

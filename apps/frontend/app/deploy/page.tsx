@@ -9,7 +9,7 @@ import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { BookOpen01Icon, CheckmarkCircle01Icon, CloudIcon, Copy01Icon, Rocket01Icon, Shield01Icon } from '@hugeicons/core-free-icons';
 import type { DeployResponse, ModelDeploymentView } from '@/lib/types/api';
 import { modelService } from '@/lib/services/model';

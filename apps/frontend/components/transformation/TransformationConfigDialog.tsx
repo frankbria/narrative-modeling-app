@@ -19,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Add01Icon, AlertCircleIcon, Delete02Icon, ViewIcon } from '@hugeicons/core-free-icons';
 import {
   fieldKind,

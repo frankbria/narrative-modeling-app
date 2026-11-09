@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { AlertCircleIcon, Calendar03Icon, Call02Icon, CheckmarkCircle01Icon, Database01Icon, DollarCircleIcon, HashtagIcon, Link01Icon, Mail01Icon, PercentIcon, TextFontIcon } from '@hugeicons/core-free-icons'
 
 interface ColumnSchema {

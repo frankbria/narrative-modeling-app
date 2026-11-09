@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowRight01Icon, BookOpen01Icon, CheckmarkCircle01Icon, Clock01Icon, FileEditIcon, HelpCircleIcon, SkipForwardIcon, Target02Icon } from '@hugeicons/core-free-icons';
 
 interface StepInfo {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowDown01Icon, ArrowRight01Icon, Search01Icon } from '@hugeicons/core-free-icons';
 import type { TransformationTypeMeta } from '@/lib/services/pipelineApi';
 

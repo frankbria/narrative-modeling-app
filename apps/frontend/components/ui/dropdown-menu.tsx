@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
-import { HugeiconsIcon } from "@hugeicons/react"
+import { HugeiconsIcon } from "@/components/ui/icon"
 import { ArrowRight01Icon, CircleIcon, Tick02Icon } from "@hugeicons/core-free-icons"
 
 import { cn } from "@/lib/utils"

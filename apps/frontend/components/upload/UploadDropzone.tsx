@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDropzone } from 'react-dropzone';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { FileEditIcon, HardDriveIcon, Upload04Icon } from '@hugeicons/core-free-icons';
 import { formatFileSize } from './uploadFlow';
 

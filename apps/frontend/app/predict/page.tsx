@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Target02Icon } from '@hugeicons/core-free-icons';
 import { useSession } from 'next-auth/react';
 import { BatchPredictionPanel } from '@/components/predict/BatchPredictionPanel';

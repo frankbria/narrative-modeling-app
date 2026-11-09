@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { AlertCircleIcon, Analytics01Icon, ArrowLeft01Icon, Brain01Icon, Calendar03Icon, ChartIncreaseIcon, Clock01Icon, Database01Icon, FileEditIcon, Layers01Icon, Loading03Icon, Target02Icon, ViewIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'

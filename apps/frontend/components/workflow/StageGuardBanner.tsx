@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon, Cancel01Icon } from '@hugeicons/core-free-icons';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 

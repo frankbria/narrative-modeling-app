@@ -8,7 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { HistogramChart } from './HistogramChart'
 import { StatItem } from '@/lib/utils'
-import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import type { IconSvgElement } from '@hugeicons/react'
 import { Alert02Icon, Analytics01Icon, Database01Icon, PercentIcon, Target02Icon } from '@hugeicons/core-free-icons'
 
 interface FrequentValue {

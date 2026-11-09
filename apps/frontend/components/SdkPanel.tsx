@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { modelService } from '@/lib/services/model';
 import type { SdkInfo } from '@/lib/services/model';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Copy01Icon, Download01Icon, SourceCodeIcon, Tick02Icon } from '@hugeicons/core-free-icons';
 
 /**

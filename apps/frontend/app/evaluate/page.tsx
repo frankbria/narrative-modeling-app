@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Alert02Icon, ChartLineData01Icon, CheckmarkCircle01Icon, Download01Icon, Idea01Icon, Target02Icon } from '@hugeicons/core-free-icons';
 import { modelService, type ModelInfo } from '@/lib/services/model';
 import {

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { Delete02Icon, Key02Icon, RotateLeft01Icon, SecurityCheckIcon } from '@hugeicons/core-free-icons'
 import { COMPANY } from '@/lib/legal/company'
 

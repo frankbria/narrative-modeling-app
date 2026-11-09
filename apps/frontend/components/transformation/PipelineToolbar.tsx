@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
 import { CheckmarkCircle01Icon, FloppyDiskIcon, LeftToRightListBulletIcon, PlayIcon, Redo02Icon, SourceCodeIcon, Undo02Icon, ViewIcon } from '@hugeicons/core-free-icons';
 
 export type PipelineView = 'chain' | 'visual';

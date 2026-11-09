@@ -4,7 +4,7 @@ import React, { type KeyboardEvent, type MouseEvent, type ReactNode, type Synthe
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon, ArrowRight01Icon, Brain01Icon, Database01Icon, Delete02Icon, SparklesIcon, Upload04Icon } from '@hugeicons/core-free-icons';
 
 export interface DatasetItem {

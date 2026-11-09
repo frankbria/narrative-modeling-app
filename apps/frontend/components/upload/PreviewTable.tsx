@@ -1,5 +1,5 @@
 import React from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { CheckmarkCircle01Icon, Shield01Icon } from '@hugeicons/core-free-icons';
 import {
   Table,

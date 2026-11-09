@@ -39,7 +39,18 @@ const eslintConfig = defineConfig([
       // for real diagnostics. Production bundles strip these anyway via
       // next.config removeConsole, but this keeps new debug logging out. (#288)
       "no-console": ["error", { allow: ["warn", "error"] }],
+      // Icons render through components/ui/icon, which hides decorative ones from screen readers (#1177).
+      "no-restricted-imports": ["error", {
+        paths: [
+          { name: "lucide-react", message: "Icons are Hugeicons (#1177)." },
+          { name: "@hugeicons/react", importNames: ["HugeiconsIcon"], message: "Import HugeiconsIcon from '@/components/ui/icon'." },
+        ],
+      }],
     },
+  },
+  {
+    files: ["components/ui/icon.tsx"],
+    rules: { "no-restricted-imports": "off" },
   },
     {
     // Tests and setup may use console freely, and may use require() for the

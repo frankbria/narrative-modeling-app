@@ -3,7 +3,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon, StarIcon } from '@hugeicons/core-free-icons';
 import { OnboardingStep } from '@/components/OnboardingStep';
 import { OnboardingComplete } from '@/components/onboarding/OnboardingComplete';

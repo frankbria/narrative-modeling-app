@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowDown01Icon, ArrowRight01Icon, Delete02Icon, DragDropVerticalIcon, MoveDownIcon, MoveUpIcon, PencilEdit01Icon } from '@hugeicons/core-free-icons';
 import { sanitizeForDisplay } from '@/lib/utils/sanitize';
 

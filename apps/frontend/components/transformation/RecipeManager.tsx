@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { BookOpen01Icon, Cancel01Icon, FloppyDiskIcon } from '@hugeicons/core-free-icons';
 import type { SavedRecipe } from '@/lib/services/pipelineApi';
 import RecipeBrowser from './RecipeBrowser';

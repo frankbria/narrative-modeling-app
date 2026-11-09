@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Cancel01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { CancelTrainingResponse, modelService } from '@/lib/services/model';
 

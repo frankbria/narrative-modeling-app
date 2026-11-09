@@ -5,7 +5,7 @@ import { InFlightSection } from '@/components/training-jobs/InFlightSection';
 import { HistorySection } from '@/components/training-jobs/HistorySection';
 import { useInFlightJobs } from '@/components/training-jobs/useInFlightJobs';
 import { useTrainingHistory } from '@/components/training-jobs/useTrainingHistory';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { AlertCircleIcon, CheckListIcon } from '@hugeicons/core-free-icons';
 
 interface ErrorNoticeProps {

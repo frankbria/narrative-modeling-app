@@ -10,7 +10,7 @@
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useState } from 'react'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { AlertCircleIcon, Cancel01Icon } from '@hugeicons/core-free-icons'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { BillingService, type BillingStatus } from '@/lib/services/billing'

@@ -3,7 +3,8 @@
 import React from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
 import { ChampionIcon, CheckmarkCircle01Icon, Clock01Icon, StarIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons';
 import type { Achievement, OnboardingStatus } from '@/components/onboarding/types';
 

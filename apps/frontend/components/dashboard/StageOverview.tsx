@@ -6,7 +6,7 @@ import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, type StageConfig } from '@/lib/types/workflow';
 import { buildStageUrl } from '@/lib/utils/stageValidation';
 import { Button } from '@/components/ui/button';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { ArrowRight01Icon, Brain01Icon, Rocket01Icon, Upload04Icon } from '@hugeicons/core-free-icons';
 
 type QuickActionsProps = { canTrain: boolean; canDeploy: boolean };

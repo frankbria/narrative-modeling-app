@@ -1,5 +1,5 @@
 import React from 'react'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from '@/components/ui/icon'
 import { CancelCircleIcon, CheckmarkCircle01Icon, Clock01Icon, HardDriveIcon, PauseIcon, PlayIcon, Upload04Icon, ZapIcon } from '@hugeicons/core-free-icons'
 
 interface ChunkUploadProgress {

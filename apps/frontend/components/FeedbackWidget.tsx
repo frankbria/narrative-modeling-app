@@ -13,7 +13,7 @@ import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { HugeiconsIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@/components/ui/icon';
 import { Cancel01Icon, CheckmarkCircle01Icon, Loading03Icon, MessageAdd01Icon, StarIcon } from '@hugeicons/core-free-icons';
 
 const CATEGORIES = [
