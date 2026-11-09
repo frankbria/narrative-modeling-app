@@ -4,6 +4,7 @@ import { useWorkflow } from '@/lib/contexts/WorkflowContext'
 import { useStageGuard } from '@/lib/hooks/useStageGuard'
 import { WorkflowStage } from '@/lib/types/workflow'
 import { modelService } from '@/lib/services/model'
+import { nameEvaluationClasses } from '@/lib/evaluation/classLabels'
 import type { ModelEvaluationResponse } from '@/lib/types/evaluation'
 
 export type EvaluateView = 'loading' | 'error' | 'empty' | 'ready'
@@ -11,7 +12,9 @@ export type EvaluateView = 'loading' | 'error' | 'empty' | 'ready'
 // SHAP summary is best-effort enrichment (issue #80): a failure (or a model
 // with no SHAP support) must never block the evaluation view.
 async function loadEvaluation(modelId: string) {
-  const evaluation = await modelService.getEvaluation(modelId)
+  const raw = await modelService.getEvaluation(modelId)
+  // The page keeps an empty state for a body with no evaluation in it.
+  const evaluation = raw && nameEvaluationClasses(raw)
   const shap = await modelService.getShapSummary(modelId).catch(() => null)
   return { evaluation, shap }
 }

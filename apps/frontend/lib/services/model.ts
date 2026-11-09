@@ -208,7 +208,7 @@ export interface PredictResponse {
   /** Per-record confidence (max class probability) for classification (#82). */
   confidence?: number[]
   /** Ordered class labels matching each probability vector (#82). */
-  class_labels?: string[]
+  class_labels?: string[] | null
   feature_names: string[]
   model_info: {
     model_id: string

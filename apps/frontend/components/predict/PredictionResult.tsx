@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { HugeiconsIcon } from '@/components/ui/icon';
 import { Alert02Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { describeDriver, driverText } from './driverLabel';
+import { classLabel } from '@/lib/evaluation/classLabels';
 import type { InputWarning, PredictResponse } from '@/lib/services/model';
 
 /** The result card of a single prediction: the value and what qualifies it. */
@@ -96,7 +97,7 @@ function Probabilities(props: { prediction: PredictResponse }) {
       <p className="text-sm text-muted-foreground">Class Probabilities:</p>
       {probabilities.map((prob, idx) => (
         <div key={idx} className="flex justify-between text-sm">
-          <span>{prediction.class_labels?.[idx] ?? `Class ${idx}`}:</span>
+          <span>{classLabel(prediction.class_labels?.[idx] ?? `Class ${idx}`, prediction.model_info.target_column)}:</span>
           <span className="font-medium">{(prob * 100).toFixed(1)}%</span>
         </div>
       ))}
@@ -147,6 +148,21 @@ function useScrollIntoView(prediction: PredictResponse) {
   return ref;
 }
 
+// JSON spells a boolean `true` where the backend's class label says `True` (and `1` for `1.0`).
+const sameClass = (label: string, raw: unknown) =>
+  label.toLowerCase() === String(raw).toLowerCase() || Number(label) === Number(raw);
+
+/** The prediction spelled as its class label, so the result and the probability rows agree. */
+function asClassLabel(raw: unknown, labels: string[] | null | undefined) {
+  return labels?.find((label) => sameClass(label, raw)) ?? String(raw);
+}
+
+/** The predicted value; a class is named against the target, a quantity stays bare (#1187). */
+function predictedText(prediction: PredictResponse) {
+  const value = asClassLabel(prediction.predictions?.[0], prediction.class_labels);
+  return prediction.model_info.problem_type.includes('classification') ? classLabel(value, prediction.model_info.target_column) : value;
+}
+
 export function PredictionResult(props: { prediction: PredictResponse; columns: string[] }) {
   const { prediction, columns } = props;
   const ref = useScrollIntoView(prediction);
@@ -164,7 +180,7 @@ export function PredictionResult(props: { prediction: PredictResponse; columns: 
         data-testid="prediction-value"
         className="prediction-value inline-block rounded px-2 text-2xl font-bold bg-highlight text-highlight-foreground"
       >
-        {String(prediction.predictions?.[0])}
+        {predictedText(prediction)}
       </div>
       <Confidence prediction={prediction} />
       <LowConfidence prediction={prediction} />

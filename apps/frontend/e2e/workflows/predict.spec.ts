@@ -87,8 +87,8 @@ test.describe('Prediction Workflow (#82)', () => {
     await authenticatedPage.getByTestId('make-prediction').click();
 
     await predictPage.waitForPredictionResult(20000);
-    const predictionValue = await predictPage.getPredictionValue();
-    expect(predictionValue.trim().length).toBeGreaterThan(0);
+    // churned holds 0/1: the class is named against the target, never a bare digit (#1187).
+    await expect(authenticatedPage.getByTestId('prediction-value')).toHaveText(/^churned = [01]$/);
     // Classification model -> a confidence score is rendered.
     await expect(authenticatedPage.getByTestId('confidence-score')).toBeVisible();
 

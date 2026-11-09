@@ -1010,7 +1010,8 @@ class TestAiQuota:
             n_samples_train=10, n_features=1, model_path="s3://bucket/m.pkl",
         ).insert()
         full = ModelEvaluationResponse(
-            model_id="m-full", problem_type="binary_classification", evaluated_at=datetime.now(UTC),
+            model_id="m-full", problem_type="binary_classification", target_column="y",
+            evaluated_at=datetime.now(UTC),
             ai_explanation=AIExplanation(overall_assessment="ok", generated_by=generated_by),
         )
         with patch("app.api.routes.model_training.MetricsService.load_evaluation_artifacts",

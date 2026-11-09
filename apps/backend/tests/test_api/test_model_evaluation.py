@@ -125,6 +125,7 @@ class TestGetEvaluationEndpoint:
         body = resp.json()
         assert body["partial"] is True
         assert body["model_id"] == "m_partial"
+        assert body["target_column"] == "target"
         assert body["problem_type"] == "binary_classification"
         assert body["metrics"] is None
         assert body["confusion_matrix"] is None
@@ -175,6 +176,7 @@ class TestGetEvaluationEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["partial"] is False
+        assert body["target_column"] == "target"
         assert body["problem_type"] == "binary_classification"
         assert body["algorithm"] == "Random Forest"
 

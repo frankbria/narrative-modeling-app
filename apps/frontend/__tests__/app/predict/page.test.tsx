@@ -258,6 +258,8 @@ describe('PredictPage — enrichment panels (#83)', () => {
   it('renders the regression prediction interval', async () => {
     svc.predict.mockResolvedValue({
       predictions: [3.14],
+      // As the backend sends a regression: class_labels is null, not absent (#1187).
+      class_labels: null,
       confidence: undefined,
       prediction_intervals: [[1.2, 3.4]],
       feature_names: ['age', 'city'],
@@ -267,6 +269,40 @@ describe('PredictPage — enrichment panels (#83)', () => {
     fireEvent.click(screen.getByTestId('make-prediction'));
 
     expect(await screen.findByTestId('prediction-interval')).toHaveTextContent('1.20 – 3.40');
+    // A regression value is a quantity, not a class: it stays bare (#1187).
+    expect(screen.getByTestId('prediction-value')).toHaveTextContent(/^3\.14$/);
+  });
+
+  it('keeps a time-series forecast bare: it is a quantity, not a class (#1187)', async () => {
+    svc.predict.mockResolvedValue({
+      ...basePredictResponse,
+      predictions: [12],
+      probabilities: undefined,
+      model_info: { ...basePredictResponse.model_info, problem_type: 'time_series_regression' },
+    });
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^12$/);
+  });
+
+  it('spells a boolean result the way its probability row does (#1187)', async () => {
+    svc.predict.mockResolvedValue({ ...basePredictResponse, predictions: [true], class_labels: ['False', 'True'] });
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^churn = True$/);
+    expect(screen.getByText('churn = True:')).toBeInTheDocument();
+  });
+
+  it('names a bare 0/1 class against the target (#1187)', async () => {
+    svc.predict.mockResolvedValue({ ...basePredictResponse, predictions: [1], class_labels: ['0', '1'] });
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^churn = 1$/);
+    expect(screen.getByText('churn = 0:')).toBeInTheDocument();
+    expect(screen.getByText('churn = 1:')).toBeInTheDocument();
   });
 
   it('names drivers by column and value, with a direction instead of a number', async () => {

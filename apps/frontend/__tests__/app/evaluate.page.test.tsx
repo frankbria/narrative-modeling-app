@@ -101,6 +101,7 @@ const classificationEvaluation: ModelEvaluationResponse = {
   model_name: 'Churn Model',
   algorithm: 'random_forest',
   problem_type: 'binary_classification',
+  target_column: null,
   partial: false,
   evaluation_on_calibration_set: false,
   metrics: {
@@ -146,6 +147,7 @@ const regressionEvaluation: ModelEvaluationResponse = {
   model_name: 'Price Model',
   algorithm: 'linear_regression',
   problem_type: 'regression',
+  target_column: null,
   partial: false,
   evaluation_on_calibration_set: false,
   metrics: { mae: 3.2, mse: 16.81, rmse: 4.1, r2: 0.84, mape: 12.5 },
@@ -352,6 +354,22 @@ describe('EvaluatePage', () => {
 
     expect(
       await screen.findByRole('button', { name: /actual yes, predicted yes: 44/i })
+    ).toBeInTheDocument()
+  })
+
+  it('names bare 0/1 classes against the target in the confusion matrix (#1187)', async () => {
+    mockGetEvaluation.mockResolvedValue({
+      ...classificationEvaluation,
+      target_column: 'churned',
+      confusion_matrix: { labels: ['0', '1'], matrix: [[44, 6], [5, 65]] },
+    })
+
+    render(<EvaluatePage />)
+    await screen.findByText('Churn Model')
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /confusion matrix/i }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Actual churned = 1, predicted churned = 0: 5 (7.1% of churned = 1)' })
     ).toBeInTheDocument()
   })
 
