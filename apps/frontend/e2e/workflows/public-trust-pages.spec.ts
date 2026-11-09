@@ -79,3 +79,15 @@ test.describe('trust pages are public (#772)', () => {
     }
   });
 });
+
+test.describe('a signed-in visitor on a public page (#1190)', () => {
+  test('gets one navigation: the app shell, without the public header @smoke', async ({ authenticatedPage: page }) => {
+    for (const path of ['/pricing', '/security', '/how-it-works']) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole('img', { name: COMPANY.serviceName })).toHaveCount(1);
+      await expect(page.getByRole('navigation', { name: 'Public' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'Sign in' })).toHaveCount(0);
+    }
+  });
+});

@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PublicNav } from '@/components/PublicNav'
+import { AppShellProvider } from '@/components/AppShell'
 import { SiteFooter } from '@/components/SiteFooter'
 import { COMPANY } from '@/lib/legal/company'
 import { NAV_LINKS, PUBLIC_LINKS } from '@/lib/publicLinks'
@@ -13,6 +14,18 @@ describe('PublicNav', () => {
     for (const { href, label } of NAV_LINKS) {
       expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('href', href)
     }
+  })
+})
+
+describe('PublicNav inside the app shell (#1190)', () => {
+  it('renders nothing: a signed-in visitor already has the app navigation', () => {
+    render(
+      <AppShellProvider>
+        <PublicNav />
+      </AppShellProvider>,
+    )
+    expect(screen.queryByRole('navigation', { name: /public/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument()
   })
 })
 
