@@ -31,6 +31,9 @@ NO_REVIEW='No reviewer produced a review for this commit'
 # Searched for in titles. Never the full title: the operator retitles every issue with
 # a PX.Y prefix, and an exact-title search then files a duplicate beside it (#757).
 PHRASE='Review bot is failing at startup'
+# One reviewer can fail on every pull request while a later one covers it, so the run is
+# green and reviewed; only the failover comment says the first leg died (#1194).
+LEG_PHRASE='A reviewer keeps failing over'
 
 # stdin: runs as JSON, newest first. stdout: how many of the latest runs, in a row, never
 # reviewed (0 = the workflow reviews).
@@ -98,6 +101,16 @@ with_no_review() {
     | jq -c --argjson runs "$runs" '[range(length) as $i | $runs[$i] + {conclusion: .[$i]}]'
 }
 
+# stdin: the callee's "Reviewer failover" comment bodies, newest first. stdout: the
+# reviewers whose latest three comments each say they failed for a reason other than quota
+# (quota runs out and comes back on its own; anything else is broken until fixed).
+failing_legs() {
+  jq -c '
+    def failed: [scan("(?m)^- ([^:\n]+): \\S* ?failed[^\n]*for a reason other than quota")[0]];
+    def lead($name): if length > 0 and (.[0] | index($name)) != null then 1 + (.[1:] | lead($name)) else 0 end;
+    [.[] | failed] as $c | ($c[0] // []) | map(select(. as $name | ($c | lead($name)) >= 3))'
+}
+
 self_check() {
   local failed=0 expected runs got
   while IFS='|' read -r expected runs; do
@@ -153,6 +166,20 @@ CASES
 []|[{"user":{"login":"github-actions[bot]"},"body":"Quoting it: No reviewer produced a review for this commit","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
 []|[{"user":{"login":"github-actions[bot]"},"body":"### Reviewer failover\n- Codex: reviewed","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
 CASES
+  # Which reviewers fail over on every recent pull request, for a reason other than quota.
+  while IFS='|' read -r expected input; do
+    got=$(printf '%s' "$input" | failing_legs)
+    if [ "$got" != "$expected" ]; then
+      echo "FAIL: expected $expected, got $got, for $input"
+      failed=1
+    fi
+  done <<'CASES'
+["Codex"]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota — investigate\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed"]
+[]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: reviewed"]
+[]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota"]
+[]|["### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed","### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed","### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed"]
+[]|[]
+CASES
   [ "$failed" -eq 0 ] && echo "review_bots_health self-check: ok"
   return "$failed"
 }
@@ -190,6 +217,31 @@ check() {
   fi
 }
 
+# A reviewer leg that fails over on every recent pull request gets its own alert, closed
+# once it reviews again (#1194).
+check_legs() {
+  local since bodies legs name search existing
+  since=$(date -u -d '14 days ago' +%FT%TZ)
+  bodies=$(gh api --paginate "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --jq '.[]' \
+    | jq -s -c '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("### Reviewer failover")))] | sort_by(.created_at) | reverse | map(.body)')
+  legs=$(printf '%s' "$bodies" | failing_legs)
+  for existing in $(gh issue list --state open --search "\"$LEG_PHRASE\" in:title" --json number,title --jq '.[] | "\(.number)=\(.title | split(": ") | last)"'); do
+    name=${existing#*=}
+    if ! printf '%s' "$legs" | jq -e --arg n "$name" 'index($n) != null' >/dev/null; then
+      run gh issue close "${existing%%=*}" --comment "Recovered: $name has not failed over on three pull requests in a row."
+    fi
+  done
+  for name in $(printf '%s' "$legs" | jq -r '.[]'); do
+    echo "$FAILOVER_WORKFLOW: $name failed over on the last three pull requests"
+    search="\"$LEG_PHRASE: $name\" in:title"
+    existing=$(gh issue list --state open --search "$search" --json number --jq 'min_by(.number).number // empty')
+    [ -n "$existing" ] && continue
+    run gh issue create --title "[P2] [infra] $LEG_PHRASE: $name" --body "$(printf '%s\n\n%s\n' \
+      "The last three \"Reviewer failover\" comments from \`$FAILOVER_WORKFLOW\` each say **$name** failed for a reason other than quota. A later reviewer covered every pull request, so the runs are green and reviewed, and nothing else reports this." \
+      "The job log names the cause (\`gh api repos/{owner}/{repo}/actions/jobs/<id>/logs\`; \`gh run view --log\` returns nothing for a called workflow). Opened by \`scripts/ci/review_bots_health.sh\`; it closes this issue once $name stops failing over.")"
+  done
+}
+
 DRY_RUN=0
 case "${1:-}" in
   --self-check) self_check; exit ;;
@@ -200,3 +252,4 @@ esac
 for workflow in "${WORKFLOWS[@]}"; do
   check "$workflow"
 done
+check_legs
