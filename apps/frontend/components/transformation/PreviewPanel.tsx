@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { ViewIcon, ViewOffIcon } from '@hugeicons/core-free-icons';
+import { ViewIcon } from '@hugeicons/core-free-icons';
 
 interface PreviewPanelProps {
   preview: any;

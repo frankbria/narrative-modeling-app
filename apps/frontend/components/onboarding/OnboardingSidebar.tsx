@@ -4,7 +4,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { CheckmarkCircle01Icon, CircleIcon, NextIcon, PlayIcon, Target02Icon } from '@hugeicons/core-free-icons';
+import { CheckmarkCircle01Icon, CircleIcon, SkipForwardIcon, PlayIcon, Target02Icon } from '@hugeicons/core-free-icons';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import type { Achievement, OnboardingStatus, StepInfo, StepStatus } from './types';
 
@@ -25,7 +25,7 @@ interface StepRowProps {
 const STEP_ICON: Record<StepStatus, React.ReactNode> = {
   completed: <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-5 w-5 shrink-0 text-success" />,
   in_progress: <HugeiconsIcon icon={PlayIcon} className="h-5 w-5 shrink-0 text-primary" />,
-  skipped: <HugeiconsIcon icon={NextIcon} className="h-5 w-5 shrink-0 text-muted-foreground" />,
+  skipped: <HugeiconsIcon icon={SkipForwardIcon} className="h-5 w-5 shrink-0 text-muted-foreground" />,
   not_started: <HugeiconsIcon icon={CircleIcon} className="h-5 w-5 shrink-0 text-muted-foreground/60" />,
 };
 

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { BookOpen01Icon, Loading03Icon, PlayIcon, ZapIcon } from '@hugeicons/core-free-icons';
+import { BookOpen01Icon, Clock01Icon, PlayIcon, ZapIcon } from '@hugeicons/core-free-icons';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 
 interface HighlightProps {
@@ -97,7 +97,7 @@ const OVERVIEW = (
     </ul>
 
     <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4" />
+      <HugeiconsIcon icon={Clock01Icon} className="h-4 w-4" />
       Estimated time: 20-30 minutes
     </p>
   </div>

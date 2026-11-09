@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { BookOpen01Icon, Loading03Icon, StarIcon, UserGroupIcon } from '@hugeicons/core-free-icons';
+import { BookOpen01Icon, Clock01Icon, StarIcon, UserGroupIcon } from '@hugeicons/core-free-icons';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { fetchRecipePages, type RecipeFilter, type RecipePage, type SavedRecipe } from '@/lib/services/pipelineApi';
 
@@ -69,7 +69,7 @@ function RecipeCard(props: RecipeCardProps) {
       <span className="block text-sm text-muted-foreground mb-2">{recipe.description}</span>
       <span className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <HugeiconsIcon icon={Loading03Icon} className="w-3 h-3" />
+          <HugeiconsIcon icon={Clock01Icon} className="w-3 h-3" />
           {new Date(recipe.created_at).toLocaleDateString()}
         </span>
         <span>{stepCount(recipe)}</span>

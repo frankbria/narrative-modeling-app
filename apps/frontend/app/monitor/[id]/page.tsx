@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
+import { Clock01Icon, Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { formatLatency } from '@/lib/monitoring'
 import { LineChart } from '@/components/LineChart'
@@ -265,7 +265,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <HugeiconsIcon icon={Loading03Icon} className="h-5 w-5 text-primary" />
+              <HugeiconsIcon icon={Clock01Icon} className="h-5 w-5 text-primary" />
               {metrics.predictions_per_hour.toFixed(1)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">

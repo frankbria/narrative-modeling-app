@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AlertCircleIcon, Analytics01Icon, ArrowLeft01Icon, Brain01Icon, Calendar03Icon, ChartIncreaseIcon, Database01Icon, FileEditIcon, Layers01Icon, Loading03Icon, Target02Icon, ViewIcon } from '@hugeicons/core-free-icons'
+import { Clock01Icon, AlertCircleIcon, Analytics01Icon, ArrowLeft01Icon, Brain01Icon, Calendar03Icon, ChartIncreaseIcon, Database01Icon, FileEditIcon, Layers01Icon, Loading03Icon, Target02Icon, ViewIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ModelPerformanceChart } from '@/components/ModelPerformanceChart'
@@ -212,7 +212,7 @@ export default function ModelDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2">
-            <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 text-muted-foreground" />
+            <HugeiconsIcon icon={Clock01Icon} className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">
               {model.last_used_at 
                 ? new Date(model.last_used_at).toLocaleDateString()

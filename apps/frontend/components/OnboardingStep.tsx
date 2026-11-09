@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { ArrowRight01Icon, BookOpen01Icon, CheckmarkCircle01Icon, FileEditIcon, HelpCircleIcon, Loading03Icon, NextIcon, Target02Icon } from '@hugeicons/core-free-icons';
+import { ArrowRight01Icon, BookOpen01Icon, CheckmarkCircle01Icon, FileEditIcon, HelpCircleIcon, Clock01Icon, SkipForwardIcon, Target02Icon } from '@hugeicons/core-free-icons';
 
 interface StepInfo {
   step_id: string;
@@ -225,7 +225,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             </div>
 
             <Alert>
-              <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4" />
+              <HugeiconsIcon icon={Clock01Icon} className="h-4 w-4" />
               <AlertDescription>
                 Model training typically takes 2-5 minutes depending on your data size.
                 Grab a coffee and watch the progress!
@@ -338,7 +338,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
           </div>
           
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4" />
+            <HugeiconsIcon icon={Clock01Icon} className="h-4 w-4" />
             {step.estimated_duration}
           </div>
         </div>
@@ -455,7 +455,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   onClick={() => onSkip(step.step_id)}
                   disabled={isCompleting}
                 >
-                  <HugeiconsIcon icon={NextIcon} className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={SkipForwardIcon} className="mr-2 h-4 w-4" />
                   Skip Step
                 </Button>
               )}

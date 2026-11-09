@@ -1,7 +1,7 @@
 'use client'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Activity01Icon, AlertCircleIcon, CheckmarkCircle02Icon, Loading03Icon, ServerStack01Icon, WifiOff01Icon } from '@hugeicons/core-free-icons'
+import { Activity01Icon, AlertCircleIcon, CheckmarkCircle02Icon, Clock01Icon, ServerStack01Icon, WifiOff01Icon } from '@hugeicons/core-free-icons'
 import { useEffect, type ReactNode } from 'react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -131,7 +131,7 @@ export function HealthMonitor(props: HealthMonitorProps) {
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Last Update</p>
                 <p className="text-sm font-medium flex items-center justify-end gap-1">
-                  <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3" />
+                  <HugeiconsIcon icon={Clock01Icon} className="h-3 w-3" />
                   {updateTime(data?.lastUpdate)}
                 </p>
               </div>

@@ -1,6 +1,6 @@
 import React from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { CancelCircleIcon, CheckmarkCircle01Icon, HardDriveIcon, Loading03Icon, PauseIcon, PlayIcon, Upload04Icon, ZapIcon } from '@hugeicons/core-free-icons'
+import { CancelCircleIcon, CheckmarkCircle01Icon, HardDriveIcon, Clock01Icon, PauseIcon, PlayIcon, Upload04Icon, ZapIcon } from '@hugeicons/core-free-icons'
 
 interface ChunkUploadProgress {
   sessionId: string
@@ -210,7 +210,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <HugeiconsIcon icon={Loading03Icon} className="text-muted-foreground" size={16} />
+              <HugeiconsIcon icon={Clock01Icon} className="text-muted-foreground" size={16} />
             </div>
             <div className="text-sm text-muted-foreground">Time Remaining</div>
             <div className="font-semibold text-sm">
