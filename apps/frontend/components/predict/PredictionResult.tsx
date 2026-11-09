@@ -153,8 +153,8 @@ const sameClass = (label: string, raw: unknown) =>
   label.toLowerCase() === String(raw).toLowerCase() || Number(label) === Number(raw);
 
 /** The prediction spelled as its class label, so the result and the probability rows agree. */
-function asClassLabel(raw: unknown, labels: string[] = []) {
-  return labels.find((label) => sameClass(label, raw)) ?? String(raw);
+function asClassLabel(raw: unknown, labels: string[] | null | undefined) {
+  return labels?.find((label) => sameClass(label, raw)) ?? String(raw);
 }
 
 /** The predicted value; a class is named against the target, a quantity stays bare (#1187). */

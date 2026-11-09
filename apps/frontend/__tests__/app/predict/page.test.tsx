@@ -258,6 +258,8 @@ describe('PredictPage — enrichment panels (#83)', () => {
   it('renders the regression prediction interval', async () => {
     svc.predict.mockResolvedValue({
       predictions: [3.14],
+      // As the backend sends a regression: class_labels is null, not absent (#1187).
+      class_labels: null,
       confidence: undefined,
       prediction_intervals: [[1.2, 3.4]],
       feature_names: ['age', 'city'],
