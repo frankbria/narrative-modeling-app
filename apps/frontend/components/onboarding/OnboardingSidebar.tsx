@@ -4,7 +4,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { CheckmarkCircle01Icon, CircleIcon, SkipForwardIcon, PlayIcon, Target02Icon } from '@hugeicons/core-free-icons';
+import { CheckmarkCircle01Icon, CircleIcon, PlayIcon, SkipForwardIcon, Target02Icon } from '@hugeicons/core-free-icons';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import type { Achievement, OnboardingStatus, StepInfo, StepStatus } from './types';
 

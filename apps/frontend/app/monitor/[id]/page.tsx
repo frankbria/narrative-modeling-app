@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Clock01Icon, Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
+import { Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Clock01Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { formatLatency } from '@/lib/monitoring'
 import { LineChart } from '@/components/LineChart'
