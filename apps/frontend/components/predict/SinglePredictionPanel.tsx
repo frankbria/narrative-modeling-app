@@ -171,7 +171,7 @@ export function SinglePredictionPanel(props: SinglePredictionPanelProps) {
         ))}
       </div>
       <SubmitButton loading={props.loading} formValid={props.formValid} onSubmit={props.onSubmit} />
-      {props.prediction && <PredictionResult prediction={props.prediction} />}
+      {props.prediction && <PredictionResult prediction={props.prediction} columns={features.map((feature) => feature.name)} />}
     </div>
   );
 }

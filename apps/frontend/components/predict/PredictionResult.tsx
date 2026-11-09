@@ -116,8 +116,10 @@ function Contribution(props: { value: number }) {
 }
 
 /** What drove the prediction, in the dataset's own column names and values (#83, #1170). */
-function Explanation(props: { prediction: PredictResponse }) {
-  const { prediction } = props;
+// `columns` are the form's raw inputs: the response's `feature_names` are the model's
+// engineered inputs (one-hot `<column>_<value>`), so they cannot split a name apart.
+function Explanation(props: { prediction: PredictResponse; columns: string[] }) {
+  const { prediction, columns } = props;
   const explanation = prediction.explanations?.[0];
   if (!explanation) return null;
   return (
@@ -126,7 +128,7 @@ function Explanation(props: { prediction: PredictResponse }) {
       <div className="space-y-1">
         {explanation.top_features.map((f) => (
           <div key={f.feature_name} className="flex justify-between gap-4 text-sm">
-            <span>{driverText(describeDriver(f.feature_name, prediction.feature_names), f.feature_value)}</span>
+            <span>{driverText(describeDriver(f.feature_name, columns), f.feature_value)}</span>
             <Contribution value={f.contribution} />
           </div>
         ))}
@@ -144,8 +146,8 @@ function useScrollIntoView(prediction: PredictResponse) {
   return ref;
 }
 
-export function PredictionResult(props: { prediction: PredictResponse }) {
-  const { prediction } = props;
+export function PredictionResult(props: { prediction: PredictResponse; columns: string[] }) {
+  const { prediction, columns } = props;
   const ref = useScrollIntoView(prediction);
   return (
     <div
@@ -168,7 +170,7 @@ export function PredictionResult(props: { prediction: PredictResponse }) {
       <InputWarnings warnings={prediction.input_warnings?.[0]} />
       <Interval prediction={prediction} />
       <Probabilities prediction={prediction} />
-      <Explanation prediction={prediction} />
+      <Explanation prediction={prediction} columns={columns} />
     </div>
   );
 }

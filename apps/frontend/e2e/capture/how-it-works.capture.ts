@@ -52,6 +52,8 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
     await page.waitForLoadState('networkidle');
     await assertAccountCropped();
     await expect(page.locator('.animate-spin')).toHaveCount(0, { timeout: 30_000 });
+    // Skeleton placeholders (Evaluate's loading state) are not spinners: wait them out too.
+    await expect(page.locator('.animate-pulse')).toHaveCount(0, { timeout: 30_000 });
     await page.waitForTimeout(1500);
     const png = testInfo.outputPath(`${stage}.png`);
     await page.screenshot({ path: png, clip: { x: 0, y: 0, width: CROP_WIDTH, height: CROP_HEIGHT } });
@@ -112,7 +114,7 @@ test('capture the eight stages and the churn walkthrough', async ({ authenticate
     await page.getByRole('button', { name: 'Make Prediction' }).click();
     await expect(page.getByTestId('continue-button')).toBeEnabled({ timeout: 30_000 });
     // The result sits below the form: bring it up under the stage bar.
-    await page.getByText('Prediction Result').evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 280));
+    await page.getByTestId('prediction-result').evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 280));
     await shoot('prediction');
     await next(/\/deploy/);
     await shoot('deployment');

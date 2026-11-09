@@ -270,17 +270,19 @@ describe('PredictPage — enrichment panels (#83)', () => {
   });
 
   it('names drivers by column and value, with a direction instead of a number', async () => {
+    // As the backend sends them: `feature_names` are the model's engineered inputs
+    // (one-hot `city_NYC`), so the raw column comes from the form, not the response.
     svc.predict.mockResolvedValue({
       ...basePredictResponse,
-      feature_names: ['age', 'contract_type'],
+      feature_names: ['age', 'city_NYC', 'city_LA'],
       explanations: [
         {
-          explanation_text: 'contract_type_Month-to-month (increased the result)',
+          explanation_text: 'city_NYC (increased the result)',
           method: 'tree_importance',
           top_features: [
-            { feature_name: 'contract_type_Month-to-month', contribution: 2.505, feature_value: 1 },
+            { feature_name: 'city_NYC', contribution: 2.505, feature_value: 1 },
             { feature_name: 'age', contribution: -0.13 },
-            { feature_name: 'contract_type_Two year', contribution: 0.2, feature_value: 0 },
+            { feature_name: 'city_LA', contribution: 0.2, feature_value: 0 },
           ],
         },
       ],
@@ -289,9 +291,9 @@ describe('PredictPage — enrichment panels (#83)', () => {
     fireEvent.click(screen.getByTestId('make-prediction'));
 
     const panel = await screen.findByTestId('prediction-explanation');
-    expect(panel).toHaveTextContent('contract_type is Month-to-month');
-    expect(panel).toHaveTextContent('contract_type is not Two year');
-    expect(panel).not.toHaveTextContent('contract_type_');
+    expect(panel).toHaveTextContent('city is NYC');
+    expect(panel).toHaveTextContent('city is not LA');
+    expect(panel).not.toHaveTextContent('city_');
     expect(panel).not.toHaveTextContent('2.505');
     expect(panel).toHaveTextContent('pushes the result up');
     expect(panel).toHaveTextContent('pushes the result down');
