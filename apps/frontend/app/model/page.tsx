@@ -13,7 +13,8 @@ import { LeftOutColumns } from '@/components/model-training/LeftOutColumns';
 import { StartingRun, TrainingRunView } from '@/components/model-training/TrainingRunView';
 import { chosenMode, useTrainingOptions } from '@/components/model-training/useTrainingOptions';
 import { useTrainingRun, type TrainingRun } from '@/components/model-training/useTrainingRun';
-import { Brain } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Brain01Icon } from '@hugeicons/core-free-icons';
 import { useSession } from 'next-auth/react';
 
 /** The setup form until a run starts, then the run. */
@@ -62,7 +63,7 @@ export default function ModelPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Brain className="w-6 h-6 text-primary" />
+          <HugeiconsIcon icon={Brain01Icon} className="w-6 h-6 text-primary" />
           Model Training
         </h1>
 

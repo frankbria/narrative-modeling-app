@@ -1,6 +1,7 @@
 'use client'
 
-import { Activity, AlertCircle, CheckCircle2, Clock, Server, WifiOff } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Activity01Icon, AlertCircleIcon, CheckmarkCircle02Icon, Loading03Icon, ServerStack01Icon, WifiOff01Icon } from '@hugeicons/core-free-icons'
 import { useEffect, type ReactNode } from 'react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -47,10 +48,10 @@ interface HealthMonitorProps {
 type HealthState = 'loading' | 'unreachable' | 'erroring' | 'alive'
 
 const STATE_ICONS: Record<HealthState, ReactNode> = {
-  loading: <Activity className="h-5 w-5 animate-pulse" data-testid="health-icon-loading" />,
-  unreachable: <WifiOff className="h-5 w-5 text-destructive" data-testid="health-icon-unreachable" />,
-  erroring: <AlertCircle className="h-5 w-5 text-warning" data-testid="health-icon-erroring" />,
-  alive: <CheckCircle2 className="h-5 w-5 text-success" data-testid="health-icon-alive" />,
+  loading: <HugeiconsIcon icon={Activity01Icon} className="h-5 w-5 animate-pulse" data-testid="health-icon-loading" />,
+  unreachable: <HugeiconsIcon icon={WifiOff01Icon} className="h-5 w-5 text-destructive" data-testid="health-icon-unreachable" />,
+  erroring: <HugeiconsIcon icon={AlertCircleIcon} className="h-5 w-5 text-warning" data-testid="health-icon-erroring" />,
+  alive: <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-5 w-5 text-success" data-testid="health-icon-alive" />,
 }
 
 const STATE_LABELS: Record<HealthState, string> = {
@@ -110,7 +111,7 @@ export function HealthMonitor(props: HealthMonitorProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
+            <HugeiconsIcon icon={ServerStack01Icon} className="h-5 w-5" />
             System Health Monitor
           </CardTitle>
           <CardDescription>Liveness of the backend, polled from /health</CardDescription>
@@ -130,7 +131,7 @@ export function HealthMonitor(props: HealthMonitorProps) {
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Last Update</p>
                 <p className="text-sm font-medium flex items-center justify-end gap-1">
-                  <Clock className="h-3 w-3" />
+                  <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3" />
                   {updateTime(data?.lastUpdate)}
                 </p>
               </div>

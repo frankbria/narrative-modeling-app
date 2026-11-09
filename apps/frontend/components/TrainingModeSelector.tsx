@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Zap, Target, Sparkles } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { SparklesIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons';
 import type { TrainingMode } from '@/lib/services/model';
 
 interface ModeOption {
@@ -21,7 +22,7 @@ const MODE_OPTIONS: ModeOption[] = [
   {
     mode: 'quick',
     title: 'Quick',
-    icon: <Zap className="w-5 h-5 text-warning" />,
+    icon: <HugeiconsIcon icon={ZapIcon} className="w-5 h-5 text-warning" />,
     blurb: 'Fast results from a few strong algorithms with default settings.',
     algorithms: '~3 algorithms',
     time: '~5 min cap',
@@ -31,7 +32,7 @@ const MODE_OPTIONS: ModeOption[] = [
   {
     mode: 'comprehensive',
     title: 'Comprehensive',
-    icon: <Target className="w-5 h-5 text-primary" />,
+    icon: <HugeiconsIcon icon={Target02Icon} className="w-5 h-5 text-primary" />,
     blurb: 'Thorough search across 10+ algorithms with full hyperparameter tuning.',
     algorithms: '10+ algorithms',
     time: 'Up to 30 min',
@@ -70,7 +71,7 @@ export function TrainingModeSelector({
           className="p-3 bg-success/10 rounded-lg border border-success/30 flex items-start gap-2"
           data-testid="mode-recommendation"
         >
-          <Sparkles className="w-5 h-5 text-success mt-0.5" />
+          <HugeiconsIcon icon={SparklesIcon} className="w-5 h-5 text-success mt-0.5" />
           <div className="text-sm text-success">
             <p className="font-semibold">
               Recommended: {recommendedMode === 'quick' ? 'Quick' : 'Comprehensive'}

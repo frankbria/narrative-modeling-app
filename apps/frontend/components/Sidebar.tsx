@@ -6,7 +6,8 @@ import { useSession, signOut } from 'next-auth/react'
 import type { Session } from 'next-auth'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Upload, Table, Settings, BrainCircuit, BarChart, SearchCheck, Shield, Activity, Key, ListChecks, LogOut, User, Menu, X } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Activity01Icon, AiBrain01Icon, Cancel01Icon, ChartColumnIcon, CheckListIcon, DashboardSquare01Icon, Key01Icon, Logout01Icon, Menu01Icon, SearchList01Icon, Settings02Icon, Shield01Icon, Table01Icon, Upload04Icon, UserIcon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/brand/Logo'
 import {
@@ -25,14 +26,14 @@ const ACTIVE = 'bg-card font-bold text-primary shadow-[inset_3px_0_0_var(--prima
 const isCurrent = (pathname: string | null, href: string) => Boolean(pathname?.startsWith(href))
 
 const MENU_ITEMS = [
-  { name: 'Dashboard', icon: <LayoutDashboard size={18} />, href: '/dashboard' },
-  { name: 'Load Data', icon: <Upload size={18} />, href: '/upload' },
-  { name: 'Review Data', icon: <Table size={20} />, href: '/review' },
-  { name: 'Explore Data', icon: <SearchCheck size={20} />, href: '/explore' },
-  { name: 'Build Model', icon: <BrainCircuit size={20} />, href: '/model' },
-  { name: 'Training Jobs', icon: <ListChecks size={20} />, href: '/training' },
-  { name: 'Create Predictions', icon: <BarChart size={20} />, href: '/predict' },
-  { name: 'Monitor', icon: <Activity size={20} />, href: '/monitor' },
+  { name: 'Dashboard', icon: <HugeiconsIcon icon={DashboardSquare01Icon} size={18} />, href: '/dashboard' },
+  { name: 'Load Data', icon: <HugeiconsIcon icon={Upload04Icon} size={18} />, href: '/upload' },
+  { name: 'Review Data', icon: <HugeiconsIcon icon={Table01Icon} size={20} />, href: '/review' },
+  { name: 'Explore Data', icon: <HugeiconsIcon icon={SearchList01Icon} size={20} />, href: '/explore' },
+  { name: 'Build Model', icon: <HugeiconsIcon icon={AiBrain01Icon} size={20} />, href: '/model' },
+  { name: 'Training Jobs', icon: <HugeiconsIcon icon={CheckListIcon} size={20} />, href: '/training' },
+  { name: 'Create Predictions', icon: <HugeiconsIcon icon={ChartColumnIcon} size={20} />, href: '/predict' },
+  { name: 'Monitor', icon: <HugeiconsIcon icon={Activity01Icon} size={20} />, href: '/monitor' },
 ]
 
 type MenuItem = (typeof MENU_ITEMS)[number]
@@ -51,7 +52,7 @@ function leave() {
 function DrawerToggle(props: ToggleProps) {
   const { open, onToggle, buttonRef } = props
   const label = open ? 'Close navigation menu' : 'Open navigation menu'
-  const Icon = open ? X : Menu
+  const icon = open ? Cancel01Icon : Menu01Icon
   return (
     <button
       ref={buttonRef}
@@ -62,7 +63,7 @@ function DrawerToggle(props: ToggleProps) {
       aria-controls="app-sidebar"
       className="fixed top-3 left-3 z-50 rounded-md border border-border bg-card p-2 text-foreground shadow-sm lg:hidden"
     >
-      <Icon size={20} />
+      <HugeiconsIcon icon={icon} size={20} />
     </button>
   )
 }
@@ -72,7 +73,7 @@ function Avatar(props: AvatarProps) {
   if (image) return <img src={image} alt={name} className="w-8 h-8 rounded-full" />
   return (
     <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-      <User size={16} />
+      <HugeiconsIcon icon={UserIcon} size={16} />
     </div>
   )
 }
@@ -98,13 +99,13 @@ function AccountMenu(props: AccountMenuProps) {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/settings" onClick={onNavigate}>
-            <Settings className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={Settings02Icon} className="mr-2 h-4 w-4" />
             Settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={leave}>
-          <LogOut className="mr-2 h-4 w-4" />
+          <HugeiconsIcon icon={Logout01Icon} className="mr-2 h-4 w-4" />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -120,14 +121,14 @@ function SidebarFooter(props: FooterProps) {
         <AccountMenu account={session?.user} onNavigate={onNavigate} />
       </div>
       <Link href="/settings/api" onClick={onNavigate} className={LINK}>
-        <Key size={18} />
+        <HugeiconsIcon icon={Key01Icon} size={18} />
         <span>API Keys</span>
       </Link>
       {/* Admins only (#477): the flag is computed server-side in auth.ts;
           middleware.ts guards the route itself, this just hides the door. */}
       {session?.isAdmin && (
         <Link href="/admin" onClick={onNavigate} className={LINK}>
-          <Shield size={18} />
+          <HugeiconsIcon icon={Shield01Icon} size={18} />
           <span>Admin</span>
         </Link>
       )}

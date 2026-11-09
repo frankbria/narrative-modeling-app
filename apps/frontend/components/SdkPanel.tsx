@@ -3,7 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { modelService } from '@/lib/services/model';
 import type { SdkInfo } from '@/lib/services/model';
-import { Copy, Download, Check, Code } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Copy01Icon, Download01Icon, SourceCodeIcon, Tick02Icon } from '@hugeicons/core-free-icons';
 
 /**
  * Per-deployment SDK panel (issue #86).
@@ -116,14 +117,14 @@ export function SdkPanel({ modelId }: { modelId: string }) {
     <div className="bg-muted rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold flex items-center gap-2">
-          <Code className="w-5 h-5" /> Client SDKs
+          <HugeiconsIcon icon={SourceCodeIcon} className="w-5 h-5" /> Client SDKs
         </h3>
         <button
           type="button"
           onClick={handleDownloadPostman}
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
         >
-          <Download className="w-4 h-4" />
+          <HugeiconsIcon icon={Download01Icon} className="w-4 h-4" />
           Postman collection
         </button>
       </div>
@@ -172,7 +173,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
             disabled={!source}
             className="p-1.5 bg-background/15 hover:bg-background/25 rounded text-background disabled:opacity-50"
           >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? <HugeiconsIcon icon={Tick02Icon} className="w-4 h-4" /> : <HugeiconsIcon icon={Copy01Icon} className="w-4 h-4" />}
           </button>
           <button
             type="button"
@@ -184,7 +185,7 @@ export function SdkPanel({ modelId }: { modelId: string }) {
             disabled={!source}
             className="p-1.5 bg-background/15 hover:bg-background/25 rounded text-background disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
+            <HugeiconsIcon icon={Download01Icon} className="w-4 h-4" />
           </button>
         </div>
         <pre className="bg-foreground text-background p-4 rounded overflow-x-auto text-sm max-h-96">

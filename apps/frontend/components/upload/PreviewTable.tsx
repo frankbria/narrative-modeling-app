@@ -1,5 +1,6 @@
 import React from 'react';
-import { CheckCircle, Shield } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon, Shield01Icon } from '@hugeicons/core-free-icons';
 import {
   Table,
   TableBody,
@@ -25,7 +26,7 @@ function PIIRisk(props: { level: string }) {
   const { level } = props;
   return (
     <>
-      <Shield className="text-warning" size={16} />
+      <HugeiconsIcon icon={Shield01Icon} className="text-warning" size={16} />
       <span className="text-sm text-warning font-medium">
         PII {level.toUpperCase()} RISK
       </span>
@@ -35,7 +36,7 @@ function PIIRisk(props: { level: string }) {
 
 const NO_PII = (
   <>
-    <CheckCircle className="text-success" size={16} />
+    <HugeiconsIcon icon={CheckmarkCircle01Icon} className="text-success" size={16} />
     <span className="text-sm text-success font-medium">NO PII DETECTED</span>
   </>
 );

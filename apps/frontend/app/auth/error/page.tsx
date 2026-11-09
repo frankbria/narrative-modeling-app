@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
-import { AlertCircle } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { AlertCircleIcon } from '@hugeicons/core-free-icons';
 import { COMPANY } from '@/lib/legal/company';
 
 // Where rejected users request an invite. Configurable per deploy; falls back
@@ -49,7 +50,7 @@ export default function AuthErrorPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
-            <AlertCircle className="w-6 h-6 text-destructive" />
+            <HugeiconsIcon icon={AlertCircleIcon} className="w-6 h-6 text-destructive" />
           </div>
           <CardTitle className="text-2xl font-bold">
             {error === 'AccessDenied' ? 'Invite Required' : 'Authentication Error'}

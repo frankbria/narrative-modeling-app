@@ -1,5 +1,6 @@
 import React from 'react';
-import { Send } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { SentIcon } from '@hugeicons/core-free-icons';
 import type { ModelFeatureDescriptor, PredictResponse } from '@/lib/services/model';
 import { PredictionResult } from './PredictionResult';
 import type { FieldValidationError, FieldValues } from './predictionForm';
@@ -115,7 +116,7 @@ function SubmitButton(props: { loading: boolean; formValid: boolean; onSubmit: V
       disabled={!enabled}
       className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${colour}`}
     >
-      <Send className="w-5 h-5" />
+      <HugeiconsIcon icon={SentIcon} className="w-5 h-5" />
       {loading ? 'Making Prediction...' : 'Make Prediction'}
     </button>
   );

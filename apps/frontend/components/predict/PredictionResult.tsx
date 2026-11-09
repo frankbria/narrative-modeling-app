@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Alert02Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { describeDriver, driverText } from './driverLabel';
 import type { InputWarning, PredictResponse } from '@/lib/services/model';
 
@@ -36,7 +37,7 @@ function LowConfidence(props: { prediction: PredictResponse }) {
   const threshold = prediction.confidence_threshold;
   return (
     <div data-testid="low-confidence-warning" className={`${WARNING_BOX} items-center`}>
-      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <HugeiconsIcon icon={Alert02Icon} className="w-4 h-4 shrink-0" />
       <span>
         Low confidence — this prediction is below the{' '}
         {threshold != null ? `${(threshold * 100).toFixed(0)}%` : 'recommended'} confidence
@@ -55,7 +56,7 @@ export function InputWarnings(props: { warnings?: Record<string, InputWarning> |
   if (entries.length === 0) return null;
   return (
     <div data-testid="input-warnings" className={`${WARNING_BOX} items-start`}>
-      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+      <HugeiconsIcon icon={Alert02Icon} className="w-4 h-4 shrink-0 mt-0.5" />
       <div>
         <p className="font-medium">
           The model had not seen some of these inputs. Treat the prediction with caution.
@@ -156,7 +157,7 @@ export function PredictionResult(props: { prediction: PredictResponse; columns: 
       className="prediction-output mt-6 p-4 bg-card rounded-lg border border-border"
     >
       <h4 className="font-semibold mb-2 flex items-center gap-2">
-        <CheckCircle className="w-5 h-5 text-primary" />
+        <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-5 h-5 text-primary" />
         Predicted {prediction.model_info.target_column}
       </h4>
       <div

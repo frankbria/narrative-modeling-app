@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Refresh01Icon } from '@hugeicons/core-free-icons';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { modelService } from '@/lib/services/model';
 
@@ -137,7 +138,7 @@ export function ExcludedColumnsPanel(props: ExcludedColumnsPanelProps) {
         disabled={keep.length === 0}
         className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
       >
-        <RefreshCw className="w-4 h-4" />
+        <HugeiconsIcon icon={Refresh01Icon} className="w-4 h-4" />
         Retrain keeping {keep.length} column{keep.length === 1 ? '' : 's'}
       </button>
     </div>

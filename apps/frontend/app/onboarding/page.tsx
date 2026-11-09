@@ -3,7 +3,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Star } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { AlertCircleIcon, StarIcon } from '@hugeicons/core-free-icons';
 import { OnboardingStep } from '@/components/OnboardingStep';
 import { OnboardingComplete } from '@/components/onboarding/OnboardingComplete';
 import { OnboardingSidebar } from '@/components/onboarding/OnboardingSidebar';
@@ -83,7 +84,7 @@ function LoadError(props: { onRetry: VoidFunction }) {
   return (
     <div className="container mx-auto p-6 max-w-2xl">
       <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
+        <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" />
         <AlertDescription className="flex items-center justify-between gap-4">
           <span>Couldn&apos;t load your onboarding progress. Please try again.</span>
           <Button variant="outline" size="sm" onClick={onRetry}>
@@ -99,7 +100,7 @@ function Celebration(props: { show: boolean }) {
   if (!props.show) return null;
   return (
     <Alert className="mb-6 border-success/30 bg-success/10">
-      <Star className="h-4 w-4 text-success" />
+      <HugeiconsIcon icon={StarIcon} className="h-4 w-4 text-success" />
       <AlertDescription className="text-foreground">
         You earned a new achievement.
       </AlertDescription>
@@ -111,7 +112,7 @@ function ActionError(props: { message: string | null }) {
   if (!props.message) return null;
   return (
     <Alert variant="destructive" className="mb-4">
-      <AlertCircle className="h-4 w-4" />
+      <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" />
       <AlertDescription>{props.message}</AlertDescription>
     </Alert>
   );

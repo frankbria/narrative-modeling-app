@@ -11,7 +11,8 @@
  */
 
 import React, { useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowLeft01Icon, ArrowRight01Icon, CheckmarkCircle01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
 import {
@@ -95,8 +96,8 @@ const continueText = (label: string | undefined, next: NonNullable<StageConfigOr
 // Lookups rather than branches: coverage never records a component's `return (` line,
 // so a branch inside one leaves the CRAP gate unable to measure the body.
 const CONTINUE_ICON = {
-  true: <Loader2 className="w-4 h-4 animate-spin" />,
-  false: <ArrowRight className="w-4 h-4" />,
+  true: <HugeiconsIcon icon={Loading03Icon} className="w-4 h-4 animate-spin" />,
+  false: <HugeiconsIcon icon={ArrowRight01Icon} className="w-4 h-4" />,
 };
 
 function ContinueButton({ text, enabled, busy, onClick }: ContinueButtonProps) {
@@ -124,7 +125,7 @@ function FinishButton({ onFinish, label, busy }: { onFinish: () => void; label: 
       data-testid="finish-button"
       className="inline-flex items-center gap-2 px-6 py-2 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
     >
-      <CheckCircle className="w-4 h-4" />
+      <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-4 h-4" />
       {label}
     </button>
   );
@@ -139,7 +140,7 @@ function BackButton({ onBack, busy }: { onBack: () => void; busy: boolean }) {
       data-testid="back-button"
       className="inline-flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
     >
-      <ArrowLeft className="w-4 h-4" />
+      <HugeiconsIcon icon={ArrowLeft01Icon} className="w-4 h-4" />
       Back
     </button>
   );

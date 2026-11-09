@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { AlertCircleIcon, CheckmarkCircle02Icon, SparklesIcon } from '@hugeicons/core-free-icons';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WorkflowStage } from '@/lib/types/workflow';
@@ -55,7 +56,7 @@ function ColumnsUnavailable(props: ColumnsUnavailableProps) {
   return (
     <div role="alert" className="p-4 rounded-lg border border-destructive/40 bg-destructive/10">
       <p className="font-semibold flex items-center gap-2">
-        <AlertCircle className="w-5 h-5 text-destructive" />
+        <HugeiconsIcon icon={AlertCircleIcon} className="w-5 h-5 text-destructive" />
         We could not read this dataset&apos;s columns.
       </p>
       <p className="text-sm text-muted-foreground mt-1">
@@ -98,7 +99,7 @@ function TooFew(props: ShownProps) {
   if (!show) return null;
   return (
     <p className="text-sm text-destructive flex items-center gap-2">
-      <AlertCircle className="w-4 h-4" />
+      <HugeiconsIcon icon={AlertCircleIcon} className="w-4 h-4" />
       Select at least {MIN_COLUMNS} columns.
     </p>
   );
@@ -109,7 +110,7 @@ function Recorded(props: ShownProps) {
   if (!show) return null;
   return (
     <p data-testid="choice-recorded" className="text-sm flex items-center gap-2">
-      <CheckCircle2 className="w-4 h-4 text-success" />
+      <HugeiconsIcon icon={CheckmarkCircle02Icon} className="w-4 h-4 text-success" />
       Your choice is saved. Continue to Model Training below.
     </p>
   );
@@ -343,7 +344,7 @@ export default function FeaturesPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Sparkles className="w-6 h-6 text-warning" />
+          <HugeiconsIcon icon={SparklesIcon} className="w-6 h-6 text-warning" />
           Feature Engineering
         </h1>
         <ChoiceBody

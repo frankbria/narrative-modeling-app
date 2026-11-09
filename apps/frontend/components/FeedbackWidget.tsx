@@ -13,7 +13,8 @@ import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageSquarePlus, Star, X, CheckCircle, Loader2 } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, CheckmarkCircle01Icon, Loading03Icon, MessageAdd01Icon, StarIcon } from '@hugeicons/core-free-icons';
 
 const CATEGORIES = [
   { value: 'general', label: 'General feedback' },
@@ -152,7 +153,7 @@ export function FeedbackWidget() {
         aria-label="Give feedback"
         className="fixed bottom-20 right-4 z-50 rounded-full shadow-lg gap-2 lg:bottom-6 lg:right-6"
       >
-        <MessageSquarePlus className="h-4 w-4" />
+        <HugeiconsIcon icon={MessageAdd01Icon} className="h-4 w-4" />
         Feedback
       </Button>
     );
@@ -176,13 +177,13 @@ export function FeedbackWidget() {
           aria-label="Close feedback form"
           className="text-muted-foreground hover:text-foreground"
         >
-          <X className="h-4 w-4" />
+          <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
         </button>
       </div>
 
       {status === 'success' ? (
         <div className="p-4 text-center" data-testid="feedback-success">
-          <CheckCircle className="mx-auto h-10 w-10 text-success" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mx-auto h-10 w-10 text-success" />
           <p className="mt-2 font-medium text-foreground">Thanks for your feedback!</p>
           <div className="mt-4 flex justify-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={resetForm}>
@@ -210,7 +211,7 @@ export function FeedbackWidget() {
                   data-testid={`feedback-star-${value}`}
                   className="text-muted-foreground hover:text-primary"
                 >
-                  <Star
+                  <HugeiconsIcon icon={StarIcon}
                     className={`h-6 w-6 ${
                       rating >= value ? 'fill-primary text-primary' : ''
                     }`}
@@ -276,7 +277,7 @@ export function FeedbackWidget() {
             data-testid="feedback-submit"
             className="w-full gap-2"
           >
-            {status === 'submitting' && <Loader2 className="h-4 w-4 animate-spin" />}
+            {status === 'submitting' && <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />}
             {status === 'submitting' ? 'Sending…' : 'Send feedback'}
           </Button>
         </form>

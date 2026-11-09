@@ -9,17 +9,8 @@ import { WorkflowStage } from '@/lib/types/workflow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Database, 
-  TrendingUp, 
-  Users, 
-  Home,
-  Download,
-  Eye,
-  CheckCircle,
-  BarChart,
-  Target
-} from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ChartColumnIcon, ChartIncreaseIcon, CheckmarkCircle01Icon, Database01Icon, Download01Icon, Home01Icon, Target02Icon, UserGroupIcon, ViewIcon } from '@hugeicons/core-free-icons';
 
 interface SampleDataset {
   dataset_id: string;
@@ -101,19 +92,19 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
 
   const getProblemTypeIcon = (type: string) => {
     switch (type) {
-      case 'binary_classification': return <Target className="h-4 w-4" />;
-      case 'multiclass_classification': return <BarChart className="h-4 w-4" />;
-      case 'regression': return <TrendingUp className="h-4 w-4" />;
-      default: return <Database className="h-4 w-4" />;
+      case 'binary_classification': return <HugeiconsIcon icon={Target02Icon} className="h-4 w-4" />;
+      case 'multiclass_classification': return <HugeiconsIcon icon={ChartColumnIcon} className="h-4 w-4" />;
+      case 'regression': return <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4" />;
+      default: return <HugeiconsIcon icon={Database01Icon} className="h-4 w-4" />;
     }
   };
 
   const getDatasetIcon = (datasetId: string) => {
     switch (datasetId) {
-      case 'customer_churn': return <Users className="h-8 w-8 text-primary" />;
-      case 'house_prices': return <Home className="h-8 w-8 text-success" />;
-      case 'marketing_response': return <TrendingUp className="h-8 w-8 text-primary" />;
-      default: return <Database className="h-8 w-8 text-muted-foreground" />;
+      case 'customer_churn': return <HugeiconsIcon icon={UserGroupIcon} className="h-8 w-8 text-primary" />;
+      case 'house_prices': return <HugeiconsIcon icon={Home01Icon} className="h-8 w-8 text-success" />;
+      case 'marketing_response': return <HugeiconsIcon icon={ChartIncreaseIcon} className="h-8 w-8 text-primary" />;
+      default: return <HugeiconsIcon icon={Database01Icon} className="h-8 w-8 text-muted-foreground" />;
     }
   };
 
@@ -258,7 +249,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                     setSelectedDataset(dataset);
                   }}
                 >
-                  <Eye className="mr-1 h-3 w-3" />
+                  <HugeiconsIcon icon={ViewIcon} className="mr-1 h-3 w-3" />
                   Preview
                 </Button>
                 <Button 
@@ -277,7 +268,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                     </>
                   ) : (
                     <>
-                      <Download className="mr-1 h-3 w-3" />
+                      <HugeiconsIcon icon={Download01Icon} className="mr-1 h-3 w-3" />
                       Use This
                     </>
                   )}
@@ -317,7 +308,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
               <ul className="space-y-1">
                 {selectedDataset.learning_objectives.map((objective, index) => (
                   <li key={index} className="flex items-start gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                    <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
                     <span>{objective}</span>
                   </li>
                 ))}
@@ -370,7 +361,7 @@ export function SampleDatasetSelector({ onDatasetSelected }: SampleDatasetSelect
                   </>
                 ) : (
                   <>
-                    <Download className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={Download01Icon} className="mr-2 h-4 w-4" />
                     Load This Dataset
                   </>
                 )}

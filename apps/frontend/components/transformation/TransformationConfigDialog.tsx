@@ -19,7 +19,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Eye, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Add01Icon, AlertCircleIcon, Delete02Icon, ViewIcon } from '@hugeicons/core-free-icons';
 import {
   fieldKind,
   fieldLabel,
@@ -83,7 +84,7 @@ function FieldError(props: FieldErrorProps) {
   if (!error) return null;
   return (
     <p id={`${name}-error`} className="text-sm text-destructive flex items-center gap-1">
-      <AlertCircle className="w-4 h-4" />
+      <HugeiconsIcon icon={AlertCircleIcon} className="w-4 h-4" />
       {error}
     </p>
   );
@@ -287,7 +288,7 @@ function ErrorBanner(props: { message: string | undefined }) {
   if (!message) return null;
   return (
     <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-md flex items-start gap-2">
-      <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+      <HugeiconsIcon icon={AlertCircleIcon} className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
       <p className="text-sm text-destructive">{message}</p>
     </div>
   );
@@ -322,7 +323,7 @@ function DeleteButton(props: DeleteButtonProps) {
       disabled={isBusy}
       aria-label="Delete this transformation"
     >
-      <Trash2 className="mr-2 h-4 w-4" />
+      <HugeiconsIcon icon={Delete02Icon} className="mr-2 h-4 w-4" />
       Delete
     </Button>
   );
@@ -337,7 +338,7 @@ function PreviewButton(props: ActionButtonProps) {
       disabled={isBusy}
       aria-label="Preview transformation effect"
     >
-      <Eye className="mr-2 h-4 w-4" />
+      <HugeiconsIcon icon={ViewIcon} className="mr-2 h-4 w-4" />
       Preview
     </Button>
   );
@@ -360,7 +361,7 @@ function DialogActions(props: DialogActionsProps) {
         disabled={isBusy}
         aria-label="Add transformation to pipeline"
       >
-        <Plus className="mr-2 h-4 w-4" />
+        <HugeiconsIcon icon={Add01Icon} className="mr-2 h-4 w-4" />
         {isUpdate ? 'Update' : 'Add'} to Pipeline
       </Button>
     </DialogFooter>

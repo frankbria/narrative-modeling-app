@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { Undo2, Redo2 } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Redo03Icon, Undo03Icon } from '@hugeicons/core-free-icons';
 
 interface UndoRedoControlsProps {
   canUndo: boolean;
@@ -13,7 +14,7 @@ interface UndoRedoControlsProps {
  * Undo/Redo control buttons
  *
  * Provides visual controls for undo/redo operations with:
- * - Icon buttons with lucide-react icons
+ * - Icon buttons with Hugeicons icons
  * - Disabled states based on availability
  * - Loading state support
  * - Accessibility labels
@@ -35,7 +36,7 @@ export function UndoRedoControls({
         aria-label="Undo (Ctrl+Z)"
         title="Undo (Ctrl+Z)"
       >
-        <Undo2 className="h-4 w-4" />
+        <HugeiconsIcon icon={Undo03Icon} className="h-4 w-4" />
       </Button>
 
       <Button
@@ -46,7 +47,7 @@ export function UndoRedoControls({
         aria-label="Redo (Ctrl+Y)"
         title="Redo (Ctrl+Y)"
       >
-        <Redo2 className="h-4 w-4" />
+        <HugeiconsIcon icon={Redo03Icon} className="h-4 w-4" />
       </Button>
     </div>
   );

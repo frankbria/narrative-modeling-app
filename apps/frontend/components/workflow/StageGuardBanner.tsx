@@ -9,7 +9,8 @@
  */
 
 import React, { useEffect } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { AlertCircleIcon, Cancel01Icon } from '@hugeicons/core-free-icons';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 
 const AUTO_DISMISS_MS = 8000;
@@ -32,7 +33,7 @@ export function StageGuardBanner() {
       className="mx-auto max-w-5xl mt-3 px-4"
     >
       <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground">
-        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+        <HugeiconsIcon icon={AlertCircleIcon} className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
         <p className="flex-1">{guardMessage}</p>
         <button
           type="button"
@@ -40,7 +41,7 @@ export function StageGuardBanner() {
           aria-label="Dismiss message"
           className="shrink-0 text-warning hover:text-foreground"
         >
-          <X className="h-4 w-4" />
+          <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
         </button>
       </div>
     </div>

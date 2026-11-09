@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Brain, Loader2 } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Brain01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { TrainingProgress } from '@/components/training/TrainingProgress';
 import { TrainingLogs } from '@/components/training/TrainingLogs';
 import { CancelTrainingButton } from '@/components/training/CancelTrainingButton';
@@ -16,7 +17,7 @@ import type { TrainingRun } from './useTrainingRun';
 export function StartingRun() {
   return (
     <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-      <Loader2 className="w-5 h-5 animate-spin" />
+      <HugeiconsIcon icon={Loading03Icon} className="w-5 h-5 animate-spin" />
       <span>Starting training…</span>
     </div>
   );
@@ -26,7 +27,7 @@ export function StartingRun() {
 const RUN_HEADING = (
     <div className="text-center">
       <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
-        <Brain className="w-8 h-8 text-primary animate-pulse" />
+        <HugeiconsIcon icon={Brain01Icon} className="w-8 h-8 text-primary animate-pulse" />
       </div>
       <h2 className="text-xl font-semibold mb-2">Training Your Model</h2>
       <p className="text-muted-foreground">

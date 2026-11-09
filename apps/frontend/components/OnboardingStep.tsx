@@ -9,16 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  CheckCircle,
-  SkipForward,
-  Clock,
-  BookOpen,
-  ArrowRight,
-  HelpCircle,
-  Target,
-  FileText
-} from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowRight01Icon, BookOpen01Icon, CheckmarkCircle01Icon, FileEditIcon, HelpCircleIcon, Loading03Icon, NextIcon, Target02Icon } from '@hugeicons/core-free-icons';
 
 interface StepInfo {
   step_id: string;
@@ -95,7 +87,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
         return (
           <div className="space-y-4">
             <Alert>
-              <FileText className="h-4 w-4" />
+              <HugeiconsIcon icon={FileEditIcon} className="h-4 w-4" />
               <AlertDescription>
                 Ready to upload your first dataset? We support CSV files with headers.
                 Don&apos;t have data? Try our sample datasets below!
@@ -114,7 +106,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   <Button className="w-full" onClick={() => {
                     router.push('/upload');
                   }}>
-                    <FileText className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={FileEditIcon} className="mr-2 h-4 w-4" />
                     Upload CSV File
                   </Button>
                 </CardContent>
@@ -134,7 +126,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                     aria-expanded={showSamples}
                     onClick={() => setShowSamples((v) => !v)}
                   >
-                    <Target className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={Target02Icon} className="mr-2 h-4 w-4" />
                     Browse Samples
                   </Button>
                 </CardContent>
@@ -211,7 +203,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               router.push('/explore');
             }}>
               Explore Your Data
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <HugeiconsIcon icon={ArrowRight01Icon} className="ml-2 h-4 w-4" />
             </Button>
           </div>
         );
@@ -233,7 +225,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             </div>
 
             <Alert>
-              <Clock className="h-4 w-4" />
+              <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4" />
               <AlertDescription>
                 Model training typically takes 2-5 minutes depending on your data size.
                 Grab a coffee and watch the progress!
@@ -244,7 +236,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               router.push('/model');
             }}>
               Start Training
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <HugeiconsIcon icon={ArrowRight01Icon} className="ml-2 h-4 w-4" />
             </Button>
           </div>
         );
@@ -274,7 +266,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
               router.push('/predict');
             }}>
               Make Predictions
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <HugeiconsIcon icon={ArrowRight01Icon} className="ml-2 h-4 w-4" />
             </Button>
           </div>
         );
@@ -346,14 +338,14 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
           </div>
           
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4" />
             {step.estimated_duration}
           </div>
         </div>
 
         {step.status === 'completed' && (
           <Alert className="border-success/30 bg-success/10">
-            <CheckCircle className="h-4 w-4 text-success" />
+            <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4 text-success" />
             <AlertDescription className="text-success">
               Step completed successfully!
             </AlertDescription>
@@ -393,7 +385,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <ul className="space-y-2">
               {step.completion_criteria.map((criteria, index) => (
                 <li key={index} className="flex items-start gap-2">
-                  <Target className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                  <HugeiconsIcon icon={Target02Icon} className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                   <span>{criteria}</span>
                 </li>
               ))}
@@ -403,7 +395,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
           <TabsContent value="help" className="mt-6 space-y-4">
             {step.help_text && (
               <Alert>
-                <HelpCircle className="h-4 w-4" />
+                <HugeiconsIcon icon={HelpCircleIcon} className="h-4 w-4" />
                 <AlertDescription>{step.help_text}</AlertDescription>
               </Alert>
             )}
@@ -427,7 +419,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
             <div className="grid grid-cols-1 gap-4">
               <Button asChild variant="outline" className="w-full">
                 <Link href="/quickstart">
-                  <BookOpen className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
                   View Documentation
                 </Link>
               </Button>
@@ -451,7 +443,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
+                    <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mr-2 h-4 w-4" />
                     Mark as Complete
                   </>
                 )}
@@ -463,7 +455,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
                   onClick={() => onSkip(step.step_id)}
                   disabled={isCompleting}
                 >
-                  <SkipForward className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={NextIcon} className="mr-2 h-4 w-4" />
                   Skip Step
                 </Button>
               )}
@@ -472,7 +464,7 @@ export function OnboardingStep({ step, onComplete, onSkip, isCompleting }: Onboa
 
           {step.status === 'completed' && (
             <Button variant="outline" className="flex-1" disabled>
-              <CheckCircle className="mr-2 h-4 w-4 text-success" />
+              <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mr-2 h-4 w-4 text-success" />
               Completed
             </Button>
           )}

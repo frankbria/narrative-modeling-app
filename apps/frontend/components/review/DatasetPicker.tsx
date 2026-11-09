@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { Loader2 } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Loading03Icon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button'
 import type { DatasetListItem } from '@/lib/services/datasetList'
 
@@ -22,7 +23,7 @@ const addedOn = (iso: string): string => new Date(iso).toLocaleDateString()
 const VIEWS: Record<PickerView, (props: PickerProps) => ReactNode> = {
   loading: () => (
     <p className="flex items-center gap-2 text-muted-foreground" role="status">
-      <Loader2 className="h-4 w-4 animate-spin text-primary" /> Loading your datasets...
+      <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin text-primary" /> Loading your datasets...
     </p>
   ),
   error: ({ error, onRetry }) => (

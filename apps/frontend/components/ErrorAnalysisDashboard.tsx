@@ -7,7 +7,8 @@ import type { ConfusionPair } from '@/lib/types/evaluation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, AlertTriangle, Lightbulb, Target } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert02Icon, Idea01Icon, Loading03Icon, Target02Icon } from '@hugeicons/core-free-icons'
 
 interface ErrorAnalysisDashboardProps {
   modelId: string
@@ -42,7 +43,7 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12" role="status">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
         <span className="ml-2 text-sm text-muted-foreground">Analyzing errors…</span>
       </div>
     )
@@ -51,7 +52,7 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
   if (error) {
     return (
       <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
+        <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4" />
         <AlertDescription data-testid="error-analysis-error">{error}</AlertDescription>
       </Alert>
     )
@@ -65,7 +66,7 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
     <div className="space-y-6" data-testid="error-analysis-dashboard">
       {analysis.message && (
         <Alert>
-          <AlertTriangle className="h-4 w-4" />
+          <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4" />
           <AlertDescription>{analysis.message}</AlertDescription>
         </Alert>
       )}
@@ -103,7 +104,7 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Lightbulb className="h-5 w-5" />
+              <HugeiconsIcon icon={Idea01Icon} className="h-5 w-5" />
               AI Suggestions
               <Badge variant="outline" className="ml-2 text-xs">
                 {analysis.suggestions_generated_by === 'openai' ? 'AI' : 'Rule-based'}
@@ -208,7 +209,7 @@ export function ErrorAnalysisDashboard({ modelId }: ErrorAnalysisDashboardProps)
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
+              <HugeiconsIcon icon={Target02Icon} className="h-5 w-5" />
               Error Patterns
             </CardTitle>
             <CardDescription>Feature conditions that isolate errors.</CardDescription>

@@ -10,21 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Brain, 
-  Loader2, 
-  ArrowLeft, 
-  Eye, 
-  BarChart3, 
-  Calendar, 
-  Target,
-  Layers,
-  TrendingUp,
-  AlertCircle,
-  FileText,
-  Clock,
-  Database
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon, Analytics01Icon, ArrowLeft01Icon, Brain01Icon, Calendar03Icon, ChartIncreaseIcon, Database01Icon, FileEditIcon, Layers01Icon, Loading03Icon, Target02Icon, ViewIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ModelPerformanceChart } from '@/components/ModelPerformanceChart'
@@ -75,7 +62,7 @@ export default function ModelDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin mr-3 text-primary" />
         <span className="text-lg">Loading model details...</span>
       </div>
     )
@@ -86,14 +73,14 @@ export default function ModelDetailPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">
           <CardContent className="pt-6 space-y-4">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+            <HugeiconsIcon icon={AlertCircleIcon} className="h-12 w-12 text-muted-foreground mx-auto" />
             <p className="text-center text-muted-foreground">
               {error || 'Model not found'}
             </p>
             <div className="flex justify-center">
               <Link href="/model">
                 <Button variant="outline">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-2 h-4 w-4" />
                   Back to Models
                 </Button>
               </Link>
@@ -133,12 +120,12 @@ export default function ModelDetailPage() {
           <div className="flex items-center gap-2">
             <Link href="/model">
               <Button variant="ghost" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-2 h-4 w-4" />
                 Back
               </Button>
             </Link>
             <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Brain className="h-8 w-8" />
+              <HugeiconsIcon icon={Brain01Icon} className="h-8 w-8" />
               {model.name}
             </h1>
           </div>
@@ -154,7 +141,7 @@ export default function ModelDetailPage() {
               makes the route reachable to routeReachability.test.ts. */}
           <Button asChild variant="outline">
             <Link href={`/model/${model.model_id}/report`}>
-              <FileText className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={FileEditIcon} className="mr-2 h-4 w-4" />
               Model report
             </Link>
           </Button>
@@ -162,7 +149,7 @@ export default function ModelDetailPage() {
             onClick={() => router.push(`/predict?model=${model.model_id}`)}
             disabled={!model.is_active}
           >
-            <Eye className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={ViewIcon} className="mr-2 h-4 w-4" />
             Use Model
           </Button>
         </div>
@@ -170,7 +157,7 @@ export default function ModelDetailPage() {
 
       {!model.is_active && (
         <Alert>
-          <AlertCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" />
           <AlertDescription>
             This model is inactive and cannot be used for predictions
           </AlertDescription>
@@ -199,7 +186,7 @@ export default function ModelDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-muted-foreground" />
+            <HugeiconsIcon icon={Target02Icon} className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">{model.target_column}</span>
           </CardContent>
         </Card>
@@ -211,7 +198,7 @@ export default function ModelDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <HugeiconsIcon icon={Calendar03Icon} className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">
               {new Date(model.created_at).toLocaleDateString()}
             </span>
@@ -225,7 +212,7 @@ export default function ModelDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">
               {model.last_used_at 
                 ? new Date(model.last_used_at).toLocaleDateString()
@@ -261,7 +248,7 @@ export default function ModelDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Layers className="h-5 w-5" />
+                <HugeiconsIcon icon={Layers01Icon} className="h-5 w-5" />
                 Feature Information
               </CardTitle>
               <CardDescription>
@@ -314,7 +301,7 @@ export default function ModelDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
+                <HugeiconsIcon icon={FileEditIcon} className="h-5 w-5" />
                 Model Details
               </CardTitle>
             </CardHeader>
@@ -337,7 +324,7 @@ export default function ModelDetailPage() {
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Data Source</p>
                   <p className="font-medium flex items-center gap-2">
-                    <Database className="h-4 w-4" />
+                    <HugeiconsIcon icon={Database01Icon} className="h-4 w-4" />
                     Dataset
                   </p>
                 </div>
@@ -361,11 +348,11 @@ export default function ModelDetailPage() {
                 <h4 className="text-sm font-medium mb-2">Training Configuration</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4 text-muted-foreground" />
                     <span>Automated feature engineering applied</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <HugeiconsIcon icon={Analytics01Icon} className="h-4 w-4 text-muted-foreground" />
                     <span>Cross-validation performed</span>
                   </div>
                 </div>

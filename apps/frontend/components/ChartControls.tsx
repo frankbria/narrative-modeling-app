@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Badge } from '@/components/ui/badge'
-import { X, Download, RefreshCw } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Cancel01Icon, Download01Icon, Refresh01Icon } from '@hugeicons/core-free-icons'
 
 export interface ChartFilter {
   column: string
@@ -96,12 +97,12 @@ export function ChartControls({
           <div className="flex gap-2">
             {onRefresh && (
               <Button variant="outline" size="sm" onClick={onRefresh}>
-                <RefreshCw className="h-4 w-4" />
+                <HugeiconsIcon icon={Refresh01Icon} className="h-4 w-4" />
               </Button>
             )}
             {onExport && (
               <Button variant="outline" size="sm" onClick={onExport}>
-                <Download className="h-4 w-4" />
+                <HugeiconsIcon icon={Download01Icon} className="h-4 w-4" />
               </Button>
             )}
           </div>
@@ -192,7 +193,7 @@ export function ChartControls({
                   size="sm"
                   onClick={() => removeFilter(index)}
                 >
-                  <X className="h-4 w-4" />
+                  <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
                 </Button>
               </div>
 

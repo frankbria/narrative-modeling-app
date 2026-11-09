@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle, FileText, Send, Upload } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Alert02Icon, CheckmarkCircle01Icon, FileEditIcon, SentIcon, Upload04Icon } from '@hugeicons/core-free-icons';
 import type {
   BatchJobProgressResponse,
   BatchJobResponse,
@@ -16,7 +17,7 @@ function FilePicker(props: { file: File | null; setFile: BatchPrediction['setFil
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] || null);
   return (
     <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-      <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+      <HugeiconsIcon icon={Upload04Icon} className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
       <input
         type="file"
         accept=".csv"
@@ -124,7 +125,7 @@ function FlaggedRows(props: { testId: string; count: unknown; one: string; many:
       data-testid={props.testId}
       className="flex items-center gap-2 text-xs text-warning"
     >
-      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <HugeiconsIcon icon={Alert02Icon} className="w-4 h-4 shrink-0" />
       {count} {count === 1 ? props.one : props.many}
     </p>
   );
@@ -138,7 +139,7 @@ function BatchSummary(props: { summary: Summary; onDownload: VoidFunction }) {
       className="p-4 bg-success/10 rounded-lg border border-success/30 space-y-3"
     >
       <h4 className="font-semibold flex items-center gap-2">
-        <CheckCircle className="w-5 h-5 text-success" />
+        <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-5 h-5 text-success" />
         Batch prediction complete
       </h4>
       <div className="grid grid-cols-3 gap-3 text-sm">
@@ -168,7 +169,7 @@ function BatchSummary(props: { summary: Summary; onDownload: VoidFunction }) {
         onClick={props.onDownload}
         className="w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
       >
-        <FileText className="w-5 h-5" />
+        <HugeiconsIcon icon={FileEditIcon} className="w-5 h-5" />
         Download Results CSV
       </button>
     </div>
@@ -197,7 +198,7 @@ function StartButton(props: { ready: boolean; loading: boolean; onStart: VoidFun
       disabled={!ready}
       className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${colour}`}
     >
-      <Send className="w-5 h-5" />
+      <HugeiconsIcon icon={SentIcon} className="w-5 h-5" />
       {loading ? 'Processing…' : 'Start Batch Prediction'}
     </button>
   );

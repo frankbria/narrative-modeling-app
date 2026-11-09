@@ -20,21 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Activity,
-  Loader2,
-  ArrowLeft,
-  TrendingUp,
-  Clock,
-  Zap,
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  PieChart,
-  Target,
-  Brain,
-  LineChart as LineChartIcon
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Activity01Icon, Alert02Icon, AlertCircleIcon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, ChartLineData01Icon, CheckmarkCircle02Icon, Loading03Icon, PieChartIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { formatLatency } from '@/lib/monitoring'
 import { LineChart } from '@/components/LineChart'
@@ -95,13 +82,13 @@ export default function ModelMonitoringPage() {
   const healthStyle = (status: string) => {
     switch (status) {
       case 'healthy':
-        return { className: 'bg-success text-success-foreground', Icon: CheckCircle2, label: 'Healthy' }
+        return { className: 'bg-success text-success-foreground', Icon: CheckmarkCircle02Icon, label: 'Healthy' }
       case 'degraded':
-        return { className: 'bg-warning text-warning-foreground', Icon: AlertTriangle, label: 'Degraded' }
+        return { className: 'bg-warning text-warning-foreground', Icon: Alert02Icon, label: 'Degraded' }
       case 'unhealthy':
-        return { className: 'bg-destructive text-destructive-foreground', Icon: AlertCircle, label: 'Unhealthy' }
+        return { className: 'bg-destructive text-destructive-foreground', Icon: AlertCircleIcon, label: 'Unhealthy' }
       default:
-        return { className: 'bg-muted text-muted-foreground', Icon: Activity, label: 'No Data' }
+        return { className: 'bg-muted text-muted-foreground', Icon: Activity01Icon, label: 'No Data' }
     }
   }
 
@@ -122,7 +109,7 @@ export default function ModelMonitoringPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin mr-3 text-primary" />
         <span className="text-lg">Loading monitoring data...</span>
       </div>
     )
@@ -133,14 +120,14 @@ export default function ModelMonitoringPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">
           <CardContent className="pt-6 space-y-4">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+            <HugeiconsIcon icon={AlertCircleIcon} className="h-12 w-12 text-muted-foreground mx-auto" />
             <p className="text-center text-muted-foreground">
               {error || 'Model not found'}
             </p>
             <div className="flex justify-center">
               <Link href="/monitor">
                 <Button variant="outline">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-2 h-4 w-4" />
                   Back to Monitoring
                 </Button>
               </Link>
@@ -162,12 +149,12 @@ export default function ModelMonitoringPage() {
           <div className="flex items-center gap-2">
             <Link href="/monitor">
               <Button variant="ghost" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-2 h-4 w-4" />
                 Back
               </Button>
             </Link>
             <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Activity className="h-8 w-8" />
+              <HugeiconsIcon icon={Activity01Icon} className="h-8 w-8" />
               {model.name} Monitoring
             </h1>
           </div>
@@ -200,7 +187,7 @@ export default function ModelMonitoringPage() {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-3">
                 <Badge variant="default" className={hs.className}>
-                  {HealthIcon && <HealthIcon className="h-4 w-4 mr-1" />}
+                  {HealthIcon && <HugeiconsIcon icon={HealthIcon} className="h-4 w-4 mr-1" />}
                   {hs.label}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
@@ -221,9 +208,9 @@ export default function ModelMonitoringPage() {
                     data-testid="health-alert"
                   >
                     {alert.level === 'critical' ? (
-                      <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
+                      <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4 text-destructive mt-0.5" />
                     ) : (
-                      <AlertTriangle className="h-4 w-4 text-warning mt-0.5" />
+                      <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4 text-warning mt-0.5" />
                     )}
                     <span>{alert.message}</span>
                   </div>
@@ -244,7 +231,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
+              <HugeiconsIcon icon={ChartIncreaseIcon} className="h-5 w-5 text-primary" />
               {metrics.total_predictions.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -261,7 +248,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <Zap className="h-5 w-5 text-warning" />
+              <HugeiconsIcon icon={ZapIcon} className="h-5 w-5 text-warning" />
               {formatLatency(metrics.avg_latency_ms, metrics.total_predictions)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -278,7 +265,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <Clock className="h-5 w-5 text-primary" />
+              <HugeiconsIcon icon={Loading03Icon} className="h-5 w-5 text-primary" />
               {metrics.predictions_per_hour.toFixed(1)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -295,7 +282,7 @@ export default function ModelMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center gap-2">
-              <Target className="h-5 w-5 text-success" />
+              <HugeiconsIcon icon={Target02Icon} className="h-5 w-5 text-success" />
               {metrics.avg_confidence > 0 
                 ? `${(metrics.avg_confidence * 100).toFixed(1)}%`
                 : 'N/A'
@@ -328,7 +315,7 @@ export default function ModelMonitoringPage() {
             <CardContent>
               {!timeline || timeline.buckets.every((b) => b.requests === 0) ? (
                 <div className="text-center py-8">
-                  <LineChartIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <HugeiconsIcon icon={ChartLineData01Icon} className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">No usage data in the selected time window</p>
                 </div>
               ) : (
@@ -372,7 +359,7 @@ export default function ModelMonitoringPage() {
             <CardContent>
               {predictionLogs.length === 0 ? (
                 <div className="text-center py-8">
-                  <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <HugeiconsIcon icon={Brain01Icon} className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">No predictions in the selected time window</p>
                 </div>
               ) : (
@@ -431,7 +418,7 @@ export default function ModelMonitoringPage() {
             <CardContent>
               {!distribution || distribution.total === 0 ? (
                 <div className="text-center py-8">
-                  <PieChart className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <HugeiconsIcon icon={PieChartIcon} className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">No distribution data available</p>
                 </div>
               ) : (
@@ -556,25 +543,25 @@ export default function ModelMonitoringPage() {
                 <div className="space-y-2">
                   {metrics.predictions_per_hour < 1 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
+                      <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4 text-warning mt-0.5" />
                       <p>Low usage detected. Consider promoting this model or reviewing its use case.</p>
                     </div>
                   )}
                   {metrics.avg_latency_ms > 1000 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
+                      <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4 text-warning mt-0.5" />
                       <p>High latency detected. Consider optimizing the model or upgrading infrastructure.</p>
                     </div>
                   )}
                   {metrics.avg_confidence > 0 && metrics.avg_confidence < 0.7 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
+                      <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4 text-warning mt-0.5" />
                       <p>Low average confidence. Review model performance and consider retraining.</p>
                     </div>
                   )}
                   {metrics.predictions_per_hour > 0 && metrics.avg_latency_ms < 100 && metrics.avg_confidence > 0.8 && (
                     <div className="flex items-start gap-2 text-sm">
-                      <TrendingUp className="h-4 w-4 text-success mt-0.5" />
+                      <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4 text-success mt-0.5" />
                       <p>Model is performing well with good latency and confidence scores.</p>
                     </div>
                   )}

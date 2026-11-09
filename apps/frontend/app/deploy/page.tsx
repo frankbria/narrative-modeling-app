@@ -9,7 +9,8 @@ import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-helpers';
-import { Rocket, Cloud, Shield, CheckCircle, Copy, BookOpen } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { BookOpen01Icon, CheckmarkCircle01Icon, CloudIcon, Copy01Icon, Rocket01Icon, Shield01Icon } from '@hugeicons/core-free-icons';
 import type { DeployResponse, ModelDeploymentView } from '@/lib/types/api';
 import { modelService } from '@/lib/services/model';
 import type { ModelFeatureDescriptor } from '@/lib/services/model';
@@ -142,7 +143,7 @@ export default function DeployPage() {
       <div className="max-w-4xl mx-auto">
         <div className="bg-card rounded-lg shadow-md p-8">
           <div className="text-center mb-8">
-            <Rocket className="w-16 h-16 text-primary mx-auto mb-4" />
+            <HugeiconsIcon icon={Rocket01Icon} className="w-16 h-16 text-primary mx-auto mb-4" />
             <h1 className="text-3xl font-bold mb-2">Deploy Your Model</h1>
             <p className="text-muted-foreground">
               Deploy your trained model to production with one click
@@ -156,14 +157,14 @@ export default function DeployPage() {
               source (P0.31/P0.32), not a made-up figure on this page. */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="text-center p-4">
-              <Cloud className="w-12 h-12 text-primary mx-auto mb-2" />
+              <HugeiconsIcon icon={CloudIcon} className="w-12 h-12 text-primary mx-auto mb-2" />
               <h3 className="font-semibold mb-1">REST API Endpoint</h3>
               <p className="text-sm text-muted-foreground">
                 A secured POST /predict endpoint for your model
               </p>
             </div>
             <div className="text-center p-4">
-              <Shield className="w-12 h-12 text-success mx-auto mb-2" />
+              <HugeiconsIcon icon={Shield01Icon} className="w-12 h-12 text-success mx-auto mb-2" />
               <h3 className="font-semibold mb-1">Secure API</h3>
               <p className="text-sm text-muted-foreground">
                 API key authentication and rate limiting
@@ -221,7 +222,7 @@ export default function DeployPage() {
     <div className="max-w-4xl mx-auto">
       <div className="bg-card rounded-lg shadow-md p-8">
         <div className="text-center mb-8">
-          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-16 h-16 text-success mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-2">Model Deployed Successfully!</h1>
           <p className="text-muted-foreground">
             Your model is now available via REST API
@@ -243,7 +244,7 @@ export default function DeployPage() {
                     aria-label="Copy API endpoint"
                     className="p-2 hover:bg-muted rounded"
                   >
-                    <Copy className="w-5 h-5" />
+                    <HugeiconsIcon icon={Copy01Icon} className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
@@ -262,7 +263,7 @@ export default function DeployPage() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                 >
-                  <BookOpen className="w-4 h-4" />
+                  <HugeiconsIcon icon={BookOpen01Icon} className="w-4 h-4" />
                   View interactive API docs
                 </a>
               </div>
@@ -306,7 +307,7 @@ export default function DeployPage() {
               <div className="bg-muted rounded-lg p-4">
                 <h4 className="font-medium mb-2">Status</h4>
                 <span className="inline-flex items-center gap-1 text-success">
-                  <CheckCircle className="w-4 h-4" />
+                  <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-4 h-4" />
                   Active
                 </span>
               </div>

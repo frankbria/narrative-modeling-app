@@ -3,7 +3,8 @@
 import React, { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Eye } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ViewIcon } from '@hugeicons/core-free-icons'
 
 import { ChartControls, ChartFilter } from './ChartControls'
 import { DatasetStatistics } from '@/lib/types/api'
@@ -72,7 +73,7 @@ export function InteractiveVisualizationDashboard(props: InteractiveVisualizatio
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Eye className="h-5 w-5" />
+            <HugeiconsIcon icon={ViewIcon} className="h-5 w-5" />
             Interactive Data Visualization
           </CardTitle>
           <CardDescription>

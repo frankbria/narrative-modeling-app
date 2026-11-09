@@ -4,7 +4,8 @@ import React, { type KeyboardEvent, type MouseEvent, type ReactNode, type Synthe
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, Sparkles, Brain, ArrowRight, Database, AlertCircle, Trash2 } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { AlertCircleIcon, ArrowRight01Icon, Brain01Icon, Database01Icon, Delete02Icon, SparklesIcon, Upload04Icon } from '@hugeicons/core-free-icons';
 
 export interface DatasetItem {
   dataset_id: string;
@@ -105,7 +106,7 @@ function ListState(props: ListStateProps) {
   if (!error) return children;
   return (
     <div className="flex items-center gap-2 text-destructive py-4">
-      <AlertCircle size={16} />
+      <HugeiconsIcon icon={AlertCircleIcon} size={16} />
       <span className="text-sm">{error}</span>
       <Button variant="ghost" size="sm" onClick={onRetry} className="ml-2">
         Retry
@@ -129,7 +130,7 @@ function DatasetRow(props: DatasetRowProps) {
   return (
     <div className={ROW} onClick={open} role="button" tabIndex={0} onKeyDown={openOnEnter}>
       <div className="p-2 bg-primary/10 rounded">
-        <Database size={16} className="text-primary" />
+        <HugeiconsIcon icon={Database01Icon} size={16} className="text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm text-foreground truncate">{dataset.filename}</p>
@@ -146,7 +147,7 @@ function DatasetRow(props: DatasetRowProps) {
         onClick={erase}
         onKeyDown={stopHere}
       >
-        <Trash2 size={16} />
+        <HugeiconsIcon icon={Delete02Icon} size={16} />
       </button>
     </div>
   );
@@ -163,7 +164,7 @@ function DatasetRows(props: DatasetRowsProps) {
       {datasets.map(row)}
       <Button variant="ghost" size="sm" onClick={viewAll} className="w-full mt-2">
         View All Datasets
-        <ArrowRight size={14} className="ml-1" />
+        <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="ml-1" />
       </Button>
     </div>
   );
@@ -176,18 +177,18 @@ function EmptyDatasets(props: EmptyDatasetsProps) {
 
   return (
     <div className="text-center py-8" data-testid="datasets-empty-state">
-      <Database size={32} className="mx-auto text-muted-foreground mb-3" />
+      <HugeiconsIcon icon={Database01Icon} size={32} className="mx-auto text-muted-foreground mb-3" />
       <p className="font-medium text-sm mb-1">Start with some data</p>
       <p className="text-muted-foreground text-sm mb-4">
         Upload a CSV of your own, or start with a sample that trains in under a minute.
       </p>
       <div className="flex flex-wrap gap-2 justify-center">
         <Button size="sm" onClick={upload}>
-          <Upload size={14} className="mr-1" />
+          <HugeiconsIcon icon={Upload04Icon} size={14} className="mr-1" />
           Upload a CSV
         </Button>
         <Button size="sm" variant="outline" onClick={onTrySample}>
-          <Sparkles size={14} className="mr-1" />
+          <HugeiconsIcon icon={SparklesIcon} size={14} className="mr-1" />
           Try a sample dataset
         </Button>
       </div>
@@ -204,7 +205,7 @@ export function RecentDatasets(props: RecentDatasetsProps) {
     <Card data-testid="recent-datasets">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Database size={20} />
+          <HugeiconsIcon icon={Database01Icon} size={20} />
           Recent Datasets
         </CardTitle>
       </CardHeader>
@@ -228,7 +229,7 @@ function ModelRow(props: ModelRowProps) {
   return (
     <div className={ROW} onClick={open} role="button" tabIndex={0} onKeyDown={openOnEnter}>
       <div className="p-2 bg-primary/10 rounded">
-        <Brain size={16} className="text-primary" />
+        <HugeiconsIcon icon={Brain01Icon} size={16} className="text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm text-foreground truncate">{model.name}</p>
@@ -257,7 +258,7 @@ function ModelRows(props: ModelRowsProps) {
       {models.map(row)}
       <Button variant="ghost" size="sm" onClick={viewAll} className="w-full mt-2">
         View All Models
-        <ArrowRight size={14} className="ml-1" />
+        <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="ml-1" />
       </Button>
     </div>
   );
@@ -270,10 +271,10 @@ function EmptyModels(props: EmptyModelsProps) {
 
   return (
     <div className="text-center py-8">
-      <Brain size={32} className="mx-auto text-muted-foreground mb-3" />
+      <HugeiconsIcon icon={Brain01Icon} size={32} className="mx-auto text-muted-foreground mb-3" />
       <p className="text-muted-foreground text-sm mb-4">No models trained yet</p>
       <Button size="sm" onClick={train} disabled={!canTrain}>
-        <Sparkles size={14} className="mr-1" />
+        <HugeiconsIcon icon={SparklesIcon} size={14} className="mr-1" />
         Train Model
       </Button>
     </div>
@@ -288,7 +289,7 @@ export function RecentModels(props: RecentModelsProps) {
     <Card data-testid="recent-models">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Brain size={20} />
+          <HugeiconsIcon icon={Brain01Icon} size={20} />
           Recent Models
         </CardTitle>
       </CardHeader>

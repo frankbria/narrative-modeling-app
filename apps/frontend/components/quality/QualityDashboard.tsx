@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { CheckCircle2, AlertCircle, XCircle, Wrench, TrendingUp } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon, CancelCircleIcon, ChartIncreaseIcon, CheckmarkCircle02Icon, Wrench01Icon } from '@hugeicons/core-free-icons'
 import { LineChart } from '@/components/LineChart'
 import { QualityService } from '@/lib/services/quality'
 import type {
@@ -59,7 +60,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
   if (error || !report) {
     return (
       <Alert variant="destructive" data-testid="quality-dashboard-error">
-        <XCircle className="h-4 w-4" />
+        <HugeiconsIcon icon={CancelCircleIcon} className="h-4 w-4" />
         <AlertTitle>Quality report unavailable</AlertTitle>
         <AlertDescription>{error || 'No quality data for this dataset yet.'}</AlertDescription>
       </Alert>
@@ -114,9 +115,9 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
               <div key={gate.gate_name} className="flex items-center justify-between" data-testid="quality-gate">
                 <div className="flex items-center gap-2">
                   {gate.passed ? (
-                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-4 w-4 text-success" />
                   ) : (
-                    <AlertCircle className="h-4 w-4 text-warning" />
+                    <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4 text-warning" />
                   )}
                   <span className="text-sm font-medium">{gate.gate_name}</span>
                 </div>
@@ -135,7 +136,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Wrench className="h-4 w-4" /> Recommended Fixes
+              <HugeiconsIcon icon={Wrench01Icon} className="h-4 w-4" /> Recommended Fixes
             </CardTitle>
             <CardDescription>Each maps to a transformation you can apply.</CardDescription>
           </CardHeader>
@@ -158,7 +159,7 @@ export function QualityDashboard({ fileId, datasetId }: QualityDashboardProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp className="h-4 w-4" /> Quality Trend
+              <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4" /> Quality Trend
             </CardTitle>
             <CardDescription>
               Score after each transformation

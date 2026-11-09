@@ -2,12 +2,13 @@
 
 import { useRef, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ComputerIcon, Moon02Icon, Sun03Icon } from '@hugeicons/core-free-icons'
 
 const OPTIONS = [
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
-  { value: 'system', label: 'System', Icon: Monitor },
+  { value: 'light', label: 'Light', Icon: Sun03Icon },
+  { value: 'dark', label: 'Dark', Icon: Moon02Icon },
+  { value: 'system', label: 'System', Icon: ComputerIcon },
 ] as const
 
 /**
@@ -88,7 +89,7 @@ export function ThemeToggle() {
                 : 'text-muted-foreground hover:bg-card hover:text-foreground'
             }`}
           >
-            <Icon className="h-4 w-4" aria-hidden="true" />
+            <HugeiconsIcon icon={Icon} className="h-4 w-4" aria-hidden="true" />
           </button>
         )
       })}

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, Clock, Star, Users } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { BookOpen01Icon, Loading03Icon, StarIcon, UserGroupIcon } from '@hugeicons/core-free-icons';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { fetchRecipePages, type RecipeFilter, type RecipePage, type SavedRecipe } from '@/lib/services/pipelineApi';
 
@@ -21,7 +22,7 @@ const FILTERS: { value: RecipeFilter; label: string }[] = [
 
 const CHOSEN = 'bg-primary text-primary-foreground';
 const NOT_CHOSEN = 'bg-muted text-foreground hover:bg-muted/80';
-const POPULAR_ICON = <Star className="w-4 h-4 inline mr-1" />;
+const POPULAR_ICON = <HugeiconsIcon icon={StarIcon} className="w-4 h-4 inline mr-1" />;
 
 interface FilterButtonProps {
   value: RecipeFilter;
@@ -63,12 +64,12 @@ function RecipeCard(props: RecipeCardProps) {
     >
       <span className="flex items-start justify-between mb-2">
         <span className="font-medium">{recipe.name}</span>
-        {recipe.is_public && <Users className="w-4 h-4 text-muted-foreground" aria-label="Public recipe" />}
+        {recipe.is_public && <HugeiconsIcon icon={UserGroupIcon} className="w-4 h-4 text-muted-foreground" aria-label="Public recipe" />}
       </span>
       <span className="block text-sm text-muted-foreground mb-2">{recipe.description}</span>
       <span className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <Clock className="w-3 h-3" />
+          <HugeiconsIcon icon={Loading03Icon} className="w-3 h-3" />
           {new Date(recipe.created_at).toLocaleDateString()}
         </span>
         <span>{stepCount(recipe)}</span>
@@ -86,7 +87,7 @@ const SPINNER = (
 
 const NOTHING_FOUND = (
   <div className="text-center py-8 text-muted-foreground">
-    <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-20" />
+    <HugeiconsIcon icon={BookOpen01Icon} className="w-12 h-12 mx-auto mb-2 opacity-20" />
     <p>No recipes found</p>
   </div>
 );

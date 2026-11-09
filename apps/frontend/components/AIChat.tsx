@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDatasetChatContext } from '@/lib/hooks/useDatasetChatContext'
 import { useSession } from 'next-auth/react'
-import { Send, Loader2 } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Loading03Icon, SentIcon } from '@hugeicons/core-free-icons'
 import ReactMarkdown from 'react-markdown'
 import { apiError, QuotaExceededError } from '@/lib/services/apiError'
 
@@ -156,12 +157,12 @@ export function AIChat() {
       >
         {isPageLoading ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground text-center">Loading dataset analysis...</p>
           </div>
         ) : isContextLoading ? (
           <div className="flex flex-col items-center justify-center h-full space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground text-center">Analyzing your dataset...</p>
           </div>
         ) : (
@@ -220,7 +221,7 @@ export function AIChat() {
             {isSubmitting ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
             ) : (
-              <Send size={20} />
+              <HugeiconsIcon icon={SentIcon} size={20} />
             )}
           </button>
         </div>

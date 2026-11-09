@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDropzone } from 'react-dropzone';
-import { FileText, HardDrive, Upload } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon, HardDriveIcon, Upload04Icon } from '@hugeicons/core-free-icons';
 import { formatFileSize } from './uploadFlow';
 
 /** The formats the upload routes read (`_READERS`): CSV and Excel, nothing else (#1109). */
@@ -18,8 +19,8 @@ function ChosenFile(props: { file: File; isLargeFile: boolean }) {
   return (
     <div className="flex flex-col items-center space-y-3">
       <div className="flex items-center space-x-2">
-        <FileText className="text-primary" size={32} />
-        {isLargeFile && <HardDrive className="text-warning" size={20} />}
+        <HugeiconsIcon icon={FileEditIcon} className="text-primary" size={32} />
+        {isLargeFile && <HugeiconsIcon icon={HardDriveIcon} className="text-warning" size={20} />}
       </div>
       <div className="text-center">
         <p className="text-sm font-medium text-foreground">{file.name}</p>
@@ -41,7 +42,7 @@ function DropPrompt(props: { isDragActive: boolean }) {
   const prompt = isDragActive ? 'Drop it here...' : 'Drag a .csv, .xls, or .xlsx file or click to browse';
   return (
     <div className="flex flex-col items-center space-y-2">
-      <Upload className="w-12 h-12 text-muted-foreground" />
+      <HugeiconsIcon icon={Upload04Icon} className="w-12 h-12 text-muted-foreground" />
       <p className="text-lg text-foreground">
         {prompt}
       </p>

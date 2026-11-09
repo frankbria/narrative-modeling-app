@@ -1,6 +1,7 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Tick02Icon } from '@hugeicons/core-free-icons';
 import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES } from '@/lib/types/workflow';
 import { cn } from '@/lib/utils';
@@ -45,7 +46,7 @@ export function WorkflowBar() {
                   )}
                 >
                   {isCompleted && !isCurrent ? (
-                    <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+                    <HugeiconsIcon icon={Tick02Icon} className="h-3.5 w-3.5 text-success" aria-hidden="true" />
                   ) : (
                     // The open stage's number is the highlighter cell, as on the dashboard strip.
                     <span

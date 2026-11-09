@@ -6,7 +6,8 @@ import { useWorkflow } from '@/lib/contexts/WorkflowContext';
 import { WORKFLOW_STAGES, type StageConfig } from '@/lib/types/workflow';
 import { buildStageUrl } from '@/lib/utils/stageValidation';
 import { Button } from '@/components/ui/button';
-import { Upload, Brain, Rocket, ArrowRight } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowRight01Icon, Brain01Icon, Rocket01Icon, Upload04Icon } from '@hugeicons/core-free-icons';
 
 type QuickActionsProps = { canTrain: boolean; canDeploy: boolean };
 type StageChipProps = {
@@ -29,15 +30,15 @@ export function QuickActions(props: QuickActionsProps) {
   return (
     <div className="flex flex-wrap gap-2">
       <Button variant="outline" size="sm" onClick={upload}>
-        <Upload size={14} />
+        <HugeiconsIcon icon={Upload04Icon} size={14} />
         Upload New Dataset
       </Button>
       <Button variant="outline" size="sm" onClick={train} disabled={!canTrain}>
-        <Brain size={14} />
+        <HugeiconsIcon icon={Brain01Icon} size={14} />
         Train Model
       </Button>
       <Button variant="outline" size="sm" onClick={deployments} disabled={!canDeploy}>
-        <Rocket size={14} />
+        <HugeiconsIcon icon={Rocket01Icon} size={14} />
         View Deployments
       </Button>
       <Button variant="ghost" size="sm" onClick={quickstart}>
@@ -128,7 +129,7 @@ export function ResumeCard(props: QuickActionsProps) {
         </div>
         <Button onClick={() => open(current)}>
           Open {current.tab}
-          <ArrowRight size={16} />
+          <HugeiconsIcon icon={ArrowRight01Icon} size={16} />
         </Button>
       </div>
       <ol className="mt-5 flex gap-1" data-testid="navigation-cards" aria-label="Workflow stages">
