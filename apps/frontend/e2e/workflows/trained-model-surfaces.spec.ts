@@ -114,8 +114,12 @@ test.describe('A trained model', () => {
 
       await page.setViewportSize({ width: 1440, height: 900 });
       // The shared test user has more models than one page, so open whichever row comes first.
-      await page.getByRole('table').getByRole('link').first().click();
-      await expect(page).toHaveURL(/\/monitor\/[^/]+$/, { timeout: 30000 });
+      await expect(page.getByRole('columnheader', { name: 'Actions' })).toHaveCount(0);
+      const title = page.getByRole('table').getByRole('row').nth(1).getByRole('cell').first().getByRole('link');
+      const href = await title.getAttribute('href');
+      expect(href).toMatch(/^\/monitor\/[^/]+$/);
+      await title.click();
+      await expect(page).toHaveURL(new RegExp(`${href}$`), { timeout: 30000 });
     });
   });
 });

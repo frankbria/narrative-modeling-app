@@ -157,7 +157,8 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures & U
    * Shared upload fixture: drives the full upload flow through the real UI
    * and returns the stored dataset's file ID.
    *
-   * Provides `upload(fileName?: string): Promise<string>` — flow: navigate to
+   * Provides `upload(fileName?: string, uploadAs?: string): Promise<string>`;
+   * the file is uploaded as `uploadAs`, else its basename. Flow: navigate to
    * /upload → wait for dropzone → attach file (from e2e/test-data, falling
    * back to an inline CSV) → click upload → wait for the success panel or the
    * inline error → parse the file ID from the success panel → click Next Step
