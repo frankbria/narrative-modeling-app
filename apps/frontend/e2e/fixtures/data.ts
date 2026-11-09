@@ -4,7 +4,8 @@ import { join } from 'path';
 
 export type DataFixtures = {
   testCSV: Buffer;
-  uploadTestDataset: (fileName?: string) => Promise<string>;
+  /** `uploadAs` names the uploaded file, so a test can find its own rows among earlier runs'. */
+  uploadTestDataset: (fileName?: string, uploadAs?: string) => Promise<string>;
   cleanupDataset: (datasetId: string) => Promise<void>;
   trainModel: (
     datasetId: string,

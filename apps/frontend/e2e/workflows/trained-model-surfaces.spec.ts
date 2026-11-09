@@ -13,6 +13,7 @@ import { API_BASE, apiAuthHeaders } from '../helpers/apiAuth';
 import { seedEvaluationWorkflow } from '../helpers/seedWorkflow';
 import { expectLandedOnStage } from '../helpers/landing';
 import { EvaluatePage } from '../pages/EvaluatePage';
+import { textLayoutProblems } from '../helpers/layoutProblems';
 
 const TRAINABLE_DATASET = 'ai-test-datasets/binary-classification-small.csv';
 const TARGET_COLUMN = 'churned';
@@ -25,7 +26,9 @@ test.describe('A trained model', () => {
     trainModel,
   }) => {
     test.setTimeout(240000); // a real AutoML run on a 2-core runner
-    const datasetId = await uploadTestDataset(TRAINABLE_DATASET);
+    // A name of its own: the history names a job by its dataset's file, and earlier runs uploaded this one too.
+    const uploadName = `surfaces-${Date.now()}.csv`;
+    const datasetId = await uploadTestDataset(TRAINABLE_DATASET, uploadName);
     const modelId = await trainModel(datasetId, TARGET_COLUMN);
     const headers = await apiAuthHeaders(request);
 
@@ -37,7 +40,7 @@ test.describe('A trained model', () => {
 
       // The model is saved a moment before its job is marked completed, and the
       // history lists only finished jobs, so read it again until the row is there.
-      const row = page.getByRole('row').filter({ hasText: `Dataset ${datasetId}` });
+      const row = page.getByRole('row').filter({ hasText: uploadName });
       await expect(async () => {
         await page.reload();
         await expect(row).toHaveCount(1, { timeout: 5000 });
@@ -97,6 +100,22 @@ test.describe('A trained model', () => {
       await expect(rows.getByRole('link', { name: 'v1' })).toHaveAttribute('href', `/model/${modelId}`);
       await expect(rows.getByText('Active', { exact: true })).toBeVisible();
       await expect(page.getByTestId(`promote-${modelId}`)).toBeEnabled();
+    });
+
+    await test.step('Monitor lists models in a table that fits, and a title opens its model (#1189)', async () => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto('/monitor');
+      await expect(page.getByRole('heading', { name: 'Model Activity' })).toBeVisible({ timeout: 30000 });
+      expect(await textLayoutProblems(page, 'Model Activity')).toEqual([]);
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      // On a phone the table may scroll inside its card, never the page.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      // The shared test user has more models than one page, so open whichever row comes first.
+      await page.getByRole('table').getByRole('link').first().click();
+      await expect(page).toHaveURL(/\/monitor\/[^/]+$/, { timeout: 30000 });
     });
   });
 });

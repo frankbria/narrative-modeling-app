@@ -169,7 +169,7 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures & U
    * the test output alone (issue #191).
    */
   uploadTestDataset: async ({ page }, use) => {
-    const upload = async (fileName: string = 'sample.csv'): Promise<string> => {
+    const upload = async (fileName: string = 'sample.csv', uploadAs?: string): Promise<string> => {
       // Every step failure reports the current URL plus any visible upload
       // error so a drifted UI or a broken backend is diagnosable from the
       // test output alone (issue #191).
@@ -203,7 +203,7 @@ export const test = base.extend<AuthFixtures & DataFixtures & AIMockFixtures & U
       // Prepare file buffer. `fileName` may be a path relative to test-data
       // (e.g. "ai-test-datasets/binary-classification.csv"); the uploaded name
       // and the explore heading use the basename only.
-      const uploadName = basename(fileName);
+      const uploadName = uploadAs ?? basename(fileName);
       const csvPath = join(__dirname, '../test-data', fileName);
       let fileBuffer: Buffer;
 
