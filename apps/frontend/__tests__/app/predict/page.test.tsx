@@ -284,6 +284,15 @@ describe('PredictPage — enrichment panels (#83)', () => {
     expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^12$/);
   });
 
+  it('spells a boolean result the way its probability row does (#1187)', async () => {
+    svc.predict.mockResolvedValue({ ...basePredictResponse, predictions: [true], class_labels: ['False', 'True'] });
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^churn = True$/);
+    expect(screen.getByText('churn = True:')).toBeInTheDocument();
+  });
+
   it('names a bare 0/1 class against the target (#1187)', async () => {
     svc.predict.mockResolvedValue({ ...basePredictResponse, predictions: [1], class_labels: ['0', '1'] });
     await renderReadyForm();

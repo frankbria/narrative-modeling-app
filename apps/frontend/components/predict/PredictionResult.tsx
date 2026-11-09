@@ -148,9 +148,18 @@ function useScrollIntoView(prediction: PredictResponse) {
   return ref;
 }
 
+// JSON spells a boolean `true` where the backend's class label says `True` (and `1` for `1.0`).
+const sameClass = (label: string, raw: unknown) =>
+  label.toLowerCase() === String(raw).toLowerCase() || Number(label) === Number(raw);
+
+/** The prediction spelled as its class label, so the result and the probability rows agree. */
+function asClassLabel(raw: unknown, labels: string[] = []) {
+  return labels.find((label) => sameClass(label, raw)) ?? String(raw);
+}
+
 /** The predicted value; a class is named against the target, a quantity stays bare (#1187). */
 function predictedText(prediction: PredictResponse) {
-  const value = String(prediction.predictions?.[0]);
+  const value = asClassLabel(prediction.predictions?.[0], prediction.class_labels);
   return prediction.model_info.problem_type.includes('classification') ? classLabel(value, prediction.model_info.target_column) : value;
 }
 
