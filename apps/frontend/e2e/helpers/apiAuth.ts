@@ -50,7 +50,13 @@ export async function signInAs(
     storageState: { cookies: [], origins: [] },
   });
   const page = await context.newPage();
-  await page.goto('/auth/signin');
+  // The form is controlled and prefilled with the default test user, so a value
+  // typed before hydration is reset to that user (WebKit, #1178). SessionProvider
+  // fetches the session once the tree has mounted: wait for it before typing.
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/auth/session'), { timeout: 20000 }),
+    page.goto('/auth/signin'),
+  ]);
   await page.locator('input[id="email"]').fill(email);
   await page.locator('input[id="password"]').fill(password);
   await Promise.all([
@@ -60,6 +66,11 @@ export async function signInAs(
     ),
     page.locator('button:has-text("Sign In with Test User")').click(),
   ]);
+  // A refused sign-in still answers 200, so check for the session cookie itself.
+  const cookies = await context.cookies();
+  if (!cookies.some((cookie) => cookie.name.endsWith('authjs.session-token'))) {
+    throw new Error(`signInAs(${email}): the credentials callback set no session cookie (sign-in refused).`);
+  }
   // The callback set the session cookie on this context; the post-login
   // redirect target is irrelevant to requests made with the context's cookies.
   await page.close();
