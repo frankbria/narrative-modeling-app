@@ -66,13 +66,14 @@ export async function signInAs(
     ),
     page.locator('button:has-text("Sign In with Test User")').click(),
   ]);
+  // The callback set the session cookie on this context; close the page before the
+  // post-login redirect loads: page.close() has no timeout, and on a CI runner it never
+  // returned while that page was still compiling (three runs hung 30 minutes).
+  await page.close();
   // A refused sign-in still answers 200, so confirm whom the session belongs to.
   const session = (await (await context.request.get('/api/auth/session')).json()) as { user?: { email?: string } } | null;
   if (session?.user?.email !== email) {
     throw new Error(`signInAs(${email}): signed in as ${session?.user?.email ?? 'nobody'} instead.`);
   }
-  // The callback set the session cookie on this context; the post-login
-  // redirect target is irrelevant to requests made with the context's cookies.
-  await page.close();
   return context;
 }
