@@ -34,20 +34,17 @@ function ModelRow({ model }: { model: MonitoredModel }) {
   return (
     <TableRow>
       <TableCell>
-        <span className="font-medium">{modelTitle(model)}</span>
+        <Link href={`/monitor/${model.model_id}`} className="font-medium text-primary hover:underline">
+          {modelTitle(model)}
+        </Link>
         <span className="block text-xs text-muted-foreground">{modelSubtitle(model)}</span>
       </TableCell>
       <TableCell>
-        <Badge variant={status.variant}>{status.label}</Badge>
+        <Badge variant={status.variant} className="whitespace-nowrap">{status.label}</Badge>
       </TableCell>
       <TableCell>{model.predictions_24h.toLocaleString()}</TableCell>
       <TableCell>{formatLatency(model.avg_latency_ms, model.predictions_24h)}</TableCell>
       <TableCell className="text-sm">{lastUsedText(model.last_used_at)}</TableCell>
-      <TableCell>
-        <Button asChild size="sm" variant="ghost">
-          <Link href={`/monitor/${model.model_id}`}>View Details</Link>
-        </Button>
-      </TableCell>
     </TableRow>
   )
 }
@@ -86,7 +83,6 @@ function ModelTable({ models }: { models: MonitoredModel[] }) {
             <TableHead>Predictions (24h)</TableHead>
             <TableHead>Avg Latency</TableHead>
             <TableHead>Last Used</TableHead>
-            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
