@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AlertCircle, CheckCircle, Database, Hash, Type, Calendar, Mail, Phone, Link, DollarSign, Percent } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { AlertCircleIcon, Calendar03Icon, Call02Icon, CheckmarkCircle01Icon, Database01Icon, DollarCircleIcon, HashtagIcon, Link01Icon, Mail01Icon, PercentIcon, TextFontIcon } from '@hugeicons/core-free-icons'
 
 interface ColumnSchema {
   name: string
@@ -34,19 +35,19 @@ interface SchemaViewerProps {
 }
 
 const dataTypeIcons: Record<string, React.ReactNode> = {
-  integer: <Hash className="h-4 w-4" />,
-  float: <Hash className="h-4 w-4" />,
-  string: <Type className="h-4 w-4" />,
-  text: <Type className="h-4 w-4" />,
-  boolean: <CheckCircle className="h-4 w-4" />,
-  date: <Calendar className="h-4 w-4" />,
-  datetime: <Calendar className="h-4 w-4" />,
-  email: <Mail className="h-4 w-4" />,
-  phone: <Phone className="h-4 w-4" />,
-  url: <Link className="h-4 w-4" />,
-  currency: <DollarSign className="h-4 w-4" />,
-  percentage: <Percent className="h-4 w-4" />,
-  categorical: <Database className="h-4 w-4" />,
+  integer: <HugeiconsIcon icon={HashtagIcon} className="h-4 w-4" />,
+  float: <HugeiconsIcon icon={HashtagIcon} className="h-4 w-4" />,
+  string: <HugeiconsIcon icon={TextFontIcon} className="h-4 w-4" />,
+  text: <HugeiconsIcon icon={TextFontIcon} className="h-4 w-4" />,
+  boolean: <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4" />,
+  date: <HugeiconsIcon icon={Calendar03Icon} className="h-4 w-4" />,
+  datetime: <HugeiconsIcon icon={Calendar03Icon} className="h-4 w-4" />,
+  email: <HugeiconsIcon icon={Mail01Icon} className="h-4 w-4" />,
+  phone: <HugeiconsIcon icon={Call02Icon} className="h-4 w-4" />,
+  url: <HugeiconsIcon icon={Link01Icon} className="h-4 w-4" />,
+  currency: <HugeiconsIcon icon={DollarCircleIcon} className="h-4 w-4" />,
+  percentage: <HugeiconsIcon icon={PercentIcon} className="h-4 w-4" />,
+  categorical: <HugeiconsIcon icon={Database01Icon} className="h-4 w-4" />,
 }
 
 const dataTypeColors: Record<string, string> = {
@@ -68,7 +69,7 @@ const dataTypeColors: Record<string, string> = {
 
 export function SchemaViewer({ schema }: SchemaViewerProps) {
   const getDataTypeIcon = (dataType: string) => {
-    return dataTypeIcons[dataType] || <Database className="h-4 w-4" />
+    return dataTypeIcons[dataType] || <HugeiconsIcon icon={Database01Icon} className="h-4 w-4" />
   }
 
   const getDataTypeColor = (dataType: string) => {
@@ -139,7 +140,7 @@ export function SchemaViewer({ schema }: SchemaViewerProps) {
                   <TableCell>
                     <div className="flex items-center gap-1">
                       {column.null_percentage > 0 && (
-                        <AlertCircle className="h-3 w-3 text-warning" />
+                        <HugeiconsIcon icon={AlertCircleIcon} className="h-3 w-3 text-warning" />
                       )}
                       <span className={column.null_percentage > 10 ? 'text-warning font-medium' : ''}>
                         {column.null_percentage.toFixed(1)}%

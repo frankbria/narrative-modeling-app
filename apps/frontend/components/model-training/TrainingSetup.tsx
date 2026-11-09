@@ -1,5 +1,7 @@
 import React from 'react';
-import { AlertCircle, Info, PlayCircle, Zap } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
+import { AlertCircleIcon, InformationCircleIcon, PlayCircleIcon, ZapIcon } from '@hugeicons/core-free-icons';
 import { TrainingModeSelector } from '@/components/TrainingModeSelector';
 import type { TrainingMode } from '@/lib/services/model';
 
@@ -25,7 +27,7 @@ const TONES = {
 
 interface NoticeProps {
   tone: keyof typeof TONES;
-  Icon: typeof AlertCircle;
+  Icon: IconSvgElement;
   title: string;
   text: string;
   className: string;
@@ -36,7 +38,7 @@ function Notice(props: NoticeProps) {
   const tone = TONES[props.tone];
   return (
     <div className={`${props.className} p-3 rounded-lg border flex items-start gap-2 ${tone.box}`}>
-      <Icon className={`w-5 h-5 mt-0.5 ${tone.icon}`} />
+      <HugeiconsIcon icon={Icon} className={`w-5 h-5 mt-0.5 ${tone.icon}`} />
       <div className={`text-sm ${tone.text}`}>
         <p className="font-semibold">{props.title}</p>
         <p>{props.text}</p>
@@ -54,12 +56,12 @@ export function TrainingNotices(props: { error: string | null; cancelled: boolea
   return (
     <>
       {error && (
-        <Notice tone="red" Icon={AlertCircle} title="Training failed" text={error} className="mb-6" />
+        <Notice tone="red" Icon={AlertCircleIcon} title="Training failed" text={error} className="mb-6" />
       )}
       {cancelled && (
         <Notice
           tone="blue"
-          Icon={Info}
+          Icon={InformationCircleIcon}
           title="Training cancelled"
           text="The training run was stopped. You can start a new run below."
           className="mb-6"
@@ -72,7 +74,7 @@ export function TrainingNotices(props: { error: string | null; cancelled: boolea
 // An element, not a component: it takes nothing and never changes.
 const AUTO_ML_INTRO = (
     <div className="p-4 bg-primary/10 rounded-lg border border-primary/30 flex items-start gap-3">
-      <Zap className="w-5 h-5 text-primary mt-0.5" />
+      <HugeiconsIcon icon={ZapIcon} className="w-5 h-5 text-primary mt-0.5" />
       <div className="text-sm text-primary">
         <p className="font-semibold">AI-guided AutoML</p>
         <p className="mt-1 text-primary">
@@ -128,7 +130,7 @@ function StartButton(props: { ready: boolean; onStart: VoidFunction }) {
         disabled={!ready}
         className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${colour}`}
       >
-        <PlayCircle className="w-5 h-5" />
+        <HugeiconsIcon icon={PlayCircleIcon} className="w-5 h-5" />
         Start Training
       </button>
     </div>
@@ -167,7 +169,7 @@ export function TrainingSetup(props: TrainingSetupProps) {
       {!targetColumn && (
         <Notice
           tone="yellow"
-          Icon={AlertCircle}
+          Icon={AlertCircleIcon}
           title="Target column required"
           text="Please select the column you want to predict."
           className=""

@@ -10,12 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Activity, 
-  Loader2, 
-  Key,
-  AlertCircle
-} from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Activity01Icon, AlertCircleIcon, Key01Icon, Loading03Icon } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { ModelActivityTable } from '@/components/monitor/ModelActivityTable'
 import { averageLatencyText, modelsWithPredictions } from '@/lib/monitoring'
@@ -67,7 +63,7 @@ export default function MonitoringPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin mr-3 text-primary" />
         <span className="text-lg">Loading monitoring data...</span>
       </div>
     )
@@ -78,7 +74,7 @@ export default function MonitoringPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-96">
           <CardContent className="pt-6 space-y-4">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
+            <HugeiconsIcon icon={AlertCircleIcon} className="h-12 w-12 text-muted-foreground mx-auto" />
             <p className="text-center text-muted-foreground">
               {error || 'Failed to load monitoring data'}
             </p>
@@ -94,7 +90,7 @@ export default function MonitoringPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Activity className="h-8 w-8" />
+            <HugeiconsIcon icon={Activity01Icon} className="h-8 w-8" />
             Model Monitoring
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -104,7 +100,7 @@ export default function MonitoringPage() {
         <div className="flex gap-2">
           <Link href="/settings/api">
             <Button variant="outline">
-              <Key className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={Key01Icon} className="mr-2 h-4 w-4" />
               API Keys
             </Button>
           </Link>
@@ -209,7 +205,7 @@ export default function MonitoringPage() {
             <CardContent>
               {apiKeyUsage.length === 0 ? (
                 <div className="text-center py-8">
-                  <Key className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <HugeiconsIcon icon={Key01Icon} className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">No API key usage in the last 24 hours</p>
                   <Link href="/settings/api">
                     <Button variant="outline" className="mt-4">

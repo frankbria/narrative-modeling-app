@@ -1,5 +1,6 @@
 import React from 'react';
-import { Info } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { InformationCircleIcon } from '@hugeicons/core-free-icons';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ModelComparisonEntry, TrainingStatus } from '@/lib/services/model';
 
@@ -43,7 +44,7 @@ function HeadingWithHint(props: { label: string; hint: string }) {
             aria-label={`What is the ${props.label}?`}
             className="rounded-full text-muted-foreground transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
-            <Info className="h-3.5 w-3.5" />
+            <HugeiconsIcon icon={InformationCircleIcon} className="h-3.5 w-3.5" />
           </button>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">{props.hint}</TooltipContent>

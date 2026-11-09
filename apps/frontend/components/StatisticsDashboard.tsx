@@ -8,14 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CorrelationHeatmap } from './CorrelationHeatmap'
 import { HistogramChart } from './HistogramChart'
 import { StatItem } from '@/lib/utils'
-import {
-  BarChart3,
-  AlertTriangle,
-  Database,
-  Percent,
-  Target,
-  type LucideIcon
-} from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import type { IconSvgElement } from '@hugeicons/react'
+import { Alert02Icon, Analytics01Icon, Database01Icon, PercentIcon, Target02Icon } from '@hugeicons/core-free-icons'
 
 interface FrequentValue {
   value: unknown
@@ -75,7 +70,7 @@ interface NumericCardProps extends ColumnProps {
 }
 
 interface TileProps {
-  icon: LucideIcon
+  icon: IconSvgElement
   value: string | number
   label: string
 }
@@ -185,10 +180,10 @@ export function StatisticsDashboard(props: StatisticsDashboardProps) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Tile icon={Database} value={statistics.row_count.toLocaleString()} label="Rows" />
-        <Tile icon={BarChart3} value={statistics.column_count} label="Columns" />
-        <Tile icon={Percent} value={`${completeness(statistics)}%`} label="Complete" />
-        <Tile icon={Target} value={statistics.memory_usage_mb.toFixed(1)} label="MB" />
+        <Tile icon={Database01Icon} value={statistics.row_count.toLocaleString()} label="Rows" />
+        <Tile icon={Analytics01Icon} value={statistics.column_count} label="Columns" />
+        <Tile icon={PercentIcon} value={`${completeness(statistics)}%`} label="Complete" />
+        <Tile icon={Target02Icon} value={statistics.memory_usage_mb.toFixed(1)} label="MB" />
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
@@ -226,7 +221,7 @@ function Tile(props: TileProps) {
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center space-x-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <HugeiconsIcon icon={Icon} className="h-4 w-4 text-muted-foreground" />
           <div>
             <p className="text-2xl font-bold">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -292,7 +287,7 @@ function IssueRow(props: ColumnProps) {
         <p className="font-medium">{col.column_name}</p>
         <p className="text-sm text-muted-foreground">{issueText(col)}</p>
       </div>
-      <AlertTriangle className="h-5 w-5 text-warning" />
+      <HugeiconsIcon icon={Alert02Icon} className="h-5 w-5 text-warning" />
     </div>
   )
 }

@@ -22,7 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ModelComparisonTable } from '@/components/ModelComparisonTable'
-import { Loader2, GitBranch, CheckCircle2, AlertCircle } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { AlertCircleIcon, CheckmarkCircle02Icon, GitBranchIcon, Loading03Icon } from '@hugeicons/core-free-icons'
 
 interface ModelVersionsProps {
   /** Any model in the family to display versions for. */
@@ -115,7 +116,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12" role="status">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -123,7 +124,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
   if (error && !data) {
     return (
       <div className="flex items-center gap-2 text-destructive py-6">
-        <AlertCircle className="h-5 w-5" /> {error}
+        <HugeiconsIcon icon={AlertCircleIcon} className="h-5 w-5" /> {error}
       </div>
     )
   }
@@ -137,7 +138,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <GitBranch className="h-5 w-5" />
+            <HugeiconsIcon icon={GitBranchIcon} className="h-5 w-5" />
             Version History
           </CardTitle>
           <CardDescription>
@@ -149,7 +150,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
         <CardContent>
           {error && (
             <div className="flex items-center gap-2 text-destructive mb-3 text-sm">
-              <AlertCircle className="h-4 w-4" /> {error}
+              <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" /> {error}
             </div>
           )}
           <div className="overflow-x-auto">
@@ -191,7 +192,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
                     <td className="py-2 pr-2">
                       {v.is_production ? (
                         <Badge className="bg-success text-success-foreground hover:bg-success">
-                          <CheckCircle2 className="h-3 w-3 mr-1" /> Production
+                          <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-3 w-3 mr-1" /> Production
                         </Badge>
                       ) : v.is_active ? (
                         <Badge variant="secondary">Active</Badge>
@@ -217,7 +218,7 @@ export function ModelVersions({ modelId }: ModelVersionsProps) {
                           data-testid={`promote-${v.model_id}`}
                         >
                           {promoting === v.model_id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3 animate-spin" />
                           ) : (
                             'Promote'
                           )}

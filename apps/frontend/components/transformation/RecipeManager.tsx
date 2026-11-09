@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, Save, X } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { BookOpen01Icon, Cancel01Icon, FloppyDiskIcon } from '@hugeicons/core-free-icons';
 import type { SavedRecipe } from '@/lib/services/pipelineApi';
 import RecipeBrowser from './RecipeBrowser';
 import SaveRecipeForm from './SaveRecipeForm';
@@ -48,7 +49,7 @@ export default function RecipeManager(props: RecipeManagerProps) {
         <div className="p-4 border-b flex items-center justify-between">
           <h2 className="text-lg font-semibold">Recipe Manager</h2>
           <button onClick={onClose} aria-label="Close recipe manager" className="p-1 hover:bg-muted rounded">
-            <X className="w-5 h-5" />
+            <HugeiconsIcon icon={Cancel01Icon} className="w-5 h-5" />
           </button>
         </div>
 
@@ -57,14 +58,14 @@ export default function RecipeManager(props: RecipeManagerProps) {
             <TabButton
               tab="browse"
               active={activeTab}
-              icon={<BookOpen className={TAB_ICON} />}
+              icon={<HugeiconsIcon icon={BookOpen01Icon} className={TAB_ICON} />}
               label="Browse Recipes"
               onSelect={setActiveTab}
             />
             <TabButton
               tab="save"
               active={activeTab}
-              icon={<Save className={TAB_ICON} />}
+              icon={<HugeiconsIcon icon={FloppyDiskIcon} className={TAB_ICON} />}
               label="Save Recipe"
               onSelect={setActiveTab}
             />

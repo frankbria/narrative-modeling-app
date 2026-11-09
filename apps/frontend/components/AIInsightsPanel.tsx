@@ -9,18 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { CheckCircle } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Alert02Icon, Brain01Icon, ChartIncreaseIcon, CheckmarkCircle01Icon, FileEditIcon, Idea01Icon, Loading03Icon, Refresh01Icon, SparklesIcon } from '@hugeicons/core-free-icons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { 
-  Sparkles, 
-  RefreshCw, 
-  Brain,
-  TrendingUp,
-  AlertTriangle,
-  Lightbulb,
-  FileText,
-  Loader2
-} from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 interface AISummary {
@@ -100,7 +91,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Generating AI insights...</p>
         </CardContent>
       </Card>
@@ -111,10 +102,10 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-          <AlertTriangle className="h-8 w-8 text-destructive" />
+          <HugeiconsIcon icon={Alert02Icon} className="h-8 w-8 text-destructive" />
           <p className="text-destructive">Error: {error}</p>
           <Button onClick={generateSummary} variant="outline" size="sm">
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
             Retry
           </Button>
         </CardContent>
@@ -131,7 +122,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
+            <HugeiconsIcon icon={SparklesIcon} className="h-5 w-5 text-primary" />
             <CardTitle>AI Insights</CardTitle>
           </div>
           <div className="flex items-center gap-2">
@@ -152,9 +143,9 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
               disabled={loading}
             >
               {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={Refresh01Icon} className="mr-2 h-4 w-4" />
               )}
               Regenerate
             </Button>
@@ -176,7 +167,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
           <TabsContent value="overview" className="space-y-4">
             <div className="rounded-lg bg-muted p-4">
               <div className="flex items-start gap-2">
-                <Brain className="h-5 w-5 text-primary mt-0.5" />
+                <HugeiconsIcon icon={Brain01Icon} className="h-5 w-5 text-primary mt-0.5" />
                 <p className="text-sm">{summary.overview}</p>
               </div>
             </div>
@@ -184,7 +175,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
             {summary.suggestions.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Lightbulb className="h-4 w-4" />
+                  <HugeiconsIcon icon={Idea01Icon} className="h-4 w-4" />
                   Key Recommendations
                 </h4>
                 <ul className="space-y-2">
@@ -204,14 +195,14 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
               <div className="space-y-3">
                 {summary.issues.map((issue, index) => (
                   <Alert key={index} variant={index === 0 ? "destructive" : "default"}>
-                    <AlertTriangle className="h-4 w-4" />
+                    <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4" />
                     <AlertDescription>{issue}</AlertDescription>
                   </Alert>
                 ))}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                <CheckCircle className="h-8 w-8 mx-auto mb-2 text-success" />
+                <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-8 w-8 mx-auto mb-2 text-success" />
                 <p>No significant issues detected</p>
               </div>
             )}
@@ -221,7 +212,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
             {summary.relationships.length > 0 ? (
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" />
+                  <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4" />
                   Discovered Patterns & Relationships
                 </h4>
                 <ul className="space-y-2">
@@ -247,7 +238,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-8 w-8 mx-auto mb-2" />
+                <HugeiconsIcon icon={FileEditIcon} className="h-8 w-8 mx-auto mb-2" />
                 <p>No detailed analysis available</p>
               </div>
             )}
@@ -256,7 +247,7 @@ export function AIInsightsPanel({ datasetId, initialSummary }: AIInsightsPanelPr
 
         {loading && (
           <div className="absolute inset-0 bg-background/50 flex items-center justify-center rounded-lg">
-            <Loader2 className="h-6 w-6 animate-spin" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin" />
           </div>
         )}
       </CardContent>

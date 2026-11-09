@@ -4,7 +4,8 @@ import { HistoryEntry } from '@/lib/types/history';
 import { HistoryItem } from './HistoryItem';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2 } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Delete02Icon } from '@hugeicons/core-free-icons';
 
 interface TransformationHistoryProps {
   datasetId: string;
@@ -61,7 +62,7 @@ export function TransformationHistory({
             onClick={onClearHistory}
             className="w-full"
           >
-            <Trash2 className="h-4 w-4 mr-2" />
+            <HugeiconsIcon icon={Delete02Icon} className="h-4 w-4 mr-2" />
             Clear History
           </Button>
         </div>

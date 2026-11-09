@@ -1,17 +1,18 @@
 import React from 'react';
-import { CheckCircle, FileText } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { CheckmarkCircle01Icon, FileEditIcon } from '@hugeicons/core-free-icons';
 
 export const FILE_TYPE_CARDS = (
   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
     <div className="p-4 bg-muted rounded-lg">
-      <FileText className="w-8 h-8 text-primary mb-2" />
+      <HugeiconsIcon icon={FileEditIcon} className="w-8 h-8 text-primary mb-2" />
       <h3 className="font-semibold mb-1">CSV Files</h3>
       <p className="text-sm text-muted-foreground">
         Standard comma-separated values with headers
       </p>
     </div>
     <div className="p-4 bg-muted rounded-lg">
-      <FileText className="w-8 h-8 text-success mb-2" />
+      <HugeiconsIcon icon={FileEditIcon} className="w-8 h-8 text-success mb-2" />
       <h3 className="font-semibold mb-1">Excel Files</h3>
       <p className="text-sm text-muted-foreground">
         .xls and .xlsx formats supported
@@ -23,7 +24,7 @@ export const FILE_TYPE_CARDS = (
 export const WHAT_HAPPENS_NEXT = (
   <div className="mt-8 p-4 bg-primary/10 rounded-lg border border-primary/30">
     <h3 className="font-semibold mb-2 flex items-center gap-2">
-      <CheckCircle className="w-5 h-5 text-primary" />
+      <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-5 h-5 text-primary" />
       What happens next?
     </h3>
     <ol className="text-sm text-foreground space-y-1 list-decimal list-inside">

@@ -6,13 +6,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import {
-  AlertTriangle,
-  CheckCircle,
-  Loader2,
-  RotateCcw,
-  XCircle,
-} from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Alert02Icon, CancelCircleIcon, CheckmarkCircle01Icon, Loading03Icon, RotateLeft01Icon } from '@hugeicons/core-free-icons';
 import { modelService, TrainingStatus } from '@/lib/services/model';
 
 /** Show the "Connection lost" warning after this many consecutive poll failures. */
@@ -167,12 +162,12 @@ export function TrainingProgress({
     >
       {connectionLost && (
         <Alert className="border-warning/30 bg-warning/10 text-warning">
-          <AlertTriangle className="h-4 w-4 text-warning" />
+          <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4 text-warning" />
           <AlertTitle>Connection lost — retrying</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-2">
             <span>Unable to reach the training status endpoint.</span>
             <Button variant="outline" size="sm" onClick={handleRetry}>
-              <RotateCcw className="w-4 h-4 mr-1" />
+              <HugeiconsIcon icon={RotateLeft01Icon} className="w-4 h-4 mr-1" />
               Retry
             </Button>
           </AlertDescription>
@@ -183,7 +178,7 @@ export function TrainingProgress({
         <>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+              <HugeiconsIcon icon={Loading03Icon} className="w-4 h-4 text-primary animate-spin shrink-0" />
               <span className="text-sm font-medium truncate">
                 {status?.current_algorithm
                   ? `Training ${status.current_algorithm}`
@@ -212,7 +207,7 @@ export function TrainingProgress({
 
       {status?.status === 'completed' && (
         <Alert className="border-success/30 bg-success/10 text-success">
-          <CheckCircle className="h-4 w-4 text-success" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4 text-success" />
           <AlertTitle>Training complete</AlertTitle>
           <AlertDescription>
             {status.best_algorithm ? (
@@ -231,7 +226,7 @@ export function TrainingProgress({
 
       {status?.status === 'failed' && (
         <Alert variant="destructive">
-          <XCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={CancelCircleIcon} className="h-4 w-4" />
           <AlertTitle>Training failed</AlertTitle>
           <AlertDescription>
             {status.error || 'An unknown error occurred during training.'}
@@ -241,7 +236,7 @@ export function TrainingProgress({
 
       {status?.status === 'cancelled' && (
         <Alert>
-          <AlertTriangle className="h-4 w-4" />
+          <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4" />
           <AlertTitle>Training cancelled</AlertTitle>
           <AlertDescription>
             Training was stopped before completion. You can start a new run at any time.

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Eye, EyeOff, Shield } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Shield01Icon, ViewIcon, ViewOffIcon } from '@hugeicons/core-free-icons';
 import type { FlaggedPIIReport } from '@/lib/types/api';
 
 const SHOWN_DETECTIONS = 5;
@@ -81,16 +82,16 @@ function PIIChoices(props: ChoiceProps) {
         disabled={confirming}
         className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${masked}`}
       >
-        <Shield size={16} />
+        <HugeiconsIcon icon={Shield01Icon} size={16} />
         <span>{maskedLabel}</span>
-        <EyeOff size={16} />
+        <HugeiconsIcon icon={ViewOffIcon} size={16} />
       </button>
       <button
         onClick={uploadOriginal}
         disabled={confirming}
         className={`flex-1 px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center space-x-2 ${original}`}
       >
-        <Eye size={16} />
+        <HugeiconsIcon icon={ViewIcon} size={16} />
         <span>{originalLabel}</span>
       </button>
       <button
@@ -115,7 +116,7 @@ export default function PIIWarning(props: WarningProps) {
   return (
     <div className="mb-6 p-6 bg-warning/10 border border-warning/30 rounded-lg" role="status" aria-live="polite">
       <div className="flex items-center mb-4">
-        <Shield className="text-warning mr-3" size={24} />
+        <HugeiconsIcon icon={Shield01Icon} className="text-warning mr-3" size={24} />
         <div>
           <h3 className="font-bold text-warning text-lg">Sensitive Data Detected</h3>
           <p className="text-warning">

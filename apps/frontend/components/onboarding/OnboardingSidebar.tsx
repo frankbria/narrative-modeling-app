@@ -3,7 +3,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, Circle, Play, SkipForward, Target } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { CheckmarkCircle01Icon, CircleIcon, PlayIcon, SkipForwardIcon, Target02Icon } from '@hugeicons/core-free-icons';
 import { OnboardingProgress } from '@/components/OnboardingProgress';
 import type { Achievement, OnboardingStatus, StepInfo, StepStatus } from './types';
 
@@ -22,10 +23,10 @@ interface StepRowProps {
 }
 
 const STEP_ICON: Record<StepStatus, React.ReactNode> = {
-  completed: <CheckCircle className="h-5 w-5 shrink-0 text-success" />,
-  in_progress: <Play className="h-5 w-5 shrink-0 text-primary" />,
-  skipped: <SkipForward className="h-5 w-5 shrink-0 text-muted-foreground" />,
-  not_started: <Circle className="h-5 w-5 shrink-0 text-muted-foreground/60" />,
+  completed: <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-5 w-5 shrink-0 text-success" />,
+  in_progress: <HugeiconsIcon icon={PlayIcon} className="h-5 w-5 shrink-0 text-primary" />,
+  skipped: <HugeiconsIcon icon={SkipForwardIcon} className="h-5 w-5 shrink-0 text-muted-foreground" />,
+  not_started: <HugeiconsIcon icon={CircleIcon} className="h-5 w-5 shrink-0 text-muted-foreground/60" />,
 };
 
 const STATUS_COLOR: Record<StepStatus, string> = {
@@ -54,7 +55,7 @@ export function OnboardingSidebar(props: OnboardingSidebarProps) {
       <Card className="@3xl/page:sticky @3xl/page:top-4">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
+            <HugeiconsIcon icon={Target02Icon} className="h-5 w-5" />
             Your Progress
           </CardTitle>
         </CardHeader>

@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Loading03Icon } from '@hugeicons/core-free-icons'
 import axios from 'axios'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
@@ -74,7 +75,7 @@ export default function ExploreDataPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin mr-2 text-primary" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin mr-2 text-primary" />
         <span>Loading data...</span>
       </div>
     )

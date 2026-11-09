@@ -4,7 +4,8 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, BookOpen, Trophy } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { ArrowRight01Icon, BookOpen01Icon, ChampionIcon } from '@hugeicons/core-free-icons';
 import { AchievementsBadge } from '@/components/AchievementsBadge';
 import type { Achievement, OnboardingStatus } from './types';
 
@@ -31,7 +32,7 @@ export function OnboardingComplete(props: OnboardingCompleteProps) {
       <Card className="max-w-2xl mx-auto text-center">
         <CardHeader>
           <div className="flex justify-center mb-4">
-            <Trophy className="h-16 w-16 text-warning" />
+            <HugeiconsIcon icon={ChampionIcon} className="h-16 w-16 text-warning" />
           </div>
           <CardTitle className="text-2xl">You built a model</CardTitle>
           <CardDescription>You&apos;ve completed the onboarding tutorial</CardDescription>
@@ -47,10 +48,10 @@ export function OnboardingComplete(props: OnboardingCompleteProps) {
 
           <div className="space-y-2">
             <Button onClick={startBuilding} className="w-full" size="lg">
-              Start Building Models <ArrowRight className="ml-2 h-4 w-4" />
+              Start Building Models <HugeiconsIcon icon={ArrowRight01Icon} className="ml-2 h-4 w-4" />
             </Button>
             <Button variant="outline" onClick={openDocs} className="w-full">
-              <BookOpen className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
               View Documentation
             </Button>
           </div>

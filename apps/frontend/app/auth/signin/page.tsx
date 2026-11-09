@@ -10,7 +10,8 @@ import { Logo } from '@/components/brand/Logo'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, Loader2 } from "lucide-react";
+import { HugeiconsIcon } from "@/components/ui/icon";
+import { Loading03Icon, Mail01Icon } from "@hugeicons/core-free-icons";
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons";
 import Link from "next/link";
 import { sanitizeCallbackUrl } from "@/lib/safe-redirect";
@@ -61,7 +62,7 @@ export default function SignInPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted">
         <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin" />
           <span>Checking authentication...</span>
         </div>
       </div>
@@ -73,7 +74,7 @@ export default function SignInPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted">
         <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin" />
           <span>Redirecting to application...</span>
         </div>
       </div>
@@ -132,7 +133,7 @@ export default function SignInPage() {
                 className="w-full flex items-center justify-center gap-2"
                 variant="default"
               >
-                <Mail className="w-5 h-5" />
+                <HugeiconsIcon icon={Mail01Icon} className="w-5 h-5" />
                 Sign In with Test User
               </Button>
 

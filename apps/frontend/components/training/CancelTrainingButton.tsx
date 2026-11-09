@@ -10,7 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Loader2, X } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Cancel01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { CancelTrainingResponse, modelService } from '@/lib/services/model';
 
 interface CancelTrainingButtonProps {
@@ -65,7 +66,7 @@ export function CancelTrainingButton({
         onClick={() => setOpen(true)}
         className={`text-destructive hover:text-destructive/80 ${className}`}
       >
-        <X className="w-4 h-4 mr-2" />
+        <HugeiconsIcon icon={Cancel01Icon} className="w-4 h-4 mr-2" />
         Cancel Training
       </Button>
 
@@ -94,7 +95,7 @@ export function CancelTrainingButton({
               onClick={handleConfirm}
               disabled={isCancelling}
             >
-              {isCancelling && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {isCancelling && <HugeiconsIcon icon={Loading03Icon} className="w-4 h-4 mr-2 animate-spin" />}
               Yes, cancel training
             </Button>
           </DialogFooter>

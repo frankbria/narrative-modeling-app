@@ -10,7 +10,8 @@
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useState } from 'react'
-import { AlertCircle, X } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { AlertCircleIcon, Cancel01Icon } from '@hugeicons/core-free-icons'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { BillingService, type BillingStatus } from '@/lib/services/billing'
 import { metricWords, tierName } from '@/lib/billing/plans'
@@ -62,7 +63,7 @@ export function UsageWarningBanner() {
   return (
     <div role="status" data-testid="usage-warning-banner" className="mx-auto max-w-5xl mt-3 px-4">
       <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+        <HugeiconsIcon icon={AlertCircleIcon} className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
         <p className="flex-1">
           You have used {items.join(' and ')}.{' '}
           <Link href="/settings/billing" className="font-medium underline">
@@ -75,7 +76,7 @@ export function UsageWarningBanner() {
           aria-label="Dismiss usage warning"
           className="shrink-0 text-warning hover:text-warning/80"
         >
-          <X className="h-4 w-4" />
+          <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
         </button>
       </div>
     </div>

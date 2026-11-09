@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react'
-import { Loader2, BarChart3 } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Analytics01Icon, Loading03Icon } from '@hugeicons/core-free-icons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { DatasetStatistics } from '@/lib/types/api'
 import type { BoxPlotData, LineChartData, ScatterPlotData } from '@/lib/services/visualization'
@@ -20,7 +21,7 @@ function EmptyState(props: EmptyStateProps) {
   return (
     <div className="flex items-center justify-center h-96 text-muted-foreground">
       <div className="text-center">
-        <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+        <HugeiconsIcon icon={Analytics01Icon} className="h-12 w-12 mx-auto mb-4 opacity-50" />
         <p>{message}</p>
       </div>
     </div>
@@ -124,7 +125,7 @@ function ChartStatus(props: ChartStatusProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin mr-2" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin mr-2" />
         <span>Loading visualization...</span>
       </div>
     )

@@ -2,24 +2,15 @@ import React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Upload,
-  BarChart3,
-  Wrench,
-  Sparkles,
-  Brain,
-  LineChart,
-  Target,
-  Rocket,
-  ArrowRight,
-  CheckCircle,
-} from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
+import { Analytics01Icon, ArrowRight01Icon, Brain01Icon, ChartLineData01Icon, CheckmarkCircle01Icon, Rocket01Icon, SparklesIcon, Target02Icon, Upload04Icon, Wrench01Icon } from '@hugeicons/core-free-icons';
 
 interface QuickstartStage {
   id: string;
   number: number;
   title: string;
-  icon: React.ElementType;
+  icon: IconSvgElement;
   purpose: string;
   actions: string[];
   outcome: string;
@@ -38,7 +29,7 @@ const STAGES: QuickstartStage[] = [
     id: 'upload',
     number: 1,
     title: 'Upload Data',
-    icon: Upload,
+    icon: Upload04Icon,
     purpose: 'Bring your dataset into the platform to start building a model.',
     actions: [
       'Drag and drop a CSV or XLSX file, or browse to select one.',
@@ -53,7 +44,7 @@ const STAGES: QuickstartStage[] = [
     id: 'profiling',
     number: 2,
     title: 'Data Profiling',
-    icon: BarChart3,
+    icon: Analytics01Icon,
     purpose: 'Understand your data before you model it.',
     actions: [
       'Review automatic column statistics, types, and distributions.',
@@ -68,7 +59,7 @@ const STAGES: QuickstartStage[] = [
     id: 'preparation',
     number: 3,
     title: 'Data Preparation',
-    icon: Wrench,
+    icon: Wrench01Icon,
     purpose: 'Clean and transform the data so a model can learn from it.',
     actions: [
       'Apply cleaning steps (handle missing values, drop bad rows).',
@@ -83,7 +74,7 @@ const STAGES: QuickstartStage[] = [
     id: 'features',
     number: 4,
     title: 'Feature Engineering',
-    icon: Sparkles,
+    icon: SparklesIcon,
     purpose: 'Improve model accuracy with better input features.',
     actions: [
       'Review AI-powered feature suggestions tailored to your data.',
@@ -98,7 +89,7 @@ const STAGES: QuickstartStage[] = [
     id: 'training',
     number: 5,
     title: 'Model Training',
-    icon: Brain,
+    icon: Brain01Icon,
     purpose: 'Let AutoML train and compare models for you.',
     actions: [
       'Pick your target column and start training.',
@@ -113,7 +104,7 @@ const STAGES: QuickstartStage[] = [
     id: 'evaluation',
     number: 6,
     title: 'Model Evaluation',
-    icon: LineChart,
+    icon: ChartLineData01Icon,
     purpose: 'Confirm the model performs well before you rely on it.',
     actions: [
       'Read the plain-language model report card.',
@@ -128,7 +119,7 @@ const STAGES: QuickstartStage[] = [
     id: 'prediction',
     number: 7,
     title: 'Prediction',
-    icon: Target,
+    icon: Target02Icon,
     purpose: 'Use the model to predict outcomes on new data.',
     actions: [
       'Fill in the auto-generated form for a single prediction.',
@@ -143,7 +134,7 @@ const STAGES: QuickstartStage[] = [
     id: 'deployment',
     number: 8,
     title: 'Deployment',
-    icon: Rocket,
+    icon: Rocket01Icon,
     purpose: 'Make your model available for ongoing use.',
     actions: [
       'Export the model or deploy it behind an API.',
@@ -207,7 +198,7 @@ export default function QuickstartPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-xl">
                     <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Icon className="h-5 w-5" />
+                      <HugeiconsIcon icon={Icon} className="h-5 w-5" />
                     </span>
                     <span>
                       Stage {stage.number}: {stage.title}
@@ -222,7 +213,7 @@ export default function QuickstartPage() {
                     <ul className="space-y-1">
                       {stage.actions.map((action, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                          <CheckCircle className="h-4 w-4 text-success mt-0.5 shrink-0" />
+                          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4 text-success mt-0.5 shrink-0" />
                           <span>{action}</span>
                         </li>
                       ))}
@@ -237,7 +228,7 @@ export default function QuickstartPage() {
                   <Button asChild variant="outline" size="sm">
                     <Link href={stage.route}>
                       {stage.routeLabel}
-                      <ArrowRight className="ml-1 h-4 w-4" />
+                      <HugeiconsIcon icon={ArrowRight01Icon} className="ml-1 h-4 w-4" />
                     </Link>
                   </Button>
                 </CardContent>
@@ -256,7 +247,7 @@ export default function QuickstartPage() {
               <Button asChild>
                 <Link href="/upload">
                   Upload Your Data
-                  <ArrowRight className="ml-1 h-4 w-4" />
+                  <HugeiconsIcon icon={ArrowRight01Icon} className="ml-1 h-4 w-4" />
                 </Link>
               </Button>
             </CardContent>

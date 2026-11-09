@@ -8,7 +8,8 @@ import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Loader2, ArrowLeft, BarChart3, Database, Brain, CheckCircle2, TrendingUp } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Analytics01Icon, ArrowLeft01Icon, Brain01Icon, ChartIncreaseIcon, CheckmarkCircle02Icon, Database01Icon, Loading03Icon } from '@hugeicons/core-free-icons'
 import { useWorkflow } from '@/lib/contexts/WorkflowContext'
 import { WorkflowStage } from '@/lib/types/workflow'
 import { useStageGuard } from '@/lib/hooks/useStageGuard'
@@ -72,12 +73,12 @@ function ProcessingStatus(props: { dataset: ProcessedDataset }) {
     <div className="flex items-center gap-4 text-muted-foreground">
       {dataset.is_processed ? (
         <div className="flex items-center gap-1 text-success">
-          <CheckCircle2 className="h-4 w-4" />
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-4 w-4" />
           <span className="text-sm">Processed</span>
         </div>
       ) : (
         <div className="flex items-center gap-1 text-warning">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
           <span className="text-sm">Processing...</span>
         </div>
       )}
@@ -113,9 +114,9 @@ function OverviewStats({ dataset }: { dataset: ProcessedDataset }) {
   const score = dataset.quality_report?.overall_quality_score
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <StatCard icon={<Database className="h-5 w-5 text-primary" />} value={dataset.num_rows?.toLocaleString() ?? 'N/A'} label="Rows" />
-      <StatCard icon={<BarChart3 className="h-5 w-5 text-primary" />} value={String(dataset.num_columns ?? 'N/A')} label="Columns" />
-      <StatCard icon={<CheckCircle2 className="h-5 w-5 text-primary" />} value={score ? (score * 100).toFixed(1) + '%' : 'N/A'} label="Quality Score" />
+      <StatCard icon={<HugeiconsIcon icon={Database01Icon} className="h-5 w-5 text-primary" />} value={dataset.num_rows?.toLocaleString() ?? 'N/A'} label="Rows" />
+      <StatCard icon={<HugeiconsIcon icon={Analytics01Icon} className="h-5 w-5 text-primary" />} value={String(dataset.num_columns ?? 'N/A')} label="Columns" />
+      <StatCard icon={<HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-5 w-5 text-primary" />} value={score ? (score * 100).toFixed(1) + '%' : 'N/A'} label="Quality Score" />
     </div>
   )
 }
@@ -178,7 +179,7 @@ function DatasetMissing(props: { message: string; className: string }) {
           <p className={`${className} text-lg`}>{message}</p>
           <Link href="/explore">
             <Button variant="outline">
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-2 h-4 w-4" />
               Back to Datasets
             </Button>
           </Link>
@@ -193,7 +194,7 @@ function blockingView(isLoading: boolean, error: string | null, dataset: Process
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-64">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin mr-3 text-primary" />
         <span className="text-lg">Loading dataset...</span>
       </div>
     )
@@ -379,7 +380,7 @@ export default function DatasetAnalysisPage() {
           <div className="flex items-center gap-2">
             <Link href="/explore">
               <Button variant="ghost" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-2 h-4 w-4" />
                 Back
               </Button>
             </Link>
@@ -409,7 +410,7 @@ export default function DatasetAnalysisPage() {
       {!dataset.is_processed ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-12 w-12 animate-spin text-primary" />
             <div className="text-center">
               <h3 className="text-lg font-semibold">Processing Dataset</h3>
               <p className="text-muted-foreground">
@@ -422,27 +423,27 @@ export default function DatasetAnalysisPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 space-y-6">
           <TabsList className="flex w-full justify-start overflow-x-auto bg-card shadow-sm border">
             <TabsTrigger value="overview" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Database className="h-4 w-4" />
+              <HugeiconsIcon icon={Database01Icon} className="h-4 w-4" />
               Overview
             </TabsTrigger>
             <TabsTrigger value="schema" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <BarChart3 className="h-4 w-4" />
+              <HugeiconsIcon icon={Analytics01Icon} className="h-4 w-4" />
               Schema
             </TabsTrigger>
             <TabsTrigger value="statistics" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <BarChart3 className="h-4 w-4" />
+              <HugeiconsIcon icon={Analytics01Icon} className="h-4 w-4" />
               Statistics
             </TabsTrigger>
             <TabsTrigger value="visualizations" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <TrendingUp className="h-4 w-4" />
+              <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4" />
               Visualizations
             </TabsTrigger>
             <TabsTrigger value="quality" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <CheckCircle2 className="h-4 w-4" />
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-4 w-4" />
               Quality
             </TabsTrigger>
             <TabsTrigger value="insights" className="flex shrink-0 items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Brain className="h-4 w-4" />
+              <HugeiconsIcon icon={Brain01Icon} className="h-4 w-4" />
               AI Insights
             </TabsTrigger>
           </TabsList>

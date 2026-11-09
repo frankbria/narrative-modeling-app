@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { useAsyncData } from '@/lib/hooks/useAsyncData';
 import { modelService } from '@/lib/services/model';
 import type { ModelFeatureDescriptor } from '@/lib/services/model';
-import { Play, AlertCircle, CheckCircle } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { AlertCircleIcon, CheckmarkCircle01Icon, PlayIcon } from '@hugeicons/core-free-icons';
 
 /**
  * In-page tester for a deployed model's production REST endpoint (issue #84, AC4).
@@ -145,7 +146,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
         data-testid="run-endpoint-test"
         className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
       >
-        <Play className="w-4 h-4" />
+        <HugeiconsIcon icon={PlayIcon} className="w-4 h-4" />
         {loading ? 'Sending...' : 'Send Test Request'}
       </button>
 
@@ -154,7 +155,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
           data-testid="endpoint-tester-error"
           className="mt-4 flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive"
         >
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <HugeiconsIcon icon={AlertCircleIcon} className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -165,7 +166,7 @@ export function EndpointTester({ modelId, endpoint }: { modelId: string; endpoin
           className="mt-4 p-3 bg-success/10 border border-success/30 rounded-lg"
         >
           <div className="flex items-center gap-2 font-semibold text-success">
-            <CheckCircle className="w-4 h-4" />
+            <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-4 h-4" />
             Prediction
           </div>
           <div className="text-2xl font-bold text-foreground mt-1">{String(result.prediction)}</div>

@@ -31,18 +31,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
-import {
-  Key, 
-  Loader2, 
-  Plus, 
-  Trash2, 
-  Copy, 
-  Check,
-  Calendar,
-  Activity,
-  AlertCircle,
-  Info
-} from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Activity01Icon, Add01Icon, AlertCircleIcon, Calendar03Icon, Copy01Icon, Delete02Icon, InformationCircleIcon, Key01Icon, Loading03Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 export default function APIKeysPage() {
   const { data: session } = useSession()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -152,7 +142,7 @@ export default function APIKeysPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin mr-3 text-primary" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-8 w-8 animate-spin mr-3 text-primary" />
         <span className="text-lg">Loading API keys...</span>
       </div>
     )
@@ -164,7 +154,7 @@ export default function APIKeysPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Key className="h-8 w-8" />
+            <HugeiconsIcon icon={Key01Icon} className="h-8 w-8" />
             API Keys
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -177,7 +167,7 @@ export default function APIKeysPage() {
         }}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <HugeiconsIcon icon={Add01Icon} className="mr-2 h-4 w-4" />
               Create API Key
             </Button>
           </DialogTrigger>
@@ -193,7 +183,7 @@ export default function APIKeysPage() {
               <div className="space-y-4 py-4">
                 {error && (
                   <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
+                    <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" />
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
@@ -259,7 +249,7 @@ export default function APIKeysPage() {
                 >
                   {isCreating ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />
                       Creating...
                     </>
                   ) : (
@@ -270,7 +260,7 @@ export default function APIKeysPage() {
             ) : (
               <div className="space-y-4 py-4">
                 <Alert>
-                  <Info className="h-4 w-4" />
+                  <HugeiconsIcon icon={InformationCircleIcon} className="h-4 w-4" />
                   <AlertDescription>
                     Your API key has been created. Copy it now - you won&apos;t be able to see it again!
                   </AlertDescription>
@@ -290,9 +280,9 @@ export default function APIKeysPage() {
                       onClick={() => copyToClipboard(newApiKey)}
                     >
                       {copiedKey ? (
-                        <Check className="h-4 w-4 text-success" />
+                        <HugeiconsIcon icon={Tick02Icon} className="h-4 w-4 text-success" />
                       ) : (
-                        <Copy className="h-4 w-4" />
+                        <HugeiconsIcon icon={Copy01Icon} className="h-4 w-4" />
                       )}
                     </Button>
                   </div>
@@ -326,7 +316,7 @@ export default function APIKeysPage() {
 
       {error && !showCreateDialog && (
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -335,7 +325,7 @@ export default function APIKeysPage() {
       {apiKeys.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-64 space-y-4">
-            <Key className="h-16 w-16 text-muted-foreground" />
+            <HugeiconsIcon icon={Key01Icon} className="h-16 w-16 text-muted-foreground" />
             <div className="text-center">
               <h3 className="text-lg font-semibold">No API Keys Yet</h3>
               <p className="text-muted-foreground mt-1">
@@ -380,7 +370,7 @@ export default function APIKeysPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Activity className="h-3 w-3" />
+                        <HugeiconsIcon icon={Activity01Icon} className="h-3 w-3" />
                         <span className="text-sm">{key.total_requests}</span>
                       </div>
                     </TableCell>
@@ -389,7 +379,7 @@ export default function APIKeysPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
+                        <HugeiconsIcon icon={Calendar03Icon} className="h-3 w-3" />
                         <span className="text-sm">
                           {new Date(key.created_at).toLocaleDateString()}
                         </span>
@@ -411,7 +401,7 @@ export default function APIKeysPage() {
                         onClick={() => setDeleteKeyId(key.key_id)}
                         disabled={!key.is_active}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <HugeiconsIcon icon={Delete02Icon} className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>

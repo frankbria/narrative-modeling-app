@@ -1,5 +1,6 @@
 import React from 'react'
-import { Upload, Clock, HardDrive, Zap, CheckCircle, XCircle, Pause, Play } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { CancelCircleIcon, CheckmarkCircle01Icon, Clock01Icon, HardDriveIcon, PauseIcon, PlayIcon, Upload04Icon, ZapIcon } from '@hugeicons/core-free-icons'
 
 interface ChunkUploadProgress {
   sessionId: string
@@ -72,17 +73,17 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
   const getStatusIcon = () => {
     switch (progress.status) {
       case 'initializing':
-        return <Upload className="animate-pulse" size={20} />
+        return <HugeiconsIcon icon={Upload04Icon} className="animate-pulse" size={20} />
       case 'uploading':
-        return <Upload className="animate-bounce" size={20} />
+        return <HugeiconsIcon icon={Upload04Icon} className="animate-bounce" size={20} />
       case 'completed':
-        return <CheckCircle size={20} />
+        return <HugeiconsIcon icon={CheckmarkCircle01Icon} size={20} />
       case 'error':
-        return <XCircle size={20} />
+        return <HugeiconsIcon icon={CancelCircleIcon} size={20} />
       case 'paused':
-        return <Pause size={20} />
+        return <HugeiconsIcon icon={PauseIcon} size={20} />
       default:
-        return <Upload size={20} />
+        return <HugeiconsIcon icon={Upload04Icon} size={20} />
     }
   }
 
@@ -119,7 +120,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
               className="p-2 text-warning hover:bg-warning/10 rounded-md transition-colors"
               title="Pause Upload"
             >
-              <Pause size={16} />
+              <HugeiconsIcon icon={PauseIcon} size={16} />
             </button>
           )}
           {progress.status === 'paused' && onResume && (
@@ -128,7 +129,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
               className="p-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
               title="Resume Upload"
             >
-              <Play size={16} />
+              <HugeiconsIcon icon={PlayIcon} size={16} />
             </button>
           )}
           {(progress.status === 'uploading' || progress.status === 'paused') && onCancel && (
@@ -137,7 +138,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
               className="p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
               title="Cancel Upload"
             >
-              <XCircle size={16} />
+              <HugeiconsIcon icon={CancelCircleIcon} size={16} />
             </button>
           )}
         </div>
@@ -189,7 +190,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border">
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <HardDrive className="text-muted-foreground" size={16} />
+              <HugeiconsIcon icon={HardDriveIcon} className="text-muted-foreground" size={16} />
             </div>
             <div className="text-sm text-muted-foreground">Data Uploaded</div>
             <div className="font-semibold text-sm">
@@ -199,7 +200,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <Zap className="text-muted-foreground" size={16} />
+              <HugeiconsIcon icon={ZapIcon} className="text-muted-foreground" size={16} />
             </div>
             <div className="text-sm text-muted-foreground">Upload Speed</div>
             <div className="font-semibold text-sm">
@@ -209,7 +210,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <Clock className="text-muted-foreground" size={16} />
+              <HugeiconsIcon icon={Clock01Icon} className="text-muted-foreground" size={16} />
             </div>
             <div className="text-sm text-muted-foreground">Time Remaining</div>
             <div className="font-semibold text-sm">
@@ -219,7 +220,7 @@ const ChunkedUploadProgress: React.FC<ChunkedUploadProgressProps> = ({
           
           <div className="text-center">
             <div className="flex items-center justify-center mb-1">
-              <Upload className="text-muted-foreground" size={16} />
+              <HugeiconsIcon icon={Upload04Icon} className="text-muted-foreground" size={16} />
             </div>
             <div className="text-sm text-muted-foreground">Session ID</div>
             <div className="font-semibold text-xs font-mono truncate">

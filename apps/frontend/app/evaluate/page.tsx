@@ -4,14 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
 import { useRouter } from 'next/navigation';
-import {
-  LineChart as LineChartIcon,
-  Download,
-  CheckCircle,
-  AlertTriangle,
-  Lightbulb,
-  Target
-} from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Alert02Icon, ChartLineData01Icon, CheckmarkCircle01Icon, Download01Icon, Idea01Icon, Target02Icon } from '@hugeicons/core-free-icons';
 import { modelService, type ModelInfo } from '@/lib/services/model';
 import {
   type AIExplanation,
@@ -48,7 +42,7 @@ function MetricCard({ label, value }: { label: string; value: number }) {
     <div className="bg-muted rounded-lg p-4">
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm text-muted-foreground">{label}</span>
-        <Target className="w-4 h-4 text-muted-foreground" />
+        <HugeiconsIcon icon={Target02Icon} className="w-4 h-4 text-muted-foreground" />
       </div>
       <div className="text-2xl font-bold text-foreground">{value.toFixed(4)}</div>
     </div>
@@ -74,17 +68,17 @@ function ModelReportCard({ explanation }: { explanation: AIExplanation }) {
     {
       title: 'Strengths',
       items: explanation.strengths,
-      icon: <CheckCircle className="w-4 h-4 text-success mt-0.5 shrink-0" />
+      icon: <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-4 h-4 text-success mt-0.5 shrink-0" />
     },
     {
       title: 'Concerns',
       items: explanation.concerns,
-      icon: <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+      icon: <HugeiconsIcon icon={Alert02Icon} className="w-4 h-4 text-warning mt-0.5 shrink-0" />
     },
     {
       title: 'Recommendations',
       items: explanation.recommendations,
-      icon: <Lightbulb className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+      icon: <HugeiconsIcon icon={Idea01Icon} className="w-4 h-4 text-primary mt-0.5 shrink-0" />
     }
   ];
 
@@ -251,7 +245,7 @@ function Header({ evaluation }: { evaluation: ModelEvaluationResponse }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
       <div className="flex items-center gap-3">
-        <LineChartIcon className="w-6 h-6 text-primary" />
+        <HugeiconsIcon icon={ChartLineData01Icon} className="w-6 h-6 text-primary" />
         <div>
           <h1 className="text-2xl font-bold">Model Evaluation</h1>
           <div className="flex items-center gap-2 mt-1">
@@ -269,7 +263,7 @@ function Header({ evaluation }: { evaluation: ModelEvaluationResponse }) {
           onClick={() => exportEvaluationCSV(evaluation)}
           aria-label="Export CSV"
         >
-          <Download className="w-4 h-4 mr-2" />
+          <HugeiconsIcon icon={Download01Icon} className="w-4 h-4 mr-2" />
           CSV
         </Button>
         <Button
@@ -278,7 +272,7 @@ function Header({ evaluation }: { evaluation: ModelEvaluationResponse }) {
           onClick={() => exportEvaluationPDF(evaluation)}
           aria-label="Export PDF"
         >
-          <Download className="w-4 h-4 mr-2" />
+          <HugeiconsIcon icon={Download01Icon} className="w-4 h-4 mr-2" />
           PDF
         </Button>
       </div>
@@ -288,7 +282,7 @@ function Header({ evaluation }: { evaluation: ModelEvaluationResponse }) {
 
 const PARTIAL_BANNER = (
   <div className="mb-6 p-4 bg-warning/10 rounded-lg border border-warning/30 flex items-start gap-2">
-    <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+    <HugeiconsIcon icon={Alert02Icon} className="w-5 h-5 text-warning shrink-0 mt-0.5" />
     <p className="text-sm text-warning">
       Detailed evaluation artifacts aren&apos;t available for this model (trained
       before evaluation persistence). Showing stored training metrics.

@@ -2,7 +2,8 @@
 
 import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { Settings, X } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Cancel01Icon, Settings02Icon } from '@hugeicons/core-free-icons';
 import type { ParameterValue } from '@/lib/types/recipe';
 
 export interface TransformationNodeData extends Record<string, unknown> {
@@ -116,7 +117,7 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
               aria-label={`${showSettings ? 'Hide' : 'Show'} settings for ${data.label}`}
               aria-expanded={showSettings}
             >
-              <Settings className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              <HugeiconsIcon icon={Settings02Icon} className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
             </button>
             {data.onDelete && (
               <button
@@ -124,7 +125,7 @@ const TransformationNode = memo(({ id, data, selected }: NodeProps<Transformatio
                 className="p-1 hover:bg-muted rounded"
                 aria-label={`Delete ${data.label} step`}
               >
-                <X className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                <HugeiconsIcon icon={Cancel01Icon} className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
               </button>
             )}
           </div>

@@ -3,15 +3,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import {
-  GripVertical,
-  Edit,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  MoveUp,
-  MoveDown,
-} from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { ArrowDown01Icon, ArrowRight01Icon, Delete02Icon, DragDropVerticalIcon, MoveDownIcon, MoveUpIcon, PencilEdit01Icon } from '@hugeicons/core-free-icons';
 import { sanitizeForDisplay } from '@/lib/utils/sanitize';
 
 /**
@@ -286,7 +279,7 @@ export function TransformationChainView({
                       className="flex-shrink-0 text-muted-foreground hover:text-foreground"
                       aria-hidden="true"
                     >
-                      <GripVertical className="h-5 w-5" />
+                      <HugeiconsIcon icon={DragDropVerticalIcon} className="h-5 w-5" />
                     </div>
 
                     {/* Step Header with Expand/Collapse */}
@@ -301,9 +294,9 @@ export function TransformationChainView({
                         }
                       >
                         {expandedSteps.has(step.id) ? (
-                          <ChevronDown className="h-4 w-4" />
+                          <HugeiconsIcon icon={ArrowDown01Icon} className="h-4 w-4" />
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                          <HugeiconsIcon icon={ArrowRight01Icon} className="h-4 w-4" />
                         )}
                       </button>
 
@@ -329,7 +322,7 @@ export function TransformationChainView({
                         aria-keyshortcuts="Alt+ArrowUp"
                         className="h-8 w-8 p-0"
                       >
-                        <MoveUp className="h-4 w-4" />
+                        <HugeiconsIcon icon={MoveUpIcon} className="h-4 w-4" />
                       </Button>
 
                       {/* Move Down Button */}
@@ -342,7 +335,7 @@ export function TransformationChainView({
                         aria-keyshortcuts="Alt+ArrowDown"
                         className="h-8 w-8 p-0"
                       >
-                        <MoveDown className="h-4 w-4" />
+                        <HugeiconsIcon icon={MoveDownIcon} className="h-4 w-4" />
                       </Button>
 
                       {/* Edit Button */}
@@ -354,7 +347,7 @@ export function TransformationChainView({
                         aria-keyshortcuts="Enter"
                         className="h-8 w-8 p-0"
                       >
-                        <Edit className="h-4 w-4" />
+                        <HugeiconsIcon icon={PencilEdit01Icon} className="h-4 w-4" />
                       </Button>
 
                       {/* Delete Button */}
@@ -366,7 +359,7 @@ export function TransformationChainView({
                         aria-keyshortcuts="Delete"
                         className="h-8 w-8 p-0"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <HugeiconsIcon icon={Delete02Icon} className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>

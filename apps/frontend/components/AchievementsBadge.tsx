@@ -2,16 +2,8 @@
 
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Trophy, 
-  Star, 
-  Target, 
-  Database, 
-  Brain, 
-  Rocket,
-  Crown,
-  Zap
-} from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Brain01Icon, ChampionIcon, CrownIcon, Database01Icon, Rocket01Icon, StarIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons';
 
 interface Achievement {
   id: string;
@@ -40,22 +32,22 @@ export function AchievementsBadge({
     // Specific achievement icons
     switch (achievementId) {
       case 'first_upload':
-        return <Database className={`${iconSize} text-primary`} />;
+        return <HugeiconsIcon icon={Database01Icon} className={`${iconSize} text-primary`} />;
       case 'first_model':
-        return <Brain className={`${iconSize} text-primary`} />;
+        return <HugeiconsIcon icon={Brain01Icon} className={`${iconSize} text-primary`} />;
       case 'onboarding_complete':
-        return <Crown className={`${iconSize} text-warning`} />;
+        return <HugeiconsIcon icon={CrownIcon} className={`${iconSize} text-warning`} />;
       case 'data_explorer':
-        return <Target className={`${iconSize} text-success`} />;
+        return <HugeiconsIcon icon={Target02Icon} className={`${iconSize} text-success`} />;
       case 'prediction_master':
-        return <Zap className={`${iconSize} text-warning`} />;
+        return <HugeiconsIcon icon={ZapIcon} className={`${iconSize} text-warning`} />;
       case 'model_export':
-        return <Rocket className={`${iconSize} text-primary`} />;
+        return <HugeiconsIcon icon={Rocket01Icon} className={`${iconSize} text-primary`} />;
       default:
         // Default icons by type
         return type === 'milestone' 
-          ? <Trophy className={`${iconSize} text-warning`} />
-          : <Star className={`${iconSize} text-primary`} />;
+          ? <HugeiconsIcon icon={ChampionIcon} className={`${iconSize} text-warning`} />
+          : <HugeiconsIcon icon={StarIcon} className={`${iconSize} text-primary`} />;
     }
   };
 

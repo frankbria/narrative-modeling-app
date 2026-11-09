@@ -7,11 +7,6 @@ import TransformationNode, {
 } from '@/components/transformation/TransformationNode';
 import { ReactFlowProvider, NodeProps } from '@xyflow/react';
 
-jest.mock('lucide-react', () => ({
-  Settings: () => <span data-testid="settings-icon">Settings</span>,
-  X: () => <span data-testid="x-icon">X</span>,
-}));
-
 const ReactFlowWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <ReactFlowProvider>{children}</ReactFlowProvider>
 );
@@ -76,7 +71,7 @@ describe('TransformationNode Component', () => {
       </ReactFlowWrapper>
     );
 
-    const deleteButton = screen.getByTestId('x-icon').closest('button');
+    const deleteButton = screen.getByRole('button', { name: /^Delete .* step$/ });
     fireEvent.click(deleteButton!);
 
     expect(mockOnDelete).toHaveBeenCalledWith('transform-node-1');
@@ -91,9 +86,9 @@ describe('TransformationNode Component', () => {
       </ReactFlowWrapper>
     );
 
-    expect(screen.queryByTestId('x-icon')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Delete .* step$/ })).not.toBeInTheDocument();
     // The settings button (no onDelete guard) is still rendered.
-    expect(screen.getByTestId('settings-icon')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /settings for/ })).toBeInTheDocument();
   });
 
   it('reveals fill_missing parameter inputs when settings are toggled', () => {
@@ -105,7 +100,7 @@ describe('TransformationNode Component', () => {
       </ReactFlowWrapper>
     );
 
-    const settingsButton = screen.getByTestId('settings-icon').closest('button');
+    const settingsButton = screen.getByRole('button', { name: /settings for/ });
     fireEvent.click(settingsButton!);
 
     expect(screen.getByText('Columns')).toBeInTheDocument();
@@ -120,7 +115,7 @@ describe('TransformationNode Component', () => {
       </ReactFlowWrapper>
     );
 
-    const settingsButton = screen.getByTestId('settings-icon').closest('button');
+    const settingsButton = screen.getByRole('button', { name: /settings for/ });
     fireEvent.click(settingsButton!);
 
     const columnInput = screen.getByPlaceholderText('Column name');

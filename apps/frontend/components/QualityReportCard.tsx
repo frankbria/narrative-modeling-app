@@ -3,7 +3,8 @@
 import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { AlertCircleIcon, CancelCircleIcon, CheckmarkCircle02Icon } from '@hugeicons/core-free-icons'
 
 
 interface QualityIssue {
@@ -31,7 +32,7 @@ export function QualityReportCard({ report }: QualityReportProps) {
       {/* Critical Issues */}
       {report.critical_issues.length > 0 && (
         <Alert variant="destructive">
-          <XCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={CancelCircleIcon} className="h-4 w-4" />
           <AlertTitle>Critical Issues ({report.critical_issues.length})</AlertTitle>
           <AlertDescription>
             <ul className="mt-2 space-y-1">
@@ -53,7 +54,7 @@ export function QualityReportCard({ report }: QualityReportProps) {
       {/* Warnings */}
       {report.warnings.length > 0 && (
         <Alert>
-          <AlertCircle className="h-4 w-4" />
+          <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4" />
           <AlertTitle>Warnings ({report.warnings.length})</AlertTitle>
           <AlertDescription>
             <ul className="mt-2 space-y-1">
@@ -83,7 +84,7 @@ export function QualityReportCard({ report }: QualityReportProps) {
             <ul className="space-y-2">
               {report.recommendations.map((recommendation, index) => (
                 <li key={index} className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                  <HugeiconsIcon icon={CheckmarkCircle02Icon} className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
                   <span className="text-sm">{recommendation}</span>
                 </li>
               ))}

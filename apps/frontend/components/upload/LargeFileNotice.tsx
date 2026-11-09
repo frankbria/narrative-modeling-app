@@ -1,5 +1,6 @@
 import React from 'react';
-import { HardDrive } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { HardDriveIcon } from '@hugeicons/core-free-icons';
 import { CHUNKED_UPLOAD_THRESHOLD, formatFileSize } from './uploadFlow';
 
 export default function LargeFileNotice(props: { show: boolean; size: number }) {
@@ -8,7 +9,7 @@ export default function LargeFileNotice(props: { show: boolean; size: number }) 
   return (
     <div className="mt-4 p-4 bg-warning/10 border border-warning/30 rounded-md">
       <div className="flex items-center space-x-2 mb-2">
-        <HardDrive className="text-warning" size={16} />
+        <HugeiconsIcon icon={HardDriveIcon} className="text-warning" size={16} />
         <span className="text-sm font-medium text-warning">Large File Detected</span>
       </div>
       <p className="text-sm text-warning">

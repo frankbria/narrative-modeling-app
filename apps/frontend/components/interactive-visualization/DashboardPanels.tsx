@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Download, Filter, RefreshCw } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Download01Icon, FilterIcon, Refresh01Icon } from '@hugeicons/core-free-icons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,7 +39,7 @@ function FilterCount(props: FilterCountProps) {
   if (count === 0) return null
   return (
     <Badge variant="outline">
-      <Filter className="h-3 w-3 mr-1" />
+      <HugeiconsIcon icon={FilterIcon} className="h-3 w-3 mr-1" />
       {count} filter{count !== 1 ? 's' : ''}
     </Badge>
   )
@@ -64,10 +65,10 @@ export function VisualizePanel(props: VisualizePanelProps) {
           <div className="flex gap-2">
             <FilterCount count={filterCount} />
             <Button variant="outline" size="sm" onClick={onRefresh}>
-              <RefreshCw className="h-4 w-4" />
+              <HugeiconsIcon icon={Refresh01Icon} className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" onClick={onExport}>
-              <Download className="h-4 w-4" />
+              <HugeiconsIcon icon={Download01Icon} className="h-4 w-4" />
             </Button>
           </div>
         </CardTitle>

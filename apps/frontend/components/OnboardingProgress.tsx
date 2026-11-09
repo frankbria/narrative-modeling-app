@@ -3,7 +3,9 @@
 import React from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Clock, Target, Star, CheckCircle, Zap, type LucideIcon } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
+import { ChampionIcon, CheckmarkCircle01Icon, Clock01Icon, StarIcon, Target02Icon, ZapIcon } from '@hugeicons/core-free-icons';
 import type { Achievement, OnboardingStatus } from '@/components/onboarding/types';
 
 interface OnboardingProgressProps {
@@ -20,7 +22,7 @@ interface AchievementsProps {
 }
 
 interface StatTileProps {
-  icon: LucideIcon;
+  icon: IconSvgElement;
   value: number;
   label: string;
   tone: string;
@@ -29,7 +31,7 @@ interface StatTileProps {
 interface Encouragement {
   /** Shown while progress is below this percentage (the first match wins). */
   below: number;
-  icon: LucideIcon;
+  icon: IconSvgElement;
   text: string;
   tone: string;
 }
@@ -47,15 +49,15 @@ const NOTE_TONES = {
 };
 
 const ENCOURAGEMENTS: Encouragement[] = [
-  { below: 25, icon: Zap, text: 'Great start! Keep going to unlock more features.', tone: NOTE_TONES.blue },
-  { below: 50, icon: Target, text: "You're making excellent progress!", tone: NOTE_TONES.purple },
-  { below: 75, icon: Star, text: "Halfway there! You're doing amazing!", tone: NOTE_TONES.green },
-  { below: Infinity, icon: Trophy, text: "Almost finished! You're so close to completion!", tone: NOTE_TONES.orange },
+  { below: 25, icon: ZapIcon, text: 'Great start! Keep going to unlock more features.', tone: NOTE_TONES.blue },
+  { below: 50, icon: Target02Icon, text: "You're making excellent progress!", tone: NOTE_TONES.purple },
+  { below: 75, icon: StarIcon, text: "Halfway there! You're doing amazing!", tone: NOTE_TONES.green },
+  { below: Infinity, icon: ChampionIcon, text: "Almost finished! You're so close to completion!", tone: NOTE_TONES.orange },
 ];
 
 const COMPLETE: Encouragement = {
   below: Infinity,
-  icon: Trophy,
+  icon: ChampionIcon,
   text: "🎉 Tutorial Complete! You're ready to build amazing models!",
   tone: `${NOTE_TONES.green} font-medium`,
 };
@@ -84,8 +86,8 @@ export function OnboardingProgress(props: OnboardingProgressProps) {
       <OverallProgress status={status} />
 
       <div className="grid grid-cols-2 gap-2 text-center">
-        <StatTile icon={CheckCircle} value={status.completed_steps} label="Completed" tone={STAT_TONES.blue} />
-        <StatTile icon={Clock} value={status.time_spent_minutes} label="Minutes" tone={STAT_TONES.green} />
+        <StatTile icon={CheckmarkCircle01Icon} value={status.completed_steps} label="Completed" tone={STAT_TONES.blue} />
+        <StatTile icon={Clock01Icon} value={status.time_spent_minutes} label="Minutes" tone={STAT_TONES.green} />
       </div>
 
       {earned}
@@ -132,7 +134,7 @@ function StatTile(props: StatTileProps) {
   return (
     <div className={`p-2 rounded-md ${tone}`}>
       <div className="flex items-center justify-center mb-1">
-        <Icon className="h-4 w-4" />
+        <HugeiconsIcon icon={Icon} className="h-4 w-4" />
       </div>
       <strong className="block text-lg font-bold">{value}</strong>
       <div className="text-xs">{label}</div>
@@ -150,7 +152,7 @@ function AchievementsSummary(props: AchievementsProps) {
   return (
     <div className="space-y-2" data-testid="onboarding-achievements">
       <div className="flex flex-wrap items-center gap-2">
-        <Trophy className="h-4 w-4 shrink-0 text-warning" />
+        <HugeiconsIcon icon={ChampionIcon} className="h-4 w-4 shrink-0 text-warning" />
         <span className="font-medium text-sm">Achievements</span>
         <Badge variant="secondary" className="text-xs whitespace-nowrap">
           {points} points
@@ -159,7 +161,7 @@ function AchievementsSummary(props: AchievementsProps) {
 
       <div className="p-2 bg-warning/10 border border-warning/30 rounded-md">
         <div className="flex items-center gap-2">
-          <Star className="h-4 w-4 shrink-0 text-warning" />
+          <HugeiconsIcon icon={StarIcon} className="h-4 w-4 shrink-0 text-warning" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-warning break-words">{latest.title}</div>
             <div className="text-xs text-warning">+{latest.points} points</div>
@@ -180,7 +182,7 @@ function Note(props: { note: Encouragement }) {
   return (
     <div className={`p-2 border rounded-md ${tone}`}>
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 shrink-0" />
+        <HugeiconsIcon icon={Icon} className="h-4 w-4 shrink-0" />
         <div className="text-sm">{text}</div>
       </div>
     </div>

@@ -3,7 +3,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { BarChart3, TrendingUp, Activity } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Activity01Icon, Analytics01Icon, ChartIncreaseIcon } from '@hugeicons/core-free-icons'
 
 interface ModelPerformanceChartProps {
   cvScore: number
@@ -35,7 +36,7 @@ export function ModelPerformanceChart({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
+            <HugeiconsIcon icon={Analytics01Icon} className="h-5 w-5" />
             Model Performance
           </CardTitle>
           <Badge variant="outline">{algorithm}</Badge>
@@ -85,7 +86,7 @@ export function ModelPerformanceChart({
               <div className="mt-4 p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-muted-foreground" />
+                    <HugeiconsIcon icon={Activity01Icon} className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">Generalization Gap</span>
                   </div>
                   <span className="text-sm font-medium">
@@ -130,32 +131,32 @@ export function ModelPerformanceChart({
               <h4 className="text-sm font-medium">Performance Analysis</h4>
               {testScore >= 0.9 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <TrendingUp className="h-4 w-4 text-success" />
+                  <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4 text-success" />
                   <span className="text-success">Excellent performance</span>
                 </div>
               )}
               {testScore >= 0.8 && testScore < 0.9 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <TrendingUp className="h-4 w-4 text-primary" />
+                  <HugeiconsIcon icon={ChartIncreaseIcon} className="h-4 w-4 text-primary" />
                   <span className="text-primary">Good performance</span>
                 </div>
               )}
               {testScore >= 0.7 && testScore < 0.8 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Activity className="h-4 w-4 text-warning" />
+                  <HugeiconsIcon icon={Activity01Icon} className="h-4 w-4 text-warning" />
                   <span className="text-warning">Moderate performance</span>
                 </div>
               )}
               {testScore < 0.7 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Activity className="h-4 w-4 text-warning" />
+                  <HugeiconsIcon icon={Activity01Icon} className="h-4 w-4 text-warning" />
                   <span className="text-warning">Consider improving features or data</span>
                 </div>
               )}
               
               {Math.abs(cvScore - testScore) > 0.1 && (
                 <div className="flex items-center gap-2 text-sm mt-2">
-                  <Activity className="h-4 w-4 text-warning" />
+                  <HugeiconsIcon icon={Activity01Icon} className="h-4 w-4 text-warning" />
                   <span className="text-warning">
                     Possible {cvScore > testScore ? 'overfitting' : 'underfitting'}
                   </span>

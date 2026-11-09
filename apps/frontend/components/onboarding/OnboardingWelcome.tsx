@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BookOpen, Clock, Play, Zap } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { BookOpen01Icon, Clock01Icon, PlayIcon, ZapIcon } from '@hugeicons/core-free-icons';
 import { SampleDatasetSelector } from '@/components/SampleDatasetSelector';
 
 interface HighlightProps {
@@ -26,7 +27,7 @@ export function OnboardingWelcome(props: { onStart: VoidFunction }) {
     <Card className="@container">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Zap className="h-6 w-6 text-primary" />
+          <HugeiconsIcon icon={ZapIcon} className="h-6 w-6 text-primary" />
           Welcome to SheetPredict!
         </CardTitle>
         <CardDescription>From a spreadsheet to a model you can explain, in eight steps</CardDescription>
@@ -45,7 +46,7 @@ export function OnboardingWelcome(props: { onStart: VoidFunction }) {
           </div>
 
           <Button onClick={onStart} size="lg">
-            <Play className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={PlayIcon} className="mr-2 h-4 w-4" />
             Start Tutorial
           </Button>
         </div>
@@ -96,7 +97,7 @@ const OVERVIEW = (
     </ul>
 
     <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Clock className="h-4 w-4" />
+      <HugeiconsIcon icon={Clock01Icon} className="h-4 w-4" />
       Estimated time: 20-30 minutes
     </p>
   </div>
@@ -114,7 +115,7 @@ function Documentation() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <BookOpen className="h-5 w-5" />
+          <HugeiconsIcon icon={BookOpen01Icon} className="h-5 w-5" />
           Documentation
         </CardTitle>
         <CardDescription>Step-by-step guides for every stage of the workflow.</CardDescription>

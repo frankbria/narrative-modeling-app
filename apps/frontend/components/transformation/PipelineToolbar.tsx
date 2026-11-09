@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Save, Play, Undo, Redo, Code, CheckCircle, Eye, List } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import type { IconSvgElement } from '@hugeicons/react';
+import { CheckmarkCircle01Icon, FloppyDiskIcon, LeftToRightListBulletIcon, PlayIcon, Redo02Icon, SourceCodeIcon, Undo02Icon, ViewIcon } from '@hugeicons/core-free-icons';
 
 export type PipelineView = 'chain' | 'visual';
 
@@ -31,7 +33,7 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
           disabled={busy}
           className="px-4 py-2 border border-input bg-card text-foreground rounded-lg font-semibold hover:bg-accent disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center gap-2"
         >
-          <Play className="w-4 h-4" />
+          <HugeiconsIcon icon={PlayIcon} className="w-4 h-4" />
           Preview
         </button>
         <button
@@ -39,7 +41,7 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
           disabled={busy}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center gap-2"
         >
-          <CheckCircle className="w-4 h-4" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="w-4 h-4" />
           Apply & Continue
         </button>
       </div>
@@ -47,19 +49,19 @@ export default function PipelineToolbar(props: PipelineToolbarProps) {
       <div className="flex items-center gap-2">
         <ViewToggle viewMode={viewMode} onViewChange={onViewChange} />
         <button onClick={onRecipes} className="flex items-center gap-1 p-2 hover:bg-muted rounded" title="Manage Recipes" aria-label="Manage Recipes">
-          <Save className="w-5 h-5" />
+          <HugeiconsIcon icon={FloppyDiskIcon} className="w-5 h-5" />
           <span className="hidden text-sm @3xl:inline">Recipes</span>
         </button>
         <button onClick={onUndo} disabled={!canUndo} className="flex items-center gap-1 p-2 hover:bg-muted rounded disabled:opacity-50" title="Undo" aria-label="Undo">
-          <Undo className="w-5 h-5" />
+          <HugeiconsIcon icon={Undo02Icon} className="w-5 h-5" />
           <span className="hidden text-sm @3xl:inline">Undo</span>
         </button>
         <button onClick={onRedo} disabled={!canRedo} className="flex items-center gap-1 p-2 hover:bg-muted rounded disabled:opacity-50" title="Redo" aria-label="Redo">
-          <Redo className="w-5 h-5" />
+          <HugeiconsIcon icon={Redo02Icon} className="w-5 h-5" />
           <span className="hidden text-sm @3xl:inline">Redo</span>
         </button>
         <button onClick={onExport} className="flex items-center gap-1 p-2 hover:bg-muted rounded" title="Export as Code" aria-label="Export as Code">
-          <Code className="w-5 h-5" />
+          <HugeiconsIcon icon={SourceCodeIcon} className="w-5 h-5" />
           <span className="hidden text-sm @3xl:inline">Export</span>
         </button>
       </div>
@@ -72,8 +74,8 @@ function ViewToggle(props: { viewMode: PipelineView; onViewChange(view: Pipeline
   const { viewMode, onViewChange } = props;
   return (
     <div className="flex border rounded-lg p-1 bg-muted mr-2" role="group" aria-label="Pipeline view">
-      <ViewButton view="chain" current={viewMode} onSelect={onViewChange} icon={List} label="Chain" />
-      <ViewButton view="visual" current={viewMode} onSelect={onViewChange} icon={Eye} label="Visual" />
+      <ViewButton view="chain" current={viewMode} onSelect={onViewChange} icon={LeftToRightListBulletIcon} label="Chain" />
+      <ViewButton view="visual" current={viewMode} onSelect={onViewChange} icon={ViewIcon} label="Visual" />
     </div>
   );
 }
@@ -82,7 +84,7 @@ function ViewButton(props: {
   view: PipelineView;
   current: PipelineView;
   onSelect(view: PipelineView): void;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: IconSvgElement;
   label: string;
 }) {
   const { view, current, onSelect, icon: Icon, label } = props;
@@ -96,7 +98,7 @@ function ViewButton(props: {
         selected ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground'
       }`}
     >
-      <Icon className="w-4 h-4" />
+      <HugeiconsIcon icon={Icon} className="w-4 h-4" />
       {label}
     </button>
   );

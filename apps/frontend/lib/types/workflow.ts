@@ -15,7 +15,6 @@ export interface StageConfig {
   /** One-word label for the sheet tab in the stage bar. */
   tab: string;
   description: string;
-  icon: string; // Lucide icon name
   route: string;
   requiredStages: WorkflowStage[]; // Stages that must be completed before this one
 }
@@ -84,7 +83,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Data Loading',
     tab: 'Load',
     description: 'Upload your data file',
-    icon: 'Upload',
     route: '/upload',
     requiredStages: []
   },
@@ -93,7 +91,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Data Profiling',
     tab: 'Profile',
     description: 'Explore and understand your data',
-    icon: 'BarChart3',
     route: '/explore',
     requiredStages: [WorkflowStage.DATA_LOADING]
   },
@@ -102,7 +99,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Data Preparation',
     tab: 'Prepare',
     description: 'Clean and transform your data',
-    icon: 'Wrench',
     route: '/prepare',
     requiredStages: [WorkflowStage.DATA_PROFILING]
   },
@@ -111,7 +107,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Feature Engineering',
     tab: 'Features',
     description: 'Create and select features for modeling',
-    icon: 'Sparkles',
     route: '/features',
     requiredStages: [WorkflowStage.DATA_PREPARATION]
   },
@@ -120,7 +115,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Model Training',
     tab: 'Train',
     description: 'Train and optimize ML models',
-    icon: 'Brain',
     route: '/model',
     requiredStages: [WorkflowStage.FEATURE_ENGINEERING]
   },
@@ -129,7 +123,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Model Evaluation',
     tab: 'Evaluate',
     description: 'Evaluate model performance',
-    icon: 'LineChart',
     route: '/evaluate',
     requiredStages: [WorkflowStage.MODEL_TRAINING]
   },
@@ -138,7 +131,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Prediction',
     tab: 'Predict',
     description: 'Make predictions with your model',
-    icon: 'Target',
     route: '/predict',
     requiredStages: [WorkflowStage.MODEL_EVALUATION]
   },
@@ -147,7 +139,6 @@ export const WORKFLOW_STAGES: StageConfig[] = [
     name: 'Deployment',
     tab: 'Deploy',
     description: 'Deploy your model to production',
-    icon: 'Rocket',
     route: '/deploy',
     requiredStages: [WorkflowStage.PREDICTION]
   }

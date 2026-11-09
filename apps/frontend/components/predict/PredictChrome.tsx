@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertTriangle, FileText, Target } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Alert02Icon, FileEditIcon, Target02Icon } from '@hugeicons/core-free-icons';
 
 /** The prediction page's frame: its error banner and the single/batch switch. */
 
@@ -17,7 +18,7 @@ export function ErrorBanner(props: { actionError: string | null; featuresError: 
       data-testid="prediction-error"
       className="mb-4 p-3 rounded-lg border border-destructive/30 bg-destructive/10 text-sm text-destructive flex items-center gap-2"
     >
-      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <HugeiconsIcon icon={Alert02Icon} className="w-4 h-4 shrink-0" />
       <span>{error}</span>
     </div>
   );
@@ -65,7 +66,7 @@ export function ModeToggle(props: {
           testId="single-prediction-link"
           active={mode === 'single'}
           onSelect={selectSingle}
-          icon={<Target className="w-8 h-8 text-primary mx-auto mb-2" />}
+          icon={<HugeiconsIcon icon={Target02Icon} className="w-8 h-8 text-primary mx-auto mb-2" />}
           title="Single Prediction"
           hint="Enter values manually for one prediction"
         />
@@ -73,7 +74,7 @@ export function ModeToggle(props: {
           testId="batch-prediction-link"
           active={mode === 'batch'}
           onSelect={selectBatch}
-          icon={<FileText className="w-8 h-8 text-success mx-auto mb-2" />}
+          icon={<HugeiconsIcon icon={FileEditIcon} className="w-8 h-8 text-success mx-auto mb-2" />}
           title="Batch Prediction"
           hint="Upload a CSV file for multiple predictions"
         />

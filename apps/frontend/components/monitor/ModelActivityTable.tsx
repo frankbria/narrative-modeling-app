@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Brain } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { Brain01Icon } from '@hugeicons/core-free-icons'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -54,7 +55,7 @@ function ModelRow({ model }: { model: MonitoredModel }) {
 function EmptyState() {
   return (
     <div className="text-center py-8">
-      <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+      <HugeiconsIcon icon={Brain01Icon} className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
       <p className="text-muted-foreground">You have no trained models yet.</p>
     </div>
   )

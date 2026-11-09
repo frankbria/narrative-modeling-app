@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { ViewIcon } from '@hugeicons/core-free-icons';
 
 interface PreviewPanelProps {
   preview: any;
@@ -26,7 +27,7 @@ export default function PreviewPanel({ preview, loading }: PreviewPanelProps) {
     return (
       <div className="w-full @3xl:w-96 bg-card border-t @3xl:border-t-0 @3xl:border-l flex items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <Eye className="w-12 h-12 mx-auto mb-2 opacity-20" />
+          <HugeiconsIcon icon={ViewIcon} className="w-12 h-12 mx-auto mb-2 opacity-20" />
           <p className="text-sm">No preview available</p>
           <p className="text-xs mt-1">Add transformations to see results</p>
         </div>

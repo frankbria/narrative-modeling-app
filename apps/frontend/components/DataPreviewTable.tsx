@@ -11,7 +11,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
+import { HugeiconsIcon } from '@/components/ui/icon'
+import { ArrowLeft01Icon, ArrowRight01Icon, Download01Icon } from '@hugeicons/core-free-icons'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface DataPreviewTableProps {
@@ -82,7 +83,7 @@ function ExportButton(props: { onExport: VoidFunction }) {
   const { onExport } = props
   return (
     <Button variant="outline" size="sm" onClick={onExport}>
-      <Download className="mr-2 h-4 w-4" />
+      <HugeiconsIcon icon={Download01Icon} className="mr-2 h-4 w-4" />
       Export
     </Button>
   )
@@ -105,12 +106,12 @@ function PreviewPager(props: PagerProps) {
       <p className="text-sm text-muted-foreground">{position}</p>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" onClick={previous} disabled={page === 0}>
-          <ChevronLeft className="h-4 w-4" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} className="h-4 w-4" />
           Previous
         </Button>
         <Button variant="outline" size="sm" onClick={next} disabled={page >= pages - 1}>
           Next
-          <ChevronRight className="h-4 w-4" />
+          <HugeiconsIcon icon={ArrowRight01Icon} className="h-4 w-4" />
         </Button>
       </div>
     </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { ArrowDown01Icon, ArrowRight01Icon, Search01Icon } from '@hugeicons/core-free-icons';
 import type { TransformationTypeMeta } from '@/lib/services/pipelineApi';
 
 interface TransformationCategory {
@@ -57,7 +58,7 @@ export default function TransformationSidebar(props: TransformationSidebarProps 
       <div className="p-4 border-b bg-card">
         <h2 className="text-lg font-semibold mb-3">Transformations</h2>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <HugeiconsIcon icon={Search01Icon} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <input
             type="text"
             placeholder="Search transformations..."
@@ -105,7 +106,7 @@ function CategorySection(props: {
   onAdd?(transformationType: string, label: string): void;
 }) {
   const { category, collapsed, onToggle, onAdd } = props;
-  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  const chevron = collapsed ? ArrowRight01Icon : ArrowDown01Icon;
   return (
     <div className="border-b">
       <button
@@ -117,7 +118,7 @@ function CategorySection(props: {
           <span className="text-xl">{CATEGORY_ICONS[category.name] ?? '⚙️'}</span>
           <span className="font-medium">{category.name}</span>
         </div>
-        <Chevron className="w-4 h-4 text-muted-foreground" />
+        <HugeiconsIcon icon={chevron} className="w-4 h-4 text-muted-foreground" />
       </button>
 
       {!collapsed && (

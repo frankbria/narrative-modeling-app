@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { WorkflowStage } from '@/lib/types/workflow';
 import { useStageGuard } from '@/lib/hooks/useStageGuard';
 import { StageNavigation } from '@/components/workflow/StageNavigation';
-import { Target } from 'lucide-react';
+import { HugeiconsIcon } from '@/components/ui/icon';
+import { Target02Icon } from '@hugeicons/core-free-icons';
 import { useSession } from 'next-auth/react';
 import { BatchPredictionPanel } from '@/components/predict/BatchPredictionPanel';
 import { ErrorBanner, ModeToggle, type PredictionMode } from '@/components/predict/PredictChrome';
@@ -48,7 +49,7 @@ export default function PredictPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="bg-card rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Target className="w-6 h-6 text-destructive" />
+          <HugeiconsIcon icon={Target02Icon} className="w-6 h-6 text-destructive" />
           Make Predictions
         </h1>
 
