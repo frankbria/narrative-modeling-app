@@ -271,6 +271,19 @@ describe('PredictPage — enrichment panels (#83)', () => {
     expect(screen.getByTestId('prediction-value')).toHaveTextContent(/^3\.14$/);
   });
 
+  it('keeps a time-series forecast bare: it is a quantity, not a class (#1187)', async () => {
+    svc.predict.mockResolvedValue({
+      ...basePredictResponse,
+      predictions: [12],
+      probabilities: undefined,
+      model_info: { ...basePredictResponse.model_info, problem_type: 'time_series_regression' },
+    });
+    await renderReadyForm();
+    fireEvent.click(screen.getByTestId('make-prediction'));
+
+    expect(await screen.findByTestId('prediction-value')).toHaveTextContent(/^12$/);
+  });
+
   it('names a bare 0/1 class against the target (#1187)', async () => {
     svc.predict.mockResolvedValue({ ...basePredictResponse, predictions: [1], class_labels: ['0', '1'] });
     await renderReadyForm();

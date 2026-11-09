@@ -31,9 +31,14 @@ function nameMetrics(metrics: ClassificationMetrics | RegressionMetrics | null, 
   return { ...metrics, per_class_metrics: renameKeys(metrics.per_class_metrics, target) }
 }
 
+// Naming must not merge two classes (a target holding both "1" and "churned = 1").
+const merges = (labels: string[], target: string | null | undefined) =>
+  new Set(labels.map((label) => classLabel(label, target))).size < labels.length
+
 /** The evaluation with every class-keyed field named the same way, so the charts and tables agree. */
 export function nameEvaluationClasses(evaluation: ModelEvaluationResponse): ModelEvaluationResponse {
   const target = evaluation.target_column
+  if (merges(evaluation.confusion_matrix?.labels ?? [], target)) return evaluation
   return {
     ...evaluation,
     metrics: nameMetrics(evaluation.metrics, target),

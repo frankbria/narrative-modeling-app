@@ -151,7 +151,7 @@ function useScrollIntoView(prediction: PredictResponse) {
 /** The predicted value; a class is named against the target, a quantity stays bare (#1187). */
 function predictedText(prediction: PredictResponse) {
   const value = String(prediction.predictions?.[0]);
-  return prediction.model_info.problem_type === 'regression' ? value : classLabel(value, prediction.model_info.target_column);
+  return prediction.model_info.problem_type.includes('classification') ? classLabel(value, prediction.model_info.target_column) : value;
 }
 
 export function PredictionResult(props: { prediction: PredictResponse; columns: string[] }) {

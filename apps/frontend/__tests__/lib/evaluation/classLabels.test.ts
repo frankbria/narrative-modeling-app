@@ -61,6 +61,11 @@ describe('nameEvaluationClasses (#1187)', () => {
     expect(Object.keys(named.pr_curve?.curves ?? {})).toEqual(['churned = 1'])
   })
 
+  it('leaves the classes alone when naming would merge two of them', () => {
+    const clashing = { ...classification, confusion_matrix: { labels: ['1', 'churned = 1'], matrix: [[1, 0], [0, 1]] } }
+    expect(nameEvaluationClasses(clashing)).toBe(clashing)
+  })
+
   it('passes a regression or partial evaluation through unchanged', () => {
     const partial = { ...classification, metrics: null, confusion_matrix: null, roc_curve: null, pr_curve: null }
     expect(nameEvaluationClasses(partial)).toEqual(partial)
