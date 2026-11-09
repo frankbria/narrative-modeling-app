@@ -178,6 +178,7 @@ CASES
 []|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: reviewed"]
 []|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota"]
 []|["### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed","### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed","### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed"]
+["Codex","Kimi"]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota"]
 []|[]
 CASES
   [ "$failed" -eq 0 ] && echo "review_bots_health self-check: ok"
@@ -225,9 +226,11 @@ check_legs() {
   bodies=$(gh api --paginate "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --jq '.[]' \
     | jq -s -c '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("### Reviewer failover")))] | sort_by(.created_at) | reverse | map(.body)')
   legs=$(printf '%s' "$bodies" | failing_legs)
+  # Fewer than three comments cannot show recovery, so a quiet window closes nothing.
+  [ "$(printf '%s' "$bodies" | jq length)" -ge 3 ] || return 0
   for existing in $(gh issue list --state open --search "\"$LEG_PHRASE\" in:title" --json number,title --jq '.[] | "\(.number)=\(.title | split(": ") | last)"'); do
     name=${existing#*=}
-    if ! printf '%s' "$legs" | jq -e --arg n "$name" 'index($n) != null' >/dev/null; then
+    if printf '%s' "$legs" | jq -e --arg n "$name" 'index($n) == null' >/dev/null; then
       run gh issue close "${existing%%=*}" --comment "Recovered: $name has not failed over on three pull requests in a row."
     fi
   done
