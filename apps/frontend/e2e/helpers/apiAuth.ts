@@ -66,10 +66,10 @@ export async function signInAs(
     ),
     page.locator('button:has-text("Sign In with Test User")').click(),
   ]);
-  // A refused sign-in still answers 200, so check for the session cookie itself.
-  const cookies = await context.cookies();
-  if (!cookies.some((cookie) => cookie.name.endsWith('authjs.session-token'))) {
-    throw new Error(`signInAs(${email}): the credentials callback set no session cookie (sign-in refused).`);
+  // A refused sign-in still answers 200, so confirm whom the session belongs to.
+  const session = (await (await context.request.get('/api/auth/session')).json()) as { user?: { email?: string } } | null;
+  if (session?.user?.email !== email) {
+    throw new Error(`signInAs(${email}): signed in as ${session?.user?.email ?? 'nobody'} instead.`);
   }
   // The callback set the session cookie on this context; the post-login
   // redirect target is irrelevant to requests made with the context's cookies.
