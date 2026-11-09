@@ -6,9 +6,10 @@ describe('latencyVerdict (#1188)', () => {
   })
 
   it.each([
-    [40, 'Excellent Performance'],
-    [250, 'Good Performance'],
-    [1200, 'Consider Optimization'],
+    [99, 'Excellent Performance'],
+    [100, 'Good Performance'],
+    [499, 'Good Performance'],
+    [500, 'Consider Optimization'],
   ])('judges %ims as %s once there are predictions', (ms, label) => {
     expect(latencyVerdict(ms, 10)?.label).toBe(label)
   })
