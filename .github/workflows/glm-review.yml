@@ -41,7 +41,7 @@ jobs:
     # failover" comment while the check stays green (frankbria/glm-review#17).
     # Moving this pin: the callee's "No reviewer produced a review for this commit" wording must still
     # match NO_REVIEW in scripts/ci/review_bots_health.sh, or no-review runs read as healthy (#1149).
-    uses: frankbria/glm-review/.github/workflows/review.yml@502f7c15f0b5ccc89d50faa4026d57741750cb19 # main @ 2026-11-03
+    uses: frankbria/glm-review/.github/workflows/review.yml@2e96f0091e59f3e9fe3817ec2ea1f8d96a434828 # main @ 2026-11-09: Codex job on ubuntu-24.04 (glm-review#18)
     permissions:
       contents: read
       pull-requests: write
