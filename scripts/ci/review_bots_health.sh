@@ -101,14 +101,22 @@ with_no_review() {
     | jq -c --argjson runs "$runs" '[range(length) as $i | $runs[$i] + {conclusion: .[$i]}]'
 }
 
-# stdin: the callee's "Reviewer failover" comment bodies, newest first. stdout: the
-# reviewers whose latest three comments each say they failed for a reason other than quota
-# (quota runs out and comes back on its own; anything else is broken until fixed).
-failing_legs() {
+# stdin: the callee's comment bodies, newest first: its "Reviewer failover" comments and
+# each reviewer's own "### Third Party Review — <name>" comment. stdout: {failing, recovered}.
+# A reviewer is failing when its last three relevant comments each say it failed for a
+# reason other than quota (quota comes back on its own); it has recovered when its newest
+# relevant comment is its own review. The callee posts a failover comment only when
+# something went wrong, so recovery shows as a review, never as a clean failover line.
+leg_health() {
   jq -c '
     def failed: [scan("(?m)^- ([^:\n]+): \\S* ?failed[^\n]*for a reason other than quota")[0]];
-    def lead($name): if length > 0 and (.[0] | index($name)) != null then 1 + (.[1:] | lead($name)) else 0 end;
-    [.[] | failed] as $c | ($c[0] // []) | map(select(. as $name | ($c | lead($name)) >= 3))'
+    def reviewed: [scan("(?m)^### Third Party Review — (\\S+)")[0]];
+    def lead($n): if length > 0 and (.[0].failed | index($n)) != null then 1 + (.[1:] | lead($n)) else 0 end;
+    map({failed: failed, reviewed: reviewed}) as $events
+    | def about($n): $events | map(select((.failed | index($n)) != null or (.reviewed | index($n)) != null));
+      ([$events[].failed[], $events[].reviewed[]] | unique) as $names
+    | {failing: [$names[] | select(. as $n | about($n) | lead($n) >= 3)],
+       recovered: [$names[] | select(. as $n | (about($n)[0].reviewed // []) | index($n) != null)]}'
 }
 
 self_check() {
@@ -166,20 +174,20 @@ CASES
 []|[{"user":{"login":"github-actions[bot]"},"body":"Quoting it: No reviewer produced a review for this commit","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
 []|[{"user":{"login":"github-actions[bot]"},"body":"### Reviewer failover\n- Codex: reviewed","issue_url":"https://api.github.com/repos/o/r/issues/7","created_at":"2026-11-01T10:05:00Z"}]
 CASES
-  # Which reviewers fail over on every recent pull request, for a reason other than quota.
+  # Which reviewers keep failing over behind the fallback, and which have reviewed again.
   while IFS='|' read -r expected input; do
-    got=$(printf '%s' "$input" | failing_legs)
+    got=$(printf '%s' "$input" | leg_health)
     if [ "$got" != "$expected" ]; then
       echo "FAIL: expected $expected, got $got, for $input"
       failed=1
     fi
   done <<'CASES'
-["Codex"]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota — investigate\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed"]
-[]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: reviewed"]
-[]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota"]
-[]|["### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed","### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed","### Reviewer failover\n- Codex: skipped (quota)\n- Kimi: reviewed"]
-["Codex","Kimi"]|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota"]
-[]|[]
+{"failing":["Codex"],"recovered":["Kimi"]}|["### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed"]
+{"failing":[],"recovered":["Codex","Kimi"]}|["### Third Party Review — Codex\n✅ no defects","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed"]
+{"failing":[],"recovered":["Kimi"]}|["### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: reviewed"]
+{"failing":[],"recovered":["Kimi"]}|["### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: quota exhausted, failed over\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: quota exhausted, failed over\n- Kimi: reviewed","### Third Party Review — Kimi\n✅ no defects","### Reviewer failover\n- Codex: quota exhausted, failed over\n- Kimi: reviewed"]
+{"failing":["Codex","Kimi"],"recovered":[]}|["### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota","### Reviewer failover\n- Codex: ⚠️ failed (failure) for a reason other than quota\n- Kimi: ⚠️ failed (failure) for a reason other than quota"]
+{"failing":[],"recovered":[]}|[]
 CASES
   [ "$failed" -eq 0 ] && echo "review_bots_health self-check: ok"
   return "$failed"
@@ -221,27 +229,25 @@ check() {
 # A reviewer leg that fails over on every recent pull request gets its own alert, closed
 # once it reviews again (#1194).
 check_legs() {
-  local since bodies legs name search existing
+  local since health name search existing
   since=$(date -u -d '14 days ago' +%FT%TZ)
-  bodies=$(gh api --paginate "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --jq '.[]' \
-    | jq -s -c '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("### Reviewer failover")))] | sort_by(.created_at) | reverse | map(.body)')
-  legs=$(printf '%s' "$bodies" | failing_legs)
-  # Fewer than three comments cannot show recovery, so a quiet window closes nothing.
-  [ "$(printf '%s' "$bodies" | jq length)" -ge 3 ] || return 0
+  health=$(gh api --paginate "repos/{owner}/{repo}/issues/comments?since=$since&per_page=100" --jq '.[]' \
+    | jq -s -c '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("### Reviewer failover") or startswith("### Third Party Review — ")))] | sort_by(.created_at) | reverse | map(.body)' \
+    | leg_health)
   for existing in $(gh issue list --state open --search "\"$LEG_PHRASE\" in:title" --json number,title --jq '.[] | "\(.number)=\(.title | split(": ") | last)"'); do
     name=${existing#*=}
-    if printf '%s' "$legs" | jq -e --arg n "$name" 'index($n) == null' >/dev/null; then
-      run gh issue close "${existing%%=*}" --comment "Recovered: $name has not failed over on three pull requests in a row."
+    if printf '%s' "$health" | jq -e --arg n "$name" '.recovered | index($n) != null' >/dev/null; then
+      run gh issue close "${existing%%=*}" --comment "Recovered: $name has posted a review again."
     fi
   done
-  for name in $(printf '%s' "$legs" | jq -r '.[]'); do
+  for name in $(printf '%s' "$health" | jq -r '.failing[]'); do
     echo "$FAILOVER_WORKFLOW: $name failed over on the last three pull requests"
     search="\"$LEG_PHRASE: $name\" in:title"
     existing=$(gh issue list --state open --search "$search" --json number --jq 'min_by(.number).number // empty')
     [ -n "$existing" ] && continue
     run gh issue create --title "[P2] [infra] $LEG_PHRASE: $name" --body "$(printf '%s\n\n%s\n' \
-      "The last three \"Reviewer failover\" comments from \`$FAILOVER_WORKFLOW\` each say **$name** failed for a reason other than quota. A later reviewer covered every pull request, so the runs are green and reviewed, and nothing else reports this." \
-      "The job log names the cause (\`gh api repos/{owner}/{repo}/actions/jobs/<id>/logs\`; \`gh run view --log\` returns nothing for a called workflow). Opened by \`scripts/ci/review_bots_health.sh\`; it closes this issue once $name stops failing over.")"
+      "The last three \"Reviewer failover\" comments from \`$FAILOVER_WORKFLOW\` that mention **$name** each say it failed for a reason other than quota, with no review of its own between them. A later reviewer covered every pull request, so the runs are green and reviewed, and nothing else reports this." \
+      "The job log names the cause (\`gh api repos/{owner}/{repo}/actions/jobs/<id>/logs\`; \`gh run view --log\` returns nothing for a called workflow). Opened by \`scripts/ci/review_bots_health.sh\`; it closes this issue when $name posts a review again.")"
   done
 }
 
