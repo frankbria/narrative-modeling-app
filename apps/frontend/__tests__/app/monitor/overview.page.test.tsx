@@ -47,6 +47,13 @@ it('names rows by target, algorithm, dataset and date, never an id', async () =>
   expect(screen.queryByText('m1')).not.toBeInTheDocument()
 })
 
+it('opens a model from its title, with no separate Actions column (#1189)', async () => {
+  load([model(1, 5, 20)])
+  render(<MonitoringPage />)
+  expect(await screen.findByRole('link', { name: 'target1 · XGBoost' })).toHaveAttribute('href', '/monitor/m1')
+  expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument()
+})
+
 it('shows no latency and counts no active models when nothing was predicted', async () => {
   load([model(1), model(2)])
   render(<MonitoringPage />)
