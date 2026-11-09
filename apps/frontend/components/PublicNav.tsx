@@ -1,10 +1,13 @@
+'use client'
+
 import Link from 'next/link'
+import { useInAppShell } from '@/components/AppShell'
 import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { NAV_LINKS } from '@/lib/publicLinks'
 
 /** The one header of the public pages: the logo, `NAV_LINKS` (#772), then the way in. */
-export function PublicNav() {
+function PublicNavBar() {
   return (
     <nav
       aria-label="Public"
@@ -34,4 +37,10 @@ export function PublicNav() {
       </ul>
     </nav>
   )
+}
+
+/** Inside the app shell a signed-in visitor already has the app's navigation, so this steps aside (#1190). */
+export function PublicNav() {
+  const view = { true: null, false: <PublicNavBar /> }
+  return view[`${useInAppShell()}`]
 }

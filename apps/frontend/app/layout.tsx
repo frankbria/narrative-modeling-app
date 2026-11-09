@@ -10,6 +10,7 @@ import SidebarWrapper from '@/components/SidebarWrapper'
 import ConditionalAIChat from '@/components/ConditionalAIChat'
 import { WorkflowProvider } from '@/lib/contexts/WorkflowContext'
 import { WorkflowBar } from '@/components/WorkflowBar'
+import { AppShellProvider } from '@/components/AppShell'
 import { StageGuardBanner } from '@/components/workflow/StageGuardBanner'
 import { PlanLimitDialog } from '@/components/billing/PlanLimitDialog'
 import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
@@ -87,7 +88,7 @@ export default async function RootLayout({
                       tabIndex={-1}
                       className="min-w-0 flex-1 p-4 bg-background lg:mr-80 focus:outline-none"
                     >
-                      {children}
+                      <AppShellProvider>{children}</AppShellProvider>
                     </div>
                     <ConditionalAIChat />
                   </div>
