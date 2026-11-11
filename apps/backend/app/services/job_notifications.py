@@ -1,9 +1,8 @@
 """Mail an account when one of its background jobs ends (#494).
 
-`job_finished` is the one entry point, called from every place a job reaches COMPLETED or
-FAILED: the training task, the batch run (through `batch_job_finished`), and the stale-job
-reaper. Neither raises, so a
-notification cannot change the outcome it reports.
+Every place a job reaches COMPLETED or FAILED calls in here: the training task and the
+stale-job reaper through `job_finished`, the batch run through `batch_job_finished`.
+Neither function raises, so a notification cannot change the outcome it reports.
 
 A message carries the job's label, the stored user-safe failure reason
 (`app/utils/job_failures.py`), the app's address and how to stop the mails. Nothing else:
