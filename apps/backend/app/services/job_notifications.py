@@ -99,8 +99,9 @@ async def _notify_batch(job_id: str) -> None:
         job.user_id,
         f"Your batch prediction of {job.progress.total_records:,} records",
         job.error_message if job.status == JobStatus.FAILED else None,
-        # A retry is a new ending of the same job, and is mailed again.
-        f"batch-{job_id}-{job.status.value}-{job.retry_count}",
+        # Keyed on when this ending was stored: the run and the reaper reporting one
+        # ending agree on it, and a retry's ending is a later one, mailed again.
+        f"batch-{job_id}-{job.status.value}-{job.completed_at}",
     )
 
 

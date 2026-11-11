@@ -6,7 +6,7 @@ provider seam (`email_service.send`). Three places end a job: the training task,
 run, and the stale-job reaper.
 """
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -181,20 +181,23 @@ async def _batch_job(job_id: str, owner: str, status: JobStatus, **fields) -> Ba
     ).insert()
 
 
+ENDED = datetime(2026, 11, 11, 9, 30, tzinfo=UTC)
+
+
 async def test_a_completed_batch_job_mails_its_owner(owner, outbox):
-    await _batch_job("batch_done", owner, JobStatus.COMPLETED)
+    await _batch_job("batch_done", owner, JobStatus.COMPLETED, completed_at=ENDED)
 
     await job_notifications.batch_job_finished("batch_done")
 
     (message,) = outbox
     assert message["to"] == ADDRESS
     assert message["subject"] == "Your batch prediction of 1,200 records finished"
-    assert message["key"] == "batch-batch_done-completed-0"
+    assert message["key"] == "batch-batch_done-completed-2026-11-11 09:30:00"
 
 
 async def test_a_failed_batch_job_mails_the_stored_reason(owner, outbox):
     await _batch_job(
-        "batch_failed", owner, JobStatus.FAILED, error_message="The input file has no rows.", retry_count=2
+        "batch_failed", owner, JobStatus.FAILED, error_message="The input file has no rows.", completed_at=ENDED
     )
 
     await job_notifications.batch_job_finished("batch_failed")
@@ -202,7 +205,22 @@ async def test_a_failed_batch_job_mails_the_stored_reason(owner, outbox):
     (message,) = outbox
     assert message["subject"] == "Your batch prediction of 1,200 records failed"
     assert "Reason: The input file has no rows." in message["text"]
-    assert message["key"] == "batch-batch_failed-failed-2"
+    assert message["key"] == "batch-batch_failed-failed-2026-11-11 09:30:00"
+
+
+async def test_one_ending_has_one_key_and_a_later_ending_of_the_same_job_another(owner, outbox):
+    # A job that fails, is retried, and is then reaped keeps its retry count, so the
+    # count cannot tell the two failures apart; when each was stored can.
+    job = await _batch_job("batch_twice", owner, JobStatus.FAILED, error_message="first", completed_at=ENDED)
+
+    await job_notifications.batch_job_finished("batch_twice")
+    await job_notifications.batch_job_finished("batch_twice")
+    await job.set({BatchJob.completed_at: ENDED + timedelta(minutes=5), BatchJob.error_message: "second"})
+    await job_notifications.batch_job_finished("batch_twice")
+
+    first, again, later = (message["key"] for message in outbox)
+    assert first == again
+    assert later != first
 
 
 @pytest.mark.parametrize("status", [JobStatus.CANCELLED, JobStatus.RUNNING, JobStatus.PENDING])
