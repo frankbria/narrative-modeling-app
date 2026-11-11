@@ -161,7 +161,9 @@ export default function PrivacyPage() {
             <strong>What we keep afterwards</strong> — invoices and payment records for as long as
             tax and accounting law requires, and an append-only erasure log recording that a
             deletion happened, who asked for it and when. The log records the event, not the data
-            that was deleted.
+            that was deleted. Self-service deletion of your data also keeps your choice of whether
+            you receive job emails, an on/off setting stored against your account id, so that
+            deleting your data does not turn those emails back on.
           </li>
         </ul>
       </section>

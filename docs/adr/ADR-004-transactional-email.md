@@ -50,7 +50,10 @@ token is in it.
 Three places end a job and all three notify: the training task, the batch run, and the
 stale-job reaper. Each ending carries an idempotency key, so the task and the reaper
 reporting the same failure send one message. Resend remembers a key for 24 hours, which
-is far longer than the gap between two reports of one ending.
+is far longer than the gap between two reports of one ending. When the two reports
+carry different wording (the task names the model and its own reason, the reaper does
+not), Resend refuses the second as a reuse of the key: the first message is the one
+delivered, and the refusal is logged as a send that did not happen.
 
 ### 4. A notification cannot change a job
 

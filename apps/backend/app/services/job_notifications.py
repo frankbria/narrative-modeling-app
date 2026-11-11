@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _API_PATH = "/api/v1"
 _REPORTED = (JobStatus.COMPLETED, JobStatus.FAILED)
+_NO_REASON = "No reason was recorded."
 
 
 async def wants_job_emails(user_id: str) -> bool:
@@ -103,7 +104,9 @@ async def _notify_batch(job_id: str) -> None:
         job.user_id,
         f"Your batch prediction of {job.progress.total_records:,} records",
         job_id,
-        job.error_message if job.status == JobStatus.FAILED else None,
+        # The stored status decides the outcome: a failed job whose reason is missing
+        # must not read as finished.
+        (job.error_message or _NO_REASON) if job.status == JobStatus.FAILED else None,
         # Keyed on when this ending was stored: the run and the reaper reporting one
         # ending agree on it, and a retry's ending is a later one, mailed again.
         f"batch-{job_id}-{job.status.value}-{job.completed_at}",

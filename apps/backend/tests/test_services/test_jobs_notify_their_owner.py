@@ -210,6 +210,18 @@ async def test_a_failed_batch_job_mails_the_stored_reason(owner, outbox):
     assert message["key"] == "batch-batch_failed-failed-2026-11-11 09:30:00"
 
 
+async def test_a_failed_batch_job_with_no_stored_reason_is_still_mailed_as_failed(owner, outbox):
+    # The outcome comes from the stored status; a missing reason must not read as success.
+    await _batch_job("batch_no_reason", owner, JobStatus.FAILED, completed_at=ENDED)
+
+    await job_notifications.batch_job_finished("batch_no_reason")
+
+    (message,) = outbox
+    assert message["subject"] == "Your batch prediction of 1,200 records failed"
+    assert "did not finish" in message["text"]
+    assert "Reason: No reason was recorded." in message["text"]
+
+
 async def test_one_ending_has_one_key_and_a_later_ending_of_the_same_job_another(owner, outbox):
     # A job that fails, is retried, and is then reaped keeps its retry count, so the
     # count cannot tell the two failures apart; when each was stored can.

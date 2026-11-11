@@ -104,6 +104,13 @@ describe('Privacy Policy', () => {
     expect(COMPANY.privacyEffectiveDate).toBe('November 11, 2026');
   });
 
+  it('lists the notification setting among what account erasure keeps (#494)', () => {
+    render(<PrivacyPage />);
+    const section = screen.getByRole('heading', { name: /retention/i }).closest('section')!;
+    const kept = within(section).getByText(/what we keep afterwards/i).closest('li')!;
+    expect(kept.textContent).toMatch(/whether you receive job emails/);
+  });
+
   it('says what the email address is used for, who delivers it and how to stop it (#494)', () => {
     render(<PrivacyPage />);
     const use = screen.getByRole('heading', { name: /how we use it/i }).closest('section')!;
