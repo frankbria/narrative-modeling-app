@@ -184,7 +184,11 @@ async def _reap(
         fields, refund = failure(doc)
         claim = {"$set": fields, "$push": {"refunds_owed": refund}}
         if await coll.find_one_and_update({**stale, "_id": doc["_id"]}, claim):
-            await owed_refunds.settle(coll, {"_id": doc["_id"]}, refund)
-            await mail_owner(doc)
+            try:
+                await owed_refunds.settle(coll, {"_id": doc["_id"]}, refund)
+            finally:
+                # The job reads FAILED from here on and no later pass sees it again, so
+                # a refund that could not be paid now must not cost the owner the mail.
+                await mail_owner(doc)
             reaped += 1
     return reaped

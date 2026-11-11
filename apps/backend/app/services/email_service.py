@@ -42,8 +42,9 @@ def _client() -> httpx.AsyncClient:
 async def send(to: str, subject: str, text: str, *, idempotency_key: str) -> bool:
     """Send one plain-text message; True when Resend accepted it.
 
-    `idempotency_key` makes a second send of the same message a no-op at Resend, so two
-    paths that both see a job end (its own task and the stale-job reaper) mail once.
+    Resend delivers one message per `idempotency_key` (a repeat is answered without
+    sending, or refused if its content differs), so two paths that both see a job end
+    (its own task and the stale-job reaper) mail once.
     """
     if not is_configured():
         return False

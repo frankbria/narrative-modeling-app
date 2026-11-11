@@ -47,6 +47,22 @@ describe('NotificationPreferences (#494)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('takes one change at a time, so two saves cannot land out of order', async () => {
+    let finishSave: (stored: { job_emails: boolean }) => void = () => {};
+    api.setJobEmails.mockReturnValue(new Promise((resolve) => (finishSave = resolve)));
+    await renderedWith(false);
+
+    fireEvent.click(jobEmailsSwitch());
+
+    expect(jobEmailsSwitch()).toBeDisabled();
+    fireEvent.click(jobEmailsSwitch());
+    expect(api.setJobEmails).toHaveBeenCalledTimes(1);
+
+    finishSave({ job_emails: true });
+    await waitFor(() => expect(jobEmailsSwitch()).toBeEnabled());
+    expect(jobEmailsSwitch()).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('puts the switch back and says so when the save fails', async () => {
     api.setJobEmails.mockRejectedValue(new Error('Database unavailable'));
     await renderedWith(true);
@@ -55,6 +71,7 @@ describe('NotificationPreferences (#494)', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/could not save/i));
     expect(jobEmailsSwitch()).toHaveAttribute('aria-checked', 'true');
+    expect(jobEmailsSwitch()).toBeEnabled();
   });
 
   it('says the choice could not be loaded, and offers no switch to guess with', async () => {

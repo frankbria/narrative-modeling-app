@@ -1,8 +1,8 @@
 """Mail an account when one of its background jobs ends (#494).
 
-Every place a job reaches COMPLETED or FAILED calls in here: the training task and the
-stale-job reaper through `job_finished`, the batch run through `batch_job_finished`.
-Neither function raises, so a notification cannot change the outcome it reports.
+Every place a job reaches COMPLETED or FAILED calls in here: `job_finished` for a training
+run, `batch_job_finished` for a batch job, from the job's own task and from the stale-job
+reaper. Neither function raises, so a notification cannot change the outcome it reports.
 
 A message carries the job's label, the stored user-safe failure reason
 (`app/utils/job_failures.py`), the app's address and how to stop the mails. Nothing else:
@@ -115,8 +115,9 @@ async def job_finished(
     user_id: str, job: str, *, failure_reason: str | None = None, key: str
 ) -> None:
     """Tell the owner that `job` (e.g. ``Training "Churn"``) ended: failed when a reason
-    is given, finished otherwise. `key` identifies this ending, so two callers reporting
-    the same one send a single message."""
+    is given, finished otherwise. `key` identifies this ending: the provider delivers one
+    message per key, the first, so a task and the reaper both reporting one failure mail
+    the owner once."""
     await _quietly(_notify(user_id, job, failure_reason, key))
 
 

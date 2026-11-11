@@ -271,6 +271,31 @@ async def test_a_provider_that_raises_changes_nothing_about_a_batch_job(owner, b
     assert stored.error_message
 
 
+async def test_a_batch_run_stopped_at_the_wall_clock_mails_that_reason_once(owner, outbox, monkeypatch):
+    # The only ending where the mail goes out from a cancelled run's `finally`.
+    import asyncio
+
+    from app.services import batch_prediction
+
+    monkeypatch.setattr(batch_prediction, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.2)
+    job = await _batch_job("batch_hung", owner, JobStatus.PENDING)
+    svc = BatchPredictionService()
+    svc.s3_service = MagicMock()
+
+    async def never_answers(*_args, **_kwargs):
+        await asyncio.sleep(30)
+
+    with patch("app.services.batch_prediction.MLModel.find_one", never_answers):
+        await asyncio.wait_for(svc._process_batch_job(job), timeout=10)
+
+    stored = await BatchJob.find_one(BatchJob.job_id == "batch_hung")
+    assert stored.status == JobStatus.FAILED
+    (message,) = outbox
+    assert message["subject"] == "Your batch prediction of 1,200 records failed"
+    assert f"Reason: {stored.error_message}" in message["text"]
+    assert "0.2-second limit" in message["text"]
+
+
 # --- The stale-job reaper -------------------------------------------------------
 
 
@@ -315,3 +340,22 @@ async def test_a_provider_that_raises_does_not_stop_the_reaper(owner, broken_pro
     summary = await reap_stale_jobs(timeout_seconds=60)
 
     assert summary.training == 2
+
+
+async def test_a_refund_that_cannot_be_paid_does_not_cost_the_owner_the_mail(owner, outbox, monkeypatch):
+    # The claim already wrote FAILED, so no later pass reaps this job again.
+    from app.billing import owed_refunds
+
+    job = TrainingJob(
+        model_id="model_refund_down", user_id=owner, dataset_id="d", target_column="y",
+        status=JobStatus.RUNNING,
+    )
+    job.last_heartbeat = utcnow() - timedelta(hours=2)
+    await job.insert()
+    monkeypatch.setattr(owed_refunds, "settle", AsyncMock(side_effect=ConnectionError("mongo is away")))
+
+    with pytest.raises(ConnectionError):
+        await reap_stale_jobs(timeout_seconds=60)
+
+    assert (await TrainingJob.get(job.id)).status == JobStatus.FAILED
+    assert [message["key"] for message in outbox] == ["training-model_refund_down-failed"]

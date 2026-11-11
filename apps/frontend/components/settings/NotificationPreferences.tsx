@@ -18,10 +18,14 @@ const SAVE_FAILED = 'We could not save that change. Try again.';
 function useJobEmails() {
   const stored = useAsyncData(() => notificationPreferencesApi.get(), [], { errorMessage: LOAD_FAILED });
   const [chosen, setChosen] = useState<boolean | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const checked = chosen ?? stored.data?.job_emails ?? true;
 
+  // One save at a time: two in flight can land in either order, and the switch would
+  // then show whichever was clicked last while the server holds whichever arrived last.
   async function choose(next: boolean) {
+    setSaving(true);
     setChosen(next);
     setSaveError(null);
     try {
@@ -30,17 +34,15 @@ function useJobEmails() {
       setChosen(checked);
       setSaveError(SAVE_FAILED);
     }
+    setSaving(false);
   }
 
-  return { checked, choose, ready: stored.data !== undefined, problem: stored.error ?? saveError };
-}
-
-function Problem({ message }: { message: string | null }) {
-  return message && (
-    <p role="alert" className="text-sm text-destructive">
-      {message}
-    </p>
-  );
+  return {
+    checked,
+    choose,
+    locked: saving || stored.data === undefined,
+    problem: stored.error ?? saveError,
+  };
 }
 
 export function NotificationPreferences() {
@@ -60,11 +62,13 @@ export function NotificationPreferences() {
           <Switch
             id="job-emails"
             checked={jobEmails.checked}
-            disabled={!jobEmails.ready}
+            disabled={jobEmails.locked}
             onCheckedChange={jobEmails.choose}
           />
         </div>
-        <Problem message={jobEmails.problem} />
+        <p role="alert" hidden={!jobEmails.problem} className="text-sm text-destructive">
+          {jobEmails.problem}
+        </p>
       </CardContent>
     </Card>
   );
