@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_emails": {
+      "description": "Email the account when a training or batch prediction job ends",
+      "title": "Job Emails",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "job_emails"
+  ],
+  "title": "NotificationPreferences",
+  "type": "object"
+}

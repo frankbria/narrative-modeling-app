@@ -36,6 +36,7 @@ from app.models.batch_job import (
     JobType,
 )
 from app.models.ml_model import MLModel
+from app.services import job_notifications
 from app.services.confidence_service import ConfidenceService
 from app.services.interpretability_service import InterpretabilityService
 from app.services.job_reaper import reservation_period
@@ -688,6 +689,8 @@ class BatchPredictionService:
         finally:
             # Best-effort async-completion webhook (issue #86). Never blocks/raises.
             await self._fire_webhook(job)
+            # And the owner's mail (#494), which reads the stored ending. Never raises.
+            await job_notifications.batch_job_finished(job.job_id)
 
     async def _claim_running(self, job: BatchJob) -> bool:
         """Atomically transition an in-flight job to RUNNING for this worker (#485).

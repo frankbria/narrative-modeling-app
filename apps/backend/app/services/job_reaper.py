@@ -27,7 +27,7 @@ paying it leaves it for the next pass (``app/billing/owed_refunds.py``, #1032).
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -38,6 +38,7 @@ from app.billing.metering import period_key_for
 from app.billing.plans import _env_positive_int
 from app.models.batch_job import BatchJob, JobStatus, JobType
 from app.models.training_job import TrainingJob
+from app.services import job_notifications
 from app.utils.datetime import as_utc, utcnow
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,16 @@ def _stale_filter(cutoff: datetime, extra: dict | None = None) -> dict:
 async def _reap_training(cutoff: datetime) -> int:
     coll = TrainingJob.get_motor_collection()
     await owed_refunds.settle_pending(coll)
-    return await _reap(coll, _stale_filter(cutoff), _training_failure)
+    return await _reap(coll, _stale_filter(cutoff), _training_failure, _mail_training_owner)
+
+
+async def _mail_training_owner(doc: dict) -> None:
+    await job_notifications.job_finished(
+        doc["user_id"],
+        "Your training run",
+        failure_reason=_REASON,
+        key=job_notifications.training_failure_key(doc["model_id"]),
+    )
 
 
 def _training_failure(doc: dict) -> tuple[dict, dict]:
@@ -123,7 +133,16 @@ def _training_failure(doc: dict) -> tuple[dict, dict]:
 async def _reap_batch(cutoff: datetime) -> int:
     coll = BatchJob.get_motor_collection()
     await owed_refunds.settle_pending(coll)
-    return await _reap(coll, _stale_filter(cutoff, {"job_type": JobType.BATCH_PREDICTION.value}), _batch_failure)
+    return await _reap(
+        coll,
+        _stale_filter(cutoff, {"job_type": JobType.BATCH_PREDICTION.value}),
+        _batch_failure,
+        _mail_batch_owner,
+    )
+
+
+async def _mail_batch_owner(doc: dict) -> None:
+    await job_notifications.batch_job_finished(doc["job_id"])
 
 
 def _batch_failure(doc: dict) -> tuple[dict, dict]:
@@ -151,16 +170,21 @@ def reservation_period(doc: dict) -> str:
 
 
 async def _reap(
-    coll: AsyncIOMotorCollection, stale: dict, failure: Callable[[dict], tuple[dict, dict]]
+    coll: AsyncIOMotorCollection,
+    stale: dict,
+    failure: Callable[[dict], tuple[dict, dict]],
+    mail_owner: Callable[[dict], Awaitable[None]],
 ) -> int:
     """Claim each stale job with one conditional write that also records the refund
-    it owes, then pay that refund. Another worker's claim between the read and the
-    write makes the write match nothing, and this one moves on."""
+    it owes, then pay that refund and mail the owner (#494; `mail_owner` never raises).
+    Another worker's claim between the read and the write makes the write match nothing,
+    and this one moves on."""
     reaped = 0
     while (doc := await coll.find_one(stale)) is not None:
         fields, refund = failure(doc)
         claim = {"$set": fields, "$push": {"refunds_owed": refund}}
         if await coll.find_one_and_update({**stale, "_id": doc["_id"]}, claim):
             await owed_refunds.settle(coll, {"_id": doc["_id"]}, refund)
+            await mail_owner(doc)
             reaped += 1
     return reaped

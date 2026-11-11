@@ -68,7 +68,7 @@ from app.schemas.model import (
     ModelDeployResponse,
     PredictionExplanation,
 )
-from app.services import product_events
+from app.services import job_notifications, product_events
 from app.services.confidence_service import DEFAULT_LOW_CONFIDENCE_THRESHOLD
 from app.services.error_analysis_service import error_analysis_service
 from app.services.evaluation_explanation_service import evaluation_explanation_service
@@ -1087,11 +1087,11 @@ async def _record_completion(
     await _record(training_job)
 
 
-async def _record_failed(training_job: TrainingJob | None, model_id: str, reason: str) -> None:
-    """Write FAILED and its reason. Guarded: a secondary error here (e.g. a transient
-    DB outage during save) must not escape the background task."""
+async def _record_failed(training_job: TrainingJob | None, model_id: str, reason: str) -> bool:
+    """Write FAILED and its reason; True when the write landed. Guarded: a secondary
+    error here (e.g. a transient DB outage during save) must not escape the background task."""
     if not training_job:
-        return
+        return False
     try:
         training_job = await _refreshed_job(training_job)
         training_job.mark_failed(reason)
@@ -1099,6 +1099,27 @@ async def _record_failed(training_job: TrainingJob | None, model_id: str, reason
         await _record(training_job)
     except Exception as save_exc:
         _log_unrecorded(model_id, "FAILED", save_exc)
+        return False
+    return True
+
+
+async def _fail(
+    training_job: TrainingJob | None,
+    user_data: UserData,
+    request: TrainModelRequest,
+    model_id: str,
+    reason: str,
+) -> None:
+    """Record the failure and mail the owner the reason that was stored (#494). A failure
+    that could not be recorded mails nobody: the row still reads in flight, and the
+    stale-job reaper fails it and sends that mail."""
+    if await _record_failed(training_job, model_id, reason):
+        await job_notifications.job_finished(
+            user_data.user_id,
+            f'Training "{request.name or user_data.filename}"',
+            failure_reason=reason,
+            key=job_notifications.training_failure_key(model_id),
+        )
 
 
 async def _record_cancelled(training_job: TrainingJob | None, model_id: str) -> None:
@@ -1149,11 +1170,14 @@ async def train_model_task(
         await _record_completion(training_job, run, request, ml_model)
         await _record_what_follows(run, user_id, model_id)
         logger.info(f"Model training completed: {ml_model.model_id}")
+        await job_notifications.job_finished(
+            user_id, f'Training "{ml_model.name}"', key=f"training-{model_id}-completed"
+        )
 
     except TrainingWallClockExceeded as exc:
         reason = str(exc)
         logger.warning(f"{reason}: {model_id}")
-        await _record_failed(training_job, model_id, reason)
+        await _fail(training_job, user_data, request, model_id, reason)
 
     except TrainingCancelledError:
         logger.info(f"Model training cancelled by user: {model_id}")
@@ -1169,7 +1193,7 @@ async def train_model_task(
         # Full traceback stays server-side, correlated by model_id; the user gets
         # a safe, actionable reason instead of raw str(e) (#518, #269).
         logger.exception("Error training model %s", model_id)
-        await _record_failed(training_job, model_id, user_safe_failure_reason(e))
+        await _fail(training_job, user_data, request, model_id, user_safe_failure_reason(e))
 
 
 class TrainingNoLongerInFlight(Exception):

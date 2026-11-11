@@ -135,6 +135,11 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?}
       STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:?}
       STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
+      # Email (#494, ADR-004). Optional (`:-`): with either unset the backend sends
+      # no mail and says so at startup ("Email:"). Guard both with `:?` once the
+      # sender domain is verified and job mail is something customers rely on.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
       # No PLAN_* overrides, deliberately (#457 AC4). The per-tier limits in
       # app/billing/plans.py ARE the intended configuration; they are placeholders
       # today and #474 replaces them there, in one place that applies to every
