@@ -118,6 +118,10 @@ chmod 600 .env.staging
 and `STRIPE_PRICE_ENTERPRISE`, set only to entitle a sales-led deal through checkout
 (ADR-003). Once one is, guard it with `${STRIPE_PRICE_ENTERPRISE:?}` in compose and add
 it to `stripe_client._REQUIRED_SETTINGS`: losing it resolves that customer's price to PRO.
+`RESEND_API_KEY` and `EMAIL_FROM` (#494, ADR-004) turn on the mail an account gets when
+its training or batch job finishes or fails. Set both or neither: `EMAIL_FROM` is the
+sender, on a domain verified in Resend (`SheetPredict <jobs@your-domain>`). With either
+unset nothing is sent and the backend's startup log says so (grep it for `Email:`).
 
 > **No inline comments in `.env.staging`.** `VAR=value  # note` makes the comment part
 > of the value, because `docker compose --env-file` does not support them. Put
