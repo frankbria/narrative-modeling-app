@@ -67,6 +67,11 @@ export default function PrivacyPage() {
           take payment and meet our accounting obligations (contract and legal obligation).
         </p>
         <p>
+          We use your email address to tell you when a training or batch prediction job you started
+          has finished or failed (performance of our contract with you). You can turn these emails
+          off at any time under Settings. We send no marketing email.
+        </p>
+        <p>
           We do not sell or share your personal data for advertising, and we do not use your
           datasets to train our own models. No automated decision producing legal effects about you
           is made by us; models you train are yours, and how you use them is your responsibility.

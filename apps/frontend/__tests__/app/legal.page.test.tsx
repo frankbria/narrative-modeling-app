@@ -98,10 +98,20 @@ describe('Privacy Policy', () => {
     expect(section.textContent).toMatch(/backup/i);
   });
 
-  it('is dated by the change to section 6, not the Terms date (#1111)', () => {
+  it('is dated by its own latest change, not the Terms date (#1111, #494)', () => {
     const { container } = render(<PrivacyPage />);
     expect(container.textContent).toContain(`Effective ${COMPANY.privacyEffectiveDate}`);
-    expect(COMPANY.privacyEffectiveDate).toBe('October 19, 2026');
+    expect(COMPANY.privacyEffectiveDate).toBe('November 11, 2026');
+  });
+
+  it('says what the email address is used for, who delivers it and how to stop it (#494)', () => {
+    render(<PrivacyPage />);
+    const use = screen.getByRole('heading', { name: /how we use it/i }).closest('section')!;
+    expect(use.textContent).toMatch(/job you started\s+has finished or failed/);
+    expect(use.textContent).toMatch(/turn these emails\s+off at any time under Settings/);
+    const resend = SUB_PROCESSORS.find((p) => p.name === 'Resend')!;
+    expect(resend.purpose).toMatch(/your email address/i);
+    expect(resend.purpose).toMatch(/no dataset content/i);
   });
 
   it('does not promise deletion the erasure cascade does not perform (AC4)', () => {

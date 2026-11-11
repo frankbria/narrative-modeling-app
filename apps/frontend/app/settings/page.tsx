@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ErasureConfirmDialog } from '@/components/settings/ErasureConfirmDialog';
+import { NotificationPreferences } from '@/components/settings/NotificationPreferences';
 import { erasureApi } from '@/lib/services/erasure';
 
 export default function SettingsPage() {
@@ -41,6 +42,8 @@ export default function SettingsPage() {
           </Link>
         </CardContent>
       </Card>
+
+      <NotificationPreferences />
 
       <Card className="border-destructive/50">
         <CardHeader>
@@ -89,7 +92,8 @@ export default function SettingsPage() {
             <p>
               <strong>Retained:</strong> your billing records (subscription and usage) are kept —
               your account stays active and is billed as normal, and the authoritative record lives
-              with our payment processor. This deletes your data, not the account itself.
+              with our payment processor. Your notification setting above is kept too. This deletes
+              your data, not the account itself.
             </p>
           </div>
         }
