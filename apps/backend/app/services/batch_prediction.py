@@ -490,19 +490,26 @@ class BatchPredictionService:
         # (#484) never reaps this live run between per-chunk progress writes. The
         # queued path already holds a pump over its wait; this one is for callers
         # that run a job directly, and two pumps only write the same field twice.
-        async with heartbeat_pump(job):
-            run = asyncio.ensure_future(self._run_batch_job(job))
-            try:
-                # Not wait_for: the run fires the completion webhook from its own
-                # `finally`, so the job has to read FAILED before the run is cancelled.
-                done, _ = await asyncio.wait({run}, timeout=BATCH_JOB_WALL_CLOCK_SECONDS)
-                if done:
-                    return run.result()
-                await self._fail_at_wall_clock(job)
-            finally:
-                if not run.done():
-                    run.cancel()
-                    await asyncio.gather(run, return_exceptions=True)
+        try:
+            async with heartbeat_pump(job):
+                run = asyncio.ensure_future(self._run_batch_job(job))
+                try:
+                    # Not wait_for: the run fires the completion webhook from its own
+                    # `finally`, so the job has to read FAILED before the run is cancelled.
+                    done, _ = await asyncio.wait({run}, timeout=BATCH_JOB_WALL_CLOCK_SECONDS)
+                    if done:
+                        return run.result()
+                    await self._fail_at_wall_clock(job)
+                finally:
+                    if not run.done():
+                        run.cancel()
+                        await asyncio.gather(run, return_exceptions=True)
+        finally:
+            # The owner's mail (#494), once the run is over and outside its wall clock:
+            # sent from inside the run, a deadline reached during a slow webhook would
+            # cancel it, and a job already stored as finished is never mailed again.
+            # It reports the stored ending and never raises.
+            await job_notifications.batch_job_finished(job.job_id)
 
     async def _fail_at_wall_clock(self, job: BatchJob) -> None:
         """Mark a run that outlived BATCH_JOB_WALL_CLOCK_SECONDS as FAILED (#653) and
@@ -689,8 +696,6 @@ class BatchPredictionService:
         finally:
             # Best-effort async-completion webhook (issue #86). Never blocks/raises.
             await self._fire_webhook(job)
-            # And the owner's mail (#494), which reads the stored ending. Never raises.
-            await job_notifications.batch_job_finished(job.job_id)
 
     async def _claim_running(self, job: BatchJob) -> bool:
         """Atomically transition an in-flight job to RUNNING for this worker (#485).

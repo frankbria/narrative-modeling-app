@@ -228,7 +228,7 @@ async def _run_failing_batch(job: BatchJob) -> None:
         "app.services.batch_prediction.MLModel.find_one",
         AsyncMock(side_effect=ValueError("s3://secret-bucket/x.csv could not be read")),
     ):
-        await svc._run_batch_job(job)
+        await svc._process_batch_job(job)
 
 
 async def test_the_batch_run_mails_what_it_stored(owner, outbox):
@@ -255,10 +255,39 @@ async def test_a_batch_run_that_lost_to_a_cancel_mails_nobody(owner, outbox):
         raise ValueError("the run fails after the cancel landed")
 
     with patch("app.services.batch_prediction.MLModel.find_one", cancelled_meanwhile):
-        await svc._run_batch_job(job)
+        await svc._process_batch_job(job)
 
     assert (await BatchJob.find_one(BatchJob.job_id == "batch_raced")).status == JobStatus.CANCELLED
     assert outbox == []
+
+
+async def test_a_deadline_reached_during_a_slow_webhook_does_not_cost_the_owner_the_mail(
+    owner, outbox, monkeypatch
+):
+    # The run stored its ending in time; only its webhook outlived the wall clock.
+    import asyncio
+
+    from app.services import batch_prediction
+
+    monkeypatch.setattr(batch_prediction, "BATCH_JOB_WALL_CLOCK_SECONDS", 0.5)
+    job = await _batch_job("batch_slow_hook", owner, JobStatus.PENDING)
+    svc = BatchPredictionService()
+    svc.s3_service = MagicMock()
+
+    async def slow_webhook(_job):
+        await asyncio.sleep(30)
+
+    svc._fire_webhook = slow_webhook
+    with patch(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(side_effect=ValueError("the model could not be loaded")),
+    ):
+        await asyncio.wait_for(svc._process_batch_job(job), timeout=10)
+
+    stored = await BatchJob.find_one(BatchJob.job_id == "batch_slow_hook")
+    (message,) = outbox
+    assert f"Reason: {stored.error_message}" in message["text"]
+    assert "limit" not in message["text"], "the run's own failure, not the wall clock's"
 
 
 async def test_a_provider_that_raises_changes_nothing_about_a_batch_job(owner, broken_provider):

@@ -52,7 +52,8 @@ reporting the same failure send one message.
 ### 4. A notification cannot change a job
 
 `job_notifications.job_finished` and `batch_job_finished` never raise, and they run after
-the job's terminal state is written. A provider outage, a bad key or an unreachable
+the job's terminal state is written (for a batch job, after the run and outside its wall
+clock, so a deadline cannot cancel the mail). A provider outage, a bad key or an unreachable
 database costs the mail and nothing else. Failures are logged by exception class only,
 because provider error bodies can quote the recipient.
 
