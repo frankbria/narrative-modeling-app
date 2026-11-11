@@ -36,7 +36,9 @@ guard them with `:?` once job mail is something customers rely on.
 
 One plain-text message when a training or batch prediction job reaches COMPLETED or
 FAILED, to the address the account signed in with (read from the NextAuth `users`
-collection when the message is sent, stored nowhere else). A cancelled job sends nothing:
+collection when the message is sent, stored nowhere else). Sign-in is Google or GitHub
+only, so that address is one the provider has verified; a sign-in method that accepts an
+unverified address would need its own check before mail is sent to it. A cancelled job sends nothing:
 the person who cancelled it already knows. A job removed by an erasure sends nothing.
 
 The message holds the job's label (the model name or dataset filename for training, the
@@ -47,7 +49,8 @@ token is in it.
 
 Three places end a job and all three notify: the training task, the batch run, and the
 stale-job reaper. Each ending carries an idempotency key, so the task and the reaper
-reporting the same failure send one message.
+reporting the same failure send one message. Resend remembers a key for 24 hours, which
+is far longer than the gap between two reports of one ending.
 
 ### 4. A notification cannot change a job
 
