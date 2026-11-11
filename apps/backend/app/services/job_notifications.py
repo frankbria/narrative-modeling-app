@@ -4,7 +4,7 @@ Every place a job reaches COMPLETED or FAILED calls in here: `job_finished` for 
 run, `batch_job_finished` for a batch job, from the job's own task and from the stale-job
 reaper. Neither function raises, so a notification cannot change the outcome it reports.
 
-A message carries the job's label, the stored user-safe failure reason
+A message carries the job's label and id, the stored user-safe failure reason
 (`app/utils/job_failures.py`), the app's address and how to stop the mails. Nothing else:
 no dataset contents, no storage locations, no tokens.
 """
@@ -59,7 +59,7 @@ def _app_url() -> str | None:
     return api.removesuffix(_API_PATH) if api else None
 
 
-def _message(job: str, failure_reason: str | None) -> tuple[str, str]:
+def _message(job: str, job_id: str, failure_reason: str | None) -> tuple[str, str]:
     """Subject and body. `job` is caller-built and may quote a name the user typed, so
     the subject keeps it to one line."""
     outcome = "failed" if failure_reason else "finished"
@@ -76,16 +76,20 @@ def _message(job: str, failure_reason: str | None) -> tuple[str, str]:
         "You are getting this because job emails are on for your SheetPredict account. "
         f"Turn them off under {settings_page}."
     )
-    return subject, f"{opening}{link}\n{footer}\n"
+    # The id is what support asks for, and what the generic failure reason tells the
+    # reader to quote.
+    return subject, f"{opening}\n\nJob id: {job_id}{link}\n{footer}\n"
 
 
-async def _notify(user_id: str, job: str, failure_reason: str | None, key: str) -> None:
+async def _notify(
+    user_id: str, job: str, job_id: str, failure_reason: str | None, key: str
+) -> None:
     if not email_service.is_configured() or not await wants_job_emails(user_id):
         return
     address = await _address_of(user_id)
     if address is None:
         return
-    subject, text = _message(job, failure_reason)
+    subject, text = _message(job, job_id, failure_reason)
     await email_service.send(address, subject, text, idempotency_key=key)
 
 
@@ -98,6 +102,7 @@ async def _notify_batch(job_id: str) -> None:
     await _notify(
         job.user_id,
         f"Your batch prediction of {job.progress.total_records:,} records",
+        job_id,
         job.error_message if job.status == JobStatus.FAILED else None,
         # Keyed on when this ending was stored: the run and the reaper reporting one
         # ending agree on it, and a retry's ending is a later one, mailed again.
@@ -113,13 +118,13 @@ async def _quietly(notification: Coroutine[None, None, None]) -> None:
 
 
 async def job_finished(
-    user_id: str, job: str, *, failure_reason: str | None = None, key: str
+    user_id: str, job: str, *, job_id: str, failure_reason: str | None = None, key: str
 ) -> None:
     """Tell the owner that `job` (e.g. ``Training "Churn"``) ended: failed when a reason
     is given, finished otherwise. `key` identifies this ending: the provider delivers one
     message per key, the first, so a task and the reaper both reporting one failure mail
     the owner once."""
-    await _quietly(_notify(user_id, job, failure_reason, key))
+    await _quietly(_notify(user_id, job, job_id, failure_reason, key))
 
 
 async def batch_job_finished(job_id: str) -> None:

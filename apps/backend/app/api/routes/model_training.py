@@ -1117,6 +1117,7 @@ async def _fail(
         await job_notifications.job_finished(
             user_data.user_id,
             f'Training "{request.name or user_data.filename}"',
+            job_id=model_id,
             failure_reason=reason,
             key=job_notifications.training_failure_key(model_id),
         )
@@ -1171,7 +1172,10 @@ async def train_model_task(
         await _record_what_follows(run, user_id, model_id)
         logger.info(f"Model training completed: {ml_model.model_id}")
         await job_notifications.job_finished(
-            user_id, f'Training "{ml_model.name}"', key=f"training-{model_id}-completed"
+            user_id,
+            f'Training "{ml_model.name}"',
+            job_id=model_id,
+            key=f"training-{model_id}-completed",
         )
 
     except TrainingWallClockExceeded as exc:

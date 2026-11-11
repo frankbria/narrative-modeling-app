@@ -62,7 +62,7 @@ class TestPreference:
 
 class TestAFinishedJob:
     async def test_a_completed_job_mails_its_owner(self, account, outbox):
-        await job_notifications.job_finished(account, 'Training "Churn"', key="training-m1-completed")
+        await job_notifications.job_finished(account, 'Training "Churn"', job_id="m1", key="training-m1-completed")
 
         (message,) = outbox
         assert message["to"] == ADDRESS
@@ -74,6 +74,7 @@ class TestAFinishedJob:
         await job_notifications.job_finished(
             account,
             "Your batch prediction",
+            job_id="j1",
             failure_reason="The input file has no rows.",
             key="batch-j1-failed",
         )
@@ -83,12 +84,23 @@ class TestAFinishedJob:
         assert "Your batch prediction did not finish." in message["text"]
         assert "Reason: The input file has no rows." in message["text"]
 
+    async def test_the_message_names_the_job_id_a_failure_reason_asks_for(self, account, outbox):
+        # The generic reason reads "Quote this job's id to support".
+        await job_notifications.job_finished(
+            account, "Your training run", job_id="model_20261111_abc", failure_reason="Unexpected.", key="k1"
+        )
+        await job_notifications.job_finished(account, "Your training run", job_id="model_20261111_abc", key="k2")
+
+        failed, finished = (message["text"] for message in outbox)
+        assert "Job id: model_20261111_abc" in failed
+        assert "Job id: model_20261111_abc" in finished
+
     async def test_the_message_links_the_app_and_says_how_to_stop(
         self, account, outbox, monkeypatch
     ):
         monkeypatch.setenv("PUBLIC_API_URL", "https://app.example/api/v1")
 
-        await job_notifications.job_finished(account, "Your training run", key="k")
+        await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
 
         text = outbox[0]["text"]
         assert "https://app.example\n" in text
@@ -100,14 +112,14 @@ class TestAFinishedJob:
     ):
         monkeypatch.delenv("PUBLIC_API_URL", raising=False)
 
-        await job_notifications.job_finished(account, "Your training run", key="k")
+        await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
 
         text = outbox[0]["text"]
         assert "http" not in text
         assert "Settings" in text
 
     async def test_a_label_cannot_break_the_subject_line(self, account, outbox):
-        await job_notifications.job_finished(account, 'Training "a\r\nBcc: x"', key="k")
+        await job_notifications.job_finished(account, 'Training "a\r\nBcc: x"', job_id="job_1", key="k")
 
         assert "\n" not in outbox[0]["subject"]
         assert "\r" not in outbox[0]["subject"]
@@ -117,13 +129,13 @@ class TestWhoIsNotMailed:
     async def test_an_account_that_opted_out(self, account, outbox):
         await job_notifications.set_job_emails(account, False)
 
-        await job_notifications.job_finished(account, "Your training run", key="k")
+        await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
 
         assert outbox == []
 
     async def test_a_user_id_with_no_account_row(self, setup_database, outbox):
-        await job_notifications.job_finished(str(ObjectId()), "Your training run", key="k")
-        await job_notifications.job_finished("dev-user-default", "Your training run", key="k")
+        await job_notifications.job_finished(str(ObjectId()), "Your training run", job_id="job_1", key="k")
+        await job_notifications.job_finished("dev-user-default", "Your training run", job_id="job_1", key="k")
 
         assert outbox == []
 
@@ -132,7 +144,7 @@ class TestWhoIsNotMailed:
         user_id = ObjectId()
         await users.insert_one({"_id": user_id, "name": "No Address"})
         try:
-            await job_notifications.job_finished(str(user_id), "Your training run", key="k")
+            await job_notifications.job_finished(str(user_id), "Your training run", job_id="job_1", key="k")
         finally:
             await users.delete_one({"_id": user_id})
 
@@ -141,7 +153,7 @@ class TestWhoIsNotMailed:
     async def test_nobody_when_mail_is_not_configured(self, account, outbox, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "")
 
-        await job_notifications.job_finished(account, "Your training run", key="k")
+        await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
 
         assert outbox == []
 
@@ -156,7 +168,7 @@ class TestAFailureToNotify:
         monkeypatch.setattr(email_service, "send", explode)
 
         with caplog.at_level(logging.WARNING, logger=job_notifications.logger.name):
-            await job_notifications.job_finished(account, "Your training run", key="k")
+            await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
 
         assert "RuntimeError" in caplog.text
         assert ADDRESS not in caplog.text
@@ -167,6 +179,6 @@ class TestAFailureToNotify:
 
         monkeypatch.setattr(job_notifications, "wants_job_emails", unreachable)
 
-        await job_notifications.job_finished(account, "Your training run", key="k")
+        await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
 
         assert outbox == []

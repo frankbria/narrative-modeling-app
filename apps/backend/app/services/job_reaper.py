@@ -112,6 +112,7 @@ async def _mail_training_owner(doc: dict) -> None:
     await job_notifications.job_finished(
         doc["user_id"],
         "Your training run",
+        job_id=doc["model_id"],
         failure_reason=_REASON,
         key=job_notifications.training_failure_key(doc["model_id"]),
     )

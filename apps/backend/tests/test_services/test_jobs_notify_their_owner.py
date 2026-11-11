@@ -130,6 +130,7 @@ async def test_a_failed_training_mails_the_stored_reason(owner, outbox):
     assert f"Reason: {job.error}" in message["text"]
     assert "solver needs samples" not in message["text"], "the raw exception stays server-side"
     assert message["key"] == "training-model_failed-failed"
+    assert "Job id: model_failed" in message["text"]
 
 
 async def test_a_failed_training_is_named_as_the_user_named_it(owner, outbox):
@@ -205,6 +206,7 @@ async def test_a_failed_batch_job_mails_the_stored_reason(owner, outbox):
     (message,) = outbox
     assert message["subject"] == "Your batch prediction of 1,200 records failed"
     assert "Reason: The input file has no rows." in message["text"]
+    assert "Job id: batch_failed" in message["text"]
     assert message["key"] == "batch-batch_failed-failed-2026-11-11 09:30:00"
 
 
@@ -360,6 +362,7 @@ async def test_a_reaped_training_job_mails_its_owner(owner, outbox):
     assert message["to"] == ADDRESS
     assert message["subject"] == "Your training run failed"
     assert "restarted or crashed" in message["text"]
+    assert "Job id: model_reaped" in message["text"]
     # The key the task itself would use, so a task that outlived its reaping mails nothing more.
     assert message["key"] == "training-model_reaped-failed"
 

@@ -42,7 +42,7 @@ unverified address would need its own check before mail is sent to it. A cancell
 the person who cancelled it already knows. A job removed by an erasure sends nothing.
 
 The message holds the job's label (the model name or dataset filename for training, the
-record count for a batch), the stored failure reason, the app's address and how to stop
+record count for a batch) and id, the stored failure reason, the app's address and how to stop
 the mails. The failure reason is the one already shown in the app, from
 `user_safe_failure_reason`, never exception text. No dataset content, storage location or
 token is in it.
