@@ -248,6 +248,16 @@ backup belongs in `nginx-staging.conf`, not back on the box.
 > `nginx-staging.conf` carries that block and its `client_max_body_size` cap: the
 > endpoint is unauthenticated and the backend reads the whole body before verifying the
 > signature. `apps/backend/tests/test_security/test_nginx_webhook_route.py` pins it.
+>
+> **It has a connection cap, not a rate limit (#595).** `limit_conn narrative_webhook_conn 20`
+> allows one client address 20 requests in flight on the webhook at once and answers
+> the rest 503, which Stripe retries. It is not a `limit_req`: a request-rate budget
+> per address would throttle Stripe, which delivers from a few addresses (#367). A
+> refusal logs `limiting connections by zone "narrative_webhook_conn"` in
+> `/var/log/nginx/narrative-staging-error.log`. If the client named there is a
+> [Stripe webhook address](https://docs.stripe.com/ips#webhook-notifications), the cap
+> is too low for real volume: raise it in `nginx-staging.conf` and in
+> `apps/backend/tests/test_security/test_nginx_webhook_conn_limit.py` together.
 
 ---
 
