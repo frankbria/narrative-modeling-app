@@ -322,6 +322,34 @@ async def test_a_deadline_reached_during_a_slow_webhook_does_not_cost_the_owner_
     assert "limit" not in message["text"], "the run's own failure, not the wall clock's"
 
 
+async def test_a_failure_its_owner_already_retried_is_not_mailed_and_the_retry_is(owner, outbox):
+    # ADR-004 §3 (#1204): the mail goes out after the run's webhook and reports what is
+    # stored. A retry that lands in that gap is the owner's own request, so they have
+    # seen the failure; the mail they get is the retried run's.
+    job = await _batch_job("batch_retried", owner, JobStatus.PENDING)
+    svc = BatchPredictionService()
+    svc.s3_service = MagicMock()
+
+    async def retried_during_the_webhook(_job):
+        assert await svc._claim_retry("batch_retried", owner, 0) is not None
+
+    svc._fire_webhook = retried_during_the_webhook
+    with patch(
+        "app.services.batch_prediction.MLModel.find_one",
+        AsyncMock(side_effect=ValueError("the model could not be loaded")),
+    ):
+        await svc._process_batch_job(job)
+
+    assert outbox == []
+    retried = await BatchJob.find_one(BatchJob.job_id == "batch_retried")
+    assert retried.status == JobStatus.PENDING
+
+    await _run_failing_batch(retried)
+
+    (message,) = outbox
+    assert message["subject"] == "Your batch prediction of 1,200 records failed"
+
+
 async def test_a_provider_that_raises_changes_nothing_about_a_batch_job(owner, broken_provider):
     job = await _batch_job("batch_mail_down", owner, JobStatus.PENDING)
 

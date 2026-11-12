@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _API_PATH = "/api/v1"
 _REPORTED = (JobStatus.COMPLETED, JobStatus.FAILED)
 _NO_REASON = "No reason was recorded."
+MAX_LABEL_LENGTH = 120
 
 
 async def wants_job_emails(user_id: str) -> bool:
@@ -60,15 +61,23 @@ def _app_url() -> str | None:
     return api.removesuffix(_API_PATH) if api else None
 
 
+def _label(job: str) -> str:
+    """`job` on one line, cut to MAX_LABEL_LENGTH: it is caller-built and may quote a
+    name the user typed, and it goes into the subject."""
+    line = " ".join(job.split())
+    if len(line) <= MAX_LABEL_LENGTH:
+        return line
+    return line[: MAX_LABEL_LENGTH - 1] + "…"
+
+
 def _message(job: str, job_id: str, failure_reason: str | None) -> tuple[str, str]:
-    """Subject and body. `job` is caller-built and may quote a name the user typed, so
-    the subject keeps it to one line."""
-    outcome = "failed" if failure_reason else "finished"
-    subject = " ".join(f"{job} {outcome}".split())
+    """Subject and body."""
+    label = _label(job)
+    subject = f"{label} {'failed' if failure_reason else 'finished'}"
     opening = (
-        f"{job} did not finish.\n\nReason: {failure_reason}"
+        f"{label} did not finish.\n\nReason: {failure_reason}"
         if failure_reason
-        else f"{job} finished on SheetPredict."
+        else f"{label} finished on SheetPredict."
     )
     app_url = _app_url()
     link = f"\n\n{app_url}\n" if app_url else "\n"
