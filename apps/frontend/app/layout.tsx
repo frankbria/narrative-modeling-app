@@ -17,6 +17,7 @@ import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
 import { PublicPageviews } from '@/components/analytics/PublicPageviews'
+import { PublicEnvScript } from '@/components/PublicEnvScript'
 import { analyticsDomain, siteMetadata } from '@/lib/site'
 import { Schibsted_Grotesk } from 'next/font/google'
 
@@ -51,6 +52,9 @@ export default async function RootLayout({
     // in a pre-hydration script, so the server markup and the first client render
     // legitimately differ on this one attribute (#407).
     <html lang="en" className={schibsted.variable} suppressHydrationWarning>
+      <head>
+        <PublicEnvScript />
+      </head>
       <body className="flex font-sans antialiased">
         {/* Skip-to-content link — first focusable element, visible only on focus
             so keyboard users can bypass the nav (WCAG 2.4.1 / issue #282). */}

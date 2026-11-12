@@ -29,7 +29,7 @@ from tests.test_security.test_nginx_webhook_route import (
     _server_block,
 )
 
-COMPOSE_FILE = REPO_ROOT / "docker-compose.staging.yml"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.deploy.yml"
 
 
 def _backend_upstream() -> str:
@@ -70,6 +70,6 @@ class TestComposeTrustsProxy:
         compose = yaml.safe_load(COMPOSE_FILE.read_text())
         env = compose["services"]["backend"]["environment"]
         assert str(env.get("RATE_LIMIT_TRUST_PROXY", "")).strip().lower() == "true", (
-            "docker-compose.staging.yml must pass RATE_LIMIT_TRUST_PROXY=true to the "
+            "docker-compose.deploy.yml must pass RATE_LIMIT_TRUST_PROXY=true to the "
             "backend, or every anonymous request behind nginx shares one bucket (#483)"
         )

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Put one commit's images on this box (#831). Runs ON THE BOX, sent by deploy.yml:
+#
+#   ON_BOX_FORWARD="APP_VERSION BACKEND_IMAGE FRONTEND_IMAGE REGISTRY_USER REGISTRY_TOKEN" \
+#     scripts/deploy/on_box.sh scripts/deploy/deploy_images.sh
+#
+# Nothing is built here. CI built both images once and pushed them; BACKEND_IMAGE and
+# FRONTEND_IMAGE name them by digest (registry/name@sha256:…), so this box runs
+# exactly the bytes CI produced, and the production box can run the same ones.
+#
+# The registry token is the deploy job's own short-lived one. It is used for the pull
+# and removed from the box again whether or not the pull worked, so the box holds no
+# standing registry credential.
+set -euo pipefail
+: "${DEPLOY_PATH:?DEPLOY_PATH is not set}" "${APP_VERSION:?APP_VERSION is not set}"
+: "${BACKEND_IMAGE:?BACKEND_IMAGE is not set}" "${FRONTEND_IMAGE:?FRONTEND_IMAGE is not set}"
+
+for image in "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
+  case "$image" in
+    *@sha256:*) ;;
+    *) echo "deploy: $image is not a digest reference; refusing to deploy a tag that can move" >&2; exit 2 ;;
+  esac
+done
+export APP_VERSION BACKEND_IMAGE FRONTEND_IMAGE
+
+cd "$DEPLOY_PATH"
+# The checkout supplies the compose file and these scripts, at the commit the images
+# were built from.
+git fetch --prune origin
+git checkout main
+git reset --hard "$APP_VERSION"
+
+compose() { scripts/deploy/compose.sh "$@"; }
+# compose.sh refuses a box that has both; here the one that exists is enough.
+env_file=.env.staging
+[ -f "$env_file" ] || env_file=.env.production
+# Fail fast with the FULL list of any missing required vars, instead of letting
+# compose abort on the first ${VAR:?} it interpolates.
+ENVIRONMENT=${env_file#.env.} bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml "$env_file"
+
+registry=${BACKEND_IMAGE%%/*}
+if [ -n "${REGISTRY_TOKEN:-}" ]; then
+  trap 'docker logout "$registry" >/dev/null 2>&1 || true' EXIT
+  printf '%s' "$REGISTRY_TOKEN" | docker login "$registry" --username "${REGISTRY_USER:-deploy}" --password-stdin >/dev/null
+fi
+compose pull --quiet backend frontend
+compose up -d --remove-orphans
+
+# Recorded only now, so the file never names an image that failed to start. Written
+# beside the target and renamed, so a reader never sees half of it.
+umask 077
+printf 'APP_VERSION=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' "$APP_VERSION" "$BACKEND_IMAGE" "$FRONTEND_IMAGE" > .deploy-images.env.new
+mv .deploy-images.env.new .deploy-images.env
+compose ps

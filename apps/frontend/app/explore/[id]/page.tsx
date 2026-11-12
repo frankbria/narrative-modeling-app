@@ -1,5 +1,6 @@
 'use client'
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -234,7 +235,7 @@ export default function DatasetAnalysisPage() {
     [dataset?.schema?.columns],
   )
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
   const processDataset = async (datasetId: string, token: string, signal?: AbortSignal) => {
     try {

@@ -14,7 +14,7 @@
 # exit code is the verdict.
 set -u
 cd "${DEPLOY_PATH:-/opt/narrative-modeling-app/staging}" 2>/dev/null || { echo "frontend: unhealthy (no deploy directory)"; exit 1; }
-compose() { docker compose -f docker-compose.staging.yml --env-file .env.staging "$@"; }
+compose() { scripts/deploy/compose.sh "$@"; }
 
 # </dev/null: this script arrives on bash's stdin, and `docker compose exec` reads its
 # own stdin to the end. Without it the exec swallows every line below, bash meets end

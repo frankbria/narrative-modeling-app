@@ -1,26 +1,27 @@
 # ═══════════════════════════════════════════════════════════════
-# SheetPredict - STAGING DEPLOYMENT
-# Server: dev.briaanalytics.com (resolve with `dig +short dev.briaanalytics.com`;
-#         do not hardcode the IP — it has changed before)
-# Environment: Staging (pre-production)
+# SheetPredict - DEPLOYMENT (staging and production, one file: #831)
 # ═══════════════════════════════════════════════════════════════
 #
-# SECURITY NOTICE:
-# This configuration uses authentication and secure settings
-# Suitable for staging/production environments
-# All secrets are provided via .env.staging on the server; run
-# compose with `--env-file .env.staging` (deploy.yml does this).
+# Run it through scripts/deploy/compose.sh, never `docker compose -f` by hand.
+# The wrapper supplies the four values this file requires and no env file holds:
+#   ENVIRONMENT      the suffix of the env file on the box (.env.staging -> staging)
+#   BACKEND_IMAGE    the images CI built for the deployed commit, by digest
+#   FRONTEND_IMAGE   (.deploy-images.env, written by scripts/deploy/deploy_images.sh)
+#   APP_VERSION      that commit
+# Nothing is built on the box: both hosts pull the same digests, so production
+# runs the image staging tested. Everything else that differs between the hosts
+# comes from the env file (.env.staging / .env.production on the server).
 #
-# MongoDB is NOT run here — staging uses a MongoDB Atlas cluster.
-# Set MONGODB_URI (mongodb+srv://...) and MONGODB_DB in .env.staging.
+# MongoDB is NOT run here: each environment uses a MongoDB Atlas cluster.
+# Set MONGODB_URI (mongodb+srv://...) and MONGODB_DB in the env file.
 #
-# Port Assignments (to avoid conflicts on shared server):
+# Port Assignments (to avoid conflicts on a shared server):
 # - Frontend: 3011 (host), proxied via nginx (3010 is taken by
-#   another app on the shared VPS)
+#   another app on the shared staging VPS)
 # - Backend: 8010 (host), proxied via nginx
 # - Redis: 6381 (host port)
 #
-# All published ports bind to 127.0.0.1 ONLY (issue #258). On the shared VPS a
+# All published ports bind to 127.0.0.1 ONLY (issue #258). On a shared VPS a
 # 0.0.0.0 bind exposes the API/app/redis over plaintext HTTP at the host IP,
 # bypassing nginx TLS/HSTS/security headers (nginx upstreams to 127.0.0.1). It
 # also leaks past UFW, since Docker's iptables DNAT is evaluated before the
@@ -32,22 +33,21 @@
 services:
   # Backend API (FastAPI)
   backend:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
-    container_name: narrative-staging-backend
+    image: ${BACKEND_IMAGE:?run this file through scripts/deploy/compose.sh}
+    container_name: narrative-${ENVIRONMENT:?run this file through scripts/deploy/compose.sh}-backend
     restart: unless-stopped
     ports:
       - "127.0.0.1:8010:8000"  # loopback only — reached via nginx upstream (#258)
     environment:
       # Application
-      ENVIRONMENT: staging
+      ENVIRONMENT: ${ENVIRONMENT:?}
       DEBUG: "false"
       # Observability (#273): structured JSON logs so req_id/level are queryable;
       # SENTRY_DSN is required (#785): an unset DSN used to switch error tracking off silently.
       LOG_LEVEL: info
       LOG_FORMAT: json
-      APP_VERSION: ${APP_VERSION:-staging}
+      # The deployed commit, the same answer `docker inspect` gives for the image's revision label.
+      APP_VERSION: ${APP_VERSION:?}
       SENTRY_DSN: ${SENTRY_DSN:?}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
       # Rate limiting (#483): nginx fronts this container and sets X-Real-IP from
@@ -59,14 +59,14 @@ services:
       # went into every deployment endpoint and generated SDK.
       PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
 
-      # Database (MongoDB Atlas — values come from .env.staging)
-      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
-      MONGODB_DB: ${MONGODB_DB:-narrative_modeling-staging}
+      # Database (MongoDB Atlas — values come from the env file)
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in the env file}
+      MONGODB_DB: ${MONGODB_DB:-narrative_modeling-${ENVIRONMENT}}
 
       # Redis
-      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging}@redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in the env file}@redis:6379/0
 
-      # S3 Storage (use real AWS S3 for staging).
+      # S3 Storage (real AWS S3, one bucket per environment).
       # The backend historically read the bucket under three names (uploads:
       # AWS_BUCKET_NAME, download allowlist: AWS_S3_BUCKET, versioning: S3_BUCKET)
       # and the region under two (AWS_REGION vs boto3's AWS_DEFAULT_REGION). #257
@@ -76,7 +76,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
       AWS_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME:?S3_BUCKET_NAME (staging S3 bucket) must be set in .env.staging}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:?S3_BUCKET_NAME (this environment's S3 bucket) must be set in the env file}
       AWS_BUCKET_NAME: ${S3_BUCKET_NAME}
       AWS_S3_BUCKET: ${S3_BUCKET_NAME}
       S3_BUCKET: ${S3_BUCKET_NAME}
@@ -86,15 +86,15 @@ services:
 
       # Security
       # CORS: the backend reads BACKEND_CORS_ORIGINS (config.py). It refuses '*'
-      # in production-like envs, so this MUST list explicit staging origin(s) —
+      # in production-like envs, so this MUST list explicit origin(s) —
       # the old ALLOWED_ORIGINS name was read by nothing and left CORS wildcard.
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?BACKEND_CORS_ORIGINS must list explicit staging origin(s) in .env.staging}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?BACKEND_CORS_ORIGINS must list explicit origin(s) in the env file}
       # The backend validates NextAuth JWTs, so it needs the same secret the
       # frontend signs them with (app/auth/nextauth_auth.py).
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in .env.staging}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set in the env file}
       # Signup model (#768): invite | open, read by both halves. Required
       # (#780), so the mode is a stated choice and not the blank default.
-      SIGNUP_MODE: ${SIGNUP_MODE:?SIGNUP_MODE (invite|open) must be set in .env.staging}
+      SIGNUP_MODE: ${SIGNUP_MODE:?SIGNUP_MODE (invite|open) must be set in the env file}
       # Admin allowlist (#768): the only identities GET /metrics answers. Same
       # value as the frontend's; unset ⇒ nobody (fails closed), so optional.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
@@ -165,27 +165,8 @@ services:
 
   # Frontend (Next.js)
   frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-      args:
-        # Full backend base URL INCLUDING the /api/v1 prefix, e.g.
-        # https://dev.sheetpredict.app/api/v1 — baked in at build time.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        # Browser error reporting (#769 AC4), baked in like the API URL. The
-        # backend's DSN is reused.
-        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:?}
-        # Same tag as the backend's ENVIRONMENT, or staging errors read as production.
-        NEXT_PUBLIC_SENTRY_ENVIRONMENT: staging
-        # Source-map upload (#1158): optional; with no token the build uploads nothing and
-        # emits no maps. The release matches the backend's APP_VERSION.
-        SENTRY_ORG: ${SENTRY_ORG:-}
-        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
-        SENTRY_RELEASE: ${APP_VERSION:-staging}
-      # A build secret, never a build arg: it stays out of the image's layers and history.
-      secrets:
-        - sentry_auth_token
-    container_name: narrative-staging-frontend
+    image: ${FRONTEND_IMAGE:?run this file through scripts/deploy/compose.sh}
+    container_name: narrative-${ENVIRONMENT}-frontend
     restart: unless-stopped
     ports:
       - "127.0.0.1:3011:3000"  # loopback only — reached via nginx upstream (#258)
@@ -194,8 +175,15 @@ services:
       # Read per request (lib/site.ts): anything but `production` makes
       # robots.txt disallow the whole site (#766). The same image serves dev.
       # and www., so this cannot be baked in at build.
-      ENVIRONMENT: staging
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      ENVIRONMENT: ${ENVIRONMENT}
+      # Public settings (#831): read when a request arrives and written into the page
+      # for the browser (lib/runtimeEnv.ts). None is a build arg, so one image serves
+      # both hosts. The API base carries the /api/v1 prefix, e.g.
+      # https://dev.sheetpredict.app/api/v1; the browser reports errors under the
+      # backend's DSN and the same environment tag.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?}
+      NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:?}
+      NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${ENVIRONMENT}
       # Server/edge error reporting (instrumentation.ts), same DSN as the backend.
       SENTRY_DSN: ${SENTRY_DSN:?}
       # The Plausible site that signed-out visits to the public pages are counted
@@ -203,13 +191,13 @@ services:
       PLAUSIBLE_DOMAIN: ${PLAUSIBLE_DOMAIN:-}
       # NextAuth's MongoDB adapter (auth.ts -> lib/db.ts) connects at runtime;
       # lib/db.ts throws on startup without this.
-      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in the env file}
       # Same database as the backend. MONGODB_URI is bare (no path) because the
       # backend selects with `client[db_name]`, so without this the adapter falls
       # back to `client.db(undefined)` — which on a pathless URI is the database
       # literally named `test`, where staging's users and accounts have been going
       # (sessions are JWTs, not documents — see auth.ts session.strategy).
-      MONGODB_DB: ${MONGODB_DB:-narrative_modeling-staging}
+      MONGODB_DB: ${MONGODB_DB:-narrative_modeling-${ENVIRONMENT}}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       # NextAuth v5 rejects requests whose Host it doesn't trust (UntrustedHost
       # 500s on every /api/auth/* route). Behind the nginx reverse proxy the
@@ -217,7 +205,7 @@ services:
       AUTH_TRUST_HOST: "true"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       # Signup model (#768) — same value as the backend; see the note there.
-      SIGNUP_MODE: ${SIGNUP_MODE:?SIGNUP_MODE (invite|open) must be set in .env.staging}
+      SIGNUP_MODE: ${SIGNUP_MODE:?SIGNUP_MODE (invite|open) must be set in the env file}
       # Invite-only beta gate (#261) — same allowlist the backend mirrors. The
       # NextAuth signIn callback (auth.ts) rejects non-listed emails here.
       INVITE_ALLOWLIST: ${INVITE_ALLOWLIST:-}
@@ -249,7 +237,7 @@ services:
   # Redis Cache
   redis:
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
-    container_name: narrative-staging-redis
+    container_name: narrative-${ENVIRONMENT}-redis
     restart: unless-stopped
     ports:
       - "127.0.0.1:6381:6379"  # loopback only — redis is internal, never public (#258)
@@ -276,10 +264,4 @@ volumes:
 networks:
   narrative-network:
     driver: bridge
-    name: narrative-staging-network
-
-# The Sentry token for the frontend build's source-map upload (#1158), read from a file on
-# the box so it is never in .env.staging or an image layer. Unset: /dev/null, no upload.
-secrets:
-  sentry_auth_token:
-    file: ${SENTRY_AUTH_TOKEN_FILE:-/dev/null}
+    name: narrative-${ENVIRONMENT}-network

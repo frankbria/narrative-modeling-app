@@ -1,6 +1,7 @@
 // app/auth/error/page.tsx
 'use client';
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { COMPANY } from '@/lib/legal/company';
 // to the company support mailbox so the "request access" path always works
 // (issues #261, #770).
 const REQUEST_ACCESS_URL =
-  process.env.NEXT_PUBLIC_INVITE_REQUEST_URL ??
+  publicEnv('NEXT_PUBLIC_INVITE_REQUEST_URL') ??
   `mailto:${COMPANY.supportEmail}?subject=Beta%20access%20request`;
 
 const ERROR_MESSAGES: Record<string, string> = {

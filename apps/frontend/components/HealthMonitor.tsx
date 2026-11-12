@@ -1,5 +1,6 @@
 'use client'
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { HugeiconsIcon } from '@/components/ui/icon'
 import { Activity01Icon, AlertCircleIcon, CheckmarkCircle02Icon, Clock01Icon, ServerStack01Icon, WifiOff01Icon } from '@hugeicons/core-free-icons'
 import { useEffect, type ReactNode } from 'react'
@@ -87,7 +88,7 @@ function updateTime(lastUpdate: Date | undefined): string {
 
 export function HealthMonitor(props: HealthMonitorProps) {
   const {
-    backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
+    backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1',
     refreshInterval = 30000,
   } = props
   const { data, loading, error, reload } = useAsyncData(

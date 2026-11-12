@@ -1,4 +1,4 @@
-# Backend (FastAPI) production image — built by docker-compose.staging.yml and
+# Backend (FastAPI) production image — built by docker-compose.deploy.yml and
 # deployed by .github/workflows/deploy.yml (issue #150).
 #
 # Multi-stage (issue #176): the `builder` stage carries build-essential (~200 MB),

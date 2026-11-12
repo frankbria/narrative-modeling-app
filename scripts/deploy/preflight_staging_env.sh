@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Preflight for the staging deploy: verify every variable the compose file marks
-# required via a ${VAR:?...} guard has a non-empty value in the env file, and that
+# Preflight for a deploy (staging or production): verify every variable the compose file
+# marks required via a ${VAR:?...} guard has a non-empty value in the env file, and that
 # SIGNUP_MODE is invite (with an allowlist) or open.
 #
 # Why: `docker compose up` aborts on the FIRST missing ${VAR:?} it interpolates,
@@ -31,6 +31,11 @@ if [ "${1:-}" = "--self-check" ]; then
   done
   printf 'SET=real\nEMPTY=x\nQUOTED_EMPTY="x"\nSPACES=x\nABSENT=x\nTRAILING=x\n' > "$tmp/env"
   "$0" "$tmp/compose.yml" "$tmp/env" >/dev/null || { echo "self-check FAILED: expected exit 0"; exit 1; }
+  # A value compose would take from the environment is not missing (#831), and an
+  # empty one there does not count.
+  printf 'SET=real\nEMPTY=x\nQUOTED_EMPTY="x"\nSPACES=x\nTRAILING=x\n' > "$tmp/env"
+  ABSENT=from-the-environment "$0" "$tmp/compose.yml" "$tmp/env" >/dev/null || { echo "self-check FAILED: a value in the environment was reported missing"; exit 1; }
+  ABSENT='' "$0" "$tmp/compose.yml" "$tmp/env" >/dev/null 2>&1 && { echo "self-check FAILED: an empty value in the environment passed"; exit 1; }
   # The signup-mode rule (#780): the allowlist is required in invite mode only,
   # and a mode that is neither value is refused instead of silently meaning invite.
   printf 'services:\n  a:\n    environment:\n      - M=${SIGNUP_MODE:?req}\n      - L=${INVITE_ALLOWLIST:-}\n' > "$tmp/mode.yml"
@@ -58,7 +63,7 @@ if [ "${1:-}" = "--self-check" ]; then
   echo "self-check OK"; exit 0
 fi
 
-compose_file="${1:-docker-compose.staging.yml}"
+compose_file="${1:-docker-compose.deploy.yml}"
 env_file="${2:-.env.staging}"
 
 [ -f "$compose_file" ] || { echo "preflight: compose file not found: $compose_file" >&2; exit 2; }
@@ -101,13 +106,15 @@ env_value() {
 missing=()
 for v in $required; do
   # Required means present AND non-empty — ${VAR:?} rejects an empty value too.
-  [ -n "$(env_value "$v")" ] || missing+=("$v")
+  # The caller's environment counts, as it does for compose itself: that is where
+  # scripts/deploy/compose.sh puts ENVIRONMENT, the image digests and APP_VERSION (#831).
+  [ -n "${!v:-}" ] || [ -n "$(env_value "$v")" ] || missing+=("$v")
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "preflight: $env_file is missing ${#missing[@]} required variable(s):" >&2
   printf '  - %s\n' "${missing[@]}" >&2
-  echo "preflight: add them (see .env.staging.example) and re-run the deploy." >&2
+  echo "preflight: add them (see the matching .env.*.example) and re-run the deploy." >&2
   exit 1
 fi
 

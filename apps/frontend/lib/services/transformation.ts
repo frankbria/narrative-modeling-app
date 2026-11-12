@@ -7,6 +7,7 @@
  * @module lib/services/transformation
  */
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import type {
   Recipe,
   RecipeListResponse,
@@ -37,7 +38,7 @@ export type {
   ParameterValue
 } from '@/lib/types/recipe'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_BASE_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
 export interface TransformationRequest {
   dataset_id: string

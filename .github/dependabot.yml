@@ -61,7 +61,7 @@ updates:
         update-types: ["minor", "patch"]
 
   # Staging compose — refreshes the `redis:7-alpine@sha256:…` digest pinned in the
-  # repo-root `docker-compose.staging.yml` (deploy path, not CI).
+  # repo-root `docker-compose.deploy.yml` (deploy path, not CI).
   - package-ecosystem: "docker"
     cooldown:
       default-days: 14

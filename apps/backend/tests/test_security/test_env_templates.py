@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-COMPOSE_FILE = REPO_ROOT / "docker-compose.staging.yml"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.deploy.yml"
 STAGING = REPO_ROOT / ".env.staging.example"
 PRODUCTION = REPO_ROOT / ".env.production.example"
 BACKEND_LOCAL = REPO_ROOT / "apps/backend/.env.example"
@@ -33,8 +33,13 @@ def test_the_deployed_templates_declare_the_same_names_in_the_same_order():
 def test_the_deployed_templates_hold_exactly_what_compose_interpolates():
     code = [line for line in COMPOSE_FILE.read_text().splitlines() if not line.lstrip().startswith("#")]
     interpolated = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)", "\n".join(code)))
+    # Supplied by scripts/deploy/compose.sh from the env file's name and the deploy's
+    # record, so that neither box can be handed the other's (#831).
+    supplied_by_the_wrapper = {"ENVIRONMENT", "BACKEND_IMAGE", "FRONTEND_IMAGE", "APP_VERSION"}
+    assert supplied_by_the_wrapper <= interpolated
+    assert not supplied_by_the_wrapper & set(_values(STAGING))
     # Read by scripts/deploy/apply_nginx_conf.sh, not by compose; NGINX_CERT_DIR is optional there.
-    assert set(_values(STAGING)) - {"NGINX_CERT_DIR"} == interpolated | {"NGINX_SERVER_NAME"}
+    assert set(_values(STAGING)) - {"NGINX_CERT_DIR"} == (interpolated - supplied_by_the_wrapper) | {"NGINX_SERVER_NAME"}
 
 
 def test_a_variable_both_local_templates_declare_has_one_value():

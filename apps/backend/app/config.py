@@ -396,7 +396,7 @@ class Settings(BaseModel):
     # and OVERWRITES. Default OFF: without the proxy that header is client-supplied,
     # and an anonymous caller could forge a fresh IP bucket per request. X-Forwarded-For
     # is never read — nginx APPENDS to it, so its first element is client-controlled
-    # under either setting (#483). docker-compose.staging.yml sets this true.
+    # under either setting (#483). docker-compose.deploy.yml sets this true.
     RATE_LIMIT_TRUST_PROXY: bool = (
         os.getenv("RATE_LIMIT_TRUST_PROXY", "false").strip().lower() == "true"
     )

@@ -2,7 +2,7 @@
 
 Staging runs on a shared VPS (`dev.briaanalytics.com`; resolve it with
 `dig +short dev.briaanalytics.com`, the IP has changed before) from
-`docker-compose.staging.yml`: `backend`, `frontend` and `redis` containers. MongoDB
+`docker-compose.deploy.yml`: `backend`, `frontend` and `redis` containers. MongoDB
 is a managed Atlas cluster; S3 is real AWS. After the first deploy, every push to
 `main` deploys through `.github/workflows/deploy.yml` (Step 5).
 
@@ -133,7 +133,7 @@ needs a recreate, not a rebuild. Leave it empty on staging: empty sends nothing.
 Check the file before every hand-run deploy:
 
 ```bash
-bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
 ```
 
 It prints the complete list of missing required variables, and refuses an invalid
@@ -147,9 +147,9 @@ It prints the complete list of missing required variables, and refuses an invali
 
 ```bash
 cd /opt/narrative-modeling-app/staging
-bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
-docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
+docker compose -f docker-compose.deploy.yml --env-file .env.staging up -d --build --remove-orphans
+docker compose -f docker-compose.deploy.yml --env-file .env.staging ps
 ```
 
 ### Option B: Automated (GitHub Actions)
@@ -194,7 +194,7 @@ run: |
   scripts/deploy/on_box.sh scripts/deploy/my_step.sh      # a script in the repo
   scripts/deploy/on_box.sh <<'REMOTE'                     # or a short inline body
   cd "$DEPLOY_PATH"
-  docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+  docker compose -f docker-compose.deploy.yml --env-file .env.staging ps
   REMOTE
 ```
 
@@ -345,7 +345,7 @@ evaluated before UFW, so a public bind would leak past the firewall anyway.
 
 ```bash
 cd /opt/narrative-modeling-app/staging
-docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+docker compose -f docker-compose.deploy.yml --env-file .env.staging ps
 # narrative-staging-backend    Up (healthy)
 # narrative-staging-frontend   Up (healthy)
 # narrative-staging-redis      Up (healthy)
@@ -355,7 +355,7 @@ curl -fsS http://localhost:3011 >/dev/null && echo frontend ok
 
 # Per-subsystem probe on fresh connections (Mongo, S3, OpenAI, signups_24h).
 # Every line must read healthy; the exit code is the verdict.
-docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+docker compose -f docker-compose.deploy.yml --env-file .env.staging exec -T backend python -m app.health_probe
 bash scripts/deploy/frontend_probe.sh            # frontend: {"status":"healthy",...}
 
 # Through the edge
@@ -374,7 +374,7 @@ In a browser, at `https://<host>`:
 - [ ] The sign-in page loads
 - [ ] Sign in with an allowlisted Google or GitHub account
 - [ ] Upload a test dataset and see it on the dashboard
-- [ ] `docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail=100 backend` shows no errors
+- [ ] `docker compose -f docker-compose.deploy.yml --env-file .env.staging logs --tail=100 backend` shows no errors
 
 ---
 
@@ -386,9 +386,9 @@ In a browser, at `https://<host>`:
 ### View Logs
 
 ```bash
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f backend
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail=100 backend
+docker compose -f docker-compose.deploy.yml --env-file .env.staging logs -f
+docker compose -f docker-compose.deploy.yml --env-file .env.staging logs -f backend
+docker compose -f docker-compose.deploy.yml --env-file .env.staging logs --tail=100 backend
 ```
 
 ### Restart Services
@@ -397,7 +397,7 @@ Compose injects env at container **creation**. After any change to `.env.staging
 recreate; `restart` keeps the old values:
 
 ```bash
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --force-recreate backend frontend
+docker compose -f docker-compose.deploy.yml --env-file .env.staging up -d --force-recreate backend frontend
 ```
 
 `restart` is only for a process that is stuck with correct config. Rotating a
@@ -410,8 +410,8 @@ Push to `main` (or dispatch `deploy.yml`). By hand, the same sequence:
 ```bash
 cd /opt/narrative-modeling-app/staging
 git fetch --prune origin && git checkout main && git reset --hard origin/main
-bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
+docker compose -f docker-compose.deploy.yml --env-file .env.staging up -d --build --remove-orphans
 bash scripts/deploy/apply_nginx_conf.sh
 ```
 
@@ -429,8 +429,8 @@ drilling them is `docs/ops/DATA_ERASURE_AND_BACKUP_RUNBOOK.md` (sections 2–5).
 ### Container won't start
 
 ```bash
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs backend
-docker compose -f docker-compose.staging.yml --env-file .env.staging ps -a
+docker compose -f docker-compose.deploy.yml --env-file .env.staging logs backend
+docker compose -f docker-compose.deploy.yml --env-file .env.staging ps -a
 DEPLOY_PATH=/opt/narrative-modeling-app/staging bash scripts/deploy/backend_state.sh
 ```
 
@@ -476,7 +476,7 @@ The durable rollback is a revert on `main`: the next deploy resets the box to
 cd /opt/narrative-modeling-app/staging
 git log --oneline -n 10
 git checkout <previous-commit>
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
+docker compose -f docker-compose.deploy.yml --env-file .env.staging up -d --build --remove-orphans
 bash scripts/deploy/apply_nginx_conf.sh
 # Step 9 checks, then revert the bad commit on main through a PR
 ```
@@ -510,8 +510,8 @@ account, so signup is gated by an email allowlist (#261) while `SIGNUP_MODE=invi
    (e.g. `INVITE_ALLOWLIST=alice@example.com,bob@example.com`).
 2. Run the preflight, then recreate both services (no rebuild; it is a runtime variable):
    ```bash
-   bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d backend frontend
+   bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
+   docker compose -f docker-compose.deploy.yml --env-file .env.staging up -d backend frontend
    ```
 
 **To revoke access:** remove the email and recreate the same way. A live session

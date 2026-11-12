@@ -16,14 +16,14 @@ and cluster names are deliberately omitted — see the operator's local runbook.
 
 | Store | What it holds | Read by |
 |---|---|---|
-| `.env.staging` on the staging box (hand-edited, **not** in git) | every application secret below | `docker compose -f docker-compose.staging.yml --env-file .env.staging` — values are injected at container **creation** |
+| `.env.staging` on the staging box (hand-edited, **not** in git) | every application secret below | `docker compose -f docker-compose.deploy.yml --env-file .env.staging` — values are injected at container **creation** |
 | GitHub Environment `Development` (Settings → Environments) | CI's way onto the box: `SSH_KEY`, `HOST`, `SSH_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` (optional `DEPLOY_USER`, `DEPLOY_PATH`) | `deploy.yml`, `staging-health.yml`, `subscription-reconcile.yml` |
 | GitHub repository secrets | backup verification: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `AWS_BUCKET_NAME`, `ATLAS_PUBLIC_KEY`, `ATLAS_PRIVATE_KEY`, `ATLAS_GROUP_ID`, `ATLAS_CLUSTER_NAME` | `backup-verify.yml` |
 | the operator's private secret record | the canonical copy of everything in `.env.staging` | a rebuild of the box; a value edited only on the box is lost on the next one |
 
 ## Consumers per application secret
 
-Derived from `docker-compose.staging.yml`; `apps/backend/tests/test_security/test_staging_health_wiring.py`
+Derived from `docker-compose.deploy.yml`; `apps/backend/tests/test_security/test_staging_health_wiring.py`
 fails if compose interpolates a secret this table does not name.
 
 | Secret | `backend` | `frontend` | `redis` | Also | Notes |
@@ -33,14 +33,14 @@ fails if compose interpolates a secret this table does not name.
 | `REDIS_PASSWORD` | yes (in `REDIS_URL`) | | yes | | rotate all three together or the backend cannot reach the cache |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | yes | | | IAM user | a dead key or a missing bucket shows as `s3: unhealthy` in the probe |
 | `OPENAI_API_KEY` | yes | | | OpenAI dashboard | the app degrades to rule-based fallbacks; the probe still fails |
-| `NEXTAUTH_SECRET` | yes | yes | | `ARTIFACT_SIGNING_KEY` fallback — read `docs/ops/ARTIFACT_INTEGRITY.md` **before** rotating | rotating invalidates every session and, unless the signing key is pinned, every signed model artifact. `docker-compose.staging.yml` does not pass `ARTIFACT_SIGNING_KEY` today, so on staging it cannot be pinned without adding it there first |
+| `NEXTAUTH_SECRET` | yes | yes | | `ARTIFACT_SIGNING_KEY` fallback — read `docs/ops/ARTIFACT_INTEGRITY.md` **before** rotating | rotating invalidates every session and, unless the signing key is pinned, every signed model artifact. `docker-compose.deploy.yml` does not pass `ARTIFACT_SIGNING_KEY` today, so on staging it cannot be pinned without adding it there first |
 | `GOOGLE_CLIENT_SECRET` (`GOOGLE_CLIENT_ID`) | | yes | | Google Cloud console — redirect URI must still match `NEXTAUTH_URL` | |
 | `GITHUB_SECRET` (`GITHUB_ID`) | | yes | | GitHub OAuth app | |
 | `STRIPE_SECRET_KEY` | yes | | | Stripe dashboard | |
 | `STRIPE_WEBHOOK_SECRET` | yes | | | Stripe dashboard → the webhook endpoint's signing secret | a trailing newline mismatches every signature (#457) |
 | `RESEND_API_KEY` | yes | | | Resend dashboard → API Keys (sending access is enough) | optional; with it or `EMAIL_FROM` unset no job mail is sent and the startup log says so (`Email:`). A dead key fails each send quietly: jobs are unaffected and the log reads `Email not sent: HTTPStatusError` (#494) |
 | `SENTRY_DSN` | yes | yes | | Sentry project | optional; the frontend also bakes it in at build as `NEXT_PUBLIC_SENTRY_DSN`, so a new DSN needs a deploy that rebuilds the image (`up -d --build`), not only a recreate |
-| `SENTRY_AUTH_TOKEN_FILE` | | build only | | Sentry → Settings → Auth Tokens (scope `project:releases`); the token lives in that file on the box, not in `.env.staging` | read only by the frontend image build (a BuildKit secret, never in a layer) to upload source maps (#1158). A secret is not part of the build cache key, so a new or rotated token alone does not rerun the build: on the box run `docker compose -f docker-compose.staging.yml --env-file .env.staging build --no-cache frontend`, then `up -d frontend`. Empty or missing: no upload, still a working build |
+| `SENTRY_AUTH_TOKEN_FILE` | | build only | | Sentry → Settings → Auth Tokens (scope `project:releases`); the token lives in that file on the box, not in `.env.staging` | read only by the frontend image build (a BuildKit secret, never in a layer) to upload source maps (#1158). A secret is not part of the build cache key, so a new or rotated token alone does not rerun the build: on the box run `docker compose -f docker-compose.deploy.yml --env-file .env.staging build --no-cache frontend`, then `up -d frontend`. Empty or missing: no upload, still a working build |
 
 `INVITE_ALLOWLIST`, `ADMIN_EMAILS`, `EMAIL_FROM`, the `STRIPE_PRICE_*` ids and the URL/origin
 variables are configuration, not credentials; they travel the same path but need
@@ -58,7 +58,7 @@ no rotation step.
    `restart`; from the deploy path on the box:
 
    ```bash
-   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --force-recreate backend frontend
+   docker compose -f docker-compose.deploy.yml --env-file .env.staging up -d --force-recreate backend frontend
    ```
 
    `--force-recreate` is deliberate: `up -d` alone recreates only when it sees a
@@ -67,7 +67,7 @@ no rotation step.
    (`gh workflow run staging-health.yml`) or run it directly on the box:
 
    ```bash
-   docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+   docker compose -f docker-compose.deploy.yml --env-file .env.staging exec -T backend python -m app.health_probe
    ```
 
    Every line must read `healthy`; the exit code is the verdict. Then the

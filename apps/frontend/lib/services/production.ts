@@ -2,9 +2,10 @@
  * Production API service for model deployment and API key management
  */
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { apiError } from '@/lib/services/apiError'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_BASE_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
 export interface CreateAPIKeyRequest {
   name: string

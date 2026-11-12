@@ -378,28 +378,27 @@ jobs:
         working-directory: apps/frontend
         run: npm run check:adapter
 
-  frontend-docker-build:
-    name: Frontend Docker Build
-    # Guards the deployed artifact (issue #277): CI otherwise never builds the
-    # production image, so a broken Dockerfile or an untested Node major would
-    # only surface at deploy time. Build-only — the image is not pushed. The
-    # in-Dockerfile `npm run build` uses the same dummy env as the build stage,
-    # so only NEXT_PUBLIC_API_URL (inlined at build time) needs supplying.
-    timeout-minutes: 20
+  docker-images:
+    name: Docker Images
+    # Guards the deployed artifacts (#277, #831): the same script deploy.yml pushes
+    # with builds BOTH production images here, so a broken Dockerfile, an untested
+    # Node major or a base-image bump fails the PR and not the deploy. Build-only:
+    # nothing is pushed. Neither build is given a host, an API address or a secret.
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build frontend production image
-        run: |
-          docker build \
-            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 \
-            -t narrative-frontend:ci \
-            apps/frontend
-      - name: The image serves no source map
+      - name: Build the backend and frontend production images
+        run: scripts/ci/build_images.sh ci
+      - name: The frontend image serves no source map
         # Browser maps go to Sentry or nowhere (#1158); anything under .next/static is public.
         run: |
           maps=$(docker run --rm --entrypoint sh narrative-frontend:ci -c 'find /app/.next/static -name "*.map"')
           if [ -n "$maps" ]; then echo "::error::source maps in the served static tree:"; echo "$maps"; exit 1; fi
+      - name: One frontend image serves both hosts
+        # The image is promoted from staging to production by digest (#831), so it
+        # may not carry either host's API address or environment.
+        run: scripts/ci/check_frontend_image_is_host_agnostic.sh narrative-frontend:ci
 
   shell-lint:
     name: Shell Lint (shellcheck)
@@ -672,7 +671,7 @@ jobs:
       - frontend-typecheck-build
       - frontend-unit
       - frontend-adapter-compat
-      - frontend-docker-build
+      - docker-images
       - shell-lint
       - e2e-smoke
     runs-on: ubuntu-latest

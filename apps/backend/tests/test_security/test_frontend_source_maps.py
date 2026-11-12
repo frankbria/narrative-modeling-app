@@ -31,11 +31,21 @@ def test_the_build_deletes_every_source_map_it_leaves_behind():
     assert re.search(r"&&\s*find \.next/static -name '\*\.map' -delete", _build_run())
 
 
-def test_compose_supplies_the_token_from_an_optional_file():
-    compose = yaml.safe_load((REPO / "docker-compose.staging.yml").read_text())
+def test_the_build_script_supplies_the_token_as_a_secret_only_when_there_is_one():
+    """CI builds the image (#831), so the token is a repository secret handed to the
+    build as a secret mount. Unset, the flag is left off and nothing is uploaded."""
+    script = (REPO / "scripts/ci/build_images.sh").read_text()
 
-    assert compose["services"]["frontend"]["build"]["secrets"] == ["sentry_auth_token"]
-    assert compose["secrets"]["sentry_auth_token"] == {"file": "${SENTRY_AUTH_TOKEN_FILE:-/dev/null}"}
+    assert "--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN" in script
+    assert not re.search(r"--build-arg[ =\"']*SENTRY_AUTH_TOKEN", script)
+    assert '--build-arg "SENTRY_RELEASE=$revision"' in script, "the release must be the commit both hosts run"
+
+
+def test_no_compose_file_builds_the_frontend_or_holds_the_token():
+    compose = yaml.safe_load((REPO / "docker-compose.deploy.yml").read_text())
+
+    assert "build" not in compose["services"]["frontend"]
+    assert "secrets" not in compose
 
 
 def test_without_a_token_the_sdk_generates_no_source_maps():

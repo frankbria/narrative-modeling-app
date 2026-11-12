@@ -1,7 +1,8 @@
+import { publicEnv } from '@/lib/runtimeEnv'
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
 
 export async function GET(
   request: NextRequest,

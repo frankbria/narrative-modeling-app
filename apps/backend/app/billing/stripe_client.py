@@ -120,7 +120,7 @@ def is_configured() -> bool:
 #: `Settings` but nothing reads it back, and Checkout is hosted, so the frontend
 #: has no Stripe code to hand it to. Nor is `STRIPE_PRICE_ENTERPRISE`: ENTERPRISE is
 #: sales-led (ADR-003), so its price is set only for a deal entitled through checkout.
-#: `docker-compose.staging.yml` guards exactly this set with `${VAR:?}`.
+#: `docker-compose.deploy.yml` guards exactly this set with `${VAR:?}`.
 # shortcut: an ENTERPRISE price lost after a deal goes live is not flagged and resolves
 # that customer to PRO; add it here and guard it in compose with the first such deal.
 _REQUIRED_SETTINGS = (

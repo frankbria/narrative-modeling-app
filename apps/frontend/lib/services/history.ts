@@ -1,9 +1,10 @@
+import { publicEnv } from '@/lib/runtimeEnv'
 import { HistoryResponse, HistoryData, HistoryEntry } from '@/lib/types/history';
 
 // NEXT_PUBLIC_API_URL carries the /api/v1 prefix (see CLAUDE.md, Environment
 // Variables). Appending it again here produced /api/v1/api/v1/... and 404'd every
 // history call (#406).
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
 
 /**
  * Raw shape of a history entry as emitted by the backend `HistoryDataResponse`

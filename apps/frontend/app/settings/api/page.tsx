@@ -1,5 +1,6 @@
 'use client'
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { useState } from 'react'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
 import { useSession } from 'next-auth/react'
@@ -295,7 +296,7 @@ export default function APIKeysPage() {
                   </p>
                   <pre className="bg-background p-2 rounded text-xs overflow-x-auto">
 {`curl -X POST \\
-  ${process.env.NEXT_PUBLIC_API_URL}/production/v1/models/{model_id}/predict \\
+  ${publicEnv('NEXT_PUBLIC_API_URL')}/production/v1/models/{model_id}/predict \\
   -H "X-API-Key: ${newApiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{"data": [{"feature1": 1, "feature2": "value"}]}'`}

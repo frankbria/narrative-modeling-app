@@ -7,7 +7,7 @@
 # cluster, a boto error the bucket).
 set -u
 cd "${DEPLOY_PATH:-/opt/narrative-modeling-app/staging}" 2>/dev/null || { echo "(no $DEPLOY_PATH)"; exit 0; }
-compose() { docker compose -f docker-compose.staging.yml --env-file .env.staging "$@"; }
+compose() { scripts/deploy/compose.sh "$@"; }
 
 echo "## backend container"
 compose ps backend --format '{{.Name}}  {{.Status}}' 2>/dev/null || echo "(compose ps failed)"

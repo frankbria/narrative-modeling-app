@@ -97,3 +97,6 @@ apps/backend/mypy_out.txt
 # Local scratch scripts (a broad `git add apps/backend` swept one into two PRs)
 apps/backend/_demo_*.py
 /_demo_*.py
+
+# What the last deploy put on a box (scripts/deploy/deploy_images.sh).
+.deploy-images.env*

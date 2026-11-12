@@ -1,1 +1,3 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'; 
+import { publicEnv } from '@/lib/runtimeEnv'
+
+export const API_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'; 

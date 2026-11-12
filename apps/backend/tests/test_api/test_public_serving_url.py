@@ -16,7 +16,7 @@ from app.models.ml_model import MLModel
 pytestmark = pytest.mark.asyncio
 
 PUBLIC = "https://ml.example.com/api/v1"
-COMPOSE_FILE = Path(__file__).resolve().parents[4] / "docker-compose.staging.yml"
+COMPOSE_FILE = Path(__file__).resolve().parents[4] / "docker-compose.deploy.yml"
 # What a client might send to steer the URL; the proxy's own headers look the same.
 STEERING = {"Host": "evil.example", "X-Forwarded-Proto": "http", "X-Forwarded-Host": "evil.example"}
 
