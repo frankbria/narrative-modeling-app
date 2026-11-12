@@ -176,8 +176,8 @@ services:
       # robots.txt disallow the whole site (#766). The same image serves dev.
       # and www., so this cannot be baked in at build.
       ENVIRONMENT: ${ENVIRONMENT}
-      # Public settings (#831): read when a request arrives and written into the page
-      # for the browser (lib/runtimeEnv.ts). None is a build arg, so one image serves
+      # Public settings (#831): read when a request arrives and written onto the page's
+      # <html> element for the browser (lib/runtimeEnv.ts). None is a build arg, so one image serves
       # both hosts. The API base carries the /api/v1 prefix, e.g.
       # https://dev.sheetpredict.app/api/v1; the browser reports errors under the
       # backend's DSN and the same environment tag.

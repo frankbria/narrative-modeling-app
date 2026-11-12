@@ -51,12 +51,25 @@ expect() {
   if ! grep -qF -- "$3" <<<"$2"; then echo "FAIL: the $1 page does not carry $3"; failures=$((failures + 1)); fi
   if grep -qF -- "$4" <<<"$2"; then echo "FAIL: the $1 page carries the other host's $4"; failures=$((failures + 1)); fi
 }
-expect staging "$staging_page" '"NEXT_PUBLIC_API_URL":"https://dev.host-agnostic.test/api/v1"' 'www.host-agnostic.test'
-expect staging "$staging_page" '"NEXT_PUBLIC_SENTRY_DSN":"https://public@dev.host-agnostic.test/1"' 'public@www.host-agnostic.test'
-expect staging "$staging_page" '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"staging"' '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"production"'
-expect production "$production_page" '"NEXT_PUBLIC_API_URL":"https://www.host-agnostic.test/api/v1"' 'dev.host-agnostic.test'
-expect production "$production_page" '"NEXT_PUBLIC_SENTRY_DSN":"https://public@www.host-agnostic.test/1"' 'public@dev.host-agnostic.test'
-expect production "$production_page" '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"production"' '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"staging"'
+# The settings are JSON in an attribute of <html>, so their quotes arrive as &quot;.
+setting() { printf '&quot;%s&quot;:&quot;%s&quot;' "$1" "$2"; }
+expect staging "$staging_page" "$(setting NEXT_PUBLIC_API_URL https://dev.host-agnostic.test/api/v1)" 'www.host-agnostic.test'
+expect staging "$staging_page" "$(setting NEXT_PUBLIC_SENTRY_DSN https://public@dev.host-agnostic.test/1)" 'public@www.host-agnostic.test'
+expect staging "$staging_page" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT staging)" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT production)"
+expect production "$production_page" "$(setting NEXT_PUBLIC_API_URL https://www.host-agnostic.test/api/v1)" 'dev.host-agnostic.test'
+expect production "$production_page" "$(setting NEXT_PUBLIC_SENTRY_DSN https://public@www.host-agnostic.test/1)" 'public@dev.host-agnostic.test'
+expect production "$production_page" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT production)" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT staging)"
+
+# The settings must be in the page before the first script: modules read them as they
+# load, and one that ran first would keep its localhost default for the whole visit.
+# Next hoists async bundle tags to the top of <head>, so only <html> itself is early enough.
+offset_of() { grep -bo -m 1 -- "$1" <<<"$staging_page" | head -n 1 | cut -d: -f1; }
+settings_at=$(offset_of ' data-public-env=')
+first_script_at=$(offset_of '<script')
+if [ -z "$first_script_at" ] || [ "${settings_at:-$first_script_at}" -ge "$first_script_at" ]; then
+  echo "FAIL: the settings (byte ${settings_at:-none}) do not come before the first script (byte ${first_script_at:-none})"
+  failures=$((failures + 1))
+fi
 
 if [ "$failures" -gt 0 ]; then exit 1; fi
-echo "OK: one image, two hosts: each page carries its own API base, Sentry DSN and environment tag"
+echo "OK: one image, two hosts: each page carries its own API base, Sentry DSN and environment tag, ahead of the first script"

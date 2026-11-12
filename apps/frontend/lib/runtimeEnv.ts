@@ -16,22 +16,32 @@ declare global {
 }
 
 /**
+ * The settings the server wrote onto this page's `<html>` element. That element is
+ * parsed before any script can run, so a module reading a setting as it loads finds
+ * it whatever order the bundles arrive in.
+ */
+function pageSettings(): PublicEnv {
+  window.__PUBLIC_ENV__ ??= JSON.parse(document.documentElement.dataset.publicEnv ?? '{}') as PublicEnv
+  return window.__PUBLIC_ENV__
+}
+
+/**
  * A public setting of this deployment, read when the code runs: one image serves
  * every host (#831). Blank counts as unset, because compose passes a blank.
  */
 export function publicEnv(name: PublicEnvName): string | undefined {
-  const renderedIntoPage = typeof window === 'undefined' ? undefined : window.__PUBLIC_ENV__?.[name]
-  // Bracket access: `next build` replaces a dotted read of a public variable with the value it was built with.
-  return renderedIntoPage || process.env[name] || undefined
+  // A browser reads only what the server rendered into the page: its own `process.env` holds
+  // whatever `next build` saw. The server reads by bracket, which `next build` does not inline.
+  const settings = typeof window === 'undefined' ? process.env : pageSettings()
+  return settings[name] || undefined
 }
 
-/** JavaScript for the root layout that hands the browser the public settings this server holds. */
-export function publicEnvScript(env: Readonly<Record<string, string | undefined>> = process.env): string {
+/** The public settings this server holds, as the root layout writes them onto `<html data-public-env>`. */
+export function publicEnvJson(env: Readonly<Record<string, string | undefined>> = process.env): string {
   const settings: PublicEnv = {}
   for (const name of PUBLIC_ENV_NAMES) {
     const value = env[name]
     if (value) settings[name] = value
   }
-  // An unescaped `<` would let a value close the script element it is rendered into.
-  return `window.__PUBLIC_ENV__=${JSON.stringify(settings).replace(/</g, '\\u003c')}`
+  return JSON.stringify(settings)
 }

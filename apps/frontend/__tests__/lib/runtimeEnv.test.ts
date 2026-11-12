@@ -1,64 +1,70 @@
 /**
  * Public settings are read when the page is served, never when the image is built
- * (#831): the server renders them into `window.__PUBLIC_ENV__` and both halves read
- * them through `publicEnv`.
+ * (#831): the server writes them onto `<html data-public-env>` and the browser reads
+ * them from there through `publicEnv`.
  */
-import { PUBLIC_ENV_NAMES, publicEnv, publicEnvScript } from '@/lib/runtimeEnv'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { PUBLIC_ENV_NAMES, publicEnv, publicEnvJson } from '@/lib/runtimeEnv'
 
 const ORIGINAL_API_URL = process.env.NEXT_PUBLIC_API_URL
 
-function runInBrowser(scriptText: string): Window['__PUBLIC_ENV__'] {
-  new Function(scriptText)()
-  return window.__PUBLIC_ENV__
+/** What a browser has when it loads a page this server rendered. */
+function loadPageRenderedWith(env: Record<string, string | undefined>) {
+  delete window.__PUBLIC_ENV__
+  document.documentElement.dataset.publicEnv = publicEnvJson({ NODE_ENV: 'test', ...env })
 }
 
 afterEach(() => {
   delete window.__PUBLIC_ENV__
+  delete document.documentElement.dataset.publicEnv
   process.env.NEXT_PUBLIC_API_URL = ORIGINAL_API_URL
 })
 
-describe('publicEnv', () => {
-  it('prefers the value the server rendered into the page over the process environment', () => {
-    process.env.NEXT_PUBLIC_API_URL = 'https://build.example/api/v1'
-    window.__PUBLIC_ENV__ = { NEXT_PUBLIC_API_URL: 'https://www.example/api/v1' }
+describe('publicEnv in a browser', () => {
+  it('reads the value the server wrote onto the page', () => {
+    loadPageRenderedWith({ NEXT_PUBLIC_API_URL: 'https://www.example/api/v1' })
 
     expect(publicEnv('NEXT_PUBLIC_API_URL')).toBe('https://www.example/api/v1')
   })
 
-  it('falls back to the process environment, which is what the server reads', () => {
-    process.env.NEXT_PUBLIC_API_URL = 'https://dev.example/api/v1'
+  it('never falls back to the process environment, which in a bundle is what the build saw', () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://build.example/api/v1'
+    loadPageRenderedWith({ NEXT_PUBLIC_SENTRY_DSN: 'https://key@sentry.example/1' })
 
-    expect(publicEnv('NEXT_PUBLIC_API_URL')).toBe('https://dev.example/api/v1')
+    expect(publicEnv('NEXT_PUBLIC_API_URL')).toBeUndefined()
+    expect(publicEnv('NEXT_PUBLIC_SENTRY_DSN')).toBe('https://key@sentry.example/1')
   })
 
-  it('falls back to the process environment for a name the page does not carry', () => {
-    process.env.NEXT_PUBLIC_API_URL = 'https://dev.example/api/v1'
-    window.__PUBLIC_ENV__ = { NEXT_PUBLIC_SENTRY_DSN: 'https://key@sentry.example/1' }
-
-    expect(publicEnv('NEXT_PUBLIC_API_URL')).toBe('https://dev.example/api/v1')
-  })
-
-  it.each([undefined, ''])('is undefined for %p, so a blank from compose takes the call site default', (value) => {
-    if (value === undefined) delete process.env.NEXT_PUBLIC_API_URL
-    else process.env.NEXT_PUBLIC_API_URL = value
+  it('is undefined on a page that carries no settings at all', () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://build.example/api/v1'
+    delete window.__PUBLIC_ENV__
 
     expect(publicEnv('NEXT_PUBLIC_API_URL')).toBeUndefined()
   })
+
+  it('carries a value with markup in it intact', () => {
+    const hostile = '"></html><script>alert(1)</script>'
+    loadPageRenderedWith({ NEXT_PUBLIC_INVITE_REQUEST_URL: hostile })
+
+    expect(publicEnv('NEXT_PUBLIC_INVITE_REQUEST_URL')).toBe(hostile)
+  })
 })
 
-describe('publicEnvScript', () => {
-  it('hands the browser every listed setting that is set, and nothing else', () => {
-    const script = publicEnvScript({
-      NODE_ENV: 'production',
-      NEXT_PUBLIC_API_URL: 'https://www.example/api/v1',
-      NEXT_PUBLIC_SENTRY_DSN: 'https://key@sentry.example/1',
-      NEXT_PUBLIC_SENTRY_ENVIRONMENT: '',
-      NEXTAUTH_SECRET: 'never-in-a-page',
-      NEXT_PUBLIC_UNLISTED: 'not-listed',
-    })
+describe('publicEnvJson', () => {
+  it('holds every listed setting that is set, and nothing else', () => {
+    const settings = JSON.parse(
+      publicEnvJson({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_API_URL: 'https://www.example/api/v1',
+        NEXT_PUBLIC_SENTRY_DSN: 'https://key@sentry.example/1',
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: '',
+        NEXTAUTH_SECRET: 'never-in-a-page',
+        NEXT_PUBLIC_UNLISTED: 'not-listed',
+      }),
+    )
 
-    expect(script).not.toContain('never-in-a-page')
-    expect(runInBrowser(script)).toEqual({
+    expect(settings).toEqual({
       NEXT_PUBLIC_API_URL: 'https://www.example/api/v1',
       NEXT_PUBLIC_SENTRY_DSN: 'https://key@sentry.example/1',
     })
@@ -67,24 +73,28 @@ describe('publicEnvScript', () => {
   it('carries all four public settings when each is set', () => {
     const everySetting = Object.fromEntries(PUBLIC_ENV_NAMES.map((name) => [name, `value-of-${name}`]))
 
-    expect(runInBrowser(publicEnvScript({ NODE_ENV: 'test', ...everySetting }))).toEqual(everySetting)
+    expect(JSON.parse(publicEnvJson({ NODE_ENV: 'test', ...everySetting }))).toEqual(everySetting)
   })
 
-  it('reads the process environment when it is given none', () => {
+  it('reads the process environment when it is given none, at call time', () => {
     process.env.NEXT_PUBLIC_API_URL = 'https://dev.example/api/v1'
+    expect(JSON.parse(publicEnvJson())).toMatchObject({ NEXT_PUBLIC_API_URL: 'https://dev.example/api/v1' })
 
-    expect(runInBrowser(publicEnvScript())).toMatchObject({ NEXT_PUBLIC_API_URL: 'https://dev.example/api/v1' })
-  })
-
-  it('cannot close its own script element, and the value still arrives intact', () => {
-    const hostile = '</script><script>alert(1)</script>'
-    const script = publicEnvScript({ NODE_ENV: 'test', NEXT_PUBLIC_INVITE_REQUEST_URL: hostile })
-
-    expect(script).not.toContain('<')
-    expect(runInBrowser(script)).toEqual({ NEXT_PUBLIC_INVITE_REQUEST_URL: hostile })
+    process.env.NEXT_PUBLIC_API_URL = 'https://www.example/api/v1'
+    expect(JSON.parse(publicEnvJson())).toMatchObject({ NEXT_PUBLIC_API_URL: 'https://www.example/api/v1' })
   })
 
   it('is an empty object when nothing is set', () => {
-    expect(runInBrowser(publicEnvScript({ NODE_ENV: 'test' }))).toEqual({})
+    expect(publicEnvJson({ NODE_ENV: 'test' })).toBe('{}')
+  })
+})
+
+describe('the root layout', () => {
+  // The rendered page is checked on the built image by
+  // scripts/ci/check_frontend_image_is_host_agnostic.sh; jest cannot render the async layout.
+  it('writes the settings onto <html>, which is parsed before any script can run', () => {
+    const layout = readFileSync(join(__dirname, '..', '..', 'app', 'layout.tsx'), 'utf8')
+
+    expect(layout).toMatch(/<html [^>]*data-public-env=\{publicEnvJson\(\)\}/)
   })
 })
