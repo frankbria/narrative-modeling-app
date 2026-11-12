@@ -18,6 +18,7 @@ from app.models.erasure_audit import ErasureAuditLog
 from app.models.feedback import Feedback
 from app.models.ml_model import MLModel
 from app.models.model import ModelConfig
+from app.models.notification_preference import NotificationPreference
 from app.models.onboarding import OnboardingProgress
 from app.models.plot import Plot
 from app.models.prediction_event import PredictionEvent
@@ -52,6 +53,7 @@ DOCUMENT_MODELS = [
     Feedback,
     MLModel,
     ModelConfig,
+    NotificationPreference,
     OnboardingProgress,
     Plot,
     RecipeExecutionHistory,

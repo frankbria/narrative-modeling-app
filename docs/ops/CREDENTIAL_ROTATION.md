@@ -38,10 +38,11 @@ fails if compose interpolates a secret this table does not name.
 | `GITHUB_SECRET` (`GITHUB_ID`) | | yes | | GitHub OAuth app | |
 | `STRIPE_SECRET_KEY` | yes | | | Stripe dashboard | |
 | `STRIPE_WEBHOOK_SECRET` | yes | | | Stripe dashboard → the webhook endpoint's signing secret | a trailing newline mismatches every signature (#457) |
+| `RESEND_API_KEY` | yes | | | Resend dashboard → API Keys (sending access is enough) | optional; with it or `EMAIL_FROM` unset no job mail is sent and the startup log says so (`Email:`). A dead key fails each send quietly: jobs are unaffected and the log reads `Email not sent: HTTPStatusError` (#494) |
 | `SENTRY_DSN` | yes | yes | | Sentry project | optional; the frontend also bakes it in at build as `NEXT_PUBLIC_SENTRY_DSN`, so a new DSN needs a deploy that rebuilds the image (`up -d --build`), not only a recreate |
 | `SENTRY_AUTH_TOKEN_FILE` | | build only | | Sentry → Settings → Auth Tokens (scope `project:releases`); the token lives in that file on the box, not in `.env.staging` | read only by the frontend image build (a BuildKit secret, never in a layer) to upload source maps (#1158). A secret is not part of the build cache key, so a new or rotated token alone does not rerun the build: on the box run `docker compose -f docker-compose.staging.yml --env-file .env.staging build --no-cache frontend`, then `up -d frontend`. Empty or missing: no upload, still a working build |
 
-`INVITE_ALLOWLIST`, `ADMIN_EMAILS`, the `STRIPE_PRICE_*` ids and the URL/origin
+`INVITE_ALLOWLIST`, `ADMIN_EMAILS`, `EMAIL_FROM`, the `STRIPE_PRICE_*` ids and the URL/origin
 variables are configuration, not credentials; they travel the same path but need
 no rotation step.
 

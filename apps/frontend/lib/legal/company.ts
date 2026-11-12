@@ -15,6 +15,7 @@
  *   Stripe          app/api/routes/billing.py
  *   Google/GitHub   apps/frontend/auth.ts
  *   Sentry          lib/observability/sentry.ts, app/observability.py
+ *   Resend          app/services/email_service.py (job notifications, #494)
  * Redis is deliberately absent: it runs on our own infrastructure, so it is a
  * hosting component rather than a third party receiving customer data.
  */
@@ -43,8 +44,8 @@ export const COMPANY = {
    */
   backupHorizonDays: 35,
   effectiveDate: 'September 9, 2026',
-  /** The Privacy Policy changed after the Terms did: section 6 on dataset deletion (#1111). */
-  privacyEffectiveDate: 'October 19, 2026',
+  /** The Privacy Policy changed after the Terms did: job emails and their provider (#494). */
+  privacyEffectiveDate: 'November 11, 2026',
 } as const
 
 export interface SubProcessor {
@@ -74,6 +75,12 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: 'Stripe',
     purpose: 'Processes subscription payments and holds your billing details.',
     privacyUrl: 'https://stripe.com/privacy',
+  },
+  {
+    name: 'Resend',
+    purpose:
+      'Delivers the email we send when one of your training or batch prediction jobs finishes or fails. Receives your email address and the message: the name of the job and, for a failure, the reason. No dataset content.',
+    privacyUrl: 'https://resend.com/legal/privacy-policy',
   },
   {
     name: 'Sentry',

@@ -9,6 +9,13 @@ jest.mock('@/lib/services/erasure', () => ({
   erasureApi: { eraseCurrentUser: jest.fn(), eraseDataset: jest.fn() },
 }));
 
+jest.mock('@/lib/services/notificationPreferences', () => ({
+  notificationPreferencesApi: {
+    get: jest.fn().mockResolvedValue({ job_emails: true }),
+    setJobEmails: jest.fn(),
+  },
+}));
+
 const cleanResponse: EraseResponse = {
   erasure_id: 'e1',
   status: 'completed',
@@ -58,5 +65,15 @@ describe('SettingsPage account erasure wiring (#482)', () => {
     fireEvent.click(screen.getByText('Cancel'));
     expect(ROUTER.push).not.toHaveBeenCalled();
     expect(erasureApi.eraseCurrentUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('SettingsPage notifications (#494)', () => {
+  it('hosts the job-email switch with the stored choice', async () => {
+    render(<SettingsPage />);
+
+    const jobEmails = screen.getByRole('switch', { name: /email me when a job finishes or fails/i });
+    await waitFor(() => expect(jobEmails).toBeEnabled());
+    expect(jobEmails).toHaveAttribute('aria-checked', 'true');
   });
 });

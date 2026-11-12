@@ -43,6 +43,10 @@ os.environ["AWS_SESSION_TOKEN"] = ""
 # client injects its own (`vars(service)["client"]`); `test_suite_never_reaches_openai.py`
 # guards this.
 os.environ["OPENAI_API_KEY"] = ""
+# Nor does it send mail (#494): the same pin for the Resend key and sender, so a finished
+# job in a test notifies nobody (`test_suite_never_reaches_resend.py`).
+os.environ["RESEND_API_KEY"] = ""
+os.environ["EMAIL_FROM"] = ""
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime

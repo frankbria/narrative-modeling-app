@@ -72,11 +72,13 @@ from app.api.routes import (
     secure_upload,
     transformations,
     user_data,
+    users,
     versions,
     visualizations,
     workflows,
 )
 from app.services.api_documentation import published_spec
+from app.services import email_service
 from app.auth.nextauth_auth import SKIP_AUTH, require_admin
 from app.config import (
     current_signup_mode,
@@ -123,6 +125,9 @@ def _announce_configuration() -> None:
         logger.info("Billing: Stripe configured")
     else:
         logger.warning("Billing: %s", billing_warning)
+
+    # Mail is optional too (#494), and a job that notifies nobody is just as silent.
+    logger.info("Email: %s", email_service.configuration_warning() or "Resend configured")
 
 
 async def _connect_database() -> AsyncIOMotorClient[Any]:
@@ -415,6 +420,7 @@ app.include_router(
     tags=["billing"],
 )
 app.include_router(admin.router, prefix=f"{settings.API_V1_STR}/admin", tags=["admin"])
+app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["users"])
 
 
 # The licence and where the source lives, machine-readable (the UI half is the
