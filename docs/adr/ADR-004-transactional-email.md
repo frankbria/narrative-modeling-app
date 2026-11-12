@@ -3,6 +3,7 @@
 - **Status:** Accepted (the dunning section is the standing default; see "Open to the owner")
 - **Date:** 2026-11-11
 - **Implements:** [#494](https://github.com/frankbria/narrative-modeling-app/issues/494)
+- **Amended:** 2026-11-12 by [#1204](https://github.com/frankbria/narrative-modeling-app/issues/1204), section 3 only: a refused key reuse is read as a duplicate (it was logged as a send that did not happen), the label is capped, and the retried-batch case is stated. No decision changed.
 
 ## Context
 
