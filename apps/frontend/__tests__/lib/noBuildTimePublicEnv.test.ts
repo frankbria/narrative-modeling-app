@@ -11,7 +11,7 @@ import { globSync } from 'glob'
 
 const ROOT = join(__dirname, '..', '..')
 
-const files = globSync('{app,lib,components,hooks}/**/*.{ts,tsx}', {
+const files = globSync('{app,lib,components,hooks}/**/*.{ts,tsx,js,jsx,mjs}', {
   cwd: ROOT,
   ignore: ['**/__tests__/**', '**/node_modules/**', '**/*.test.*'],
 }).concat(globSync('{instrumentation*,middleware,auth}.ts', { cwd: ROOT }))

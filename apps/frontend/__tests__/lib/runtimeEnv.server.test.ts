@@ -9,7 +9,9 @@ import { publicEnv } from '@/lib/runtimeEnv'
 const ORIGINAL_API_URL = process.env.NEXT_PUBLIC_API_URL
 
 afterEach(() => {
-  process.env.NEXT_PUBLIC_API_URL = ORIGINAL_API_URL
+  // Assigning undefined would store the string 'undefined'.
+  if (ORIGINAL_API_URL === undefined) delete process.env.NEXT_PUBLIC_API_URL
+  else process.env.NEXT_PUBLIC_API_URL = ORIGINAL_API_URL
 })
 
 describe('publicEnv on the server', () => {

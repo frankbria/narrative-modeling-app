@@ -9,6 +9,12 @@ import { PUBLIC_ENV_NAMES, publicEnv, publicEnvJson } from '@/lib/runtimeEnv'
 
 const ORIGINAL_API_URL = process.env.NEXT_PUBLIC_API_URL
 
+function restoreApiUrl() {
+  // Assigning undefined would store the string 'undefined'.
+  if (ORIGINAL_API_URL === undefined) delete process.env.NEXT_PUBLIC_API_URL
+  else process.env.NEXT_PUBLIC_API_URL = ORIGINAL_API_URL
+}
+
 /** What a browser has when it loads a page this server rendered. */
 function loadPageRenderedWith(env: Record<string, string | undefined>) {
   delete window.__PUBLIC_ENV__
@@ -18,7 +24,7 @@ function loadPageRenderedWith(env: Record<string, string | undefined>) {
 afterEach(() => {
   delete window.__PUBLIC_ENV__
   delete document.documentElement.dataset.publicEnv
-  process.env.NEXT_PUBLIC_API_URL = ORIGINAL_API_URL
+  restoreApiUrl()
 })
 
 describe('publicEnv in a browser', () => {

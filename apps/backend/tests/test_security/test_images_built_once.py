@@ -169,24 +169,35 @@ def test_a_scheduled_job_still_reaches_a_box_that_predates_the_wrapper(
 
 
 @pytest.mark.parametrize("script", ["backend_state.sh", "frontend_probe.sh"])
-def test_a_probe_script_still_reaches_a_box_that_predates_the_wrapper(tmp_path, script):
+def test_a_probe_script_uses_the_wrapper_where_there_is_one_and_the_old_call_where_not(
+    tmp_path, script
+):
+    """After the first deploy from #831 the old compose file is gone from the box, so
+    the fallback must be taken only while the wrapper is absent."""
     answering = "printf '%s\\n%s' '{\"status\":\"healthy\"}' 200\n"
+    old_box = tmp_path / "old"
+    old_box.mkdir()
+    new_box = stand_in_box(tmp_path / "new")
 
-    run = _run(
-        ["bash", str(REPO_ROOT / "scripts/deploy" / script)],
-        tmp_path,
-        _fake_tools(tmp_path, answering),
-    )
-
-    assert run.returncode == 0, run.stderr
-    compose_calls = [
-        call for call in _calls(tmp_path) if call.startswith("docker compose")
-    ]
-    assert compose_calls
-    for call in compose_calls:
-        assert call.startswith(
-            "docker compose -f docker-compose.staging.yml --env-file .env.staging "
+    for box, compose_file in (
+        (old_box, "docker-compose.staging.yml"),
+        (new_box, "docker-compose.deploy.yml"),
+    ):
+        run = _run(
+            ["bash", str(REPO_ROOT / "scripts/deploy" / script)],
+            box,
+            _fake_tools(box, answering),
         )
+
+        assert run.returncode == 0, run.stderr
+        compose_calls = [
+            call for call in _calls(box) if call.startswith("docker compose")
+        ]
+        assert compose_calls
+        for call in compose_calls:
+            assert call.startswith(
+                f"docker compose -f {compose_file} --env-file .env.staging "
+            ), box.name
 
 
 # ── the frontend image is host-agnostic ──────────────────────────────────────
@@ -218,6 +229,9 @@ def test_the_frontend_container_is_given_its_public_settings_at_run_time():
     assert environment["NEXT_PUBLIC_API_URL"] == "${NEXT_PUBLIC_API_URL:?}"
     assert environment["NEXT_PUBLIC_SENTRY_DSN"] == "${SENTRY_DSN:?}"
     assert environment["NEXT_PUBLIC_SENTRY_ENVIRONMENT"] == "${ENVIRONMENT}"
+    # The canonical site URL (lib/site.ts) and what robots.txt answers come from here too.
+    assert environment["NEXTAUTH_URL"] == "${NEXTAUTH_URL}"
+    assert environment["ENVIRONMENT"] == "${ENVIRONMENT}"
 
 
 def test_the_pr_gate_builds_both_images_and_checks_one_serves_two_hosts():
@@ -426,6 +440,9 @@ def test_a_deploy_checks_out_the_commit_pulls_the_digests_and_records_them(tmp_p
         "the token was on a command line"
     )
     assert _registry_configs(box) == [], "the registry login outlived the deploy"
+    assert "ghs_short_lived" not in run.stdout + run.stderr, (
+        "the token was printed into a public run log"
+    )
 
 
 def _registry_configs(box: Path) -> list[str]:
@@ -453,17 +470,30 @@ def test_a_failed_pull_leaves_the_box_as_it_was_and_leaves_no_login(tmp_path):
     )
 
 
-def test_a_failed_start_records_nothing_and_leaves_no_login(tmp_path):
+def test_a_failed_start_keeps_the_previous_record_and_leaves_no_login(tmp_path):
+    """The containers of the previous deploy are what is still running."""
+    box = stand_in_box(tmp_path)
+    previous = "APP_VERSION=previous\nBACKEND_IMAGE=old@sha256:1\nFRONTEND_IMAGE=old@sha256:2\n"
+    (box / ".deploy-images.env").write_text(previous)
+
+    run = _deploy(box, 'case " $* " in *" up "*) exit 1;; esac\n')
+
+    assert run.returncode != 0
+    assert (box / ".deploy-images.env").read_text() == previous
+    assert not (box / ".deploy-images.env.new").exists()
+    assert len(re.findall(r"--config (\S+)", (box / "calls").read_text())) == 3, (
+        "the login and both pulls ran"
+    )
+    assert _registry_configs(box) == []
+
+
+def test_a_first_deploy_that_fails_to_start_records_nothing(tmp_path):
     box = stand_in_box(tmp_path)
 
     run = _deploy(box, 'case " $* " in *" up "*) exit 1;; esac\n')
 
     assert run.returncode != 0
     assert not (box / ".deploy-images.env").exists()
-    assert len(re.findall(r"--config (\S+)", (box / "calls").read_text())) == 3, (
-        "the login and both pulls ran"
-    )
-    assert _registry_configs(box) == []
 
 
 def test_a_tag_is_refused_before_anything_runs(tmp_path):
@@ -502,6 +532,7 @@ def _build(
     tmp_path: Path, *args: str, **extra: str
 ) -> tuple[subprocess.CompletedProcess, list[str]]:
     # An image tagged under two names carries a digest for each; only the pushed name's counts.
+    # `${!#}` is the last argument (the image reference being inspected); `##*/` keeps its name.
     digest = (
         'case " $* " in *" inspect "*)\n'
         '  echo "narrative-local@sha256:0ther"\n'
@@ -577,6 +608,18 @@ def test_the_deploy_job_deploys_what_the_build_job_built():
     # `on` parses as YAML's boolean true.
     assert workflow[True]["push"] == {"branches": ["main"]}
     assert build["permissions"] == {"contents": "read", "packages": "write"}
+    build_step = next(step for step in build["steps"] if step.get("id") == "build")
+    assert (
+        'scripts/ci/build_images.sh "$GITHUB_SHA" --push "ghcr.io/$GITHUB_REPOSITORY"'
+        in build_step["run"]
+    )
+    assert "set -o pipefail" in build_step["run"], (
+        "a failed build must fail its own step"
+    )
+    assert build["outputs"] == {
+        "backend": "${{ steps.build.outputs.backend }}",
+        "frontend": "${{ steps.build.outputs.frontend }}",
+    }
     assert deploy["needs"] == "build-images"
     assert deploy["permissions"] == {"contents": "read", "packages": "read"}, (
         "the token the box is handed can read packages and nothing more"
