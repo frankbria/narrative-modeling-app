@@ -16,8 +16,10 @@ from pathlib import Path
 
 import yaml
 
+from tests.test_security.deploy_box import stand_in_box
+
 REPO_ROOT = Path(__file__).resolve().parents[4]
-COMPOSE = REPO_ROOT / "docker-compose.staging.yml"
+COMPOSE = REPO_ROOT / "docker-compose.deploy.yml"
 RUNBOOK = REPO_ROOT / "docs" / "ops" / "CREDENTIAL_ROTATION.md"
 HEALTH_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "staging-health.yml"
 DEPLOY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
@@ -148,6 +150,7 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
     the bucket. Only status fields and exception CLASS names may leave the box."""
     assert STATE_SCRIPT.stat().st_mode & stat.S_IXUSR
     with tempfile.TemporaryDirectory() as tmp:
+        stand_in_box(Path(tmp))
         fake = Path(tmp) / "bin" / "docker"
         fake.parent.mkdir()
         fake.write_text(
@@ -197,6 +200,7 @@ def test_backend_state_script_emits_exception_classes_not_log_lines():
     assert "LogsFetchError" not in out
     # A failed log fetch is a visible sentinel, never an empty section that reads as "clean".
     with tempfile.TemporaryDirectory() as tmp2:
+        stand_in_box(Path(tmp2))
         fake2 = Path(tmp2) / "bin" / "docker"
         fake2.parent.mkdir()
         fake2.write_text(
@@ -261,6 +265,7 @@ def _frontend_probe(docker_script: str) -> subprocess.CompletedProcess:
     the script (#756). on_box.sh now saves the body before running it (#790)."""
     assert FRONTEND_PROBE.stat().st_mode & stat.S_IXUSR
     with tempfile.TemporaryDirectory() as tmp:
+        stand_in_box(Path(tmp))
         bin_dir = Path(tmp) / "bin"
         bin_dir.mkdir()
         for name, text in (

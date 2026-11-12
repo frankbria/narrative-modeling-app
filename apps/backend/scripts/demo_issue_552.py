@@ -13,7 +13,7 @@ import yaml
 
 
 def consumers() -> None:
-    compose = Path("docker-compose.staging.yml").read_text()
+    compose = Path("docker-compose.deploy.yml").read_text()
     runbook = Path("docs/ops/CREDENTIAL_ROTATION.md").read_text()
     backend, _, frontend = compose.partition("\n  frontend:")
     secrets = sorted(

@@ -2,7 +2,7 @@
 
 Staging runs on a shared VPS (`dev.briaanalytics.com`; resolve it with
 `dig +short dev.briaanalytics.com`, the IP has changed before) from
-`docker-compose.staging.yml`: `backend`, `frontend` and `redis` containers. MongoDB
+`docker-compose.deploy.yml`: `backend`, `frontend` and `redis` containers. MongoDB
 is a managed Atlas cluster; S3 is real AWS. After the first deploy, every push to
 `main` deploys through `.github/workflows/deploy.yml` (Step 5).
 
@@ -105,14 +105,14 @@ chmod 600 .env.staging
 - `MONGODB_DB`: database name for both halves (compose defaults to `narrative_modeling-staging`)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`
 - `OPENAI_API_KEY` (without it the app runs on rule-based fallbacks and the health probe fails)
-- `NEXT_PUBLIC_API_URL`: `https://<host>/api/v1`; must include `/api/v1`. Baked into the frontend image at build, and also passed to the backend as `PUBLIC_API_URL`.
+- `NEXT_PUBLIC_API_URL`: `https://<host>/api/v1`; must include `/api/v1`. The frontend reads it when a request arrives (#831), and it is also passed to the backend as `PUBLIC_API_URL`.
 - `NEXTAUTH_URL`: `https://<host>`
 - `ALLOWED_ORIGINS`: frontend page-middleware CORS allowlist; may be empty
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_ID`, `GITHUB_SECRET`
 - `NGINX_SERVER_NAME`: set only once the certificate exists (Steps 6 and 7)
 
 **Optional:** `ADMIN_EMAILS` (unset = nobody is admin), `NEXT_PUBLIC_INVITE_REQUEST_URL`,
-`SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`, `APP_VERSION`, the backstops
+`SENTRY_TRACES_SAMPLE_RATE`, the backstops
 `AI_CALLS_DAILY_CEILING` (default 500 model calls/day across all tenants) and
 `SIGNUP_ALERT_THRESHOLD_24H` (default 100 new accounts/day before the probe fails),
 and `STRIPE_PRICE_ENTERPRISE`, set only to entitle a sales-led deal through checkout
@@ -124,7 +124,7 @@ sender, on a domain verified in Resend (`SheetPredict <jobs@your-domain>`). With
 unset nothing is sent and the backend's startup log says so (grep it for `Email:`).
 `PLAUSIBLE_DOMAIN` (#769) is the Plausible site that signed-out visits to the public
 marketing pages are counted under. The frontend reads it per request, so a new value
-needs a recreate, not a rebuild. Leave it empty on staging: empty sends nothing.
+needs a recreate, not a new image. Leave it empty on staging: empty sends nothing.
 
 > **No inline comments in `.env.staging`.** `VAR=value  # note` makes the comment part
 > of the value, because `docker compose --env-file` does not support them. Put
@@ -133,7 +133,7 @@ needs a recreate, not a rebuild. Leave it empty on staging: empty sends nothing.
 Check the file before every hand-run deploy:
 
 ```bash
-bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
 ```
 
 It prints the complete list of missing required variables, and refuses an invalid
@@ -143,28 +143,58 @@ It prints the complete list of missing required variables, and refuses an invali
 
 ## Step 5: Deploy Application Code
 
-### Option A: Manual (first deploy)
+Nothing is built on the box (#831). CI builds the backend and frontend images once
+per commit and pushes them to GHCR
+(`ghcr.io/frankbria/narrative-modeling-app/{backend,frontend}`, tagged with the commit
+SHA); a box pulls them **by digest**. The same digests can then be given to production,
+which is what makes production "staging moved over".
+
+Two things on the box go with that:
+
+- **`scripts/deploy/compose.sh` is the only way to call compose.** It takes the
+  environment's name from the env file present (`.env.staging` means `staging`; a box
+  holds exactly one of `.env.staging` and `.env.production`) and the images from
+  `.deploy-images.env`. A bare `docker compose -f docker-compose.deploy.yml` fails on
+  the file's guards.
+- **`.deploy-images.env` says what is running:** the commit (`APP_VERSION`) and the two
+  digests, written by the deploy after a successful start. The same three lines are in
+  the Deploy run's summary on GitHub.
+
+### Option A: Automated (GitHub Actions)
+
+`deploy.yml` runs on every push to `main` and on `workflow_dispatch` (a dispatch
+deploys the commit it is dispatched on). Its `build-images` job runs
+`scripts/ci/build_images.sh <sha> --push ghcr.io/<repo>` and hands the two digests to
+`deploy-staging`, which joins the tailnet, SSHes to the box, and runs in the deploy path:
+
+1. `scripts/deploy/deploy_images.sh`: `git fetch`, `git checkout main`,
+   `git reset --hard <sha>`; `scripts/deploy/preflight_staging_env.sh`; `docker pull` of
+   the two digests, logged in with the run's own short-lived token in a throwaway docker
+   config; `compose.sh up -d --remove-orphans`; write `.deploy-images.env`
+2. `scripts/deploy/apply_nginx_conf.sh` (Step 6)
+3. the health gate: waits for `http://localhost:8010/health/ready`, then runs
+   `python -m app.health_probe` in the backend container and
+   `scripts/deploy/frontend_probe.sh`
+4. on failure, `scripts/deploy/backend_state.sh` (container status and exception class names)
+
+The box keeps no registry credential: the token is the workflow's `GITHUB_TOKEN`
+(`packages: read`), which expires with the run.
+
+### Option B: By hand (a box the workflow cannot reach)
+
+Take the three lines from the summary of the latest green Deploy run and a GitHub token
+that can read the repository's packages:
 
 ```bash
 cd /opt/narrative-modeling-app/staging
-bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
-docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+git fetch --prune origin && git checkout main && git reset --hard <APP_VERSION>
+printf 'APP_VERSION=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' <sha> <backend digest> <frontend digest> > .deploy-images.env
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
+docker login ghcr.io          # then `docker logout ghcr.io` when the pulls are done
+docker pull <backend digest> && docker pull <frontend digest>
+scripts/deploy/compose.sh up -d --remove-orphans
+scripts/deploy/compose.sh ps
 ```
-
-### Option B: Automated (GitHub Actions)
-
-`deploy.yml` runs on every push to `main` and on `workflow_dispatch`. It joins the
-tailnet, SSHes to the box, and runs in the deploy path:
-
-1. `git fetch --prune origin && git checkout main && git reset --hard origin/main`
-2. `scripts/deploy/preflight_staging_env.sh`
-3. `docker compose ... up -d --build --remove-orphans`
-4. `scripts/deploy/apply_nginx_conf.sh` (Step 6)
-5. the health gate: waits for `http://localhost:8010/health/ready`, then runs
-   `python -m app.health_probe` in the backend container and
-   `scripts/deploy/frontend_probe.sh`
-6. on failure, `scripts/deploy/backend_state.sh` (container status and exception class names)
 
 **One-time setup.** Add these as environment secrets on the GitHub Environment
 `Development` (Settings → Environments → Development), not as repository secrets:
@@ -194,7 +224,7 @@ run: |
   scripts/deploy/on_box.sh scripts/deploy/my_step.sh      # a script in the repo
   scripts/deploy/on_box.sh <<'REMOTE'                     # or a short inline body
   cd "$DEPLOY_PATH"
-  docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+  scripts/deploy/compose.sh ps
   REMOTE
 ```
 
@@ -304,8 +334,9 @@ check it exists on a new box, or the renewed certificate is never served.
 
 Every line of `.env.staging` that carries the old name changes together:
 `NGINX_SERVER_NAME`, `NEXTAUTH_URL`, `NEXT_PUBLIC_API_URL`, `BACKEND_CORS_ORIGINS` and
-`ALLOWED_ORIGINS`. `NEXT_PUBLIC_API_URL` is baked into the frontend image, so the move
-needs a deploy that rebuilds it, not a restart. The OAuth providers' callback URLs
+`ALLOWED_ORIGINS`. The frontend reads `NEXT_PUBLIC_API_URL` when a request arrives (#831),
+so the move needs the containers recreated (`scripts/deploy/compose.sh up -d
+--force-recreate`), not a new image. The OAuth providers' callback URLs
 (`https://<host>/api/auth/callback/google` and `/github`) and the Stripe webhook endpoint
 (`https://<host>/webhooks/stripe/webhook`) must name the new host. Change them
 immediately before triggering the deploy: sign-in on the old name stops working the
@@ -345,7 +376,7 @@ evaluated before UFW, so a public bind would leak past the firewall anyway.
 
 ```bash
 cd /opt/narrative-modeling-app/staging
-docker compose -f docker-compose.staging.yml --env-file .env.staging ps
+scripts/deploy/compose.sh ps
 # narrative-staging-backend    Up (healthy)
 # narrative-staging-frontend   Up (healthy)
 # narrative-staging-redis      Up (healthy)
@@ -355,7 +386,7 @@ curl -fsS http://localhost:3011 >/dev/null && echo frontend ok
 
 # Per-subsystem probe on fresh connections (Mongo, S3, OpenAI, signups_24h).
 # Every line must read healthy; the exit code is the verdict.
-docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+scripts/deploy/compose.sh exec -T backend python -m app.health_probe
 bash scripts/deploy/frontend_probe.sh            # frontend: {"status":"healthy",...}
 
 # Through the edge
@@ -374,7 +405,7 @@ In a browser, at `https://<host>`:
 - [ ] The sign-in page loads
 - [ ] Sign in with an allowlisted Google or GitHub account
 - [ ] Upload a test dataset and see it on the dashboard
-- [ ] `docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail=100 backend` shows no errors
+- [ ] `scripts/deploy/compose.sh logs --tail=100 backend` shows no errors
 
 ---
 
@@ -386,9 +417,9 @@ In a browser, at `https://<host>`:
 ### View Logs
 
 ```bash
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs -f backend
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail=100 backend
+scripts/deploy/compose.sh logs -f
+scripts/deploy/compose.sh logs -f backend
+scripts/deploy/compose.sh logs --tail=100 backend
 ```
 
 ### Restart Services
@@ -397,7 +428,7 @@ Compose injects env at container **creation**. After any change to `.env.staging
 recreate; `restart` keeps the old values:
 
 ```bash
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --force-recreate backend frontend
+scripts/deploy/compose.sh up -d --force-recreate backend frontend
 ```
 
 `restart` is only for a process that is stuck with correct config. Rotating a
@@ -405,15 +436,8 @@ credential follows `docs/ops/CREDENTIAL_ROTATION.md`.
 
 ### Update Application
 
-Push to `main` (or dispatch `deploy.yml`). By hand, the same sequence:
-
-```bash
-cd /opt/narrative-modeling-app/staging
-git fetch --prune origin && git checkout main && git reset --hard origin/main
-bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
-bash scripts/deploy/apply_nginx_conf.sh
-```
+Push to `main` (or dispatch `deploy.yml`). By hand: Step 5, Option B, then
+`bash scripts/deploy/apply_nginx_conf.sh`.
 
 Then run the Step 9 checks.
 
@@ -429,8 +453,8 @@ drilling them is `docs/ops/DATA_ERASURE_AND_BACKUP_RUNBOOK.md` (sections 2–5).
 ### Container won't start
 
 ```bash
-docker compose -f docker-compose.staging.yml --env-file .env.staging logs backend
-docker compose -f docker-compose.staging.yml --env-file .env.staging ps -a
+scripts/deploy/compose.sh logs backend
+scripts/deploy/compose.sh ps -a
 DEPLOY_PATH=/opt/narrative-modeling-app/staging bash scripts/deploy/backend_state.sh
 ```
 
@@ -468,15 +492,19 @@ docker exec narrative-staging-backend python -c "import redis,os; print(redis.Re
 
 ## Rollback Procedure
 
-The durable rollback is a revert on `main`: the next deploy resets the box to
-`origin/main`, so a hand checkout lasts only until then.
+The durable rollback is a revert on `main`: the next deploy puts the box on that
+commit's images, so a hand rollback lasts only until then.
+
+The immediate one puts the previous images back. Their three lines are in the summary of
+the previous green Deploy run, and the images are still on the box from that deploy
+(if they were pruned, `docker login ghcr.io` first):
 
 ```bash
 # Immediate, on the box
 cd /opt/narrative-modeling-app/staging
-git log --oneline -n 10
-git checkout <previous-commit>
-docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
+git checkout main && git reset --hard <previous APP_VERSION>
+printf 'APP_VERSION=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' <sha> <backend digest> <frontend digest> > .deploy-images.env
+scripts/deploy/compose.sh up -d --remove-orphans
 bash scripts/deploy/apply_nginx_conf.sh
 # Step 9 checks, then revert the bad commit on main through a PR
 ```
@@ -510,8 +538,8 @@ account, so signup is gated by an email allowlist (#261) while `SIGNUP_MODE=invi
    (e.g. `INVITE_ALLOWLIST=alice@example.com,bob@example.com`).
 2. Run the preflight, then recreate both services (no rebuild; it is a runtime variable):
    ```bash
-   bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d backend frontend
+   bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
+   scripts/deploy/compose.sh up -d backend frontend
    ```
 
 **To revoke access:** remove the email and recreate the same way. A live session

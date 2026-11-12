@@ -1,3 +1,5 @@
+import { publicEnv } from '@/lib/runtimeEnv'
+
 export interface CorrelationMatrix {
   columns: string[];
   matrix: number[][];
@@ -56,7 +58,7 @@ export interface ChartFilter {
 }
 
 export async function getCorrelationMatrix(datasetId: string, token?: string): Promise<CorrelationMatrix> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -78,7 +80,7 @@ interface HistogramApiResponse {
 }
 
 export async function getHistogram(datasetId: string, column: string, bins: number = 50, token?: string): Promise<HistogramData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -104,7 +106,7 @@ export async function getHistogram(datasetId: string, column: string, bins: numb
 }
 
 export async function getBoxPlot(datasetId: string, column: string, token?: string): Promise<BoxPlotData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -125,7 +127,7 @@ export async function getScatterPlot(
   filters?: ChartFilter[],
   token?: string
 ): Promise<ScatterPlotData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   
@@ -151,7 +153,7 @@ export async function getLineChart(
   filters?: ChartFilter[],
   token?: string
 ): Promise<LineChartData> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1';
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   

@@ -109,6 +109,20 @@ jest.mock('react-markdown', () => {
 // Mock fetch
 global.fetch = jest.fn()
 
+// In a browser `publicEnv` reads only the settings the server rendered into the page
+// (#831). No server renders a jest page, so the page's settings are the test's process
+// environment until a test assigns its own.
+if (typeof window !== 'undefined') {
+  let assignedByTheTest
+  Object.defineProperty(window, '__PUBLIC_ENV__', {
+    configurable: true,
+    get: () => assignedByTheTest ?? process.env,
+    set: (settings) => {
+      assignedByTheTest = settings
+    },
+  })
+}
+
 // Mock window.open (jsdom only)
 if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'open', {

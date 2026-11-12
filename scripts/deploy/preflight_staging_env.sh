@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Preflight for the staging deploy: verify every variable the compose file marks
-# required via a ${VAR:?...} guard has a non-empty value in the env file, and that
+# Preflight for a deploy (staging or production): verify every variable the compose file
+# marks required via a ${VAR:?...} guard has a non-empty value in the env file (all but
+# the four scripts/deploy/compose.sh supplies), and that
 # SIGNUP_MODE is invite (with an allowlist) or open.
 #
 # Why: `docker compose up` aborts on the FIRST missing ${VAR:?} it interpolates,
@@ -31,6 +32,14 @@ if [ "${1:-}" = "--self-check" ]; then
   done
   printf 'SET=real\nEMPTY=x\nQUOTED_EMPTY="x"\nSPACES=x\nABSENT=x\nTRAILING=x\n' > "$tmp/env"
   "$0" "$tmp/compose.yml" "$tmp/env" >/dev/null || { echo "self-check FAILED: expected exit 0"; exit 1; }
+  # What scripts/deploy/compose.sh supplies is not asked of the env file (#831); a
+  # name that only looks like one of them still is.
+  printf 'services:\n  a:\n    image: ${BACKEND_IMAGE:?wrapper}\n    environment:\n      - E=${ENVIRONMENT:?wrapper}\n      - V=${APP_VERSION:?wrapper}\n      - F=${FRONTEND_IMAGE:?wrapper}\n      - O=${OTHER_ENVIRONMENT:?req}\n' > "$tmp/wrapper.yml"
+  printf 'OTHER_ENVIRONMENT=x\n' > "$tmp/env"
+  "$0" "$tmp/wrapper.yml" "$tmp/env" >/dev/null || { echo "self-check FAILED: a value the wrapper supplies was asked of the env file"; exit 1; }
+  printf 'UNRELATED=x\n' > "$tmp/env"
+  out=$("$0" "$tmp/wrapper.yml" "$tmp/env" 2>&1) && { echo "self-check FAILED: OTHER_ENVIRONMENT was skipped"; exit 1; }
+  grep -q -- "- OTHER_ENVIRONMENT" <<<"$out" || { echo "self-check FAILED: OTHER_ENVIRONMENT not reported"; echo "$out"; exit 1; }
   # The signup-mode rule (#780): the allowlist is required in invite mode only,
   # and a mode that is neither value is refused instead of silently meaning invite.
   printf 'services:\n  a:\n    environment:\n      - M=${SIGNUP_MODE:?req}\n      - L=${INVITE_ALLOWLIST:-}\n' > "$tmp/mode.yml"
@@ -58,7 +67,7 @@ if [ "${1:-}" = "--self-check" ]; then
   echo "self-check OK"; exit 0
 fi
 
-compose_file="${1:-docker-compose.staging.yml}"
+compose_file="${1:-docker-compose.deploy.yml}"
 env_file="${2:-.env.staging}"
 
 [ -f "$compose_file" ] || { echo "preflight: compose file not found: $compose_file" >&2; exit 2; }
@@ -98,8 +107,12 @@ env_value() {
   printf '%s' "$value"
 }
 
+wrapper_supplied="ENVIRONMENT BACKEND_IMAGE FRONTEND_IMAGE APP_VERSION"
 missing=()
 for v in $required; do
+  # Not the env file's to hold (#831): scripts/deploy/compose.sh supplies these from the
+  # env file's name and the deploy's record, and refuses to start anything without them.
+  case " $wrapper_supplied " in *" $v "*) continue ;; esac
   # Required means present AND non-empty — ${VAR:?} rejects an empty value too.
   [ -n "$(env_value "$v")" ] || missing+=("$v")
 done
@@ -107,7 +120,7 @@ done
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "preflight: $env_file is missing ${#missing[@]} required variable(s):" >&2
   printf '  - %s\n' "${missing[@]}" >&2
-  echo "preflight: add them (see .env.staging.example) and re-run the deploy." >&2
+  echo "preflight: add them (see the matching .env.*.example) and re-run the deploy." >&2
   exit 1
 fi
 

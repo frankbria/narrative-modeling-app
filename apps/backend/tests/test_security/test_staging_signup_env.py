@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-COMPOSE_FILE = REPO_ROOT / "docker-compose.staging.yml"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.deploy.yml"
 STAGING_ENV_EXAMPLE = REPO_ROOT / ".env.staging.example"
 
 # Both halves read the mode (`resolve_signup_mode` / `resolveSignupMode`).

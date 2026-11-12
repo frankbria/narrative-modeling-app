@@ -101,7 +101,12 @@ jobs:
           # what failed, by class, on stdout. ssh's and compose's errors still travel.
           status=0
           scripts/deploy/on_box.sh > /tmp/reconcile.txt 2> /tmp/reconcile.err <<'REMOTE' || status=$?
-          cd "$DEPLOY_PATH" && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend sh -c 'python -m app.billing.reconcile_subscriptions --apply 2>/dev/null'
+          cd "$DEPLOY_PATH"
+          # shortcut: a box whose last deploy predates #831 has no wrapper and still has the
+          # old compose file; drop this fallback once staging has been deployed from #831.
+          compose=scripts/deploy/compose.sh
+          [ -x "$compose" ] || compose="docker compose -f docker-compose.staging.yml --env-file .env.staging"
+          $compose exec -T backend sh -c 'python -m app.billing.reconcile_subscriptions --apply 2>/dev/null'
           REMOTE
           # Counts or it did not run. An exec that never started the module can
           # exit 0 having printed nothing (#756), and one that crashed on import

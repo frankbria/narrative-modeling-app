@@ -1,3 +1,4 @@
+import { publicEnv } from '@/lib/runtimeEnv'
 import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { getAuthToken } from '@/lib/auth-helpers'
@@ -54,7 +55,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }
 
   const initializeUpload = async (file: File): Promise<string> => {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+    const backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
     const fileHash = await calculateHash(file)
     
     const response = await fetch(`${backendUrl}/upload/chunked/init`, {
@@ -79,7 +80,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }
 
   const postChunk = async (sessionId: string, chunkNumber: number, chunkData: Blob): Promise<boolean> => {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+    const backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
     const formData = new FormData()
     formData.append('file', chunkData, `chunk_${chunkNumber}`)
 
@@ -124,7 +125,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   }
 
   const completeUpload = async (sessionId: string): Promise<ChunkedUploadResponse | ChunkedPiiPause> => {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+    const backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
     const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/complete`, {
       method: 'POST',
@@ -246,7 +247,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
   // Store the upload `onPiiDetected` paused; `maskPII` picks a masked or an as-uploaded copy.
   const confirmUpload = useCallback(async (sessionId: string, maskPII: boolean) => {
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+      const backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
       const response = await fetch(
         `${backendUrl}/upload/chunked/${sessionId}/confirm?mask_pii=${maskPII}`,
         { method: 'POST', headers: { 'Authorization': `Bearer ${await getAuthToken()}` } }
@@ -271,7 +272,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     try {
       // Matches its init/chunk/complete siblings above: the env var already ends
       // in /api/v1, and the `/api` strip never matched it (#406).
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+      const backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
       
       const response = await fetch(`${backendUrl}/upload/chunked/${sessionId}/resume`, {
         headers: {
@@ -297,7 +298,7 @@ export const useChunkedUpload = (options: ChunkedUploadOptions = {}) => {
     // immediately and a failed abort cannot strand the user mid-cancel.
     const sessionId = uploadState?.sessionId
     if (sessionId) {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+      const backendUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
       void (async () => {
         try {
           await fetch(`${backendUrl}/upload/chunked/${sessionId}`, {

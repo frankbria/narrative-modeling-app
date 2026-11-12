@@ -18,6 +18,7 @@ import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
 import { PublicPageviews } from '@/components/analytics/PublicPageviews'
 import { analyticsDomain, siteMetadata } from '@/lib/site'
+import { publicEnvJson } from '@/lib/runtimeEnv'
 import { Schibsted_Grotesk } from 'next/font/google'
 
 // Self-hosted at build by next/font as --font-schibsted; globals.css maps --font-sans to it.
@@ -50,7 +51,9 @@ export default async function RootLayout({
     // suppressHydrationWarning: next-themes writes the resolved class onto <html>
     // in a pre-hydration script, so the server markup and the first client render
     // legitimately differ on this one attribute (#407).
-    <html lang="en" className={schibsted.variable} suppressHydrationWarning>
+    // data-public-env: this host's public settings, read per request (#831). On <html>
+    // so it is parsed before any script runs; lib/runtimeEnv.ts reads it in the browser.
+    <html lang="en" data-public-env={publicEnvJson()} className={schibsted.variable} suppressHydrationWarning>
       <body className="flex font-sans antialiased">
         {/* Skip-to-content link — first focusable element, visible only on focus
             so keyboard users can bypass the nav (WCAG 2.4.1 / issue #282). */}

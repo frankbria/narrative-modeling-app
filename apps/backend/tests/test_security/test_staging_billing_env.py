@@ -1,6 +1,6 @@
 """Regression guard: the staging container must actually receive the Stripe config.
 
-Issue #457 (P0.14): `docker-compose.staging.yml` passed no `STRIPE_*` variable to
+Issue #457 (P0.14): `docker-compose.deploy.yml` passed no `STRIPE_*` variable to
 the backend, so `stripe_client.is_configured()` was false in the only deployed
 environment — `/billing/checkout` answered 503, the webhook rejected every event
 for want of a signing secret, and `BillingStatus.configured` reported false. None
@@ -20,7 +20,7 @@ import yaml
 
 # apps/backend/tests/test_security/ -> repo root
 REPO_ROOT = Path(__file__).resolve().parents[4]
-COMPOSE_FILE = REPO_ROOT / "docker-compose.staging.yml"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.deploy.yml"
 STAGING_ENV_EXAMPLE = REPO_ROOT / ".env.staging.example"
 BACKEND_ENV_EXAMPLE = REPO_ROOT / "apps" / "backend" / ".env.example"
 
@@ -50,7 +50,7 @@ class TestComposePassesStripeConfig:
         env = _backend_environment()
         missing = [v for v in REQUIRED_STRIPE_VARS if v not in env]
         assert not missing, (
-            "docker-compose.staging.yml must pass these to the backend or billing is "
+            "docker-compose.deploy.yml must pass these to the backend or billing is "
             f"inert in the deployed environment (#457): {missing}"
         )
 

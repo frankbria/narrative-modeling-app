@@ -1,9 +1,12 @@
-# Frontend (Next.js 16) production image — built by docker-compose.staging.yml
-# and deployed by .github/workflows/deploy.yml (issue #150).
+# Frontend (Next.js 16) production image — built once per commit by
+# scripts/ci/build_images.sh (the PR gate and deploy.yml) and run by
+# docker-compose.deploy.yml on every host (#150, #831).
 #
 # Multi-stage build using Next.js standalone output (next.config.mjs enables it
-# when NODE_ENV=production). NEXT_PUBLIC_* values are inlined at build time, so
-# NEXT_PUBLIC_API_URL must be supplied as a build arg by the compose file.
+# when NODE_ENV=production). The image is host-agnostic: no NEXT_PUBLIC_* value is
+# a build arg. The API base, the Sentry DSN and the environment tag come from the
+# container's environment when a request arrives (lib/runtimeEnv.ts), so the digest
+# staging tested is the one production runs.
 
 # ── deps: install node_modules from the lockfile ────────────────────────────
 # Base image digest-pinned (issue #176) for reproducible builds, matching the
@@ -25,13 +28,6 @@ RUN npm ci
 # ── builder: produce the standalone server bundle ───────────────────────────
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-# Browser error reporting (#769): inlined into the client bundle; empty ⇒ off.
-ARG NEXT_PUBLIC_SENTRY_DSN=
-ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT=
-ENV NEXT_PUBLIC_SENTRY_ENVIRONMENT=$NEXT_PUBLIC_SENTRY_ENVIRONMENT
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 # Source maps for Sentry (#1158). Not secret, and only in the builder stage. The token is

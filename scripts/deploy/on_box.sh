@@ -4,11 +4,12 @@
 #
 #   scripts/deploy/on_box.sh scripts/deploy/backend_state.sh    # a repo script
 #   scripts/deploy/on_box.sh <<'REMOTE'                         # an inline body
-#   cd "$DEPLOY_PATH" && docker compose ps
+#   cd "$DEPLOY_PATH" && scripts/deploy/compose.sh ps
 #   REMOTE
 #
 # Needs HOST, DEPLOY_USER and DEPLOY_PATH in the environment, and the key the
-# workflow's "Configure SSH" step writes.
+# workflow's "Configure SSH" step writes. ON_BOX_FORWARD="NAME OTHER" also hands the
+# body those variables (see the end of this file).
 #
 # Two things it exists to get right, both of which were wrong in every step that
 # wrote its own ssh line:
@@ -36,7 +37,17 @@ set -euo pipefail
 run_saved_body='body=$(mktemp) && cat > "$body" && bash "$body" </dev/null; status=$?; rm -f "$body"; exit $status'
 remote="DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -c $(printf '%q' "$run_saved_body")"
 
-if [ $# -gt 0 ]; then
-  exec ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" "$remote" < "$1"
-fi
-exec ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" "$remote"
+# Values the body needs besides DEPLOY_PATH (image digests, a registry token) are
+# named in ON_BOX_FORWARD and travel as the first lines of the body, never in the
+# command string: on a shared box that string is readable in the process list for as
+# long as the body runs, and the saved body is a private temporary file.
+forwarded_exports() {
+  local name
+  for name in ${ON_BOX_FORWARD:-}; do
+    printf 'export %s=%q\n' "$name" "${!name:?$name is named in ON_BOX_FORWARD and is not set}"
+  done
+}
+exports=$(forwarded_exports)
+
+{ printf '%s\n' "$exports"; cat -- "${1:--}"; } \
+  | ssh -i ~/.ssh/staging_key -o BatchMode=yes "$DEPLOY_USER@$HOST" "$remote"

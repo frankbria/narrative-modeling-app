@@ -2,6 +2,7 @@
  * Model training and management service
  */
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { getAuthToken } from '@/lib/auth-helpers'
 import { apiError } from '@/lib/services/apiError'
 import type { ModelReport } from '@/lib/types/modelReport'
@@ -14,7 +15,7 @@ import type {
   ShapSummaryResponse
 } from '@/lib/types/evaluation'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_BASE_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
 /** Supported training modes (issue #101). */
 export type TrainingMode = 'quick' | 'comprehensive'

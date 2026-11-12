@@ -36,7 +36,7 @@ insecure dev fallback (logged as a warning). Any real deployment already sets
 distinct `ARTIFACT_SIGNING_KEY` only if you want to rotate artifact trust
 independently of the auth secret.
 
-> **Staging:** `docker-compose.staging.yml` does not list `ARTIFACT_SIGNING_KEY`, and
+> **Staging:** `docker-compose.deploy.yml` does not list `ARTIFACT_SIGNING_KEY`, and
 > a variable reaches a container only if compose lists it. Setting it in
 > `.env.staging` alone does nothing; add `ARTIFACT_SIGNING_KEY: ${ARTIFACT_SIGNING_KEY:-}`
 > to the backend's `environment:` first, then recreate the backend.

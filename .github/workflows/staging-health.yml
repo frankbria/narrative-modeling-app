@@ -104,7 +104,12 @@ jobs:
           # Every step reaches the box through on_box.sh (#790): a QUOTED heredoc,
           # sent as written, reading DEPLOY_PATH on the far side.
           scripts/deploy/on_box.sh > /tmp/probe.txt 2> /tmp/probe.err <<'REMOTE' || status=$?
-          cd "$DEPLOY_PATH" && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+          cd "$DEPLOY_PATH"
+          # shortcut: a box whose last deploy predates #831 has no wrapper and still has the
+          # old compose file; drop this fallback once staging has been deployed from #831.
+          compose=scripts/deploy/compose.sh
+          [ -x "$compose" ] || compose="docker compose -f docker-compose.staging.yml --env-file .env.staging"
+          $compose exec -T backend python -m app.health_probe
           REMOTE
           # The frontend container shares MONGODB_URI and NEXTAUTH_SECRET and fails
           # silently on a stale one (#756). Same run, same file, same alert issue; the

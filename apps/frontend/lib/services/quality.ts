@@ -2,13 +2,14 @@
  * Quality scoring API client (issue #102).
  */
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { getAuthToken } from '@/lib/auth-helpers'
 import type {
   QualityReportResponse,
   QualityTrendResponse,
 } from '@/lib/types/quality'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_BASE_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
 async function authHeaders(): Promise<HeadersInit> {
   const token = await getAuthToken()

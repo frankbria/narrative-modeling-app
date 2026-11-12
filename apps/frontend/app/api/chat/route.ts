@@ -1,3 +1,4 @@
+import { publicEnv } from '@/lib/runtimeEnv'
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { rateLimit } from '@/lib/api-guards'
@@ -5,7 +6,7 @@ import { rateLimit } from '@/lib/api-guards'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_URL = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
 // Per-user throttle for the chat proxy (guards against cost amplification).
 const CHAT_RATE_LIMIT = { limit: 20, windowMs: 60_000 }

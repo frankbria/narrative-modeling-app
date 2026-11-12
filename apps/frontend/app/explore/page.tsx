@@ -1,5 +1,6 @@
 'use client'
 
+import { publicEnv } from '@/lib/runtimeEnv'
 import { useEffect, useState } from 'react'
 import { HugeiconsIcon } from '@/components/ui/icon'
 import { Loading03Icon } from '@hugeicons/core-free-icons'
@@ -34,7 +35,7 @@ export default function ExploreDataPage() {
   // request went to /api/v1/api/user_data and 404'd — the same bug as #406,
   // missed there because that sweep only looked at `fetch(` templates and this
   // call uses axios.
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+  const apiUrl = publicEnv('NEXT_PUBLIC_API_URL') || 'http://localhost:8000/api/v1'
 
   useEffect(() => {
     const fetchData = async () => {

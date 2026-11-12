@@ -60,13 +60,17 @@ def _on_box(body: str, deploy_path: str, *args: str) -> subprocess.CompletedProc
 def test_a_path_with_shell_in_it_arrives_as_one_value_and_runs_nothing():
     with tempfile.TemporaryDirectory() as tmp:
         marker = Path(tmp) / "ran"
-        hostile = f"/srv/app's dir'; touch {marker}; echo '$(touch {marker}) `touch {marker}`"
+        hostile = (
+            f"/srv/app's dir'; touch {marker}; echo '$(touch {marker}) `touch {marker}`"
+        )
 
         run = _on_box('printf "%s" "$DEPLOY_PATH"', hostile)
 
         assert run.returncode == 0, run.stderr
         assert run.stdout == hostile
-        assert not marker.exists(), "something in DEPLOY_PATH was executed on the far side"
+        assert not marker.exists(), (
+            "something in DEPLOY_PATH was executed on the far side"
+        )
 
 
 def test_the_ordinary_path_is_passed_through_unchanged():
@@ -137,13 +141,17 @@ def test_inline_bodies_are_quoted_heredocs():
     openers = {}
     for workflow in WORKFLOWS:
         # Anywhere on the line: one call has its redirects between the name and the `<<`.
-        openers[workflow.name] = re.findall(r"on_box\.sh[^\n]*?<<\s*(\S+)", _run_blocks(workflow))
+        openers[workflow.name] = re.findall(
+            r"on_box\.sh[^\n]*?<<\s*(\S+)", _run_blocks(workflow)
+        )
         for opener in openers[workflow.name]:
-            assert opener.startswith("'"), f"{workflow.name}: heredoc {opener} is not quoted"
-    # The inline bodies this guards: deploy, its health gate, the hourly probe, and the
-    # daily subscription reconciliation (#606).
+            assert opener.startswith("'"), (
+                f"{workflow.name}: heredoc {opener} is not quoted"
+            )
+    # The inline bodies this guards: the deploy's health gate, the hourly probe, and the
+    # daily subscription reconciliation (#606). The deploy itself is a repo script (#831).
     assert {name: len(found) for name, found in openers.items()} == {
-        "deploy.yml": 2,
+        "deploy.yml": 1,
         "staging-health.yml": 1,
         "subscription-reconcile.yml": 1,
     }
@@ -153,3 +161,73 @@ def test_it_takes_one_script_or_none():
     run = _on_box("echo ran", "/srv/app", "one.sh", "two.sh")
     assert run.returncode == 2
     assert "ran" not in run.stdout
+
+
+def _on_box_forwarding(
+    body: str, forward: str, **values: str
+) -> subprocess.CompletedProcess:
+    with tempfile.TemporaryDirectory() as tmp:
+        fake = Path(tmp) / "bin" / "ssh"
+        fake.parent.mkdir()
+        # Records the command string ssh was given, which is what a process list shows,
+        # and runs it with an empty environment, as the far side of a real ssh does:
+        # only what on_box.sh sends can reach the body.
+        fake.write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf "%s\\n" "$@" > {tmp}/ssh-args\n'
+            "while [ $# -gt 1 ]; do shift; done\n"
+            'exec env -i PATH="$PATH" bash -c "$1"\n'
+        )
+        fake.chmod(0o755)
+        run = subprocess.run(
+            ["bash", str(ON_BOX)],
+            input=body,
+            env={
+                "PATH": f"{fake.parent}:{os.environ['PATH']}",
+                "HOME": tmp,
+                "HOST": "box.example",
+                "DEPLOY_USER": "deployer",
+                "DEPLOY_PATH": "/srv/app",
+                "ON_BOX_FORWARD": forward,
+                **values,
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        args = Path(tmp, "ssh-args")
+        run.ssh_command_line = args.read_text() if args.exists() else ""
+        return run
+
+
+def test_forwarded_values_reach_the_body_and_never_the_command_line():
+    """#831: the deploy hands the box a registry token. The command string ssh runs is
+    in the far side's process list for as long as the body runs; the body is a private
+    temporary file."""
+    hostile = 'tok\'en; touch /tmp/never "$(id)" `id`'
+    run = _on_box_forwarding(
+        'printf "%s|%s" "$REGISTRY_TOKEN" "$BACKEND_IMAGE"',
+        "REGISTRY_TOKEN BACKEND_IMAGE",
+        REGISTRY_TOKEN=hostile,
+        BACKEND_IMAGE="ghcr.io/o/r/backend@sha256:abc",
+    )
+
+    assert run.returncode == 0, run.stderr
+    assert run.stdout == f"{hostile}|ghcr.io/o/r/backend@sha256:abc"
+    assert "tok" not in run.ssh_command_line
+    assert "sha256:abc" not in run.ssh_command_line
+
+
+def test_a_variable_that_is_not_named_is_not_forwarded():
+    run = _on_box_forwarding(
+        'printf "%s" "${REGISTRY_TOKEN:-absent}"', "", REGISTRY_TOKEN="secret"
+    )
+    assert (run.returncode, run.stdout) == (0, "absent")
+
+
+def test_naming_a_variable_that_is_not_set_runs_nothing():
+    run = _on_box_forwarding("echo ran", "REGISTRY_TOKEN")
+    assert run.returncode != 0
+    assert "ran" not in run.stdout
+    assert "REGISTRY_TOKEN" in run.stderr

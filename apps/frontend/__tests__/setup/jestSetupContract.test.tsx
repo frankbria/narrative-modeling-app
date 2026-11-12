@@ -4,14 +4,29 @@
  *   2. `next/navigation` router spies are stable and assertable across renders,
  *      and cleared before each test — exposed as global.__NEXT_ROUTER_MOCKS__.
  *
+ *   3. The page's public settings are the test's process environment (#831): no
+ *      server renders a jest page, and a suite that sets
+ *      `process.env.NEXT_PUBLIC_API_URL` means "this deployment's API".
+ *
  * If someone reverts the harden-mocks change, these tests fail loudly.
  */
 
 import React from 'react';
 import { render } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
+import { publicEnv } from '@/lib/runtimeEnv';
 
 describe('jest.setup contract', () => {
+  it('reads a public setting from the process environment the test set', () => {
+    const original = process.env.NEXT_PUBLIC_API_URL;
+    try {
+      process.env.NEXT_PUBLIC_API_URL = 'https://set-by-a-test.example/api/v1';
+      expect(publicEnv('NEXT_PUBLIC_API_URL')).toBe('https://set-by-a-test.example/api/v1');
+    } finally {
+      process.env.NEXT_PUBLIC_API_URL = original;
+    }
+  });
+
   it('rejects unmocked fetch calls by default', async () => {
     await expect(fetch('/api/anything')).rejects.toThrow(/Unmocked fetch/);
   });

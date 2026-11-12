@@ -17,7 +17,7 @@ import yaml
 
 # apps/backend/tests/test_security/ -> repo root
 REPO_ROOT = Path(__file__).resolve().parents[4]
-COMPOSE_FILE = REPO_ROOT / "docker-compose.staging.yml"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.deploy.yml"
 
 
 def _published_ports() -> list[tuple[str, str]]:

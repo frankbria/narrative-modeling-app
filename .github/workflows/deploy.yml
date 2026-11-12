@@ -1,13 +1,24 @@
 name: Deploy (Staging)
 
-# Automated staging deployment (issue #150). The job reaches the staging VPS over
-# Tailscale, SSHes in as the deploy user, pulls main, and rebuilds with
-# docker-compose.staging.yml (which builds apps/backend/Dockerfile and
-# apps/frontend/Dockerfile). Application secrets live in .env.staging ON THE
-# SERVER and are never passed through CI; compose is invoked with
-# `--env-file .env.staging` so those values are interpolated. MongoDB is a
-# managed Atlas cluster (MONGODB_URI in .env.staging) — no Mongo container is
-# deployed.
+# Automated staging deployment (issues #150, #831). `build-images` builds the
+# backend and frontend images ONCE for the pushed commit and pushes them to GHCR;
+# `deploy-staging` reaches the staging VPS over Tailscale, SSHes in as the deploy
+# user and has the box pull those two images BY DIGEST and start them
+# (scripts/deploy/deploy_images.sh). Nothing is built on the box, so the digest
+# staging ran is the one production can be given. Application secrets live in
+# .env.staging ON THE SERVER and are never passed through CI;
+# scripts/deploy/compose.sh hands that file to compose. MongoDB is a managed Atlas
+# cluster (MONGODB_URI in .env.staging) — no Mongo container is deployed.
+#
+# REGISTRY: ghcr.io/frankbria/narrative-modeling-app/{backend,frontend}, tagged with
+# the commit SHA. The packages are private; the box pulls with this run's own
+# GITHUB_TOKEN (packages: read), which expires with the run and is used from a
+# throwaway docker config. No standing pull credential lives on the box.
+#
+# SOURCE MAPS (#1158): optional. With the repository secret SENTRY_AUTH_TOKEN and
+# the repository variables SENTRY_ORG and SENTRY_PROJECT set, the frontend build
+# uploads its maps under the commit SHA as the release; with any unset it uploads
+# nothing and the image carries no map.
 #
 # NETWORK PATH (issue #384) — the VPS firewalls port 22 off the public internet:
 # `ufw` allows 22 only from the home subnet and `on tailscale0`. A GitHub-hosted
@@ -37,12 +48,13 @@ name: Deploy (Staging)
 #
 # Until all five required secrets are configured the job is a no-op that succeeds
 # with a warning naming the missing ones, so main stays green. Idempotent:
-# re-running on the same commit reconciles the server to that commit and
-# rebuilds; `docker compose up -d` only recreates changed containers.
+# re-running on the same commit reconciles the server to that commit;
+# `docker compose up -d` only recreates containers whose image or config changed.
 
 on:
   push:
     branches: [main]
+  # A dispatch builds and deploys the commit it is dispatched on.
   workflow_dispatch:
 
 concurrency:
@@ -50,12 +62,70 @@ concurrency:
   group: deploy-staging
   cancel-in-progress: false
 
+# Nothing by default; each job states what it needs.
+permissions: {}
+
 jobs:
+  build-images:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    # Don't attempt builds from forks (no access to the registry).
+    if: github.repository == 'frankbria/narrative-modeling-app'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend: ${{ steps.build.outputs.backend }}
+      frontend: ${{ steps.build.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push both images
+        id: build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+        run: |
+          # The script prints only the two digest references on stdout. pipefail: a
+          # failed build must fail this step, not surface one step later.
+          set -o pipefail
+          scripts/ci/build_images.sh "$GITHUB_SHA" --push "ghcr.io/$GITHUB_REPOSITORY" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Record the digests
+        env:
+          BACKEND_IMAGE: ${{ steps.build.outputs.backend }}
+          FRONTEND_IMAGE: ${{ steps.build.outputs.frontend }}
+        run: |
+          # A digest or nothing: a tag can be pushed over, a digest cannot.
+          case "$BACKEND_IMAGE$FRONTEND_IMAGE" in
+            ghcr.io/*@sha256:*ghcr.io/*@sha256:*) ;;
+            *) echo "::error::the build printed no digest reference for one of the images"; exit 1 ;;
+          esac
+          {
+            echo "## Images built for \`$GITHUB_SHA\`"
+            echo
+            echo "- backend: \`$BACKEND_IMAGE\`"
+            echo "- frontend: \`$FRONTEND_IMAGE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
+    needs: build-images
     # Don't attempt deploys from forks (no access to secrets).
     if: github.repository == 'frankbria/narrative-modeling-app'
+    permissions:
+      contents: read
+      # The box pulls the images with this job's token (see the header).
+      packages: read
     # Scopes the job to the Development environment's secrets and surfaces the
     # deployment (with any protection rules) under Settings → Environments.
     environment: Development
@@ -131,22 +201,26 @@ jobs:
           HOST: ${{ secrets.HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+          APP_VERSION: ${{ github.sha }}
+          BACKEND_IMAGE: ${{ needs.build-images.outputs.backend }}
+          FRONTEND_IMAGE: ${{ needs.build-images.outputs.frontend }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Handed to the script on the box inside its body, not on a command line (#831).
+          ON_BOX_FORWARD: APP_VERSION BACKEND_IMAGE FRONTEND_IMAGE REGISTRY_USER REGISTRY_TOKEN
         run: |
-          # Every step reaches the box through on_box.sh (#790): the body below is a
-          # QUOTED heredoc, sent as written, and reads DEPLOY_PATH on the far side.
-          scripts/deploy/on_box.sh <<'REMOTE'
-          set -euo pipefail
-          cd "$DEPLOY_PATH"
-          git fetch --prune origin
-          git checkout main
-          git reset --hard origin/main
-          test -f .env.staging || { echo '.env.staging missing on server'; exit 1; }
-          # Fail fast with the FULL list of any missing required vars, instead of
-          # letting compose abort on the first ${VAR:?} it interpolates.
-          bash scripts/deploy/preflight_staging_env.sh docker-compose.staging.yml .env.staging
-          docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build --remove-orphans
-          docker compose -f docker-compose.staging.yml --env-file .env.staging ps
-          REMOTE
+          # Every step reaches the box through on_box.sh (#790). The box checks out
+          # this commit, pulls the two digests and starts them; it builds nothing.
+          scripts/deploy/on_box.sh scripts/deploy/deploy_images.sh
+          {
+            echo "## Deployed to staging"
+            echo
+            echo "- commit: \`$APP_VERSION\`"
+            echo "- backend: \`$BACKEND_IMAGE\`"
+            echo "- frontend: \`$FRONTEND_IMAGE\`"
+            echo
+            echo "On the box: \`cat .deploy-images.env\` in the deploy directory."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The edge config used to be pasted onto the box by hand (#594), so the live
       # file drifted from the repo for two months and everything the repo file
@@ -192,7 +266,7 @@ jobs:
             echo "Waiting for backend readiness ($i/12)..."; sleep 10
           done
           cd "$DEPLOY_PATH"
-          docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.health_probe
+          scripts/deploy/compose.sh exec -T backend python -m app.health_probe
           REMOTE
           # The frontend's half of the shared credentials (#756): a fresh Mongo
           # connection from its container, and a token it signed, verified by the backend.

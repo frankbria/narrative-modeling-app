@@ -6,6 +6,7 @@
  * so nothing identifying is attached and URL query strings (dataset ids,
  * filenames) are stripped before an event leaves the process.
  */
+import { publicEnv } from '@/lib/runtimeEnv'
 import type { ErrorEvent, Event, Integration, Options } from '@sentry/core'
 
 const stripQuery = (url: unknown) => (typeof url === 'string' ? url.split('?', 1)[0] : url)
@@ -42,8 +43,8 @@ export function sentryOptions(dsn: string | undefined): Options | undefined {
   if (!trimmed) return undefined
   return {
     dsn: trimmed,
-    // Build-time like the DSN, so the browser and server halves agree.
-    environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV,
+    // One name for both halves, so the browser and the server agree.
+    environment: publicEnv('NEXT_PUBLIC_SENTRY_ENVIRONMENT') || process.env.NODE_ENV,
     // v11 collects every category below unless it is switched off; scrubSentryEvent
     // only rewrites the fields it knows, so nothing else may be collected at all.
     dataCollection: {
