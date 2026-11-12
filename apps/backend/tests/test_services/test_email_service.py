@@ -39,6 +39,15 @@ def _accepted(_: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"id": "email_1"})
 
 
+# Resend's documented answer to a key reused with different content
+# (https://resend.com/docs/dashboard/emails/idempotency-keys).
+_KEY_REUSED = {
+    "statusCode": 409,
+    "name": "invalid_idempotent_request",
+    "message": "Same idempotency key used with a different request payload.",
+}
+
+
 class TestConfiguration:
     def test_no_key_means_not_configured(self, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "")
@@ -105,6 +114,47 @@ class TestSend:
 
         assert sent is False
         assert "HTTPStatusError" in caplog.text
+
+    async def test_a_refused_reuse_of_a_key_is_a_duplicate_not_a_lost_mail(
+        self, configured, monkeypatch, caplog
+    ):
+        # #1204: the task and the reaper report one failure in different words under one
+        # key. Resend refuses the second; the first is the mail the owner got.
+        _resend(monkeypatch, lambda _: httpx.Response(409, json=_KEY_REUSED))
+
+        with caplog.at_level(logging.INFO, logger=email_service.logger.name):
+            sent = await email_service.send("a@b.example", "Hello", "Body", idempotency_key="k")
+
+        assert sent is True
+        # Only this service's lines: httpx logs each request itself once the app has
+        # configured logging, which depends on what ran earlier in the session.
+        own = [record for record in caplog.records if record.name == email_service.logger.name]
+        assert [record.levelname for record in own] == ["INFO"]
+        assert "not sent" not in caplog.text
+        assert "already used" in caplog.text
+        assert "a@b.example" not in caplog.text
+
+    @pytest.mark.parametrize(
+        "refusal",
+        [
+            # The first request is still in flight: whether it delivers is not known here.
+            httpx.Response(409, json={"statusCode": 409, "name": "concurrent_idempotent_requests"}),
+            httpx.Response(422, json={"statusCode": 422, "name": "invalid_idempotent_request"}),
+            httpx.Response(409, text="<html>conflict</html>"),
+            httpx.Response(409, json=["invalid_idempotent_request"]),
+        ],
+        ids=["first-still-in-flight", "another-status", "not-json", "not-an-object"],
+    )
+    async def test_any_other_refusal_is_still_a_mail_that_was_not_sent(
+        self, configured, monkeypatch, caplog, refusal
+    ):
+        _resend(monkeypatch, lambda _: refusal)
+
+        with caplog.at_level(logging.INFO, logger=email_service.logger.name):
+            sent = await email_service.send("a@b.example", "Hello", "Body", idempotency_key="k")
+
+        assert sent is False
+        assert "Email not sent: HTTPStatusError" in caplog.text
 
     async def test_an_unreachable_provider_is_false_not_an_exception(self, configured, monkeypatch):
         def unreachable(request: httpx.Request) -> httpx.Response:

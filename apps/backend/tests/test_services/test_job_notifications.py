@@ -124,6 +124,31 @@ class TestAFinishedJob:
         assert "\n" not in outbox[0]["subject"]
         assert "\r" not in outbox[0]["subject"]
 
+    async def test_a_long_label_is_cut_to_the_stated_length(self, account, outbox):
+        # #1204: a model name or filename is user-typed (a filename may be 255 characters).
+        name = "quarterly churn " * 20
+        await job_notifications.job_finished(account, f'Training "{name}"', job_id="job_1", key="k")
+
+        label = 'Training "' + name[:109] + "…"
+        assert len(label) == job_notifications.MAX_LABEL_LENGTH == 120
+        assert outbox[0]["subject"] == f"{label} finished"
+        assert outbox[0]["text"].startswith(f"{label} finished on SheetPredict.")
+        assert name not in outbox[0]["text"]
+
+    async def test_a_label_of_exactly_the_stated_length_is_kept_whole(self, account, outbox):
+        label = "x" * job_notifications.MAX_LABEL_LENGTH
+        await job_notifications.job_finished(
+            account, label, job_id="job_1", failure_reason="Unexpected.", key="k"
+        )
+
+        assert outbox[0]["subject"] == f"{label} failed"
+        assert outbox[0]["text"].startswith(f"{label} did not finish.")
+
+    async def test_the_body_names_the_job_on_one_line_too(self, account, outbox):
+        await job_notifications.job_finished(account, 'Training "a\r\nb"', job_id="job_1", key="k")
+
+        assert outbox[0]["text"].startswith('Training "a b" finished on SheetPredict.')
+
 
 class TestWhoIsNotMailed:
     async def test_an_account_that_opted_out(self, account, outbox):

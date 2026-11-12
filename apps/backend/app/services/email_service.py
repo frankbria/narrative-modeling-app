@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 RESEND_EMAILS_URL = "https://api.resend.com/emails"
 _SETTINGS = ("RESEND_API_KEY", "EMAIL_FROM")
+# https://resend.com/docs/dashboard/emails/idempotency-keys
+_KEY_ALREADY_USED = "invalid_idempotent_request"
 
 
 def _setting(name: str) -> str:
@@ -39,12 +41,25 @@ def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=10.0)
 
 
-async def send(to: str, subject: str, text: str, *, idempotency_key: str) -> bool:
-    """Send one plain-text message; True when Resend accepted it.
+def _key_was_already_used(response: httpx.Response) -> bool:
+    """Resend's refusal of a key that an earlier request, worded differently, used."""
+    if response.status_code != httpx.codes.CONFLICT:
+        return False
+    try:
+        refusal = response.json()
+    except ValueError:
+        return False
+    return isinstance(refusal, dict) and refusal.get("name") == _KEY_ALREADY_USED
 
-    Resend delivers one message per `idempotency_key` (a repeat is answered without
-    sending, or refused if its content differs), so two paths that both see a job end
-    (its own task and the stale-job reaper) mail once.
+
+async def send(to: str, subject: str, text: str, *, idempotency_key: str) -> bool:
+    """Send one plain-text message; True when Resend took it, or had already taken one
+    under this `idempotency_key`.
+
+    Resend delivers one message per key (a repeat is answered without sending, or
+    refused if its content differs), so two paths that both see a job end (its own task
+    and the stale-job reaper) mail once. The refusal is that design working, not a lost
+    mail, and is logged as such (#1204).
     """
     if not is_configured():
         return False
@@ -63,6 +78,9 @@ async def send(to: str, subject: str, text: str, *, idempotency_key: str) -> boo
                     "text": text,
                 },
             )
+            if _key_was_already_used(response):
+                logger.info("Email not repeated: its idempotency key was already used")
+                return True
             response.raise_for_status()
     except Exception as exc:  # noqa: BLE001 - a failed notification must never raise
         # The class only: the message of an HTTP error quotes the response, which can

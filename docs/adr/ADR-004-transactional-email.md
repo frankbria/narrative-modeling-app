@@ -3,6 +3,7 @@
 - **Status:** Accepted (the dunning section is the standing default; see "Open to the owner")
 - **Date:** 2026-11-11
 - **Implements:** [#494](https://github.com/frankbria/narrative-modeling-app/issues/494)
+- **Amended:** 2026-11-12 by [#1204](https://github.com/frankbria/narrative-modeling-app/issues/1204), section 3 only: a refused key reuse is read as a duplicate (it was logged as a send that did not happen), the label is capped, and the retried-batch case is stated. No decision changed.
 
 ## Context
 
@@ -52,8 +53,27 @@ stale-job reaper. Each ending carries an idempotency key, so the task and the re
 reporting the same failure send one message. Resend remembers a key for 24 hours, which
 is far longer than the gap between two reports of one ending. When the two reports
 carry different wording (the task names the model and its own reason, the reaper does
-not), Resend refuses the second as a reuse of the key: the first message is the one
-delivered, and the refusal is logged as a send that did not happen.
+not), Resend refuses the second as a reuse of the key (HTTP 409,
+`invalid_idempotent_request`): the first message is the one delivered. `email_service.send`
+reads that refusal as a duplicate, logs it at INFO and reports the mail as sent; it is
+not a lost mail and no warning is written for it (#1204). A 409 that says the first
+request is still in flight (`concurrent_idempotent_requests`) stays a warning, because
+the second caller cannot know how the first one ends.
+
+The label is put on one line and cut to 120 characters (`MAX_LABEL_LENGTH`, the last one
+an ellipsis) before it goes into the subject and the body: a model name or a filename is
+typed by the user, and a filename may be 255 characters long.
+
+**The first failure of a batch job that was retried at once is not mailed (#1204).** A
+batch job's mail is sent after the FAILED write (from the run, after its completion
+webhook; from the reaper, right after its claim) and reports the ending that is stored at
+that moment. Only the account's own retry request moves a FAILED batch job back to
+PENDING; nothing retries one automatically. If that request lands between the FAILED
+write and the mail step, most likely while the run waits on a slow webhook, the mail step
+finds a job in flight and sends nothing.
+That is left as it is, for the reason a cancelled job sends nothing: the person who
+pressed retry has seen the failure. The retried run's own ending is mailed, under its own
+key.
 
 ### 4. A notification cannot change a job
 
