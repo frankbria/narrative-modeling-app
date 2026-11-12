@@ -23,16 +23,19 @@ export interface PageviewEvent {
   referrer?: string
 }
 
-/** The outside page that led here, without its query string. One of our own pages is never sent: its path can hold a dataset or model id. */
-function externalReferrer(referrer: string, origin: string): string | undefined {
+/**
+ * The outside site that led here, as its origin alone. No path is ever sent: a path
+ * on one of our own hosts (this one, or dev. next to www.) can hold a dataset or model id.
+ */
+function referringSite(referrer: string, origin: string): string | undefined {
   if (!URL.canParse(referrer)) return undefined
-  const from = new URL(referrer)
-  return from.origin === origin ? undefined : from.origin + from.pathname
+  const from = new URL(referrer).origin
+  return from === origin ? undefined : from
 }
 
 export function pageviewEvent(domain: string, origin: string, pathname: string, referrer: string): PageviewEvent {
   const event: PageviewEvent = { name: 'pageview', domain, url: origin + pathname }
-  const cameFrom = externalReferrer(referrer, origin)
+  const cameFrom = referringSite(referrer, origin)
   if (cameFrom) event.referrer = cameFrom
   return event
 }

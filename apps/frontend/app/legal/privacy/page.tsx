@@ -195,8 +195,8 @@ export default function PrivacyPage() {
         <p>
           We count visits to our public pages (the home page, How it works, Pricing and Security)
           with Plausible Analytics, and only while you are signed out. A counted visit sends
-          Plausible the address of the page and of the outside page that led you to our site, both
-          without query strings, along with what every web request carries: your IP address and
+          Plausible the address of the page without its query string and the name of the outside
+          site that led you to ours, along with what every web request carries: your IP address and
           browser details.
           Plausible uses those to count a visitor for one day and does not store the IP address. It
           sets no cookie and stores nothing in your browser, so there is still no consent banner.
