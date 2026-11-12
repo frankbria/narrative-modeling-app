@@ -198,6 +198,9 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       # Server/edge error reporting (instrumentation.ts), same DSN as the backend.
       SENTRY_DSN: ${SENTRY_DSN:?}
+      # The Plausible site that signed-out visits to the public pages are counted
+      # under (#769). Read per request (lib/site.ts); blank counts nothing.
+      PLAUSIBLE_DOMAIN: ${PLAUSIBLE_DOMAIN:-}
       # NextAuth's MongoDB adapter (auth.ts -> lib/db.ts) connects at runtime;
       # lib/db.ts throws on startup without this.
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI (Atlas connection string) must be set in .env.staging}

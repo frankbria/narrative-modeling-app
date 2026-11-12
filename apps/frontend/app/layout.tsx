@@ -16,7 +16,8 @@ import { PlanLimitDialog } from '@/components/billing/PlanLimitDialog'
 import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
-import { siteMetadata } from '@/lib/site'
+import { PublicPageviews } from '@/components/analytics/PublicPageviews'
+import { analyticsDomain, siteMetadata } from '@/lib/site'
 import { Schibsted_Grotesk } from 'next/font/google'
 
 // Self-hosted at build by next/font as --font-schibsted; globals.css maps --font-sans to it.
@@ -61,6 +62,7 @@ export default async function RootLayout({
         </a>
         <ThemeProvider>
         <SessionProvider session={session}>
+          <PublicPageviews domain={analyticsDomain()} />
           <WorkflowProvider>
             {session ? (
               <>

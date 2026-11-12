@@ -193,8 +193,13 @@ export default function PrivacyPage() {
           cross-site tracking cookies, which is why you see no consent banner.
         </p>
         <p>
-          If we ever add analytics, we will add a consent mechanism before turning it on and update
-          this section.
+          We count visits to our public pages (the home page, How it works, Pricing and Security)
+          with Plausible Analytics, and only while you are signed out. A counted visit sends
+          Plausible the address of the page and of the page that led you to it, both without query
+          strings, along with what every web request carries: your IP address and browser type.
+          Plausible uses those to count a visitor for one day and does not store the IP address. It
+          sets no cookie and stores nothing in your browser, so there is still no consent banner.
+          Nothing inside the app is counted this way.
         </p>
       </section>
 

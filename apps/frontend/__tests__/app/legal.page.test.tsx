@@ -101,7 +101,7 @@ describe('Privacy Policy', () => {
   it('is dated by its own latest change, not the Terms date (#1111, #494)', () => {
     const { container } = render(<PrivacyPage />);
     expect(container.textContent).toContain(`Effective ${COMPANY.privacyEffectiveDate}`);
-    expect(COMPANY.privacyEffectiveDate).toBe('November 11, 2026');
+    expect(COMPANY.privacyEffectiveDate).toBe('November 12, 2026');
   });
 
   it('lists the notification setting among what account erasure keeps (#494)', () => {
@@ -164,6 +164,20 @@ describe('Privacy Policy', () => {
     render(<PrivacyPage />);
     const section = screen.getByRole('heading', { name: /cookies/i }).closest('section')!;
     expect(within(section).getByText(/no analytics|no advertising|strictly necessary/i)).toBeInTheDocument();
+  });
+
+  it('says what counts visits, where, and that it sets no cookie (#769 AC5)', () => {
+    render(<PrivacyPage />);
+    const section = screen.getByRole('heading', { name: /cookies/i }).closest('section')!;
+    expect(section.textContent).toMatch(/Plausible/);
+    expect(section.textContent).toMatch(/only while you are signed out/);
+    expect(section.textContent).toMatch(/sets no cookie/);
+    expect(section.textContent).toMatch(/no consent banner/);
+    expect(section.textContent).not.toMatch(/if we ever add analytics/i);
+    const plausible = SUB_PROCESSORS.find((p) => p.name === 'Plausible Analytics')!;
+    expect(plausible.purpose).toMatch(/signed out/);
+    expect(plausible.purpose).toMatch(/no cookie/i);
+    expect(plausible.purpose).toMatch(/no dataset content/i);
   });
 
   // Guards a source-level typo only: a dropped space around an interpolated

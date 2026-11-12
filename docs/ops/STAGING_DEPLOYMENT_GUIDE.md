@@ -122,6 +122,9 @@ it to `stripe_client._REQUIRED_SETTINGS`: losing it resolves that customer's pri
 its training or batch job finishes or fails. Set both or neither: `EMAIL_FROM` is the
 sender, on a domain verified in Resend (`SheetPredict <jobs@your-domain>`). With either
 unset nothing is sent and the backend's startup log says so (grep it for `Email:`).
+`PLAUSIBLE_DOMAIN` (#769) is the Plausible site that signed-out visits to the public
+marketing pages are counted under. The frontend reads it per request, so a new value
+needs a recreate, not a rebuild. Leave it empty on staging: empty sends nothing.
 
 > **No inline comments in `.env.staging`.** `VAR=value  # note` makes the comment part
 > of the value, because `docker compose --env-file` does not support them. Put
