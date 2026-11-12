@@ -204,7 +204,9 @@ def test_no_host_specific_value_is_a_frontend_build_arg():
         assert not re.search(r"build-arg[ =\"']*NEXT_PUBLIC_", _code_lines(path)), (
             path.name
         )
-    build_args = set(re.findall(r'--build-arg "(\w+)=', BUILD_SCRIPT.read_text()))
+    build_args = set(
+        re.findall(r"--build-arg[ =]+[\"']?(\w+)=", BUILD_SCRIPT.read_text())
+    )
     assert build_args == {"SENTRY_RELEASE", "SENTRY_ORG", "SENTRY_PROJECT"}
 
 
@@ -236,6 +238,9 @@ def test_the_pr_gate_builds_both_images_and_checks_one_serves_two_hosts():
 
 
 def test_the_compose_file_names_no_environment():
+    assert not (REPO_ROOT / "docker-compose.staging.yml").exists(), (
+        "renamed, not copied"
+    )
     # NODE_ENV is the build mode of the Next.js server, the same on every host.
     code = _code_lines(COMPOSE_FILE).replace("NODE_ENV: production", "")
     assert re.findall(r".*\b(?:staging|production)\b.*", code) == []
@@ -342,6 +347,32 @@ def test_a_box_with_no_recorded_images_can_be_probed_but_not_started(tmp_path):
     assert len(_calls(box)) == 1
 
 
+def test_the_real_compose_accepts_a_box_with_no_recorded_images(tmp_path):
+    """The recording `docker` above does not interpolate. The real one must get past the
+    compose file's `${BACKEND_IMAGE:?}` guards for a probe to reach a running container."""
+    box = stand_in_box(tmp_path)
+    shutil.copy2(COMPOSE_FILE, box / COMPOSE_FILE.name)
+    (box / ".env.staging").write_text(
+        (REPO_ROOT / ".env.staging.example").read_text() + A_DSN
+    )
+
+    run = subprocess.run(
+        [str(box / "scripts/deploy/compose.sh"), "config", "--format", "json"],
+        env={"PATH": os.environ["PATH"], "HOME": str(box), "DEPLOY_PATH": str(box)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    services = json.loads(run.stdout)["services"]
+    assert services["backend"]["container_name"] == "narrative-staging-backend"
+    assert services["backend"]["image"] == "not-recorded", (
+        "a name no registry serves, so nothing can start from it"
+    )
+
+
 # ── the deploy pulls digests and records what it started ─────────────────────
 
 
@@ -422,13 +453,17 @@ def test_a_failed_pull_leaves_the_box_as_it_was_and_leaves_no_login(tmp_path):
     )
 
 
-def test_a_failed_start_does_not_record_the_new_images(tmp_path):
+def test_a_failed_start_records_nothing_and_leaves_no_login(tmp_path):
     box = stand_in_box(tmp_path)
 
     run = _deploy(box, 'case " $* " in *" up "*) exit 1;; esac\n')
 
     assert run.returncode != 0
     assert not (box / ".deploy-images.env").exists()
+    assert len(re.findall(r"--config (\S+)", (box / "calls").read_text())) == 3, (
+        "the login and both pulls ran"
+    )
+    assert _registry_configs(box) == []
 
 
 def test_a_tag_is_refused_before_anything_runs(tmp_path):
@@ -554,6 +589,9 @@ def test_the_deploy_job_deploys_what_the_build_job_built():
     assert step["env"]["BACKEND_IMAGE"] == "${{ needs.build-images.outputs.backend }}"
     assert step["env"]["FRONTEND_IMAGE"] == "${{ needs.build-images.outputs.frontend }}"
     assert step["env"]["APP_VERSION"] == "${{ github.sha }}"
+    assert step["env"]["REGISTRY_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}", (
+        "the run's own token, which expires with it; never a stored one"
+    )
     assert set(step["env"]["ON_BOX_FORWARD"].split()) == {
         "APP_VERSION",
         "BACKEND_IMAGE",
