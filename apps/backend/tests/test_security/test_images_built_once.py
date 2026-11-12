@@ -626,6 +626,59 @@ def test_a_push_prints_the_two_digest_references_and_nothing_else(tmp_path):
         )
 
 
+# Fails the first N pushes it is asked for (a counter file beside the call record), then succeeds.
+REFUSING_PUSHES = (
+    'case " $* " in *" push "*)\n'
+    '  refused=$(cat "$CALLS.refused" 2>/dev/null || echo 0)\n'
+    '  if [ "$refused" -lt "$REFUSE_PUSHES" ]; then echo $((refused + 1)) > "$CALLS.refused"; echo "error from registry: denied" >&2; exit 1; fi;;\n'
+    "esac\n"
+)
+
+
+def _pushing(
+    tmp_path: Path, refuse: int
+) -> tuple[subprocess.CompletedProcess, list[str]]:
+    digest = 'case " $* " in *" inspect "*) echo "registry.example/app/${!###*/}@sha256:feed" | sed "s/:[^@]*@/@/";; esac\n'
+    run = _run(
+        ["bash", str(BUILD_SCRIPT), COMMIT, "--push", "registry.example/app"],
+        tmp_path,
+        _fake_tools(tmp_path, REFUSING_PUSHES + digest),
+        REFUSE_PUSHES=str(refuse),
+        PUSH_RETRY_PAUSE_SECONDS="0",
+    )
+    return run, [call for call in _calls(tmp_path) if call.startswith("docker push")]
+
+
+def test_a_push_the_registry_refuses_once_is_tried_again(tmp_path):
+    """The first push after #831: GHCR refused one manifest of a package it had just
+    created, and the deploy never started."""
+    run, pushes = _pushing(tmp_path, refuse=1)
+
+    assert run.returncode == 0, run.stderr
+    assert pushes == [
+        f"docker push registry.example/app/backend:{COMMIT}",
+        f"docker push registry.example/app/backend:{COMMIT}",
+        f"docker push registry.example/app/frontend:{COMMIT}",
+    ]
+    assert run.stdout.splitlines() == [
+        "backend=registry.example/app/backend@sha256:feed",
+        "frontend=registry.example/app/frontend@sha256:feed",
+    ]
+    assert "attempt 1 of 3" in run.stderr
+
+
+def test_a_push_the_registry_keeps_refusing_fails_the_build_and_prints_no_digest(
+    tmp_path,
+):
+    run, pushes = _pushing(tmp_path, refuse=99)
+
+    assert run.returncode != 0
+    assert pushes == [f"docker push registry.example/app/backend:{COMMIT}"] * 3, (
+        "three tries, then stop"
+    )
+    assert run.stdout == ""
+
+
 def test_the_source_map_token_is_a_build_secret_only_when_it_is_set(tmp_path):
     (tmp_path / "without").mkdir()
     (tmp_path / "with").mkdir()
