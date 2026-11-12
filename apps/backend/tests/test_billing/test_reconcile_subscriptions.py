@@ -370,6 +370,22 @@ class TestEntryPoint:
         assert "did not finish: TimeoutError" in captured.out
         assert "mongodb.net" not in captured.out + captured.err
 
+    async def test_a_malformed_database_address_is_reported_by_class_only(
+        self, monkeypatch, capsys
+    ):
+        """Building the client raises before any read, and pymongo's message can
+        quote the address it was given, password included."""
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setenv("MONGODB_URI", "mongodb://svc:hunter2@:not-a-port/")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py", "--apply"])
+
+        assert await self._main()() == 3
+
+        captured = capsys.readouterr()
+        assert "did not finish: " in captured.out
+        assert "hunter2" not in captured.out + captured.err
+
 
 def _sdk_subscription(status: str, period_end: int):
     """What `stripe.Subscription.retrieve` returns: an SDK object, not a dict."""

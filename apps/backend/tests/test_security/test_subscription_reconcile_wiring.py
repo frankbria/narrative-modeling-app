@@ -120,10 +120,14 @@ def test_a_clean_run_passes_and_shows_its_counts():
 
 
 def test_the_reconciliations_exit_status_fails_the_run():
-    """Exit 1 is an unreadable or raced row, 2 a missing setting: both are red."""
-    for code in (1, 2):
+    """Exit 1 is an unreadable or raced row (after the counts), 2 a missing setting
+    (refused before any counts, on stderr), 3 a run that did not finish."""
+    unreadable = (
+        "subscriptions with a stripe id: 1\nunreadable from stripe:         1\n"
+    )
+    for code, printed in ((1, unreadable), (2, ""), (3, "did not finish: X\n")):
         status, recorded, _ = _reconcile_step(
-            f"cat > /dev/null\necho 'unreadable from stripe:         1'\nexit {code}\n"
+            f"cat > /dev/null\nprintf '{printed}'\nexit {code}\n"
         )
         assert (status, recorded) == (code, str(code))
 
@@ -173,9 +177,26 @@ def test_every_exit_status_the_run_can_record_is_explained():
         (2, "missing a setting"),
         (3, "did not finish"),
         (4, "no counts"),
+        (137, "SIGKILLed"),
     ):
         posted = _posted_alert({"reconcile.status": str(status)})
         assert f"Exit status {status}: " in posted and phrase in posted, status
+
+
+def test_the_containers_stderr_never_leaves_the_box():
+    """A traceback from the container can quote a connection string, and the alert
+    quotes stderr in a public issue. The module reports failures by class on
+    stdout; only ssh's and compose's own errors may travel."""
+    run = _steps()[RECONCILE]["run"]
+    assert f"sh -c '{COMMAND} 2>/dev/null'" in run
+
+
+def test_a_crash_before_any_counts_is_not_reported_as_unreadable_rows():
+    """An import error in the container exits 1 having printed nothing, which is
+    also the status for unreadable rows: the verdict would send the operator to
+    Stripe for a problem in the image."""
+    status, recorded, _ = _reconcile_step("cat > /dev/null\nexit 1\n")
+    assert (status, recorded) == (4, "4")
 
 
 def test_missing_deploy_secrets_fail_the_run_instead_of_skipping_it():

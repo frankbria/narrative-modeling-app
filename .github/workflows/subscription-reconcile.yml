@@ -95,14 +95,18 @@ jobs:
         run: |
           # The exit code is the verdict; stdout is the counts. Captured with
           # redirects and `|| status=$?` so `-e` cannot end the step before the
-          # status is recorded. stderr goes to its own file (import warnings).
+          # status is recorded. The container's own stderr stays on the box
+          # (`2>/dev/null` inside it): a traceback can quote a connection string,
+          # the report step quotes stderr in a public issue, and the module says
+          # what failed, by class, on stdout. ssh's and compose's errors still travel.
           status=0
           scripts/deploy/on_box.sh > /tmp/reconcile.txt 2> /tmp/reconcile.err <<'REMOTE' || status=$?
-          cd "$DEPLOY_PATH" && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.billing.reconcile_subscriptions --apply
+          cd "$DEPLOY_PATH" && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend sh -c 'python -m app.billing.reconcile_subscriptions --apply 2>/dev/null'
           REMOTE
-          # Counts or it did not run: an exec that never started the module can
-          # exit 0 having printed nothing (#756).
-          if [ "$status" -eq 0 ] && ! grep -q '^subscriptions with a stripe id: ' /tmp/reconcile.txt; then
+          # Counts or it did not run. An exec that never started the module can
+          # exit 0 having printed nothing (#756), and one that crashed on import
+          # exits 1, which would otherwise read as "unreadable rows".
+          if [ "$status" -le 1 ] && ! grep -q '^subscriptions with a stripe id: ' /tmp/reconcile.txt; then
             echo "no counts were printed: the reconciliation did not run" >> /tmp/reconcile.txt
             status=4
           fi
@@ -139,7 +143,7 @@ jobs:
             1) verdict="Exit status 1: at least one subscription could not be read from Stripe, or changed while it was being repaired (see the counts). A changed row settles on the next run. An unreadable one does not: either the key belongs to another Stripe account or mode than the rows (every row unreadable; do not cancel anything), or that subscription was deleted in Stripe (cancel the row by hand).";;
             2) verdict="Exit status 2: the backend container is missing a setting the reconciliation needs (MONGODB_URI, MONGODB_DB, STRIPE_SECRET_KEY or STRIPE_PRICE_PRO).";;
             3) verdict="Exit status 3: the reconciliation started and did not finish; the output names the exception class (a database the container could not reach is the usual one). Nothing more was repaired in this run.";;
-            4) verdict="Exit status 4: the command exited 0 and printed no counts, so the reconciliation did not run in the container.";;
+            4) verdict="Exit status 4: the command printed no counts, so the reconciliation did not run in the container (it never started, or it failed while loading). Its error output stays on the box: run the command there by hand to read it.";;
             137) verdict="Exit status 137: the process was SIGKILLed, so the backend container restarted under it (a deploy, or a boot loop: see the staging health alert).";;
             "not run") verdict="The reconciliation did not run: an earlier step (deploy secrets, tailnet or ssh) failed; see the run log.";;
             *) verdict="Exit status $status.";;

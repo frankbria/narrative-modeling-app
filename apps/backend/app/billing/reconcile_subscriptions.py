@@ -82,16 +82,19 @@ async def _reconcile_database(uri: str, db_name: str, apply: bool) -> int:
     The class name only: a pymongo error names the cluster's hosts, and the
     scheduled run's output and stderr are quoted in a public issue.
     """
-    client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(uri)
     try:
-        return await reconcile(
-            client[db_name]["subscriptions"], _fetch_from_stripe, apply
-        )
+        # Built inside the boundary: a malformed address raises here, and
+        # pymongo's message can quote it.
+        client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(uri)
+        try:
+            return await reconcile(
+                client[db_name]["subscriptions"], _fetch_from_stripe, apply
+            )
+        finally:
+            client.close()
     except Exception as exc:  # noqa: BLE001 - reported by class, see above
         print(f"the reconciliation did not finish: {type(exc).__name__}")
         return 3
-    finally:
-        client.close()
 
 
 def _fetch_from_stripe(subscription_id: str) -> dict[str, Any] | None:
@@ -103,7 +106,7 @@ def _fetch_from_stripe(subscription_id: str) -> dict[str, Any] | None:
     major and `dict()` raises on it, which read every row as unreadable (#606).
 
     shortcut: one blocking call per row, and a rate limit reads as unreadable;
-    upgrade (batching, backoff) when the subscriber count is no longer trivial (#606 AC3).
+    upgrade (batching, backoff) when the subscriber count is no longer trivial (#1213).
     """
     try:
         stripe = stripe_client._client()
