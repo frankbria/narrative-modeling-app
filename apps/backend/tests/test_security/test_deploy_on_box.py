@@ -21,6 +21,7 @@ ON_BOX = REPO_ROOT / "scripts" / "deploy" / "on_box.sh"
 WORKFLOWS = [
     REPO_ROOT / ".github" / "workflows" / "deploy.yml",
     REPO_ROOT / ".github" / "workflows" / "staging-health.yml",
+    REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml",
 ]
 
 # The far side: skip ssh's own options and the destination, then hand the one command
@@ -139,10 +140,12 @@ def test_inline_bodies_are_quoted_heredocs():
         openers[workflow.name] = re.findall(r"on_box\.sh[^\n]*?<<\s*(\S+)", _run_blocks(workflow))
         for opener in openers[workflow.name]:
             assert opener.startswith("'"), f"{workflow.name}: heredoc {opener} is not quoted"
-    # The three inline bodies this guards: deploy, its health gate, and the hourly probe.
+    # The inline bodies this guards: deploy, its health gate, the hourly probe, and the
+    # daily subscription reconciliation (#606).
     assert {name: len(found) for name, found in openers.items()} == {
         "deploy.yml": 2,
         "staging-health.yml": 1,
+        "subscription-reconcile.yml": 1,
     }
 
 

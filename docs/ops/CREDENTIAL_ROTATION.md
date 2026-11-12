@@ -17,7 +17,7 @@ and cluster names are deliberately omitted — see the operator's local runbook.
 | Store | What it holds | Read by |
 |---|---|---|
 | `.env.staging` on the staging box (hand-edited, **not** in git) | every application secret below | `docker compose -f docker-compose.staging.yml --env-file .env.staging` — values are injected at container **creation** |
-| GitHub Environment `Development` (Settings → Environments) | CI's way onto the box: `SSH_KEY`, `HOST`, `SSH_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` (optional `DEPLOY_USER`, `DEPLOY_PATH`) | `deploy.yml`, `staging-health.yml` |
+| GitHub Environment `Development` (Settings → Environments) | CI's way onto the box: `SSH_KEY`, `HOST`, `SSH_KNOWN_HOSTS`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` (optional `DEPLOY_USER`, `DEPLOY_PATH`) | `deploy.yml`, `staging-health.yml`, `subscription-reconcile.yml` |
 | GitHub repository secrets | backup verification: `AWS_ROLE_TO_ASSUME`, `AWS_REGION`, `AWS_BUCKET_NAME`, `ATLAS_PUBLIC_KEY`, `ATLAS_PRIVATE_KEY`, `ATLAS_GROUP_ID`, `ATLAS_CLUSTER_NAME` | `backup-verify.yml` |
 | the operator's private secret record | the canonical copy of everything in `.env.staging` | a rebuild of the box; a value edited only on the box is lost on the next one |
 

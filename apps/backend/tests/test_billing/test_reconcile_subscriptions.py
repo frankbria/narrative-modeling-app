@@ -1,32 +1,26 @@
-"""Coverage for the #458/#510 reconciliation script, which bulk-writes real data.
+"""Coverage for the #458/#510 reconciliation, which bulk-writes real data.
 
-`scripts/reconcile_subscriptions.py` is the repair path for a missed webhook and
+`app/billing/reconcile_subscriptions.py` is the repair path for a missed webhook and
 the backfill for every row written before the `_period_end()` fix. It runs against
 staging and production, so its comparison logic is worth a test rather than a
 one-off manual run. `reconcile()` takes the collection and the Stripe fetch, so it
 can be pointed at the test DB with a fake Stripe.
 """
 
-import importlib.util
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
+from app.billing import reconcile_subscriptions
 from app.config import settings as _settings
 from app.models.subscription import PlanTier, Subscription, SubscriptionStatus
 from app.utils.datetime import as_utc
 
 pytestmark = pytest.mark.asyncio
 
-_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "reconcile_subscriptions.py"
-
 
 def _load_reconcile():
-    spec = importlib.util.spec_from_file_location("reconcile_subscriptions", _SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.reconcile
+    return reconcile_subscriptions.reconcile
 
 
 def _remote(
@@ -105,9 +99,7 @@ class TestReconcile:
 
         code = await reconcile(
             _collection(),
-            lambda _: _remote(
-                "active", int(period_end.timestamp()), price="price_ent"
-            ),
+            lambda _: _remote("active", int(period_end.timestamp()), price="price_ent"),
             apply=True,
         )
 
@@ -313,10 +305,7 @@ class TestEntryPoint:
     """`main()` refuses only what would make `--apply` write a wrong tier (#598)."""
 
     def _main(self):
-        spec = importlib.util.spec_from_file_location("reconcile_subscriptions", _SCRIPT)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.main
+        return reconcile_subscriptions.main
 
     async def test_an_unset_enterprise_price_still_repairs_status(
         self, setup_database, monkeypatch, capsys
@@ -342,3 +331,143 @@ class TestEntryPoint:
 
         assert await self._main()() == 2
         assert "STRIPE_PRICE_PRO" in capsys.readouterr().err
+
+    async def test_stripe_unconfigured_is_refused(self, monkeypatch, capsys):
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
+
+        assert await self._main()() == 2
+        assert "STRIPE_SECRET_KEY" in capsys.readouterr().err
+
+    async def test_a_missing_database_name_is_refused(self, monkeypatch, capsys):
+        """Without `MONGODB_DB` the client would land on a database named `test`
+        and report "every subscription matches" about an empty collection."""
+        monkeypatch.delenv("MONGODB_DB", raising=False)
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
+
+        assert await self._main()() == 2
+        assert "MONGODB_DB" in capsys.readouterr().err
+
+    async def test_a_crash_reports_its_class_and_never_its_message(
+        self, setup_database, monkeypatch, capsys
+    ):
+        """A pymongo error names the Atlas hosts, and the scheduled run's output
+        and stderr are quoted in a public issue (#606)."""
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py", "--apply"])
+
+        async def unreachable(*_args):
+            raise TimeoutError(
+                "cluster0-shard-00-00.abc123.mongodb.net:27017: timed out"
+            )
+
+        monkeypatch.setattr(reconcile_subscriptions, "reconcile", unreachable)
+
+        assert await self._main()() == 3
+
+        captured = capsys.readouterr()
+        assert "did not finish: TimeoutError" in captured.out
+        assert "mongodb.net" not in captured.out + captured.err
+
+    async def test_a_malformed_database_address_is_reported_by_class_only(
+        self, monkeypatch, capsys
+    ):
+        """Building the client raises before any read, and pymongo's message can
+        quote the address it was given, password included."""
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setenv("MONGODB_URI", "mongodb://svc:hunter2@:not-a-port/")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py", "--apply"])
+
+        assert await self._main()() == 3
+
+        captured = capsys.readouterr()
+        assert "did not finish: " in captured.out
+        assert "hunter2" not in captured.out + captured.err
+
+
+def _sdk_subscription(status: str, period_end: int):
+    """What `stripe.Subscription.retrieve` returns: an SDK object, not a dict."""
+    import stripe
+
+    return stripe.Subscription.construct_from(
+        {
+            "id": "sub_x",
+            "object": "subscription",
+            "status": status,
+            "items": {
+                "object": "list",
+                "data": [
+                    {
+                        "id": "si_x",
+                        "object": "subscription_item",
+                        "current_period_end": period_end,
+                        "price": {"id": "price_pro", "object": "price"},
+                    }
+                ],
+            },
+        },
+        "sk_test_x",
+    )
+
+
+class TestTheStripeRead:
+    """The read the scheduled run makes (#606), against the SDK's own object.
+
+    Every other test injects a dict. The SDK returns an object that `dict()`
+    cannot convert in this major, so the unattended run read every row as
+    unreadable while these tests stayed green.
+    """
+
+    async def test_a_missed_renewal_is_repaired_from_the_sdk_object(
+        self, setup_database, monkeypatch, capsys
+    ):
+        import stripe
+
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py", "--apply"])
+        renewed = (datetime.now(UTC) + timedelta(days=30)).replace(microsecond=0)
+        lapsed = datetime.now(UTC) - timedelta(days=10)
+        await _seed("u-renewed", current_period_end=lapsed)
+        await _collection().update_one(
+            {"user_id": "u-renewed"}, {"$set": {"updated_at": lapsed}}
+        )
+        before = await Subscription.find_one(Subscription.user_id == "u-renewed")
+        assert before is not None and before.effective_tier == PlanTier.FREE
+        monkeypatch.setattr(
+            stripe.Subscription,
+            "retrieve",
+            lambda _id: _sdk_subscription("active", int(renewed.timestamp())),
+        )
+
+        assert await reconcile_subscriptions.main() == 0
+
+        assert "repaired:                       1" in capsys.readouterr().out
+        sub = await Subscription.find_one(Subscription.user_id == "u-renewed")
+        assert sub is not None
+        assert as_utc(sub.current_period_end) == renewed
+        assert sub.effective_tier == PlanTier.PRO
+
+    async def test_a_stripe_failure_reads_as_unreadable_and_names_its_class(
+        self, setup_database, monkeypatch, capsys
+    ):
+        import stripe
+
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py", "--apply"])
+        await _seed("u-limited")
+
+        def limited(_id):
+            raise stripe.RateLimitError("slow down, sub_x")
+
+        monkeypatch.setattr(stripe.Subscription, "retrieve", limited)
+
+        assert await reconcile_subscriptions.main() == 1
+
+        out = capsys.readouterr().out
+        assert "RateLimitError" in out
+        assert "unreadable from stripe:         1" in out
+        assert "sub_x" not in out, "the output lands in a public issue"

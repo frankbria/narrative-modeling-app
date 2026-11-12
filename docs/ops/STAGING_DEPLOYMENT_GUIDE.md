@@ -262,8 +262,9 @@ backup belongs in `nginx-staging.conf`, not back on the box.
 > is too low for real volume. Raise it in `nginx-staging.conf` and in
 > `apps/backend/tests/test_security/test_nginx_webhook_conn_limit.py` together, then
 > make sure the refused events arrived: resend any that Stripe's dashboard shows as
-> failed, or run `apps/backend/scripts/reconcile_subscriptions.py` (it re-reads Stripe and repairs
-> tier and status).
+> failed, or wait for the daily `subscription-reconcile.yml` run (it re-reads Stripe and repairs
+> tier and status; by hand, in the backend container:
+> `python -m app.billing.reconcile_subscriptions --apply`).
 
 ---
 

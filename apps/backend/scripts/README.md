@@ -23,7 +23,6 @@ you mean. Scripts that change data are read-only unless given `--apply`; most ac
 | `inventory_dataset_links.py` | Inventories dual-written dataset twins whose link is broken | `--json` |
 | `inventory_orphaned_s3_objects.py` | Counts and sizes dataset/transformation S3 objects no row owns | `--dump`, `--json`, `--min-age-seconds` |
 | `reconcile_model_artifacts.py` | Reports S3 objects under `models/` that no `MLModel` owns | `--dump`, `--json`, `--min-age-seconds` |
-| `reconcile_subscriptions.py` | Re-reads every `Subscription` from Stripe and rewrites what drifted | `--apply` |
 | `reconcile_unprefixed_s3_keys.py` | Moves bucket-root dataset objects under their owner's prefix (below) | `--apply` |
 | `demo_*.py` | Evidence scripts for the issue in their name | |
 
