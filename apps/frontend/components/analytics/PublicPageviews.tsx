@@ -8,8 +8,9 @@ import { COUNTED_PATHS, pageviewEvent, sendPageview } from '@/lib/analytics/plau
 /**
  * Counts a signed-out visit to a public marketing page (#769 AC5).
  *
- * The session check lives here, not in where the layout mounts this, so no
- * placement can make a signed-in page report to Plausible.
+ * The layout mounts this only where the server found no session, and the
+ * session check here holds whatever the placement, so a signed-in page cannot
+ * report to Plausible.
  */
 export function PublicPageviews({ domain }: { domain: string }) {
   const pathname = usePathname()

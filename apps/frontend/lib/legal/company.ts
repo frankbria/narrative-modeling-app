@@ -91,7 +91,7 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     name: 'Plausible Analytics',
     purpose:
-      'Counts visits to our public pages while you are signed out. Receives the address of the page and of the page that led you to it, both without query strings, with your IP address and browser type, which it uses to count a visitor for one day and does not store. It sets no cookie. Nothing inside the app is sent: no account identity and no dataset content.',
+      'Counts visits to our public pages while you are signed out. Receives the address of the page and of the outside page that led you to our site, both without query strings, with your IP address and browser details, which it uses to count a visitor for one day and does not store. It sets no cookie. Nothing inside the app is sent: no account identity and no dataset content.',
     privacyUrl: 'https://plausible.io/privacy',
   },
   {

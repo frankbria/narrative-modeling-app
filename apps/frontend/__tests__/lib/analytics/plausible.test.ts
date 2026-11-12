@@ -23,14 +23,22 @@ describe('pageviewEvent', () => {
     })
   })
 
-  it('sends the referrer without its query string or fragment', () => {
+  it('sends an outside referrer without its query string or fragment', () => {
     const event = pageviewEvent(
       'sheetpredict.app',
       'https://www.sheetpredict.app',
       '/',
-      'https://www.sheetpredict.app/auth/signin?callbackUrl=%2Fmodel%2F65f0c0ffee#top',
+      'https://news.example/item/42?id=7&token=secret#comments',
     )
-    expect(event.referrer).toBe('https://www.sheetpredict.app/auth/signin')
+    expect(event.referrer).toBe('https://news.example/item/42')
+  })
+
+  it.each([
+    'https://www.sheetpredict.app/model/65f0c0ffee',
+    'https://www.sheetpredict.app/auth/signin?callbackUrl=%2Fmodel%2F65f0c0ffee',
+    'https://www.sheetpredict.app/pricing',
+  ])('never sends one of our own pages as the referrer: %s', (ownPage) => {
+    expect(pageviewEvent('sheetpredict.app', 'https://www.sheetpredict.app', '/', ownPage)).not.toHaveProperty('referrer')
   })
 
   it('leaves out a referrer the browser did not give or that is not an address', () => {

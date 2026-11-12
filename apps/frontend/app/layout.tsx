@@ -62,7 +62,6 @@ export default async function RootLayout({
         </a>
         <ThemeProvider>
         <SessionProvider session={session}>
-          <PublicPageviews domain={analyticsDomain()} />
           <WorkflowProvider>
             {session ? (
               <>
@@ -101,6 +100,8 @@ export default async function RootLayout({
               </>
             ) : (
               <div className="flex flex-1 min-w-0 min-h-screen flex-col">
+              {/* Signed-out branch only: nothing inside the app is counted (#769). */}
+              <PublicPageviews domain={analyticsDomain()} />
               <main
                 id="main-content"
                 tabIndex={-1}
