@@ -143,8 +143,10 @@ def test_a_failure_lands_on_an_issue_and_survives_a_retitle():
     assert doc["permissions"]["issues"] == "write"
     report = _steps()[REPORT]
     # A tailnet or ssh failure leaves the reconcile step skipped; keying the report
-    # on that step's outcome would file nothing for exactly those failures.
-    assert str(report["if"]).strip() == "failure()"
+    # on that step's outcome would file nothing for exactly those failures. A job
+    # that hits `timeout-minutes` is cancelled, not failed: a hung ssh must report too.
+    assert str(report["if"]).strip() == "failure() || cancelled()"
+    assert "timed out" in _posted_alert({})
     for name in (REPORT, CLOSE):
         assert f"search='\"{ALERT_PHRASE}\" in:title'" in _steps()[name]["run"]
     assert "min_by(.number)" in report["run"]
@@ -163,6 +165,9 @@ def test_the_alert_carries_the_counts_and_says_what_the_exit_status_means():
     assert f"[P2] [billing] {ALERT_PHRASE}" in posted
     assert "RateLimitError" in posted and "unreadable from stripe:         1" in posted
     assert "could not be read from Stripe" in posted
+    assert "rate limit" in posted, (
+        "a 429 is unreadable too; do not send them to swap keys"
+    )
     assert "https://example.invalid/run" in posted
 
 
