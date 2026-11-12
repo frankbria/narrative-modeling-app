@@ -1,0 +1,185 @@
+name: Subscription Reconciliation
+
+# Issue #606. Webhook delivery was the only thing keeping a Subscription row in
+# step with Stripe, and Stripe gives up on an event after about three days. A
+# missed renewal then costs a paying customer their tier once the grace window
+# passes, and only re-reading Stripe repairs it. The repair existed and nothing
+# ran it.
+#
+# This runs `python -m app.billing.reconcile_subscriptions --apply` INSIDE the
+# staging backend container once a day: it re-reads every subscription from Stripe
+# and rewrites status, period end and tier where they drifted. Its output is counts
+# and exception class names only. Any exit status but 0 (a row Stripe would not
+# return, a row a webhook changed mid-run, a missing setting) fails the run AND
+# opens (or comments on) a tracking issue; a later clean run closes it.
+#
+# Staging is the only deployment. The production environment (#829) needs the same
+# job against its own box before the first live charge (#771).
+#
+# Same network path and Development-environment secrets as staging-health.yml
+# (SSH_KEY, HOST, SSH_KNOWN_HOSTS, TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, optional
+# DEPLOY_USER / DEPLOY_PATH), and secret-gated the same way.
+
+on:
+  schedule:
+    # Daily: the ACTIVE grace window is three days, so a missed renewal is repaired
+    # with two runs to spare before the customer would lose their tier.
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: subscription-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile subscriptions with Stripe
+    runs-on: ubuntu-latest
+    if: github.repository == 'frankbria/narrative-modeling-app'
+    environment: Development
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check deploy secrets are configured
+        id: preflight
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          HOST: ${{ secrets.HOST }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+        run: |
+          missing=()
+          [ -n "$SSH_KEY" ]            || missing+=("SSH_KEY")
+          [ -n "$HOST" ]               || missing+=("HOST")
+          [ -n "$SSH_KNOWN_HOSTS" ]    || missing+=("SSH_KNOWN_HOSTS")
+          [ -n "$TS_OAUTH_CLIENT_ID" ] || missing+=("TS_OAUTH_CLIENT_ID")
+          [ -n "$TS_OAUTH_SECRET" ]    || missing+=("TS_OAUTH_SECRET")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Deploy secrets not set (${missing[*]}) — nothing reconciled. See .github/workflows/deploy.yml header."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Connect to Tailscale
+        if: steps.preflight.outputs.configured == 'true'
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Configure SSH
+        if: steps.preflight.outputs.configured == 'true'
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          # umask first: the key must never be world-readable, even briefly.
+          umask 077
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/staging_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+
+      - name: Reconcile subscriptions in the backend container
+        id: reconcile
+        if: steps.preflight.outputs.configured == 'true'
+        env:
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+        run: |
+          # The exit code is the verdict; stdout is the counts. Captured with
+          # redirects and `|| status=$?` so `-e` cannot end the step before the
+          # status is recorded. stderr goes to its own file (import warnings).
+          status=0
+          scripts/deploy/on_box.sh > /tmp/reconcile.txt 2> /tmp/reconcile.err <<'REMOTE' || status=$?
+          cd "$DEPLOY_PATH" && docker compose -f docker-compose.staging.yml --env-file .env.staging exec -T backend python -m app.billing.reconcile_subscriptions --apply
+          REMOTE
+          # Counts or it did not run: an exec that never started the module can
+          # exit 0 having printed nothing (#756).
+          if [ "$status" -eq 0 ] && ! grep -q '^subscriptions with a stripe id: ' /tmp/reconcile.txt; then
+            echo "no counts were printed: the reconciliation did not run" >> /tmp/reconcile.txt
+            status=3
+          fi
+          echo "$status" > /tmp/reconcile.status
+          cat /tmp/reconcile.txt
+          {
+            echo "## Subscription reconciliation (exit $status)"
+            echo
+            echo '```'
+            cat /tmp/reconcile.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Report the failure on an issue
+        # `failure()` alone, on purpose: a Tailscale or SSH step that fails first
+        # leaves the reconcile step `skipped`, and a schedule that cannot reach the
+        # box is a schedule that is not running.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HOST: ${{ secrets.HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
+        run: |
+          title='[P2] [billing] Subscription reconciliation is failing'
+          # The stable phrase, never the full title: issues get retitled with a
+          # PX.Y prefix, and a search on the bot's own prefix then files a duplicate.
+          search='"Subscription reconciliation is failing" in:title'
+          status=$(cat /tmp/reconcile.status 2>/dev/null || echo "not run")
+          case "$status" in
+            1) verdict="Exit status 1: at least one subscription could not be read from Stripe, or changed while it was being repaired (see the counts). A changed row settles on the next run. An unreadable one does not: either the key belongs to another Stripe account or mode than the rows (every row unreadable; do not cancel anything), or that subscription was deleted in Stripe (cancel the row by hand).";;
+            2) verdict="Exit status 2: the backend container is missing a setting the reconciliation needs (MONGODB_URI, MONGODB_DB, STRIPE_SECRET_KEY or STRIPE_PRICE_PRO).";;
+            137) verdict="Exit status 137: the process was SIGKILLed, so the backend container restarted under it (a deploy, or a boot loop: see the staging health alert).";;
+            "not run") verdict="The reconciliation did not run: an earlier step (tailnet or ssh) failed; see the run log.";;
+            *) verdict="Exit status $status.";;
+          esac
+          # `|| true`: under the runner's `bash -e`, a missing file would end this
+          # step before it files anything.
+          counts=$(cat /tmp/reconcile.txt 2>/dev/null || true); [ -n "$counts" ] || counts='(nothing was printed)'
+          stderr=$(tail -n 20 /tmp/reconcile.err 2>/dev/null || true); [ -n "$stderr" ] || stderr='(empty)'
+          # shellcheck disable=SC2016 # the backticks are literal markdown fences
+          body=$(printf 'Run: %s\n\n%s\n\n## Output\n```\n%s\n```\n\n<details><summary>stderr (last 20 lines)</summary>\n\n```\n%s\n```\n</details>\n\nUntil this is green, a renewal whose webhook was missed is not repaired: the customer drops to FREE three days after the stale period end.\n' \
+            "$RUN_URL" "$verdict" "$counts" "$stderr")
+          # ssh names the host in its errors, and Actions masks secrets only in the
+          # log, never in an issue body this step posts to a public repo (#1150).
+          # ssh lowercases the name before printing it, so redact that form too.
+          body=${body//"$HOST"/<staging host>}
+          body=${body//"${HOST,,}"/<staging host>}
+          [ -z "$DEPLOY_USER" ] || body=${body//"$DEPLOY_USER@"/<deploy user>@}
+          body=${body//"$DEPLOY_PATH"/<deploy path>}
+          # `// empty`: on no match jq would print the string "null".
+          existing=$(gh issue list --state open --search "$search" --json number --jq 'min_by(.number).number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Close a recovered alert
+        if: steps.reconcile.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          search='"Subscription reconciliation is failing" in:title'
+          for n in $(gh issue list --state open --search "$search" --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Recovered: every subscription matches Stripe in $RUN_URL"
+          done
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/staging_key

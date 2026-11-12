@@ -9,22 +9,24 @@ Plan limits live in `app/billing/plans.py` rather than here on purpose: a limit 
 product decision that changes without a migration, whereas this document records
 what a tenant actually bought.
 
-**How this mirror stays in sync, and what happens when it does not (#458 AC4).**
-Webhook delivery is the only automatic sync mechanism. There is no scheduled
-reconciliation, deliberately: this service has no scheduler, and Stripe already
-retries a failed delivery with backoff for about three days, so a *permanently*
-missed event is rare. The two ways a stale row can be wrong are not symmetric, and
-each is handled:
+**How this mirror stays in sync, and what happens when it does not (#458 AC4, #606).**
+Webhook delivery is the primary sync mechanism, and a daily reconciliation is the
+backstop: Stripe retries a failed delivery with backoff for about three days and
+then gives up. The service itself still has no scheduler. The two ways a stale row
+can be wrong are not symmetric, and each is handled:
 
-* **A missed lapse** — the customer stopped paying and we never heard. The expiry
+* **A missed lapse**: the customer stopped paying and we never heard. The expiry
   check in `is_entitled` catches this without any help from Stripe: entitlement
   runs out with the paid period, so a dropped event fails closed rather than
   granting a tier forever, which is the bug #458 was filed for.
-* **A missed renewal** — the customer paid and we never heard. This one fails the
+* **A missed renewal**: the customer paid and we never heard. This one fails the
   other way, and no local rule can repair it, because the missing information is
-  the payment. `scripts/reconcile_subscriptions.py` re-reads Stripe and rewrites
-  what has drifted; run it from cron on the box, or by hand after a Stripe
-  incident.
+  the payment. `app/billing/reconcile_subscriptions.py` re-reads Stripe and
+  rewrites what has drifted. `.github/workflows/subscription-reconcile.yml` runs
+  it with `--apply` in the staging backend container every day and opens an issue
+  when it does not exit 0, so the repair lands inside `ENTITLEMENT_GRACE` as long
+  as that workflow is green. A deployment that workflow does not reach has
+  webhooks only.
 """
 
 from datetime import UTC, datetime, timedelta
