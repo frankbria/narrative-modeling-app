@@ -18,6 +18,7 @@ import re
 from tests.test_security.test_nginx_webhook_route import (
     NGINX_CONF,
     REPO_ROOT,
+    _location_blocks,
     _server_block,
     _webhook_location,
 )
@@ -33,6 +34,8 @@ WEBHOOK_CONNECTION_CAP = 20
 #: The zone's name, pinned because the runbook tells an operator to look for it in the
 #: error log (`limiting connections by zone "<name>"`). Rename it there too.
 WEBHOOK_ZONE = "narrative_webhook_conn"
+
+_LIMIT_REQ = r"^[^\S\n]*limit_req\s+zone="
 
 
 def _zone() -> re.Match[str]:
@@ -113,6 +116,19 @@ def test_webhook_location_still_has_no_request_rate_limit():
     match, body, _ = _webhook_location()
     assert not re.search(r"^\s*limit_req\b", body, re.M), (
         f"location {match} must not carry `limit_req`: it would 429/503 Stripe itself (#367)"
+    )
+
+
+def test_no_request_rate_limit_is_inherited_by_the_webhook():
+    # A limit_req at server or http level applies to every location without its own,
+    # the webhook included, while the block itself still reads clean. So every
+    # limit_req in the file has to sit inside some location.
+    in_file = len(re.findall(_LIMIT_REQ, NGINX_CONF.read_text(), re.M))
+    in_locations = sum(
+        len(re.findall(_LIMIT_REQ, body, re.M)) for body, _ in _location_blocks(_server_block()).values()
+    )
+    assert in_file == in_locations, (
+        f"{in_file - in_locations} `limit_req` outside any location: the webhook would inherit it (#367)"
     )
 
 
