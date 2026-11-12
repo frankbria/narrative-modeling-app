@@ -31,9 +31,14 @@ export interface PageviewEvent {
  * on one of our own hosts (this one, or dev. next to www.) can hold a dataset or model id.
  */
 function referringSite(referrer: string, origin: string): string | undefined {
-  if (!URL.canParse(referrer)) return undefined
-  const from = new URL(referrer).origin
-  return from === origin ? undefined : from
+  try {
+    const from = new URL(referrer).origin
+    // An opaque origin (file:, about:) serialises as the string "null".
+    return from === origin || from === 'null' ? undefined : from
+  } catch {
+    // Not an address (the browser gave none). Counting a visit must never throw into the page.
+    return undefined
+  }
 }
 
 export function pageviewEvent(domain: string, origin: string, pathname: string, referrer: string): PageviewEvent {

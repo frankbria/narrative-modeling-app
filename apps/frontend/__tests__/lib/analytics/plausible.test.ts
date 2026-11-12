@@ -42,6 +42,7 @@ describe('pageviewEvent', () => {
   it('leaves out a referrer the browser did not give or that is not an address', () => {
     expect(pageviewEvent('d', 'https://a.example', '/', '')).not.toHaveProperty('referrer')
     expect(pageviewEvent('d', 'https://a.example', '/', 'not an address')).not.toHaveProperty('referrer')
+    expect(pageviewEvent('d', 'https://a.example', '/', 'about:blank')).not.toHaveProperty('referrer')
   })
 })
 

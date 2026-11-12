@@ -14,6 +14,7 @@ import '@testing-library/jest-dom';
 import TermsPage from '@/app/legal/terms/page';
 import PrivacyPage from '@/app/legal/privacy/page';
 import { COMPANY, SUB_PROCESSORS } from '@/lib/legal/company';
+import { NAV_LINKS } from '@/lib/publicLinks';
 
 describe('Terms of Service', () => {
   it('names the contracting entity', () => {
@@ -174,6 +175,9 @@ describe('Privacy Policy', () => {
     expect(section.textContent).toMatch(/sets no cookie/);
     expect(section.textContent).toMatch(/no consent banner/);
     expect(section.textContent).not.toMatch(/if we ever add analytics/i);
+    // The sentence names the counted pages (lib/analytics/plausible.ts COUNTED_PATHS): a new nav link changes it.
+    expect(section.textContent).toMatch(/the home page/);
+    for (const link of NAV_LINKS) expect(section.textContent).toContain(link.label);
     const plausible = SUB_PROCESSORS.find((p) => p.name === 'Plausible Analytics')!;
     expect(plausible.purpose).toMatch(/signed out/);
     expect(plausible.purpose).toMatch(/no cookie/i);

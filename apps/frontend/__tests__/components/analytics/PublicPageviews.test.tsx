@@ -42,6 +42,19 @@ describe('PublicPageviews', () => {
     ])
   })
 
+  it('names the outside site that led here on the first counted view only', async () => {
+    Object.defineProperty(document, 'referrer', { value: 'https://news.example/item/42?id=7', configurable: true })
+    try {
+      const { rerender } = render(<PublicPageviews domain="sheetpredict.app" />)
+      pathname = '/pricing'
+      rerender(<PublicPageviews domain="sheetpredict.app" />)
+      await waitFor(() => expect(fetchMock()).toHaveBeenCalledTimes(2))
+      expect(sentBodies().map((body) => body.referrer)).toEqual(['https://news.example', undefined])
+    } finally {
+      Object.defineProperty(document, 'referrer', { value: '', configurable: true })
+    }
+  })
+
   it.each(['authenticated', 'loading'] as const)('sends nothing while the session is %s', (sessionStatus) => {
     status = sessionStatus
     pathname = '/pricing'
