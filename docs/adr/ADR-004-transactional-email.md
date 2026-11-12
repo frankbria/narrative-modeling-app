@@ -64,10 +64,12 @@ an ellipsis) before it goes into the subject and the body: a model name or a fil
 typed by the user, and a filename may be 255 characters long.
 
 **The first failure of a batch job that was retried at once is not mailed (#1204).** A
-batch job's mail is sent after its completion webhook and reports the ending that is
-stored at that moment. Only the account's own retry request moves a FAILED batch job back
-to PENDING; nothing retries one automatically. If that request lands while the failed run
-is still waiting on its webhook, the mail step finds a job in flight and sends nothing.
+batch job's mail is sent after the FAILED write (from the run, after its completion
+webhook; from the reaper, right after its claim) and reports the ending that is stored at
+that moment. Only the account's own retry request moves a FAILED batch job back to
+PENDING; nothing retries one automatically. If that request lands between the FAILED
+write and the mail step, most likely while the run waits on a slow webhook, the mail step
+finds a job in flight and sends nothing.
 That is left as it is, for the reason a cancelled job sends nothing: the person who
 pressed retry has seen the failure. The retried run's own ending is mailed, under its own
 key.
