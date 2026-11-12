@@ -94,7 +94,9 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
         run: |
-          # The script prints only the two digest references on stdout.
+          # The script prints only the two digest references on stdout. pipefail: a
+          # failed build must fail this step, not surface one step later.
+          set -o pipefail
           scripts/ci/build_images.sh "$GITHUB_SHA" --push "ghcr.io/$GITHUB_REPOSITORY" | tee -a "$GITHUB_OUTPUT"
 
       - name: Record the digests

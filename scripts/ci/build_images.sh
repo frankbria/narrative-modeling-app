@@ -22,8 +22,8 @@ set -euo pipefail
 
 revision=${1:?usage: build_images.sh <revision> [--push <registry/path>]}
 prefix=narrative-
-if [ "${2:-}" = "--push" ]; then
-  prefix=${3:?--push needs the registry path, e.g. ghcr.io/owner/repo}/
+if [ "${2:-}" = "--push" ] && [ $# -eq 3 ]; then
+  prefix=$3/
 elif [ $# -gt 1 ]; then
   echo "usage: build_images.sh <revision> [--push <registry/path>]" >&2
   exit 2

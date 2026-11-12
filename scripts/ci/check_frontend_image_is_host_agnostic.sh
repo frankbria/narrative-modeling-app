@@ -5,7 +5,7 @@
 #
 # Starts the SAME image twice, once with staging's public settings and once with
 # production's, and checks that each one's home page hands the browser its own API
-# base and environment tag and nothing of the other's. An image with a value baked in
+# base, Sentry DSN and environment tag and nothing of the other's. An image with a value baked in
 # at build serves that value from both containers and fails here.
 set -euo pipefail
 image=${1:?usage: check_frontend_image_is_host_agnostic.sh <image>}
@@ -52,9 +52,11 @@ expect() {
   if grep -qF -- "$4" <<<"$2"; then echo "FAIL: the $1 page carries the other host's $4"; failures=$((failures + 1)); fi
 }
 expect staging "$staging_page" '"NEXT_PUBLIC_API_URL":"https://dev.host-agnostic.test/api/v1"' 'www.host-agnostic.test'
+expect staging "$staging_page" '"NEXT_PUBLIC_SENTRY_DSN":"https://public@dev.host-agnostic.test/1"' 'public@www.host-agnostic.test'
 expect staging "$staging_page" '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"staging"' '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"production"'
 expect production "$production_page" '"NEXT_PUBLIC_API_URL":"https://www.host-agnostic.test/api/v1"' 'dev.host-agnostic.test'
+expect production "$production_page" '"NEXT_PUBLIC_SENTRY_DSN":"https://public@www.host-agnostic.test/1"' 'public@dev.host-agnostic.test'
 expect production "$production_page" '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"production"' '"NEXT_PUBLIC_SENTRY_ENVIRONMENT":"staging"'
 
 if [ "$failures" -gt 0 ]; then exit 1; fi
-echo "OK: one image, two hosts: each page carries its own API base and environment tag"
+echo "OK: one image, two hosts: each page carries its own API base, Sentry DSN and environment tag"
