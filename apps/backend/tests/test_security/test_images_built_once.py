@@ -42,6 +42,7 @@ COMMIT = "c8c9ecca0000000000000000000000000000beef"
 
 # The one required value both templates leave blank for the operator to fill in.
 A_DSN = "\nSENTRY_DSN=https://key@sentry.example/1\n"
+TEMPLATE = (REPO_ROOT / ".env.staging.example").read_text() + A_DSN
 
 # Appends one line per call (`docker <args>`), then does what the test scripted.
 RECORDING = '#!/usr/bin/env bash\necho "$(basename "$0") $*" >> "$CALLS"\n'
@@ -387,10 +388,49 @@ def test_the_real_compose_accepts_a_box_with_no_recorded_images(tmp_path):
     )
 
 
+PREFLIGHT = REPO_ROOT / "scripts/deploy/preflight_staging_env.sh"
+
+
+def test_the_preflight_runs_by_hand_on_a_box_with_no_deploy_recorded(tmp_path):
+    """The runbook checks a new box's env file before its first deploy. The values
+    compose.sh supplies are not that file's to hold, so they must not be asked of it."""
+    box = stand_in_box(tmp_path)
+    shutil.copy2(COMPOSE_FILE, box / COMPOSE_FILE.name)
+    (box / ".env.staging").write_text(TEMPLATE)
+
+    def preflight() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["bash", str(PREFLIGHT), COMPOSE_FILE.name, ".env.staging"],
+            cwd=box,
+            env={"PATH": os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+    passing = preflight()
+    assert passing.returncode == 0, passing.stderr
+
+    (box / ".env.staging").write_text(
+        re.sub(r"(?m)^NEXTAUTH_SECRET=.*$", "NEXTAUTH_SECRET=", TEMPLATE)
+    )
+    refusing = preflight()
+    assert refusing.returncode == 1
+    assert "- NEXTAUTH_SECRET" in refusing.stderr
+
+
+def test_the_preflight_skips_exactly_what_the_wrapper_supplies():
+    wrapper = (REPO_ROOT / "scripts/deploy/compose.sh").read_text()
+    skipped = re.search(
+        r'^wrapper_supplied="([^"]+)"', PREFLIGHT.read_text(), re.MULTILINE
+    )
+
+    assert skipped, "the preflight no longer names what the wrapper supplies"
+    assert set(skipped.group(1).split()) == set(re.findall(r"\bexport (\w+)=", wrapper))
+
+
 # ── the deploy pulls digests and records what it started ─────────────────────
-
-
-TEMPLATE = (REPO_ROOT / ".env.staging.example").read_text() + A_DSN
 
 
 def _deploy(

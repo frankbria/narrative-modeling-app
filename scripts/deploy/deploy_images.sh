@@ -51,7 +51,7 @@ env_file=.env.staging
 [ -f "$env_file" ] || env_file=.env.production
 # Fail fast with the FULL list of any missing required vars, instead of letting
 # compose abort on the first ${VAR:?} it interpolates.
-ENVIRONMENT=${env_file#.env.} bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml "$env_file"
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml "$env_file"
 
 # shortcut: images of earlier deploys stay on the box (the previous one is the
 # rollback); remove older ones of this repository once disk use on a box shows it.

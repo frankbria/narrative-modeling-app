@@ -189,7 +189,7 @@ that can read the repository's packages:
 cd /opt/narrative-modeling-app/staging
 git fetch --prune origin && git checkout main && git reset --hard <APP_VERSION>
 printf 'APP_VERSION=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' <sha> <backend digest> <frontend digest> > .deploy-images.env
-ENVIRONMENT=staging bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
+bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml .env.staging
 docker login ghcr.io          # then `docker logout ghcr.io` when the pulls are done
 docker pull <backend digest> && docker pull <frontend digest>
 scripts/deploy/compose.sh up -d --remove-orphans
