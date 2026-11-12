@@ -48,9 +48,22 @@ frontend=${prefix}frontend:${revision}
 docker build "${labels[@]}" --tag "$backend" "$repo_root/apps/backend" >&2
 docker build "${labels[@]}" "${frontend_args[@]}" --tag "$frontend" "$repo_root/apps/frontend" >&2
 
+# GHCR refused the second manifest of a package it had created two seconds earlier
+# ("denied", first push after #831) while the same job's other image went through.
+# A refused push is tried again before the build fails.
+push_with_retries() {
+  local attempt
+  for attempt in 1 2 3; do
+    if docker push "$1" >&2; then return 0; fi
+    echo "push of $1 failed (attempt $attempt of 3)" >&2
+    if [ "$attempt" -lt 3 ]; then sleep "$((attempt * ${PUSH_RETRY_PAUSE_SECONDS:-15}))"; fi
+  done
+  return 1
+}
+
 if [ "${2:-}" = "--push" ]; then
   for image in "$backend" "$frontend"; do
-    docker push "$image" >&2
+    push_with_retries "$image"
   done
   # The registry's digest for what was just pushed: the reference the boxes pull. An
   # image can carry digests under other names too, so the one for this name is picked.

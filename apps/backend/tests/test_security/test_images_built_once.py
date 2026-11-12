@@ -626,6 +626,79 @@ def test_a_push_prints_the_two_digest_references_and_nothing_else(tmp_path):
         )
 
 
+# Refuses the pushes whose position in the run is listed in REFUSED_PUSHES (a counter
+# file beside the call record), as the registry did, and lets the others through.
+REFUSING_PUSHES = (
+    'case " $* " in *" push "*)\n'
+    '  count=$(( $(cat "$CALLS.pushes" 2>/dev/null || echo 0) + 1 )); echo "$count" > "$CALLS.pushes"\n'
+    '  case " $REFUSED_PUSHES " in *" $count "*) echo "error from registry: denied" >&2; exit 1;; esac;;\n'
+    "esac\n"
+)
+
+
+def _pushing(
+    tmp_path: Path, refused: str
+) -> tuple[subprocess.CompletedProcess, list[str]]:
+    # `${!#}` is the last argument (the image reference being inspected); `##*/` keeps its name.
+    digest = 'case " $* " in *" inspect "*) echo "registry.example/app/${!###*/}@sha256:feed" | sed "s/:[^@]*@/@/";; esac\n'
+    run = _run(
+        ["bash", str(BUILD_SCRIPT), COMMIT, "--push", "registry.example/app"],
+        tmp_path,
+        _fake_tools(tmp_path, REFUSING_PUSHES + digest),
+        REFUSED_PUSHES=refused,
+        PUSH_RETRY_PAUSE_SECONDS="0",
+    )
+    return run, [
+        call.removeprefix("docker push registry.example/app/")
+        for call in _calls(tmp_path)
+        if " push " in call
+    ]
+
+
+BACKEND_TAG, FRONTEND_TAG = f"backend:{COMMIT}", f"frontend:{COMMIT}"
+BOTH_DIGESTS = [
+    "backend=registry.example/app/backend@sha256:feed",
+    "frontend=registry.example/app/frontend@sha256:feed",
+]
+
+
+@pytest.mark.parametrize(
+    ("refused", "pushes"),
+    [
+        ("1", [BACKEND_TAG, BACKEND_TAG, FRONTEND_TAG]),
+        # What happened on the first push after #831: the backend went through and
+        # GHCR refused the frontend it had just created the package for.
+        ("2", [BACKEND_TAG, FRONTEND_TAG, FRONTEND_TAG]),
+        ("2 3", [BACKEND_TAG, FRONTEND_TAG, FRONTEND_TAG, FRONTEND_TAG]),
+    ],
+)
+def test_a_push_the_registry_refuses_is_tried_again(tmp_path, refused, pushes):
+    run, pushed = _pushing(tmp_path, refused)
+
+    assert run.returncode == 0, run.stderr
+    assert pushed == pushes
+    assert run.stdout.splitlines() == BOTH_DIGESTS
+    assert "attempt 1 of 3" in run.stderr
+
+
+@pytest.mark.parametrize(
+    ("refused", "pushes"),
+    [
+        ("1 2 3", [BACKEND_TAG] * 3),
+        ("2 3 4", [BACKEND_TAG, FRONTEND_TAG, FRONTEND_TAG, FRONTEND_TAG]),
+    ],
+)
+def test_a_push_the_registry_keeps_refusing_fails_the_build_and_prints_no_digest(
+    tmp_path, refused, pushes
+):
+    """Not even the image that did go through: the deploy needs both or neither."""
+    run, pushed = _pushing(tmp_path, refused)
+
+    assert run.returncode != 0
+    assert pushed == pushes, "three tries of the refused image, then stop"
+    assert run.stdout == ""
+
+
 def test_the_source_map_token_is_a_build_secret_only_when_it_is_set(tmp_path):
     (tmp_path / "without").mkdir()
     (tmp_path / "with").mkdir()
