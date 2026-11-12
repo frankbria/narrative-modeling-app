@@ -20,6 +20,7 @@ BACKEND = REPO_ROOT / "apps" / "backend"
 COMMAND = "python -m app.billing.reconcile_subscriptions --apply"
 ALERT_PHRASE = "Subscription reconciliation is failing"
 RECONCILE = "Reconcile subscriptions in the backend container"
+PREFLIGHT = "Check deploy secrets are configured"
 REPORT = "Report the failure on an issue"
 CLOSE = "Close a recovered alert"
 CLEAN_RUN = (
@@ -130,7 +131,7 @@ def test_the_reconciliations_exit_status_fails_the_run():
 def test_an_exit_0_that_printed_no_counts_fails_the_run():
     """#756: an exec that never ran the module exited 0 having printed nothing."""
     status, recorded, _ = _reconcile_step("cat > /dev/null\n")
-    assert status != 0 and recorded != "0"
+    assert (status, recorded) == (4, "4")
 
 
 def test_a_failure_lands_on_an_issue_and_survives_a_retitle():
@@ -164,6 +165,41 @@ def test_the_alert_carries_the_counts_and_says_what_the_exit_status_means():
 def test_the_alert_is_filed_when_the_reconciliation_never_ran():
     posted = _posted_alert({})
     assert "did not run" in posted
+
+
+def test_every_exit_status_the_run_can_record_is_explained():
+    """3 is the module's own "did not finish", 4 the step's "printed no counts"."""
+    for status, phrase in (
+        (2, "missing a setting"),
+        (3, "did not finish"),
+        (4, "no counts"),
+    ):
+        posted = _posted_alert({"reconcile.status": str(status)})
+        assert f"Exit status {status}: " in posted and phrase in posted, status
+
+
+def test_missing_deploy_secrets_fail_the_run_instead_of_skipping_it():
+    """Criterion 2: with a secret removed, a green run that reconciled nothing is
+    the schedule silently switched off. A red one reaches the report step."""
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        secrets = dict.fromkeys(_steps()[PREFLIGHT]["env"], "set")
+        configured = _run_step(
+            PREFLIGHT, tmp, {}, GITHUB_OUTPUT=str(tmp / "out"), **secrets
+        )
+        assert configured.returncode == 0, configured.stderr
+        for name in secrets:
+            missing = _run_step(
+                PREFLIGHT,
+                tmp,
+                {},
+                GITHUB_OUTPUT=str(tmp / "out"),
+                **{**secrets, name: ""},
+            )
+            assert missing.returncode != 0, name
+            assert name in missing.stdout
+    for name, step in _steps().items():
+        assert "preflight.outputs" not in str(step.get("if", "")), name
 
 
 def test_the_alert_never_publishes_the_box():

@@ -348,6 +348,28 @@ class TestEntryPoint:
         assert await self._main()() == 2
         assert "MONGODB_DB" in capsys.readouterr().err
 
+    async def test_a_crash_reports_its_class_and_never_its_message(
+        self, setup_database, monkeypatch, capsys
+    ):
+        """A pymongo error names the Atlas hosts, and the scheduled run's output
+        and stderr are quoted in a public issue (#606)."""
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py", "--apply"])
+
+        async def unreachable(*_args):
+            raise TimeoutError(
+                "cluster0-shard-00-00.abc123.mongodb.net:27017: timed out"
+            )
+
+        monkeypatch.setattr(reconcile_subscriptions, "reconcile", unreachable)
+
+        assert await self._main()() == 3
+
+        captured = capsys.readouterr()
+        assert "did not finish: TimeoutError" in captured.out
+        assert "mongodb.net" not in captured.out + captured.err
+
 
 def _sdk_subscription(status: str, period_end: int):
     """What `stripe.Subscription.retrieve` returns: an SDK object, not a dict."""

@@ -18,7 +18,9 @@ name: Subscription Reconciliation
 #
 # Same network path and Development-environment secrets as staging-health.yml
 # (SSH_KEY, HOST, SSH_KNOWN_HOSTS, TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, optional
-# DEPLOY_USER / DEPLOY_PATH), and secret-gated the same way.
+# DEPLOY_USER / DEPLOY_PATH). Unlike that workflow, a missing secret FAILS the run:
+# the secrets exist, so losing one means the schedule has stopped, and a green run
+# that reconciled nothing is the failure this workflow was written to end.
 
 on:
   schedule:
@@ -47,7 +49,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check deploy secrets are configured
-        id: preflight
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           HOST: ${{ secrets.HOST }}
@@ -62,14 +63,11 @@ jobs:
           [ -n "$TS_OAUTH_CLIENT_ID" ] || missing+=("TS_OAUTH_CLIENT_ID")
           [ -n "$TS_OAUTH_SECRET" ]    || missing+=("TS_OAUTH_SECRET")
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Deploy secrets not set (${missing[*]}) — nothing reconciled. See .github/workflows/deploy.yml header."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Deploy secrets not set (${missing[*]}): nothing reconciled. See .github/workflows/deploy.yml header."
+            exit 1
           fi
 
       - name: Connect to Tailscale
-        if: steps.preflight.outputs.configured == 'true'
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -77,7 +75,6 @@ jobs:
           tags: tag:ci
 
       - name: Configure SSH
-        if: steps.preflight.outputs.configured == 'true'
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
@@ -91,7 +88,6 @@ jobs:
 
       - name: Reconcile subscriptions in the backend container
         id: reconcile
-        if: steps.preflight.outputs.configured == 'true'
         env:
           HOST: ${{ secrets.HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
@@ -108,7 +104,7 @@ jobs:
           # exit 0 having printed nothing (#756).
           if [ "$status" -eq 0 ] && ! grep -q '^subscriptions with a stripe id: ' /tmp/reconcile.txt; then
             echo "no counts were printed: the reconciliation did not run" >> /tmp/reconcile.txt
-            status=3
+            status=4
           fi
           echo "$status" > /tmp/reconcile.status
           cat /tmp/reconcile.txt
@@ -142,8 +138,10 @@ jobs:
           case "$status" in
             1) verdict="Exit status 1: at least one subscription could not be read from Stripe, or changed while it was being repaired (see the counts). A changed row settles on the next run. An unreadable one does not: either the key belongs to another Stripe account or mode than the rows (every row unreadable; do not cancel anything), or that subscription was deleted in Stripe (cancel the row by hand).";;
             2) verdict="Exit status 2: the backend container is missing a setting the reconciliation needs (MONGODB_URI, MONGODB_DB, STRIPE_SECRET_KEY or STRIPE_PRICE_PRO).";;
+            3) verdict="Exit status 3: the reconciliation started and did not finish; the output names the exception class (a database the container could not reach is the usual one). Nothing more was repaired in this run.";;
+            4) verdict="Exit status 4: the command exited 0 and printed no counts, so the reconciliation did not run in the container.";;
             137) verdict="Exit status 137: the process was SIGKILLed, so the backend container restarted under it (a deploy, or a boot loop: see the staging health alert).";;
-            "not run") verdict="The reconciliation did not run: an earlier step (tailnet or ssh) failed; see the run log.";;
+            "not run") verdict="The reconciliation did not run: an earlier step (deploy secrets, tailnet or ssh) failed; see the run log.";;
             *) verdict="Exit status $status.";;
           esac
           # `|| true`: under the runner's `bash -e`, a missing file would end this

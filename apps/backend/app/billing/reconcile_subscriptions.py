@@ -27,7 +27,11 @@ downgrade any ENTERPRISE customer.
 
 Exit status: 0 when every row matches Stripe (after repairs, under `--apply`),
 1 when a row is unreadable, raced, or (read-only) drifted, 2 when a required
-setting is missing.
+setting is missing, 3 when the run could not finish (the database was unreachable).
+
+A sales-led ENTERPRISE deal sold on its own price must use the price in
+`STRIPE_PRICE_ENTERPRISE`: any other price resolves to PRO, here as in the
+webhook, and this runs every day.
 """
 
 import asyncio
@@ -69,11 +73,23 @@ async def main() -> int:
         )
         return 2
 
+    return await _reconcile_database(uri, db_name, apply)
+
+
+async def _reconcile_database(uri: str, db_name: str, apply: bool) -> int:
+    """Run `reconcile()` against the database; 3 when it could not finish.
+
+    The class name only: a pymongo error names the cluster's hosts, and the
+    scheduled run's output and stderr are quoted in a public issue.
+    """
     client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(uri)
     try:
         return await reconcile(
             client[db_name]["subscriptions"], _fetch_from_stripe, apply
         )
+    except Exception as exc:  # noqa: BLE001 - reported by class, see above
+        print(f"the reconciliation did not finish: {type(exc).__name__}")
+        return 3
     finally:
         client.close()
 
