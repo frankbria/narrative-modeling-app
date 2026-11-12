@@ -5,7 +5,7 @@
  * when the image is built (#766, #831): one image serves dev. and www., so
  * neither can be a build-time constant.
  */
-import { isProduction, siteMetadata, siteUrl } from '@/lib/site'
+import { analyticsDomain, isProduction, siteMetadata, siteUrl } from '@/lib/site'
 import { COMPANY } from '@/lib/legal/company'
 
 describe('siteUrl', () => {
@@ -16,6 +16,17 @@ describe('siteUrl', () => {
 
   it('falls back to localhost where nothing is configured (a build, a unit test)', () => {
     expect(siteUrl({}).href).toBe('http://localhost:3000/')
+  })
+})
+
+describe('analyticsDomain', () => {
+  it('is the Plausible site this deployment reports to, read from the env it is given', () => {
+    expect(analyticsDomain({ PLAUSIBLE_DOMAIN: 'sheetpredict.app' })).toBe('sheetpredict.app')
+    expect(analyticsDomain({ PLAUSIBLE_DOMAIN: ' sheetpredict.app ' })).toBe('sheetpredict.app')
+  })
+
+  it.each([undefined, '', '   '])('is empty for %p, which counts nothing (compose passes a blank)', (value) => {
+    expect(analyticsDomain({ PLAUSIBLE_DOMAIN: value })).toBe('')
   })
 })
 

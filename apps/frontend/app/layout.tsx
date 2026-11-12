@@ -16,7 +16,8 @@ import { PlanLimitDialog } from '@/components/billing/PlanLimitDialog'
 import { UsageWarningBanner } from '@/components/billing/UsageWarningBanner'
 import { FeedbackWidget } from '@/components/FeedbackWidget'
 import { SiteFooter } from '@/components/SiteFooter'
-import { siteMetadata } from '@/lib/site'
+import { PublicPageviews } from '@/components/analytics/PublicPageviews'
+import { analyticsDomain, siteMetadata } from '@/lib/site'
 import { Schibsted_Grotesk } from 'next/font/google'
 
 // Self-hosted at build by next/font as --font-schibsted; globals.css maps --font-sans to it.
@@ -99,6 +100,8 @@ export default async function RootLayout({
               </>
             ) : (
               <div className="flex flex-1 min-w-0 min-h-screen flex-col">
+              {/* Signed-out branch only: nothing inside the app is counted (#769). */}
+              <PublicPageviews domain={analyticsDomain()} />
               <main
                 id="main-content"
                 tabIndex={-1}

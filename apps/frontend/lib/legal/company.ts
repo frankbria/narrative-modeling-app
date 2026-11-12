@@ -44,8 +44,8 @@ export const COMPANY = {
    */
   backupHorizonDays: 35,
   effectiveDate: 'September 9, 2026',
-  /** The Privacy Policy changed after the Terms did: job emails and their provider (#494). */
-  privacyEffectiveDate: 'November 11, 2026',
+  /** The Privacy Policy changed after the Terms did: last for public-page visit counts (#769). */
+  privacyEffectiveDate: 'November 12, 2026',
 } as const
 
 export interface SubProcessor {
@@ -87,6 +87,12 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     purpose:
       'Receives error reports when something breaks: the stack trace, the page address without its query string (the address itself can include a dataset or model id), and browser details. No account identity is attached, and the app sends no dataset content on purpose; an error message is sent as it was raised.',
     privacyUrl: 'https://sentry.io/privacy/',
+  },
+  {
+    name: 'Plausible Analytics',
+    purpose:
+      'Counts visits to our public pages while you are signed out. Receives the address of the page without its query string and the name of the outside site that led you to ours, with your IP address and browser details, which it uses to count a visitor for one day and does not store. It sets no cookie. Nothing inside the app is sent: no account identity and no dataset content.',
+    privacyUrl: 'https://plausible.io/privacy',
   },
   {
     name: 'Google',

@@ -26,6 +26,11 @@ export function isProduction(env: Env = process.env): boolean {
   return env.ENVIRONMENT === 'production'
 }
 
+/** The Plausible site public-page visits are counted under (#769). Empty counts nothing. */
+export function analyticsDomain(env: Env = process.env): string {
+  return (env.PLAUSIBLE_DOMAIN ?? '').trim()
+}
+
 export function siteMetadata(env: Env = process.env): Metadata {
   return {
     metadataBase: siteUrl(env),
