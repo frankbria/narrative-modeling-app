@@ -13,7 +13,10 @@ import { NAV_LINKS } from '@/lib/publicLinks'
 
 export const PLAUSIBLE_EVENT_URL = 'https://plausible.io/api/event'
 
-/** The landing page and the pages the public nav shows. Exact paths, never prefixes. */
+/**
+ * The landing page and the pages the public nav shows. Exact paths, never prefixes.
+ * The Privacy Policy's section 8 names these pages: a new nav link changes that sentence too.
+ */
 export const COUNTED_PATHS: readonly string[] = ['/', ...NAV_LINKS.map((link) => link.href)]
 
 export interface PageviewEvent {
