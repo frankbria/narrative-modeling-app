@@ -4,7 +4,7 @@
 #
 #   scripts/deploy/on_box.sh scripts/deploy/backend_state.sh    # a repo script
 #   scripts/deploy/on_box.sh <<'REMOTE'                         # an inline body
-#   cd "$DEPLOY_PATH" && docker compose ps
+#   cd "$DEPLOY_PATH" && scripts/deploy/compose.sh ps
 #   REMOTE
 #
 # Needs HOST, DEPLOY_USER and DEPLOY_PATH in the environment, and the key the

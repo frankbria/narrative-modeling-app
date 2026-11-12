@@ -7,7 +7,12 @@
 # cluster, a boto error the bucket).
 set -u
 cd "${DEPLOY_PATH:-/opt/narrative-modeling-app/staging}" 2>/dev/null || { echo "(no $DEPLOY_PATH)"; exit 0; }
-compose() { scripts/deploy/compose.sh "$@"; }
+# shortcut: a box whose last deploy predates #831 has no wrapper and still has the old
+# compose file; drop this fallback once every box has been deployed from #831 or later.
+compose() {
+  if [ -x scripts/deploy/compose.sh ]; then scripts/deploy/compose.sh "$@"; return; fi
+  docker compose -f docker-compose.staging.yml --env-file .env.staging "$@"
+}
 
 echo "## backend container"
 compose ps backend --format '{{.Name}}  {{.Status}}' 2>/dev/null || echo "(compose ps failed)"

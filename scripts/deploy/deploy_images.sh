@@ -22,6 +22,22 @@ for image in "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
 done
 export APP_VERSION BACKEND_IMAGE FRONTEND_IMAGE
 
+# Pulled first, before anything on the box changes: a pull that fails (a token, the
+# registry) leaves the checkout, the containers and the record exactly as they were.
+# It uses a docker config of its own, removed again whatever happens: the token
+# never joins the box's stored credentials, and a login another app on a shared box
+# keeps for the same registry is left alone.
+registry_config=$(mktemp -d)
+trap 'rm -rf "$registry_config"' EXIT
+if [ -n "${REGISTRY_TOKEN:-}" ]; then
+  printf '%s' "$REGISTRY_TOKEN" \
+    | docker --config "$registry_config" login "${BACKEND_IMAGE%%/*}" --username "${REGISTRY_USER:-deploy}" --password-stdin >/dev/null
+fi
+for image in "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
+  docker --config "$registry_config" pull --quiet "$image"
+done
+rm -rf "$registry_config"
+
 cd "$DEPLOY_PATH"
 # The checkout supplies the compose file and these scripts, at the commit the images
 # were built from.
@@ -36,20 +52,6 @@ env_file=.env.staging
 # Fail fast with the FULL list of any missing required vars, instead of letting
 # compose abort on the first ${VAR:?} it interpolates.
 ENVIRONMENT=${env_file#.env.} bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml "$env_file"
-
-# Pulled with a docker config of its own, removed again whatever happens: the token
-# never joins the box's stored credentials, and a login another app on a shared box
-# keeps for the same registry is left alone.
-registry_config=$(mktemp -d)
-trap 'rm -rf "$registry_config"' EXIT
-if [ -n "${REGISTRY_TOKEN:-}" ]; then
-  printf '%s' "$REGISTRY_TOKEN" \
-    | docker --config "$registry_config" login "${BACKEND_IMAGE%%/*}" --username "${REGISTRY_USER:-deploy}" --password-stdin >/dev/null
-fi
-for image in "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
-  docker --config "$registry_config" pull --quiet "$image"
-done
-rm -rf "$registry_config"
 
 # shortcut: images of earlier deploys stay on the box (the previous one is the
 # rollback); remove older ones of this repository once disk use on a box shows it.

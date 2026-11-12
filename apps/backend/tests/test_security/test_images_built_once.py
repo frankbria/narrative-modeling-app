@@ -114,16 +114,79 @@ def test_no_workflow_or_deploy_script_asks_compose_to_build():
 
 
 def test_every_compose_call_on_a_box_goes_through_the_wrapper():
-    """A bare `docker compose -f …` has no ENVIRONMENT and no image, and fails on the
-    file's guards. One caller, so the next step copies a working one."""
+    """A bare `docker compose -f docker-compose.deploy.yml` has no ENVIRONMENT and no
+    image, and fails on the file's guards. One caller, so the next step copies a
+    working one. The only other compose call allowed is the fallback for a box that
+    has not been deployed from #831 yet, which names the file such a box still has."""
     paths = [*BOX_WORKFLOWS, *sorted((REPO_ROOT / "scripts/deploy").glob("*.sh"))]
-    bare = [
-        path.name
+    bare = {
+        path.name: sorted(
+            set(re.findall(r"docker compose\s+-f\s+(\S+)", _code_lines(path)))
+        )
         for path in paths
         if path.name != "compose.sh"
         and re.search(r"docker compose\s+-f", _code_lines(path))
+    }
+    assert bare == {
+        "backend_state.sh": ["docker-compose.staging.yml"],
+        "frontend_probe.sh": ["docker-compose.staging.yml"],
+        "staging-health.yml": ["docker-compose.staging.yml"],
+        "subscription-reconcile.yml": ["docker-compose.staging.yml"],
+    }
+
+
+def _box_step(workflow: Path) -> str:
+    """The inline body a workflow sends to the box (its one quoted heredoc)."""
+    lines = workflow.read_text().split("<<'REMOTE'", 1)[1].splitlines()[1:]
+    end = next(index for index, line in enumerate(lines) if line.strip() == "REMOTE")
+    return "\n".join(line.strip() for line in lines[:end])
+
+
+@pytest.mark.parametrize("workflow", BOX_WORKFLOWS[1:], ids=lambda path: path.name)
+def test_a_scheduled_job_still_reaches_a_box_that_predates_the_wrapper(
+    tmp_path, workflow
+):
+    """The hourly probe and the daily reconciliation are sent from `main` and run in the
+    box's own checkout. Between the merge of #831 and the first deploy that gets
+    through (or for as long as that deploy fails), the box has no wrapper: the job must
+    reach the containers the old way and not report a healthy box as down."""
+    old_box = tmp_path / "old"
+    old_box.mkdir()
+    new_box = stand_in_box(tmp_path / "new")
+    body = _box_step(workflow)
+
+    for box in (old_box, new_box):
+        run = _run(["bash", "-c", body], box, _fake_tools(box))
+        assert run.returncode == 0, run.stderr
+
+    old, new = "docker-compose.staging.yml", "docker-compose.deploy.yml"
+    assert _calls(old_box)[0].startswith(
+        f"docker compose -f {old} --env-file .env.staging exec -T backend "
+    )
+    assert _calls(new_box)[0].startswith(
+        f"docker compose -f {new} --env-file .env.staging exec -T backend "
+    )
+
+
+@pytest.mark.parametrize("script", ["backend_state.sh", "frontend_probe.sh"])
+def test_a_probe_script_still_reaches_a_box_that_predates_the_wrapper(tmp_path, script):
+    answering = "printf '%s\\n%s' '{\"status\":\"healthy\"}' 200\n"
+
+    run = _run(
+        ["bash", str(REPO_ROOT / "scripts/deploy" / script)],
+        tmp_path,
+        _fake_tools(tmp_path, answering),
+    )
+
+    assert run.returncode == 0, run.stderr
+    compose_calls = [
+        call for call in _calls(tmp_path) if call.startswith("docker compose")
     ]
-    assert bare == []
+    assert compose_calls
+    for call in compose_calls:
+        assert call.startswith(
+            "docker compose -f docker-compose.staging.yml --env-file .env.staging "
+        )
 
 
 # ── the frontend image is host-agnostic ──────────────────────────────────────
@@ -316,12 +379,12 @@ def test_a_deploy_checks_out_the_commit_pulls_the_digests_and_records_them(tmp_p
         re.sub(r"--config \S+", "--config <throwaway>", call) for call in _calls(box)
     ]
     assert calls == [
-        "git fetch --prune origin",
-        "git checkout main",
-        f"git reset --hard {COMMIT}",
         "docker --config <throwaway> login ghcr.io --username deployer --password-stdin",
         f"docker --config <throwaway> pull --quiet {BACKEND}",
         f"docker --config <throwaway> pull --quiet {FRONTEND}",
+        "git fetch --prune origin",
+        "git checkout main",
+        f"git reset --hard {COMMIT}",
         f"{compose} up -d --remove-orphans",
         f"{compose} ps",
     ]
@@ -340,18 +403,21 @@ def _registry_configs(box: Path) -> list[str]:
     return sorted(path for path in named if Path(path).exists())
 
 
-def test_a_failed_pull_starts_nothing_records_nothing_and_leaves_no_login(tmp_path):
+def test_a_failed_pull_leaves_the_box_as_it_was_and_leaves_no_login(tmp_path):
     box = stand_in_box(tmp_path)
-    (box / ".deploy-images.env").write_text(
-        "APP_VERSION=previous\nBACKEND_IMAGE=old@sha256:1\nFRONTEND_IMAGE=old@sha256:2\n"
-    )
+    previous = "APP_VERSION=previous\nBACKEND_IMAGE=old@sha256:1\nFRONTEND_IMAGE=old@sha256:2\n"
+    (box / ".deploy-images.env").write_text(previous)
 
     run = _deploy(box, 'case " $* " in *" pull "*) echo "denied" >&2; exit 1;; esac\n')
 
     assert run.returncode != 0
-    assert not any(" up " in call for call in _calls(box))
+    calls = _calls(box)
+    assert not any(" up " in call for call in calls)
+    assert not any(call.startswith("git") for call in calls), (
+        "the checkout moved before the images were here"
+    )
     assert _registry_configs(box) == []
-    assert "APP_VERSION=previous" in (box / ".deploy-images.env").read_text(), (
+    assert (box / ".deploy-images.env").read_text() == previous, (
         "the record must keep naming what is still running"
     )
 
@@ -378,7 +444,7 @@ def test_a_tag_is_refused_before_anything_runs(tmp_path):
     assert _calls(box) == []
 
 
-def test_a_box_missing_a_required_setting_is_refused_before_the_pull(tmp_path):
+def test_a_box_missing_a_required_setting_is_refused_before_anything_starts(tmp_path):
     box = stand_in_box(tmp_path)
 
     run = _deploy(
@@ -390,7 +456,8 @@ def test_a_box_missing_a_required_setting_is_refused_before_the_pull(tmp_path):
 
     assert run.returncode == 1
     assert "- NEXT_PUBLIC_API_URL" in run.stderr
-    assert not any(call.startswith("docker") for call in _calls(box))
+    assert not any(" up " in call for call in _calls(box))
+    assert not (box / ".deploy-images.env").exists()
 
 
 # ── CI builds once and hands the digests to the deploy ───────────────────────
