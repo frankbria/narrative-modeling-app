@@ -4,8 +4,9 @@
 #   scripts/ci/check_frontend_image_is_host_agnostic.sh <image>
 #
 # Starts the SAME image twice, once with staging's public settings and once with
-# production's, and checks that each one's home page hands the browser its own API
-# base, Sentry DSN and environment tag and nothing of the other's. An image with a value baked in
+# production's, and checks that each one's home page (and a page with nothing dynamic
+# of its own) hands the browser its own API base, Sentry DSN and environment tag and
+# nothing of the other's. An image with a value baked in
 # at build serves that value from both containers and fails here.
 set -euo pipefail
 image=${1:?usage: check_frontend_image_is_host_agnostic.sh <image>}
@@ -59,6 +60,15 @@ expect staging "$staging_page" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT staging
 expect production "$production_page" "$(setting NEXT_PUBLIC_API_URL https://www.host-agnostic.test/api/v1)" 'dev.host-agnostic.test'
 expect production "$production_page" "$(setting NEXT_PUBLIC_SENTRY_DSN https://public@www.host-agnostic.test/1)" 'public@dev.host-agnostic.test'
 expect production "$production_page" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT production)" "$(setting NEXT_PUBLIC_SENTRY_ENVIRONMENT staging)"
+
+# A page with nothing dynamic of its own. The settings reach it only because the root
+# layout is rendered per request; were that to change, `next build` would prerender
+# this page with the builder's (empty) settings while the home page could still pass.
+static_looking=/legal/privacy
+expect "staging $static_looking" "$(curl -fsS -m 30 "http://127.0.0.1:3981$static_looking")" \
+  "$(setting NEXT_PUBLIC_API_URL https://dev.host-agnostic.test/api/v1)" 'www.host-agnostic.test'
+expect "production $static_looking" "$(curl -fsS -m 30 "http://127.0.0.1:3982$static_looking")" \
+  "$(setting NEXT_PUBLIC_API_URL https://www.host-agnostic.test/api/v1)" 'dev.host-agnostic.test'
 
 # The settings must be in the page before the first script: modules read them as they
 # load, and one that ran first would keep its localhost default for the whole visit.
