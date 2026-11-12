@@ -126,7 +126,10 @@ class TestSend:
             sent = await email_service.send("a@b.example", "Hello", "Body", idempotency_key="k")
 
         assert sent is True
-        assert [record.levelname for record in caplog.records] == ["INFO"]
+        # Only this service's lines: httpx logs each request itself once the app has
+        # configured logging, which depends on what ran earlier in the session.
+        own = [record for record in caplog.records if record.name == email_service.logger.name]
+        assert [record.levelname for record in own] == ["INFO"]
         assert "not sent" not in caplog.text
         assert "already used" in caplog.text
         assert "a@b.example" not in caplog.text
