@@ -9,8 +9,7 @@
 # exactly the bytes CI produced, and the production box can run the same ones.
 #
 # The registry token is the deploy job's own short-lived one. It is used for the pull
-# and removed from the box again whether or not the pull worked, so the box holds no
-# standing registry credential.
+# from a throwaway docker config, so the box holds no standing registry credential.
 set -euo pipefail
 : "${DEPLOY_PATH:?DEPLOY_PATH is not set}" "${APP_VERSION:?APP_VERSION is not set}"
 : "${BACKEND_IMAGE:?BACKEND_IMAGE is not set}" "${FRONTEND_IMAGE:?FRONTEND_IMAGE is not set}"
@@ -38,12 +37,22 @@ env_file=.env.staging
 # compose abort on the first ${VAR:?} it interpolates.
 ENVIRONMENT=${env_file#.env.} bash scripts/deploy/preflight_staging_env.sh docker-compose.deploy.yml "$env_file"
 
-registry=${BACKEND_IMAGE%%/*}
+# Pulled with a docker config of its own, removed again whatever happens: the token
+# never joins the box's stored credentials, and a login another app on a shared box
+# keeps for the same registry is left alone.
+registry_config=$(mktemp -d)
+trap 'rm -rf "$registry_config"' EXIT
 if [ -n "${REGISTRY_TOKEN:-}" ]; then
-  trap 'docker logout "$registry" >/dev/null 2>&1 || true' EXIT
-  printf '%s' "$REGISTRY_TOKEN" | docker login "$registry" --username "${REGISTRY_USER:-deploy}" --password-stdin >/dev/null
+  printf '%s' "$REGISTRY_TOKEN" \
+    | docker --config "$registry_config" login "${BACKEND_IMAGE%%/*}" --username "${REGISTRY_USER:-deploy}" --password-stdin >/dev/null
 fi
-compose pull --quiet backend frontend
+for image in "$BACKEND_IMAGE" "$FRONTEND_IMAGE"; do
+  docker --config "$registry_config" pull --quiet "$image"
+done
+rm -rf "$registry_config"
+
+# shortcut: images of earlier deploys stay on the box (the previous one is the
+# rollback); remove older ones of this repository once disk use on a box shows it.
 compose up -d --remove-orphans
 
 # Recorded only now, so the file never names an image that failed to start. Written

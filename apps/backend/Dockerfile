@@ -1,5 +1,6 @@
-# Backend (FastAPI) production image — built by docker-compose.deploy.yml and
-# deployed by .github/workflows/deploy.yml (issue #150).
+# Backend (FastAPI) production image — built once per commit by
+# scripts/ci/build_images.sh and run by docker-compose.deploy.yml on every host
+# (issues #150, #831).
 #
 # Multi-stage (issue #176): the `builder` stage carries build-essential (~200 MB),
 # needed only to compile wheels during `uv sync`; the final `runtime` stage copies

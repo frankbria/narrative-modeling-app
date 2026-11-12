@@ -36,7 +36,7 @@ def test_the_build_script_supplies_the_token_as_a_secret_only_when_there_is_one(
     build as a secret mount. Unset, the flag is left off and nothing is uploaded."""
     script = (REPO / "scripts/ci/build_images.sh").read_text()
 
-    assert "--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN" in script
+    assert '--secret "id=sentry_auth_token,env=SENTRY_AUTH_TOKEN"' in script
     assert not re.search(r"--build-arg[ =\"']*SENTRY_AUTH_TOKEN", script)
     assert '--build-arg "SENTRY_RELEASE=$revision"' in script, "the release must be the commit both hosts run"
 

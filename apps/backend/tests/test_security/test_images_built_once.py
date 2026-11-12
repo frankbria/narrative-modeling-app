@@ -262,32 +262,39 @@ def test_a_deploy_checks_out_the_commit_pulls_the_digests_and_records_them(tmp_p
 
     assert run.returncode == 0, run.stderr
     compose = "docker compose -f docker-compose.deploy.yml --env-file .env.staging"
-    assert _calls(box) == [
+    calls = [re.sub(r"--config \S+", "--config <throwaway>", call) for call in _calls(box)]
+    assert calls == [
         "git fetch --prune origin",
         "git checkout main",
         f"git reset --hard {COMMIT}",
-        "docker login ghcr.io --username deployer --password-stdin",
-        f"{compose} pull --quiet backend frontend",
+        "docker --config <throwaway> login ghcr.io --username deployer --password-stdin",
+        f"docker --config <throwaway> pull --quiet {BACKEND}",
+        f"docker --config <throwaway> pull --quiet {FRONTEND}",
         f"{compose} up -d --remove-orphans",
         f"{compose} ps",
-        "docker logout ghcr.io",
     ]
     assert (box / ".deploy-images.env").read_text() == (
         f"APP_VERSION={COMMIT}\nBACKEND_IMAGE={BACKEND}\nFRONTEND_IMAGE={FRONTEND}\n"
     )
     assert "ghs_short_lived" not in (box / "calls").read_text(), "the token was on a command line"
+    assert _registry_configs(box) == [], "the registry login outlived the deploy"
 
 
-def test_a_failed_pull_starts_nothing_records_nothing_and_still_logs_out(tmp_path):
+def _registry_configs(box: Path) -> list[str]:
+    """The throwaway docker config directories the deploy named, that still exist."""
+    named = set(re.findall(r"--config (\S+)", (box / "calls").read_text()))
+    return sorted(path for path in named if Path(path).exists())
+
+
+def test_a_failed_pull_starts_nothing_records_nothing_and_leaves_no_login(tmp_path):
     box = stand_in_box(tmp_path)
     (box / ".deploy-images.env").write_text("APP_VERSION=previous\nBACKEND_IMAGE=old@sha256:1\nFRONTEND_IMAGE=old@sha256:2\n")
 
     run = _deploy(box, 'case " $* " in *" pull "*) echo "denied" >&2; exit 1;; esac\n')
 
     assert run.returncode != 0
-    calls = _calls(box)
-    assert not any(" up " in call for call in calls)
-    assert calls[-1] == "docker logout ghcr.io"
+    assert not any(" up " in call for call in _calls(box))
+    assert _registry_configs(box) == []
     assert "APP_VERSION=previous" in (box / ".deploy-images.env").read_text(), (
         "the record must keep naming what is still running"
     )
@@ -339,7 +346,13 @@ def test_a_box_missing_a_required_setting_is_refused_before_the_pull(tmp_path):
 
 
 def _build(tmp_path: Path, *args: str, **extra: str) -> tuple[subprocess.CompletedProcess, list[str]]:
-    digest = 'case " $* " in *" inspect "*) echo "registry.example/app/${!###*/}@sha256:feed" | sed "s/:[^@]*@/@/";; esac\n'
+    # An image tagged under two names carries a digest for each; only the pushed name's counts.
+    digest = (
+        'case " $* " in *" inspect "*)\n'
+        '  echo "narrative-local@sha256:0ther"\n'
+        '  echo "registry.example/app/${!###*/}@sha256:feed" | sed "s/:[^@]*@/@/";;\n'
+        "esac\n"
+    )
     run = _run(["bash", str(BUILD_SCRIPT), *args], tmp_path, _fake_tools(tmp_path, digest), **extra)
     return run, _calls(tmp_path)
 

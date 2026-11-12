@@ -12,8 +12,8 @@ name: Deploy (Staging)
 #
 # REGISTRY: ghcr.io/frankbria/narrative-modeling-app/{backend,frontend}, tagged with
 # the commit SHA. The packages are private; the box pulls with this run's own
-# GITHUB_TOKEN (packages: read), which expires with the run and is logged out of
-# the box when the pull ends. No standing pull credential lives on the box.
+# GITHUB_TOKEN (packages: read), which expires with the run and is used from a
+# throwaway docker config. No standing pull credential lives on the box.
 #
 # SOURCE MAPS (#1158): optional. With the repository secret SENTRY_AUTH_TOKEN and
 # the repository variables SENTRY_ORG and SENTRY_PROJECT set, the frontend build
@@ -54,6 +54,7 @@ name: Deploy (Staging)
 on:
   push:
     branches: [main]
+  # A dispatch builds and deploys the commit it is dispatched on.
   workflow_dispatch:
 
 concurrency:

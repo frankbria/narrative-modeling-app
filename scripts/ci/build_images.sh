@@ -40,7 +40,7 @@ frontend_args=(
   --build-arg "SENTRY_PROJECT=${SENTRY_PROJECT:-}"
 )
 if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
-  frontend_args+=(--secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN)
+  frontend_args+=(--secret "id=sentry_auth_token,env=SENTRY_AUTH_TOKEN")
 fi
 
 backend=${prefix}backend:${revision}
@@ -52,7 +52,11 @@ if [ "${2:-}" = "--push" ]; then
   for image in "$backend" "$frontend"; do
     docker push "$image" >&2
   done
-  # The registry's digest for what was just pushed: the reference the boxes pull.
-  echo "backend=$(docker image inspect --format '{{index .RepoDigests 0}}' "$backend")"
-  echo "frontend=$(docker image inspect --format '{{index .RepoDigests 0}}' "$frontend")"
+  # The registry's digest for what was just pushed: the reference the boxes pull. An
+  # image can carry digests under other names too, so the one for this name is picked.
+  pushed_digest() {
+    docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" | grep -F -m 1 "${1%:*}@sha256:"
+  }
+  echo "backend=$(pushed_digest "$backend")"
+  echo "frontend=$(pushed_digest "$frontend")"
 fi

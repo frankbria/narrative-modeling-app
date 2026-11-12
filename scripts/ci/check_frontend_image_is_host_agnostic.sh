@@ -10,14 +10,16 @@
 set -euo pipefail
 image=${1:?usage: check_frontend_image_is_host_agnostic.sh <image>}
 
-containers=()
-cleanup() { [ "${#containers[@]}" -eq 0 ] || docker rm -f "${containers[@]}" >/dev/null 2>&1 || true; }
+# Named up front: home_page runs in a command substitution, so it cannot report back
+# which containers it started.
+containers=(narrative-host-agnostic-staging narrative-host-agnostic-production)
+cleanup() { docker rm -f "${containers[@]}" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
+cleanup
 
 # <environment> <public host> <local port>: prints the home page the container serves.
 home_page() {
   local name="narrative-host-agnostic-$1"
-  containers+=("$name")
   docker run -d --name "$name" -p "127.0.0.1:$3:3000" \
     -e ENVIRONMENT="$1" \
     -e NEXT_PUBLIC_API_URL="https://$2/api/v1" \
