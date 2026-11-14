@@ -21,11 +21,13 @@ export function PublicPageviews({ domain }: { domain: string }) {
   // view carries it: sent again, the same outside site would be named on every page.
   const referrerSent = useRef(false)
 
+  // The query string is read, not a dependency: one pageview per page, and a change of
+  // query alone on the same page is not a new visit.
   useEffect(() => {
     if (!counted) return
     const referrer = referrerSent.current ? '' : document.referrer
     referrerSent.current = true
-    void sendPageview(pageviewEvent(domain, window.location.origin, pathname, referrer))
+    void sendPageview(pageviewEvent(domain, window.location.origin, pathname, referrer, window.location.search))
   }, [counted, domain, pathname])
 
   return null

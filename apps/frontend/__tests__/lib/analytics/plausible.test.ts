@@ -2,7 +2,7 @@
  * What a counted visit sends to Plausible (#769 AC5). The Privacy Policy's cookie
  * section and the Plausible row in SUB_PROCESSORS describe exactly this payload.
  */
-import { COUNTED_PATHS, PLAUSIBLE_EVENT_URL, pageviewEvent, sendPageview } from '@/lib/analytics/plausible'
+import { CAMPAIGN_PARAMETERS, COUNTED_PATHS, PLAUSIBLE_EVENT_URL, pageviewEvent, sendPageview } from '@/lib/analytics/plausible'
 import { NAV_LINKS } from '@/lib/publicLinks'
 
 const fetchMock = () => global.fetch as jest.Mock
@@ -43,6 +43,46 @@ describe('pageviewEvent', () => {
     expect(pageviewEvent('d', 'https://a.example', '/', '')).not.toHaveProperty('referrer')
     expect(pageviewEvent('d', 'https://a.example', '/', 'not an address')).not.toHaveProperty('referrer')
     expect(pageviewEvent('d', 'https://a.example', '/', 'about:blank')).not.toHaveProperty('referrer')
+  })
+})
+
+describe('campaign parameters', () => {
+  const counted = (search: string) =>
+    pageviewEvent('sheetpredict.app', 'https://www.sheetpredict.app', '/pricing', '', search).url
+
+  it('are the ones Plausible reads for its source and campaign reports, and no others', () => {
+    expect(CAMPAIGN_PARAMETERS).toEqual(['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'ref'])
+  })
+
+  it('reach Plausible in the page address, in the allowlist order', () => {
+    expect(counted('?utm_campaign=launch&utm_source=newsletter&utm_medium=email&utm_term=forecast&utm_content=hero&ref=producthunt')).toBe(
+      'https://www.sheetpredict.app/pricing?utm_source=newsletter&utm_medium=email&utm_campaign=launch&utm_content=hero&utm_term=forecast&ref=producthunt',
+    )
+  })
+
+  it('leave everything else in the query string behind', () => {
+    expect(counted('?email=ana%40example.com&utm_source=newsletter&callbackUrl=%2Fmodel%2F65f0c0ffee&token=secret')).toBe(
+      'https://www.sheetpredict.app/pricing?utm_source=newsletter',
+    )
+  })
+
+  it.each(['', '?', '?email=ana%40example.com', '?utm_source=', '?UTM_SOURCE=newsletter'])(
+    'leave the address bare when none is given: %p',
+    (search) => {
+      expect(counted(search)).toBe('https://www.sheetpredict.app/pricing')
+    },
+  )
+
+  it('leave out a tag whose value could be an email address', () => {
+    expect(counted('?utm_source=newsletter&utm_content=ana%40example.com&ref=a@b')).toBe(
+      'https://www.sheetpredict.app/pricing?utm_source=newsletter',
+    )
+  })
+
+  it('keep the first value of a repeated parameter and encode it again', () => {
+    expect(counted('?utm_campaign=spring%20sale&utm_campaign=other')).toBe(
+      'https://www.sheetpredict.app/pricing?utm_campaign=spring+sale',
+    )
   })
 })
 

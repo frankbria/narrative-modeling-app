@@ -6,8 +6,10 @@
  * payload. The Privacy Policy's cookie section and the Plausible row in
  * `SUB_PROCESSORS` describe it: change all three together.
  *
- * shortcut: pageviews only, no engagement time or scroll depth; move to
- * `@plausible-analytics/tracker` when time on page is wanted.
+ * shortcut: pageviews only, no engagement time or scroll depth (decided on #1211).
+ * Plausible gets those only from its tracker script, whose engagement events follow the
+ * open page (into the app once a visitor signs in) and carry the full address. Revisit
+ * when a funnel target needs time on page and the tracker can be held to COUNTED_PATHS.
  */
 import { NAV_LINKS } from '@/lib/publicLinks'
 
@@ -18,6 +20,13 @@ export const PLAUSIBLE_EVENT_URL = 'https://plausible.io/api/event'
  * The Privacy Policy's section 8 names these pages: a new nav link changes that sentence too.
  */
 export const COUNTED_PATHS: readonly string[] = ['/', ...NAV_LINKS.map((link) => link.href)]
+
+/**
+ * The query-string parameters Plausible reads for its source and campaign reports (#1211).
+ * Only these travel; anything else in the address (a callback URL, a token) is dropped, and so
+ * is a tag whose value holds an @: a newsletter's merge tags can put the reader's email there.
+ */
+export const CAMPAIGN_PARAMETERS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'ref'] as const
 
 export interface PageviewEvent {
   name: 'pageview'
@@ -41,8 +50,25 @@ function referringSite(referrer: string, origin: string): string | undefined {
   }
 }
 
-export function pageviewEvent(domain: string, origin: string, pathname: string, referrer: string): PageviewEvent {
-  const event: PageviewEvent = { name: 'pageview', domain, url: origin + pathname }
+function campaignQuery(search: string): string {
+  const given = new URLSearchParams(search)
+  const kept = new URLSearchParams()
+  for (const name of CAMPAIGN_PARAMETERS) {
+    const value = given.get(name)
+    if (value && !value.includes('@')) kept.set(name, value)
+  }
+  const query = kept.toString()
+  return query ? `?${query}` : ''
+}
+
+export function pageviewEvent(
+  domain: string,
+  origin: string,
+  pathname: string,
+  referrer: string,
+  search = '',
+): PageviewEvent {
+  const event: PageviewEvent = { name: 'pageview', domain, url: origin + pathname + campaignQuery(search) }
   const cameFrom = referringSite(referrer, origin)
   if (cameFrom) event.referrer = cameFrom
   return event
