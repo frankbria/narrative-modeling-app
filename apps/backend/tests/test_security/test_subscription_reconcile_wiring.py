@@ -175,10 +175,10 @@ def test_the_alert_carries_the_counts_and_says_what_the_exit_status_means():
     assert "https://example.invalid/run" in posted
 
 
-def test_a_run_stripe_never_answered_says_so():
-    """#1213: busy or unreachable for every row exits 3, not 1."""
+def test_a_run_with_failed_repairs_says_so():
+    """#1213: a row whose repair raised is counted, and the run exits 3."""
     posted = _posted_alert({"reconcile.status": "3"})
-    assert "Stripe answered no subscription" in posted
+    assert "rows failed while being repaired" in posted
 
 
 def test_the_alert_is_filed_when_the_reconciliation_never_ran():

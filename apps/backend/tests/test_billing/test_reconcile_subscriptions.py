@@ -7,6 +7,7 @@ one-off manual run. `reconcile()` takes the collection and the Stripe fetch, so 
 can be pointed at the test DB with a fake Stripe.
 """
 
+import asyncio
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -304,6 +305,76 @@ class TestReconcile:
         assert fresh is not None
         assert fresh.status == SubscriptionStatus.CANCELED
 
+    async def test_a_write_that_raises_is_counted_and_the_run_did_not_finish(
+        self, setup_database, capsys
+    ):
+        """One failed write must not hide the counts or pass the run, and the
+        rows beside it are still repaired. Only the class is printed: a pymongo
+        message can name the cluster's hosts."""
+        reconcile = _load_reconcile()
+        await _seed("u-ok")
+        await _seed("u-broken")
+        collection = _collection()
+
+        class OneWriteFails:
+            def find(self, *args, **kwargs):
+                return collection.find(*args, **kwargs)
+
+            async def update_one(self, query, update):
+                row = await collection.find_one({"_id": query["_id"]})
+                if row["user_id"] == "u-broken":
+                    raise RuntimeError("cluster0.abc123.mongodb.net: write failed")
+                return await collection.update_one(query, update)
+
+        code = await reconcile(
+            OneWriteFails(), _answering(_remote("unpaid", None)), apply=True
+        )
+
+        out = capsys.readouterr().out
+        assert code == 3
+        assert "could not repair one subscription: RuntimeError" in out
+        assert "1 rows failed" in out
+        assert "mongodb.net" not in out
+        ok = await Subscription.find_one(Subscription.user_id == "u-ok")
+        assert ok is not None and ok.status == SubscriptionStatus.CANCELED
+
+    async def test_rows_are_taken_from_the_cursor_only_as_reads_free_up(
+        self, setup_database
+    ):
+        """The time between reading a row and its conditional write must not grow
+        with the table, or busy days turn rows into "changed under us"."""
+        reconcile = _load_reconcile()
+        for n in range(12):
+            await _seed(f"u-paced-{n}", stripe_subscription_id=f"sub_paced_{n}")
+        collection = _collection()
+        handed_out = 0
+        finished = 0
+        furthest_ahead = 0
+
+        class CountingCursor:
+            def find(self, *args, **kwargs):
+                async def rows():
+                    nonlocal handed_out, furthest_ahead
+                    async for row in collection.find(*args, **kwargs):
+                        handed_out += 1
+                        furthest_ahead = max(furthest_ahead, handed_out - finished)
+                        yield row
+
+                return rows()
+
+            def __getattr__(self, name):
+                return getattr(collection, name)
+
+        async def fetch(_subscription_id):
+            nonlocal finished
+            await asyncio.sleep(0.01)
+            finished += 1
+            return _remote("active", None)
+
+        assert await reconcile(CountingCursor(), fetch, apply=False) == 0
+        assert handed_out == 12
+        assert furthest_ahead <= reconcile_subscriptions.CONCURRENT_READS + 1
+
     async def test_rows_that_never_reached_stripe_are_skipped(self, setup_database):
         """A FREE tenant has no `stripe_subscription_id`; calling Stripe for one
         would be a guaranteed error per row."""
@@ -539,11 +610,11 @@ class TestTheStripeRead:
         lapsed = await Subscription.find_one(Subscription.user_id == "u-lapsed")
         assert lapsed is not None and lapsed.status == SubscriptionStatus.CANCELED
 
-    async def test_stripe_unreachable_for_every_row_did_not_finish(
+    async def test_stripe_unreachable_for_every_row_still_does_not_alert(
         self, stripe_run, monkeypatch, capsys
     ):
-        """Nothing was compared, so a green run would claim a repair that did not
-        happen; a box that cannot reach Stripe for days lapses paying customers."""
+        """The owner's rule on #1213: a transient failure does not keep the alert
+        open. Staging has one row, so "every row" is one rate-limited read."""
         import stripe
 
         await _seed("u-one", stripe_subscription_id="sub_one")
@@ -554,8 +625,11 @@ class TestTheStripeRead:
 
         monkeypatch.setattr(stripe.Subscription, "retrieve", unreachable)
 
-        assert await reconcile_subscriptions.main() == 3
-        assert "did not finish" in capsys.readouterr().out
+        assert await reconcile_subscriptions.main() == 0
+
+        out = capsys.readouterr().out
+        assert "stripe busy or unreachable:     2" in out
+        assert sorted(stripe_run.slept) == [1, 1, 2, 2, 4, 4]
 
     async def test_a_subscription_stripe_says_does_not_exist_is_missing(
         self, stripe_run, monkeypatch, capsys

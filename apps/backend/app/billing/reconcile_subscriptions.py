@@ -35,8 +35,12 @@ retries). Only the first two need a person.
 Exit status: 0 when every row it could read matches Stripe (after repairs, under
 `--apply`), 1 when a row is missing, unreadable, raced, or (read-only) drifted,
 2 when a required setting is missing, 3 when the run could not finish (the
-database was unreachable, or Stripe was busy or unreachable for every row). A row
-Stripe was only too busy to answer does not make it 1: it settles on a later run.
+database was unreachable, or a row's repair raised; the other rows are still repaired). A row Stripe was only too
+busy to answer does not make it 1: it settles on a later run.
+
+shortcut: busy rows never fail the run, so a Stripe that stays unreachable from
+the box for days is seen only in the counts; alert when the same rows stay busy
+across consecutive runs once there are paying tenants (#1213 follow-up).
 
 A sales-led ENTERPRISE deal sold on its own price must use the price in
 `STRIPE_PRICE_ENTERPRISE`: any other price resolves to PRO, here as in the
@@ -263,6 +267,9 @@ async def reconcile(
     async def in_slot(row: Row) -> str:
         try:
             return await _reconcile_row(collection, fetch, row, tiers_resolvable, apply)
+        except Exception as exc:  # noqa: BLE001 - counted by class, see `_report`
+            print(f"  could not repair one subscription: {type(exc).__name__}")
+            return "failed"
         finally:
             slots.release()
 
@@ -282,8 +289,9 @@ def _report(outcomes: Counter[str], apply: bool) -> int:
     print(f"unreadable from stripe:         {outcomes['unreadable']}")
     print(f"stripe busy or unreachable:     {outcomes['unavailable']}")
     print(f"drifted from stripe:            {drifted}")
-    if outcomes.total() and outcomes["unavailable"] == outcomes.total():
-        print("the reconciliation did not finish: Stripe answered no subscription")
+    if outcomes["failed"]:
+        # The class went to stdout per row; a database error message can name hosts.
+        print(f"the reconciliation did not finish: {outcomes['failed']} rows failed")
         return 3
     if apply:
         return _applied_status(outcomes)
