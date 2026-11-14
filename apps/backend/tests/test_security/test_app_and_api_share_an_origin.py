@@ -8,7 +8,12 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from tests.test_security.test_env_templates import PRODUCTION, STAGING, _values
+from tests.test_security.test_env_templates import (
+    COMPOSE_FILE,
+    PRODUCTION,
+    STAGING,
+    _values,
+)
 
 
 def _origin(url: str) -> tuple[str, str]:
@@ -21,3 +26,9 @@ def test_the_app_and_the_api_share_an_origin(template):
     values = _values(template)
 
     assert _origin(values["NEXT_PUBLIC_API_URL"]) == _origin(values["NEXTAUTH_URL"])
+
+
+def test_the_backend_reads_its_public_address_from_the_same_setting():
+    """The comparison above holds for the mail only while compose hands the backend the
+    frontend's API address as its `PUBLIC_API_URL`."""
+    assert "PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}" in COMPOSE_FILE.read_text()

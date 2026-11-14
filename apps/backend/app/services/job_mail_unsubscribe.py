@@ -55,13 +55,15 @@ def read(token: str) -> UnsubscribeLink | None:
 
 
 async def turn_off(user_id: str, issued_at: datetime) -> bool:
-    """Turn the account's job mail off unless its choice changed after `issued_at`.
-    True when its job mail is off afterwards."""
+    """Turn the account's job mail off unless its choice changed at or after `issued_at`.
+    True when its job mail is off afterwards: a refused link whose account is already off
+    reads as done."""
     try:
         # One write: the filter matches only a choice made before the link was built, so
         # a later choice leaves the row unmatched and the upsert hits the unique index.
+        # Strictly before: a choice stored in the link's own millisecond may be the later.
         await NotificationPreference.get_motor_collection().update_one(
-            {"user_id": user_id, "updated_at": {"$lte": issued_at}},
+            {"user_id": user_id, "updated_at": {"$lt": issued_at}},
             {"$set": {"user_id": user_id, "job_emails": False, "updated_at": utcnow()}},
             upsert=True,
         )

@@ -98,10 +98,13 @@ account id and the time the message was built, with an HMAC under the artifact s
 (`ARTIFACT_SIGNING_KEY`, else `NEXTAUTH_SECRET`), so a link turns off its own account's
 mail only, and rotating that key retires every link already sent. `GET` shows a page with
 one button and changes nothing, because mail scanners open links; `POST` (the button, or a
-mailbox provider's one-click request) turns the mail off. A link stops working once the
-account's choice changes after the message was built (410), so a forwarded or old message
-cannot switch off mail its owner turned back on; using it twice is harmless. Nothing is
-stored per link. A message built without `PUBLIC_API_URL` has no link and no headers.
+mailbox provider's one-click request) turns the mail off. Once the account's choice has
+changed at or after the moment the message was built, its link's `POST` changes nothing:
+it answers 410 while the mail is on, so a forwarded or old message cannot switch off mail
+its owner turned back on, and 200 while it is already off, so a second click is harmless.
+Nothing is stored per link. A message built without `PUBLIC_API_URL` has no link and no
+headers; that is local development only, because a deploy derives it from the frontend's
+required `NEXT_PUBLIC_API_URL`.
 
 ### 6. Dunning mail stays with Stripe
 

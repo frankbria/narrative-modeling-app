@@ -8,7 +8,7 @@ from datetime import timedelta
 from app.models.notification_preference import NotificationPreference
 from app.services import job_mail_unsubscribe
 from app.services.job_notifications import set_job_emails, wants_job_emails
-from app.utils.datetime import utcnow
+from app.utils.datetime import as_utc, utcnow
 
 
 def _forge(token: str, **parts: str) -> str:
@@ -107,6 +107,22 @@ class TestTurningMailOff:
         await set_job_emails("acct-1", True)
 
         assert await job_mail_unsubscribe.turn_off("acct-1", issued_at) is False
+        assert await wants_job_emails("acct-1") is True
+
+    async def test_a_link_built_in_the_millisecond_of_a_change_cannot_undo_it(
+        self, setup_database
+    ):
+        await set_job_emails("acct-1", True)
+        stored = await NotificationPreference.find_one(
+            NotificationPreference.user_id == "acct-1"
+        )
+        assert stored is not None
+        link = job_mail_unsubscribe.read(
+            job_mail_unsubscribe.token_for("acct-1", as_utc(stored.updated_at))
+        )
+        assert link is not None
+
+        assert await job_mail_unsubscribe.turn_off("acct-1", link.issued_at) is False
         assert await wants_job_emails("acct-1") is True
 
     async def test_it_keeps_one_row_per_account(self, setup_database):
