@@ -34,7 +34,9 @@ describe('RootLayout and the public-page counter', () => {
 
   afterEach(() => {
     session = null
-    process.env.PLAUSIBLE_DOMAIN = originalDomain
+    // Assigning undefined to process.env stores the string "undefined".
+    if (originalDomain === undefined) delete process.env.PLAUSIBLE_DOMAIN
+    else process.env.PLAUSIBLE_DOMAIN = originalDomain
   })
 
   it('mounts the counter once for a signed-out visitor, under the configured Plausible site', async () => {

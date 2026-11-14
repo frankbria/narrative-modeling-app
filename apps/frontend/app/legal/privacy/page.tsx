@@ -196,10 +196,10 @@ export default function PrivacyPage() {
           We count visits to our public pages (the home page, How it works, Pricing and Security)
           with Plausible Analytics, and only while you are signed out. A counted visit sends
           Plausible the address of the page, the name of the outside site that led you to ours, and
-          from the rest of the address only the campaign tags a link may carry (utm_source,
-          utm_medium, utm_campaign, utm_content, utm_term and ref) with the values the link you
-          followed gave them, leaving out any value with an @ in it so an email address is not sent,
-          along with what every web request carries: your IP address and browser details.
+          what every web request carries: your IP address and browser details. From the rest of the
+          address it keeps only the campaign tags a link may carry (utm_source, utm_medium,
+          utm_campaign, utm_content, utm_term and ref), with the values the link you followed gave
+          them, and leaves out any value with an @ in it so an email address is not sent.
           Plausible uses those to count a visitor for one day and does not store the IP address. It
           sets no cookie and stores nothing in your browser, so there is still no consent banner.
           Nothing inside the app is counted this way.
