@@ -45,8 +45,8 @@ the person who cancelled it already knows. A job removed by an erasure sends not
 The message holds the job's label (the model name or dataset filename for training, the
 record count for a batch) and id, the stored failure reason, the app's address and how to stop
 the mails. The failure reason is the one already shown in the app, from
-`user_safe_failure_reason`, never exception text. No dataset content, storage location or
-token is in it.
+`user_safe_failure_reason`, never exception text. No dataset content or storage location
+is in it, and no token but the unsubscribe link's (decision 5).
 
 Three places end a job and all three notify: the training task, the batch run, and the
 stale-job reaper. Each ending carries an idempotency key, so the task and the reaper
@@ -90,6 +90,19 @@ switch is on the settings page (`GET`/`PUT /api/v1/users/me/notification-prefere
 Account erasure keeps the row: it holds no personal data, and deleting it would silently
 opt the account back in.
 
+Every message also carries a one-click unsubscribe (#1206, RFC 8058): a link in the body
+and the `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+headers, all pointing at `/api/v1/users/unsubscribe/job-emails?token=…`
+(`app/services/job_mail_unsubscribe.py`). It works without signing in. The token is the
+account id and the time the message was built, with an HMAC under the artifact signing key
+(`ARTIFACT_SIGNING_KEY`, else `NEXTAUTH_SECRET`), so a link turns off its own account's
+mail only, and rotating that key retires every link already sent. `GET` shows a page with
+one button and changes nothing, because mail scanners open links; `POST` (the button, or a
+mailbox provider's one-click request) turns the mail off. A link stops working once the
+account's choice changes after the message was built (410), so a forwarded or old message
+cannot switch off mail its owner turned back on; using it twice is harmless. Nothing is
+stored per link. A message built without `PUBLIC_API_URL` has no link and no headers.
+
 ### 6. Dunning mail stays with Stripe
 
 Stripe's own emails (failed-payment and card-expiry notices, with its Smart Retries) are
@@ -110,7 +123,9 @@ is part of the go-live checklist in #771, not code.
 - Messages are sent inline from the worker that ended the job, with a 10-second timeout
   and no retry. A message lost to a provider outage is not sent later.
 - The link in a message is `PUBLIC_API_URL` without its `/api/v1`, which assumes the app
-  and the API share an origin. They do on every deployment today.
+  and the API share an origin. They do on every deployment today, and
+  `test_app_and_api_share_an_origin.py` fails if a deploy template splits them; the app
+  then needs its own setting.
 
 ## Open to the owner
 

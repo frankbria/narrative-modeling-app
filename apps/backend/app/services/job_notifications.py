@@ -5,8 +5,10 @@ run, `batch_job_finished` for a batch job, from the job's own task and from the 
 reaper. Neither function raises, so a notification cannot change the outcome it reports.
 
 A message carries the job's label and id, the stored user-safe failure reason
-(`app/utils/job_failures.py`), the app's address and how to stop the mails. Nothing else:
-no dataset contents, no storage locations, no tokens.
+(`app/utils/job_failures.py`), the app's address and how to stop the mails, including a
+one-click unsubscribe link and its `List-Unsubscribe` headers (#1206). Nothing else: no
+dataset contents, no storage locations, and no token but the one that link needs, which
+can only turn this account's job mail off (`job_mail_unsubscribe`).
 """
 
 import logging
@@ -17,12 +19,13 @@ from bson import ObjectId
 from app.config import public_api_url
 from app.models.batch_job import BatchJob, JobStatus
 from app.models.notification_preference import NotificationPreference
-from app.services import email_service
+from app.services import email_service, job_mail_unsubscribe
 from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
 _API_PATH = "/api/v1"
+UNSUBSCRIBE_PATH = "/users/unsubscribe/job-emails"
 _REPORTED = (JobStatus.COMPLETED, JobStatus.FAILED)
 _NO_REASON = "No reason was recorded."
 MAX_LABEL_LENGTH = 120
@@ -56,7 +59,8 @@ async def _address_of(user_id: str) -> str | None:
 
 def _app_url() -> str | None:
     # shortcut: assumes the app is served from the API's own origin, true of every
-    # deployment today; give the app its own setting when the two are split.
+    # deployment today; give the app its own setting when the two are split, which
+    # `test_app_and_api_share_an_origin.py` reports for the deploy templates.
     api = public_api_url()
     return api.removesuffix(_API_PATH) if api else None
 
@@ -70,7 +74,34 @@ def _label(job: str) -> str:
     return line[: MAX_LABEL_LENGTH - 1] + "…"
 
 
-def _message(job: str, job_id: str, failure_reason: str | None) -> tuple[str, str]:
+def _unsubscribe_url(user_id: str) -> str | None:
+    api = public_api_url()
+    token = job_mail_unsubscribe.token_for(user_id, utcnow())
+    return f"{api}{UNSUBSCRIBE_PATH}?token={token}" if api else None
+
+
+def _unsubscribe_headers(unsubscribe_url: str | None) -> dict[str, str]:
+    """RFC 8058: a mailbox provider's unsubscribe button posts to the link."""
+    if unsubscribe_url is None:
+        return {}
+    return {
+        "List-Unsubscribe": f"<{unsubscribe_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _footer(app_url: str | None, unsubscribe_url: str | None) -> str:
+    settings_page = f"Settings ({app_url}/settings)" if app_url else "Settings"
+    one_click = f", or with one click: {unsubscribe_url}" if unsubscribe_url else "."
+    return (
+        "You are getting this because job emails are on for your SheetPredict account. "
+        f"Turn them off under {settings_page}{one_click}"
+    )
+
+
+def _message(
+    job: str, job_id: str, failure_reason: str | None, unsubscribe_url: str | None
+) -> tuple[str, str]:
     """Subject and body."""
     label = _label(job)
     subject = f"{label} {'failed' if failure_reason else 'finished'}"
@@ -81,11 +112,7 @@ def _message(job: str, job_id: str, failure_reason: str | None) -> tuple[str, st
     )
     app_url = _app_url()
     link = f"\n\n{app_url}\n" if app_url else "\n"
-    settings_page = f"Settings ({app_url}/settings)" if app_url else "Settings"
-    footer = (
-        "You are getting this because job emails are on for your SheetPredict account. "
-        f"Turn them off under {settings_page}."
-    )
+    footer = _footer(app_url, unsubscribe_url)
     # The id is what support asks for, and what the generic failure reason tells the
     # reader to quote.
     return subject, f"{opening}\n\nJob id: {job_id}{link}\n{footer}\n"
@@ -99,8 +126,15 @@ async def _notify(
     address = await _address_of(user_id)
     if address is None:
         return
-    subject, text = _message(job, job_id, failure_reason)
-    await email_service.send(address, subject, text, idempotency_key=key)
+    unsubscribe_url = _unsubscribe_url(user_id)
+    subject, text = _message(job, job_id, failure_reason, unsubscribe_url)
+    await email_service.send(
+        address,
+        subject,
+        text,
+        idempotency_key=key,
+        headers=_unsubscribe_headers(unsubscribe_url),
+    )
 
 
 async def _notify_batch(job_id: str) -> None:

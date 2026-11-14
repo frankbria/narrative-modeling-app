@@ -31,13 +31,15 @@ REQUEST = TrainModelRequest(dataset_id="dataset_123", target_column="target")
 
 
 @pytest.fixture
-def outbox(monkeypatch) -> list[dict[str, str]]:
+def outbox(monkeypatch) -> list[dict]:
     monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
     monkeypatch.setenv("EMAIL_FROM", "SheetPredict <jobs@mail.example>")
     sent: list[dict[str, str]] = []
 
-    async def deliver(to: str, subject: str, text: str, *, idempotency_key: str) -> bool:
-        sent.append({"to": to, "subject": subject, "text": text, "key": idempotency_key})
+    async def deliver(
+        to: str, subject: str, text: str, *, idempotency_key: str, headers: dict[str, str]
+    ) -> bool:
+        sent.append({"to": to, "subject": subject, "text": text, "key": idempotency_key, "headers": headers})
         return True
 
     monkeypatch.setattr(email_service, "send", deliver)

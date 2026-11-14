@@ -97,6 +97,15 @@ class TestSend:
             "text": "Body",
         }
 
+    async def test_headers_go_out_with_the_message(self, configured, monkeypatch):
+        seen = _resend(monkeypatch, _accepted)
+        headers = {"List-Unsubscribe": "<https://app.example/u?token=t>"}
+
+        await email_service.send("a@b.example", "Hello", "Body", idempotency_key="k", headers=headers)
+
+        (request,) = seen
+        assert json.loads(request.content)["headers"] == headers
+
     async def test_a_padded_key_is_sent_without_its_padding(self, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", " re_test_key\n")
         monkeypatch.setenv("EMAIL_FROM", "jobs@mail.example")

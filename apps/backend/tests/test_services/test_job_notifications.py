@@ -12,20 +12,22 @@ import pytest_asyncio
 from bson import ObjectId
 
 from app.models.notification_preference import NotificationPreference
-from app.services import email_service, job_notifications
+from app.services import email_service, job_mail_unsubscribe, job_notifications
 
 ADDRESS = "analyst@customer.example"
 
 
 @pytest.fixture
-def outbox(monkeypatch) -> list[dict[str, str]]:
+def outbox(monkeypatch) -> list[dict]:
     """A configured sender whose messages land in a list."""
     monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
     monkeypatch.setenv("EMAIL_FROM", "SheetPredict <jobs@mail.example>")
     sent: list[dict[str, str]] = []
 
-    async def deliver(to: str, subject: str, text: str, *, idempotency_key: str) -> bool:
-        sent.append({"to": to, "subject": subject, "text": text, "key": idempotency_key})
+    async def deliver(
+        to: str, subject: str, text: str, *, idempotency_key: str, headers: dict[str, str]
+    ) -> bool:
+        sent.append({"to": to, "subject": subject, "text": text, "key": idempotency_key, "headers": headers})
         return True
 
     monkeypatch.setattr(email_service, "send", deliver)
@@ -105,7 +107,25 @@ class TestAFinishedJob:
         text = outbox[0]["text"]
         assert "https://app.example\n" in text
         assert "https://app.example/settings" in text
-        assert "/api/v1" not in text
+        # The API's address appears only in the unsubscribe link.
+        assert text.count("/api/v1") == text.count("/api/v1/users/unsubscribe/job-emails") == 1
+
+    async def test_the_message_carries_a_one_click_unsubscribe_for_its_account(
+        self, account, outbox, monkeypatch
+    ):
+        monkeypatch.setenv("PUBLIC_API_URL", "https://app.example/api/v1")
+
+        await job_notifications.job_finished(account, "Your training run", job_id="job_1", key="k")
+
+        message = outbox[0]
+        page = "https://app.example/api/v1/users/unsubscribe/job-emails?token="
+        assert message["headers"]["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+        header = message["headers"]["List-Unsubscribe"]
+        assert header.startswith(f"<{page}") and header.endswith(">")
+        token = header[len(page) + 1 : -1]
+        assert f"{page}{token}" in message["text"]
+        link = job_mail_unsubscribe.read(token)
+        assert link is not None and link.user_id == account
 
     async def test_without_a_public_address_the_message_carries_no_link(
         self, account, outbox, monkeypatch
@@ -117,6 +137,7 @@ class TestAFinishedJob:
         text = outbox[0]["text"]
         assert "http" not in text
         assert "Settings" in text
+        assert outbox[0]["headers"] == {}
 
     async def test_a_label_cannot_break_the_subject_line(self, account, outbox):
         await job_notifications.job_finished(account, 'Training "a\r\nBcc: x"', job_id="job_1", key="k")
