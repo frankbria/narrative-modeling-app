@@ -7,7 +7,7 @@
  * last test keeps every other module from naming the counter at all.
  */
 import { readdirSync, readFileSync } from 'fs'
-import { join, relative } from 'path'
+import { join } from 'path'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import type { Session } from 'next-auth'
 import RootLayout from '@/app/layout'
@@ -53,14 +53,17 @@ describe('RootLayout and the public-page counter', () => {
 
   it('is named by the root layout alone, so no component can render the counter elsewhere', () => {
     const root = join(__dirname, '..', '..')
-    const sources = ['app', 'components', 'lib'].flatMap((folder) =>
-      readdirSync(join(root, folder), { recursive: true, encoding: 'utf8' })
-        .filter((file) => /\.tsx?$/.test(file))
-        .map((file) => join(root, folder, file)),
-    )
+    const notSource = new Set(['node_modules', '.next', '__tests__', 'e2e'])
+    const sources = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => !notSource.has(entry.name))
+      .flatMap((entry) =>
+        entry.isDirectory()
+          ? readdirSync(join(root, entry.name), { recursive: true, encoding: 'utf8' }).map((file) => join(entry.name, file))
+          : [entry.name],
+      )
+      .filter((file) => /\.tsx?$/.test(file))
     // Any mention, whatever the import form or quote style: only the layout may name it.
     const namers = sources
-      .map((file) => relative(root, file))
       .filter((file) => file !== 'components/analytics/PublicPageviews.tsx')
       .filter((file) => /\bPublicPageviews\b/.test(readFileSync(join(root, file), 'utf8')))
     expect(namers).toEqual(['app/layout.tsx'])
