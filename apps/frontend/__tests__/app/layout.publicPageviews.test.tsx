@@ -4,7 +4,7 @@
  * so removing the mount or moving it where a signed-in page renders fails CI.
  *
  * The element walk sees what the layout writes, not what its children render, so the
- * last test keeps every other module from importing the counter at all.
+ * last test keeps every other module from naming the counter at all.
  */
 import { readdirSync, readFileSync } from 'fs'
 import { join, relative } from 'path'
@@ -49,16 +49,18 @@ describe('RootLayout and the public-page counter', () => {
     expect(await countersMounted()).toHaveLength(0)
   })
 
-  it('is imported by the root layout alone, so no component can render the counter elsewhere', () => {
+  it('is named by the root layout alone, so no component can render the counter elsewhere', () => {
     const root = join(__dirname, '..', '..')
     const sources = ['app', 'components', 'lib'].flatMap((folder) =>
       readdirSync(join(root, folder), { recursive: true, encoding: 'utf8' })
         .filter((file) => /\.tsx?$/.test(file))
         .map((file) => join(root, folder, file)),
     )
-    const importers = sources
-      .filter((file) => /from '@\/components\/analytics\/PublicPageviews'|from '\.+\/[^']*PublicPageviews'/.test(readFileSync(file, 'utf8')))
+    // Any mention, whatever the import form or quote style: only the layout may name it.
+    const namers = sources
       .map((file) => relative(root, file))
-    expect(importers).toEqual(['app/layout.tsx'])
+      .filter((file) => file !== 'components/analytics/PublicPageviews.tsx')
+      .filter((file) => /\bPublicPageviews\b/.test(readFileSync(join(root, file), 'utf8')))
+    expect(namers).toEqual(['app/layout.tsx'])
   })
 })
