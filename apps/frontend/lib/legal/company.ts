@@ -79,7 +79,7 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     name: 'Resend',
     purpose:
-      'Delivers the email we send when one of your training or batch prediction jobs finishes or fails. Receives your email address and the message: the name of the job and, for a failure, the reason. No dataset content.',
+      'Delivers the email we send when one of your training or batch prediction jobs finishes or fails. Receives your email address and the message: the name and id of the job, for a failure the reason, and a link to turn these emails off, which carries your account id. No dataset content.',
     privacyUrl: 'https://resend.com/legal/privacy-policy',
   },
   {
