@@ -15,6 +15,7 @@ import TermsPage from '@/app/legal/terms/page';
 import PrivacyPage from '@/app/legal/privacy/page';
 import { COMPANY, SUB_PROCESSORS } from '@/lib/legal/company';
 import { NAV_LINKS } from '@/lib/publicLinks';
+import { CAMPAIGN_PARAMETERS } from '@/lib/analytics/plausible';
 
 describe('Terms of Service', () => {
   it('names the contracting entity', () => {
@@ -102,7 +103,7 @@ describe('Privacy Policy', () => {
   it('is dated by its own latest change, not the Terms date (#1111, #494)', () => {
     const { container } = render(<PrivacyPage />);
     expect(container.textContent).toContain(`Effective ${COMPANY.privacyEffectiveDate}`);
-    expect(COMPANY.privacyEffectiveDate).toBe('November 12, 2026');
+    expect(COMPANY.privacyEffectiveDate).toBe('November 14, 2026');
   });
 
   it('lists the notification setting among what account erasure keeps (#494)', () => {
@@ -179,6 +180,11 @@ describe('Privacy Policy', () => {
     expect(section.textContent).toMatch(/the home page/);
     for (const link of NAV_LINKS) expect(section.textContent).toContain(link.label);
     const plausible = SUB_PROCESSORS.find((p) => p.name === 'Plausible Analytics')!;
+    // The campaign tags lib/analytics/plausible.ts lets through are named in both places (#1211).
+    for (const name of CAMPAIGN_PARAMETERS) {
+      expect(section.textContent).toContain(name);
+      expect(plausible.purpose).toContain(name);
+    }
     expect(plausible.purpose).toMatch(/signed out/);
     expect(plausible.purpose).toMatch(/no cookie/i);
     expect(plausible.purpose).toMatch(/no dataset content/i);

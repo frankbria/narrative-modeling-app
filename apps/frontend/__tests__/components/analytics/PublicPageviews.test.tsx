@@ -55,6 +55,18 @@ describe('PublicPageviews', () => {
     }
   })
 
+  it('keeps the campaign parameters of the address the visitor arrived on, and nothing else from it', async () => {
+    pathname = '/pricing'
+    window.history.replaceState(null, '', '/pricing?email=ana%40example.com&utm_source=newsletter&utm_campaign=launch')
+    try {
+      render(<PublicPageviews domain="sheetpredict.app" />)
+      await waitFor(() => expect(fetchMock()).toHaveBeenCalledTimes(1))
+      expect(sentBodies()[0].url).toBe(`${window.location.origin}/pricing?utm_source=newsletter&utm_campaign=launch`)
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
+  })
+
   it.each(['authenticated', 'loading'] as const)('sends nothing while the session is %s', (sessionStatus) => {
     status = sessionStatus
     pathname = '/pricing'
