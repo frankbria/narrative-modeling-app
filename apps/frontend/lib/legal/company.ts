@@ -44,7 +44,7 @@ export const COMPANY = {
    */
   backupHorizonDays: 35,
   effectiveDate: 'September 9, 2026',
-  /** The Privacy Policy changed after the Terms did: last for public-page visit counts (#769). */
+  /** The Privacy Policy changed after the Terms did: last for the campaign tags of public-page visit counts (#1211). */
   privacyEffectiveDate: 'November 14, 2026',
 } as const
 
@@ -91,7 +91,7 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   {
     name: 'Plausible Analytics',
     purpose:
-      'Counts visits to our public pages while you are signed out. Receives the address of the page with only its campaign tags (utm_source, utm_medium, utm_campaign, utm_content, utm_term, ref) kept from the query string, and the name of the outside site that led you to ours, with your IP address and browser details, which it uses to count a visitor for one day and does not store. It sets no cookie. Nothing inside the app is sent: no account identity and no dataset content.',
+      'Counts visits to our public pages while you are signed out. Receives the address of the page with only its campaign tags (utm_source, utm_medium, utm_campaign, utm_content, utm_term, ref) kept from the query string, as the link you followed wrote them except any value with an @ in it, the name of the outside site that led you to ours, with your IP address and browser details, which it uses to count a visitor for one day and does not store. It sets no cookie. Nothing inside the app is sent, and we attach no account identity and no dataset content.',
     privacyUrl: 'https://plausible.io/privacy',
   },
   {

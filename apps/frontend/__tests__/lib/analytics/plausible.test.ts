@@ -73,6 +73,12 @@ describe('campaign parameters', () => {
     },
   )
 
+  it('leave out a tag whose value could be an email address', () => {
+    expect(counted('?utm_source=newsletter&utm_content=ana%40example.com&ref=a@b')).toBe(
+      'https://www.sheetpredict.app/pricing?utm_source=newsletter',
+    )
+  })
+
   it('keep the first value of a repeated parameter and encode it again', () => {
     expect(counted('?utm_campaign=spring%20sale&utm_campaign=other')).toBe(
       'https://www.sheetpredict.app/pricing?utm_campaign=spring+sale',
