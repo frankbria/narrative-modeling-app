@@ -10,6 +10,7 @@ from needing a provider. Both are read on every call (blank means unset, as comp
 
 import logging
 import os
+from collections.abc import Mapping
 
 import httpx
 
@@ -52,9 +53,28 @@ def _key_was_already_used(response: httpx.Response) -> bool:
     return isinstance(refusal, dict) and refusal.get("name") == _KEY_ALREADY_USED
 
 
-async def send(to: str, subject: str, text: str, *, idempotency_key: str) -> bool:
-    """Send one plain-text message; True when Resend took it, or had already taken one
-    under this `idempotency_key`.
+def _payload(to: str, subject: str, text: str, headers: Mapping[str, str]) -> dict[str, object]:
+    message: dict[str, object] = {
+        "from": _setting("EMAIL_FROM"),
+        "to": [to],
+        "subject": subject,
+        "text": text,
+    }
+    if headers:
+        message["headers"] = dict(headers)
+    return message
+
+
+async def send(
+    to: str,
+    subject: str,
+    text: str,
+    *,
+    idempotency_key: str,
+    headers: Mapping[str, str] | None = None,
+) -> bool:
+    """Send one plain-text message, with any extra `headers` (e.g. `List-Unsubscribe`);
+    True when Resend took it, or had already taken one under this `idempotency_key`.
 
     Resend delivers one message per key (a repeat is answered without sending, or
     refused if its content differs), so two paths that both see a job end (its own task
@@ -71,12 +91,7 @@ async def send(to: str, subject: str, text: str, *, idempotency_key: str) -> boo
                     "Authorization": f"Bearer {_setting('RESEND_API_KEY')}",
                     "Idempotency-Key": idempotency_key,
                 },
-                json={
-                    "from": _setting("EMAIL_FROM"),
-                    "to": [to],
-                    "subject": subject,
-                    "text": text,
-                },
+                json=_payload(to, subject, text, headers or {}),
             )
             if _key_was_already_used(response):
                 logger.info("Email not repeated: its idempotency key was already used")

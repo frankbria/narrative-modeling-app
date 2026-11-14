@@ -31,6 +31,8 @@ _PUBLIC_ON_PURPOSE = {
     "health.liveness_check": "liveness for the container healthcheck",
     "health.readiness_check": "readiness: MongoDB only, no third-party call (#503)",
     "billing_webhook.stripe_webhook": "authenticated by Stripe's signature, not a session",
+    "users.job_emails_unsubscribe_page": "a job mail's unsubscribe link: a signed token, changes nothing (#1206)",
+    "users.unsubscribe_from_job_emails": "RFC 8058 one-click unsubscribe: authenticated by its signed token (#1206)",
     "user_data.create_user_data_gone": "retired route, answers 410 (#451)",
     "models.train_model": "legacy ModelConfig route, answers 410",
     "models.deploy_model": "legacy ModelConfig route, answers 410",
