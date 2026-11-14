@@ -158,17 +158,27 @@ def test_the_alert_carries_the_counts_and_says_what_the_exit_status_means():
     posted = _posted_alert(
         {
             "reconcile.status": "1",
-            "reconcile.txt": "  could not read one subscription from Stripe: RateLimitError\n"
-            "unreadable from stripe:         1\n",
+            "reconcile.txt": "  could not read one subscription from Stripe: InvalidRequestError\n"
+            "missing from stripe:            1\n",
         }
     )
     assert f"[P2] [billing] {ALERT_PHRASE}" in posted
-    assert "RateLimitError" in posted and "unreadable from stripe:         1" in posted
-    assert "could not be read from Stripe" in posted
-    assert "rate limit" in posted, (
-        "a 429 is unreadable too; do not send them to swap keys"
+    assert (
+        "InvalidRequestError" in posted
+        and "missing from stripe:            1" in posted
+    )
+    assert "another Stripe account or mode" in posted and "do not cancel" in posted
+    assert "deleted in Stripe" in posted
+    assert "does not cause this status" in posted, (
+        "#1213: a rate limit no longer fails the run; do not send them to swap keys"
     )
     assert "https://example.invalid/run" in posted
+
+
+def test_a_run_stripe_never_answered_says_so():
+    """#1213: busy or unreachable for every row exits 3, not 1."""
+    posted = _posted_alert({"reconcile.status": "3"})
+    assert "Stripe answered no subscription" in posted
 
 
 def test_the_alert_is_filed_when_the_reconciliation_never_ran():
