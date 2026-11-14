@@ -76,8 +76,12 @@ def _label(job: str) -> str:
 
 def _unsubscribe_url(user_id: str) -> str | None:
     api = public_api_url()
+    if api is None:
+        return None
+    # Built per message, so the task and the reaper word one ending differently: Resend
+    # refuses the second under the shared key, which `email_service.send` reads as sent.
     token = job_mail_unsubscribe.token_for(user_id, utcnow())
-    return f"{api}{UNSUBSCRIBE_PATH}?token={token}" if api else None
+    return f"{api}{UNSUBSCRIBE_PATH}?token={token}"
 
 
 def _unsubscribe_headers(unsubscribe_url: str | None) -> dict[str, str]:

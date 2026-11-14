@@ -43,6 +43,7 @@ class TestTheToken:
         assert job_mail_unsubscribe.read(_forge(token, issued=str(10**13))) is None
 
     def test_a_token_signed_with_another_secret_is_refused(self, monkeypatch):
+        monkeypatch.delenv("ARTIFACT_SIGNING_KEY", raising=False)
         monkeypatch.setenv("NEXTAUTH_SECRET", "one-secret")
         token = job_mail_unsubscribe.token_for("acct-1", utcnow())
 

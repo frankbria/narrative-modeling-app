@@ -60,7 +60,12 @@ _DONE = "<p>Job emails are off for your account.</p><p>You can turn them back on
 
 def _page(body: str, status_code: int = 200) -> HTMLResponse:
     # A new response per request: middleware writes headers onto it.
-    return HTMLResponse(_PAGE.format(body=body), status_code=status_code)
+    return HTMLResponse(
+        _PAGE.format(body=body),
+        status_code=status_code,
+        # The address holds the token: keep it out of caches and of any referrer.
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
 
 
 def _confirmation(token: str) -> HTMLResponse:

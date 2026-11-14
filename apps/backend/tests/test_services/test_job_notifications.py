@@ -22,7 +22,7 @@ def outbox(monkeypatch) -> list[dict]:
     """A configured sender whose messages land in a list."""
     monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
     monkeypatch.setenv("EMAIL_FROM", "SheetPredict <jobs@mail.example>")
-    sent: list[dict[str, str]] = []
+    sent: list[dict] = []
 
     async def deliver(
         to: str, subject: str, text: str, *, idempotency_key: str, headers: dict[str, str]

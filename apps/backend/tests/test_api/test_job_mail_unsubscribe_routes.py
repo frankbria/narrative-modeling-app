@@ -53,6 +53,8 @@ async def test_the_page_offers_the_button_and_changes_nothing(anonymous_client):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
     assert '<form method="post"' in response.text
     assert f'action="?token={token}"' in response.text
     assert await wants_job_emails("acct-1") is True
