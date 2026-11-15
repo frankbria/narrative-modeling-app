@@ -310,6 +310,21 @@ def test_a_cut_inside_a_details_block_shows_the_notice_outside_it():
     assert kept.endswith("\n```\n</details>"), kept[-30:]
 
 
+def test_a_details_tag_inside_a_fence_is_text_and_counts_for_nothing():
+    body = (
+        "<details><summary>stderr</summary>\n\n```\nprinted </details>\n"
+        + "y\n" * 40_000
+    )
+    kept, _ = _cut(body)
+    assert kept.endswith("\n```\n</details>"), kept[-30:]
+
+
+def test_closing_markup_never_pushes_the_body_over_the_limit():
+    """The alert must arrive: if closing everything would break GitHub's limit, the
+    body goes unclosed rather than refused (``_cut`` checks the length)."""
+    _cut("<details>\n" * 100 + "y" * 70_000)
+
+
 def test_a_cut_outside_a_code_fence_adds_no_fence():
     body = "```\nshort\n```\n" + "z" * 70_000
     _, posted = _file(body)

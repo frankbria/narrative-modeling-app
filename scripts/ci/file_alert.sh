@@ -98,17 +98,20 @@ perl -MEncode -0777 -pe '
     my $cut = length($_) - 65000;
     my $kept = substr($_, 0, 65000);
     # A cut inside a code fence would render the notice as code, and one inside the
-    # collapsed <details> both callers end with would hide it. Fences per CommonMark: a closing
-    # one has no info string and at least as many backticks as its opener.
-    my $open = "";
+    # collapsed <details> both callers end with would hide it. Fences per CommonMark:
+    # a closing one has no info string and at least as many backticks as its opener.
+    # A tag inside a fence is text.
+    my ($open, $details) = ("", 0);
     for my $line (split /\n/, $kept) {
-      if (!length $open) { $open = $1 if $line =~ /^ {0,3}(`{3,})[^`]*$/ }
-      elsif ($line =~ /^ {0,3}(`{3,})[ \t]*$/ && length $1 >= length $open) { $open = "" }
+      if (length $open) { $open = "" if $line =~ /^ {0,3}(`{3,})[ \t]*$/ && length $1 >= length $open }
+      elsif ($line =~ /^ {0,3}(`{3,})[^`]*$/) { $open = $1 }
+      else { $details += (() = $line =~ /<details\b/gi) - (() = $line =~ m{</details>}gi) }
     }
-    $kept .= "\n$open" if length $open;
-    my $unclosed = (() = $kept =~ /<details\b/gi) - (() = $kept =~ m{</details>}gi);
-    $kept .= "\n</details>" x $unclosed if $unclosed > 0;
-    $_ = $kept . "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
+    my $closing = (length $open ? "\n$open" : "") . "\n</details>" x $details;
+    my $notice = "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
+    # The alert has to arrive: an over-long body would be refused whole.
+    $closing = "" if length($kept . $closing . $notice) > 65536;
+    $_ = $kept . $closing . $notice;
   }
   $_ = Encode::encode("UTF-8", $_);
 ' > "$body_file"
