@@ -664,6 +664,11 @@ def _removed(box: Path) -> list[str]:
     ]
 
 
+def _reported_removed(run: subprocess.CompletedProcess) -> list[str]:
+    """The images the deploy's own log says it removed, in order."""
+    return re.findall(r"^deploy: removed (\S+)$", run.stdout, re.MULTILINE)
+
+
 def test_a_deploy_removes_only_this_repositorys_older_images(tmp_path):
     box = stand_in_box(tmp_path)
     (box / ".deploy-images.env").write_text(ROLLBACK_RECORD)
@@ -677,6 +682,9 @@ def test_a_deploy_removes_only_this_repositorys_older_images(tmp_path):
         FRONTEND_REPOSITORY,
     ], "only this repository's two image names are looked at"
     assert _removed(box) == [OLDER_BACKEND, OLDER_FRONTEND]
+    assert _reported_removed(run) == [OLDER_BACKEND, OLDER_FRONTEND], (
+        "the run log names every image the cleanup removed, and only those"
+    )
     assert not any(
         call.startswith("docker") and "prune" in call for call in _calls(box)
     ), "the box is shared: nothing outside these two names may go"
@@ -702,6 +710,7 @@ def test_a_deploy_that_cannot_tell_the_rollback_removes_nothing(tmp_path, record
 
     assert run.returncode == 0, run.stderr
     assert _removed(box) == []
+    assert _reported_removed(run) == []
 
 
 def test_an_image_docker_will_not_remove_does_not_fail_the_deploy(tmp_path):
@@ -719,6 +728,7 @@ def test_an_image_docker_will_not_remove_does_not_fail_the_deploy(tmp_path):
         "one refusal must not stop the others"
     )
     assert "could not remove" in run.stderr
+    assert _reported_removed(run) == [], "a refused image was reported as removed"
     assert (
         (box / ".deploy-images.env").read_text().startswith(f"APP_VERSION={COMMIT}\n")
     )
@@ -1033,3 +1043,4 @@ def test_a_listing_docker_refuses_is_reported_and_removes_nothing(tmp_path):
     assert f"could not list {BACKEND_REPOSITORY}" in run.stderr
     assert f"could not list {FRONTEND_REPOSITORY}" in run.stderr
     assert _removed(box) == []
+    assert _reported_removed(run) == []

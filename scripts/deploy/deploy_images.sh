@@ -100,8 +100,13 @@ if [ -n "$rollback_backend" ] && [ -n "$rollback_frontend" ] \
       # A locally built image has no digest: not one of the deploys'.
       case "$image" in *"@<none>") continue ;; esac
       case "$keep" in *" $image "*) continue ;; esac
-      # A refusal (a container still uses it) costs disk, not the deploy.
-      docker image rm "$image" >/dev/null || echo "deploy: could not remove $image; it stays" >&2
+      # A refusal (a container still uses it) costs disk, not the deploy. Each removal
+      # is named in the run log, so disk use and a missing image are answered without ssh.
+      if docker image rm "$image" >/dev/null; then
+        echo "deploy: removed $image"
+      else
+        echo "deploy: could not remove $image; it stays" >&2
+      fi
     done
   done
 fi
