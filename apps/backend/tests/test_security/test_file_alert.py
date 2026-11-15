@@ -219,12 +219,12 @@ def test_an_address_before_a_colon_keeps_the_colon():
     """#1231 item 1: the colon after the address is ssh's, not the address's."""
     body = (
         "connect to fd7a:115c:a1e0::1: Connection refused\n"
-        "fd7a:115c:a1e0:ab12::3:Cannot route\n"
+        "fd7a:115c:a1e0:ab12::3: Cannot route\n"
         "bare fd7a:115c:a1e0:: here\n"
     )
     _, posted = _file(body)
     assert "connect to <tailnet address>: Connection refused" in posted
-    assert "<tailnet address>:Cannot route" in posted
+    assert "<tailnet address>: Cannot route" in posted
     assert "bare <tailnet address> here" in posted
 
 
@@ -279,3 +279,23 @@ def test_a_name_with_a_non_ascii_character_is_redacted():
     )
     assert "cd <deploy path>: no such file" in posted
     assert "connect to <staging host> port 22" in posted
+
+
+def test_an_address_glued_to_a_word_loses_every_group():
+    """Over-redaction is the safe side: the last groups are the ones naming the node."""
+    body = (
+        "a fd7a:115c:a1e0:ab12:6258:b240_x\n"
+        "b fd7a:115c:a1e0:ab12::4843g\n"
+        "c fd7a:115c:a1e0:b1a:0:7:10.0.0.1 subnet\n"
+    )
+    _, posted = _file(body)
+    for group in ("b240", "4843", "6258", "10.0", ".0.1"):
+        assert group not in posted
+    assert "c <tailnet address> subnet" in posted
+
+
+def test_the_body_file_is_removed_whatever_happens():
+    for gh in ("exit 0\n", "exit 1\n"):
+        with tempfile.TemporaryDirectory() as scratch:
+            _file("body\n", gh=gh, TMPDIR=scratch)
+            assert list(Path(scratch).iterdir()) == [], gh

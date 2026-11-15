@@ -57,9 +57,11 @@ perl -MEncode -0777 -pe '
   # After the values of the box: on a tie the first placeholder stays.
   push @names,
     [qr/(?<![\d.])100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}(?!\d)/, "<tailnet address>"],
-    # A group never runs into a word and a bare colon is never taken, so the
-    # colon ssh prints after an address stays; only a final `::` is.
-    [qr/fd7a:115c:a1e0(?::{1,2}[0-9a-f]{1,4}(?!\w))*(?:::(?![\w:]))?/i, "<tailnet address>"],
+    # A colon is taken only before a hex group, so the colon ssh prints after an
+    # address stays; only a final `::` is. Every hex letter after a colon is taken,
+    # even one starting a word (`::3:Cannot` loses `Ca`): the groups at the end are
+    # the ones that name the node. An embedded IPv4 tail (`…:7:10.0.0.1`) goes too.
+    [qr/fd7a:115c:a1e0(?::{1,2}[0-9a-f]+)*(?:\.\d{1,3})*(?:::(?![\w:]))?/i, "<tailnet address>"],
     # A MagicDNS name (`box.tailXXXX.ts.net`) names the tailnet too; merged with
     # the HOST match it overlaps, it is replaced whole.
     [qr/[\w-]+(?:\.[\w-]+)*\.ts\.net\b/i, "<tailnet address>"],
