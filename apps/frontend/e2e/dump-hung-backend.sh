@@ -10,7 +10,8 @@
 # test-e2e.sh starts the backend with a core-file limit of 0: SIGABRT's default action
 # would otherwise write a core the size of the backend on a host that allows cores.
 # Returns 1, saying so, when there is no process under the wrapper; otherwise 0, also
-# when a process outlives the 20-second wait (said in LOG; the cleanup then stops it). Sourced by test-e2e.sh;
+# when a process outlives the 20-second wait (said in LOG; the cleanup then stops it).
+# Sourced by test-e2e.sh;
 # tests: apps/backend/tests/test_security/test_hung_backend_stack_dump.py.
 
 _descendants_of() {
@@ -21,27 +22,36 @@ _descendants_of() {
     done
 }
 
+# Prints the first of the given pids that is still running (a zombie counts until reaped),
+# or nothing.
+_first_alive() {
+    local pid
+    for pid in "$@"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return
+        fi
+    done
+}
+
 dump_hung_backend() {
-    local wrapper=$1 log=$2 pids pid
-    pids=$(_descendants_of "$wrapper")
-    if [ -z "$pids" ]; then
+    local wrapper=$1 log=$2 pids pid alive
+    mapfile -t pids < <(_descendants_of "$wrapper")
+    if [ "${#pids[@]}" -eq 0 ]; then
         echo "Backend stack dump: no backend process under pid ${wrapper}" | tee -a "$log"
         return 1
     fi
-    echo "Backend stack dump (SIGABRT to pid ${pids//$'\n'/ }); every thread's stack follows in this log:" | tee -a "$log"
-    for pid in $pids; do
+    echo "Backend stack dump (SIGABRT to pid ${pids[*]}); every thread's stack follows in this log:" | tee -a "$log"
+    for pid in "${pids[@]}"; do
         kill -ABRT "$pid" 2>/dev/null || true
     done
     # The handler writes and the process aborts within a moment; 20 seconds is for a
     # loaded runner. The cleanup that follows stops anything still left.
     for _ in $(seq 40); do
-        for pid in $pids; do
-            kill -0 "$pid" 2>/dev/null && break
-            pid=
-        done
-        [ -z "$pid" ] && return 0
+        alive=$(_first_alive "${pids[@]}")
+        [ -z "$alive" ] && return 0
         sleep 0.5
     done
-    echo "Backend stack dump: pid ${pid} was still running 20 seconds after SIGABRT" | tee -a "$log"
+    echo "Backend stack dump: pid ${alive} was still running 20 seconds after SIGABRT" | tee -a "$log"
     return 0
 }
