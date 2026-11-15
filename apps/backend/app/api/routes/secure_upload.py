@@ -691,10 +691,10 @@ async def generate_ai_summary_safe(user_data_id: str, df: pd.DataFrame):
     stored ``data_schema``: the chunked-upload path stores a raw schema, so
     delegating to ``generate_dataset_summary(user_data_id)`` would ship raw PII
     ``example_values`` to OpenAI. Degrades gracefully but never silently: a null
-    result or an error is logged at WARNING with the dataset id (a null result with
-    no key configured at INFO, #1256) (the previous
-    version passed the DataFrame where a str id was expected, so every call
-    raised and was swallowed, leaving the summary permanently null).
+    result or an error is logged at WARNING with the dataset id, and a null result
+    with no key configured at INFO, the supported keyless mode (#1256). The previous
+    version passed the DataFrame where a str id was expected, so every call raised
+    and was swallowed, leaving the summary permanently null.
     """
     try:
         from app.utils.ai_summary import (

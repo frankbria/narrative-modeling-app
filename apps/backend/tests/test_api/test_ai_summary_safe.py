@@ -156,7 +156,6 @@ async def test_null_summary_is_logged_not_silent(setup_database, caplog):
     assert any(str(doc.id) in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
 
-
 @pytest.mark.asyncio
 async def test_keyless_safe_summary_logs_nothing_above_info(setup_database, caplog):
     """#1256: with no OpenAI key the masked-frame summary is skipped quietly: an
@@ -183,6 +182,7 @@ async def test_keyless_safe_summary_logs_nothing_above_info(setup_database, capl
         str(doc.id) in r.getMessage() and r.levelno == logging.INFO
         for r in caplog.records
     )
+
 
 @pytest.mark.unit
 def test_summary_frame_masks_when_pii_detected():

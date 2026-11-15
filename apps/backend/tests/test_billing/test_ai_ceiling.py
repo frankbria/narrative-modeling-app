@@ -171,12 +171,14 @@ class TestEveryModelCallIsBehindTheCeiling:
             )
 
         def own_nodes(fn: ast.AST):
-            """The function's body, not descending into nested defs (checked on their own)."""
+            """The function's body, not descending into nested defs (checked on their own).
+            A lambda's body counts as its enclosing function's: it cannot carry a
+            breaker of its own and runs under the one around that function (#1256)."""
             stack = list(ast.iter_child_nodes(fn))
             while stack:
                 node = stack.pop()
                 yield node
-                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     stack.extend(ast.iter_child_nodes(node))
 
         def calls_the_model(fn: ast.AST) -> bool:
