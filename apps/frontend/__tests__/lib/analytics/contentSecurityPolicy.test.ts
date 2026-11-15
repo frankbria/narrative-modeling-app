@@ -20,7 +20,7 @@ const frontendFiles = globSync('{app,lib,components,hooks}/**/*.{ts,tsx,js,jsx,m
   cwd: FRONTEND,
   ignore: ['**/__tests__/**', '**/node_modules/**', '**/*.test.*'],
 })
-  .concat(globSync('{instrumentation*,middleware,auth}.ts', { cwd: FRONTEND }), ['next.config.mjs'])
+  .concat(globSync('{instrumentation*,middleware,proxy,auth}.ts', { cwd: FRONTEND }), ['next.config.mjs'])
   .map((file) => join(FRONTEND, file))
 const edgeFiles = globSync('nginx*.conf', { cwd: REPOSITORY }).map((file) => join(REPOSITORY, file))
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
@@ -34,22 +34,25 @@ interface Source {
  * Each `connect-src` directive's sources, up to the end of the directive (`;`), of the policy (`,`
  * starts another one) or of the string holding it. A single quote cannot end it (keywords are
  * written `'self'`), so one closing a JS string is trimmed off the last source when comparing. A
- * list split across array items reads as empty and is refused; so is `x-connect-src`, which
- * browsers ignore.
+ * list split across array items reads as empty and is refused; so are `x-connect-src` and
+ * `connect-src-extra`, which browsers ignore.
  */
 const connectSources = (text: string) =>
-  [...text.matchAll(/(?<![\w-])connect-src([^;,"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/))
+  [...text.matchAll(/(?<![\w-])connect-src(?![\w-])([^;,"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/))
 
 /**
  * The source without its comments (`#` in an nginx file, block and `//` in code), so a note neither
  * stands in for a directive nor counts as a header. A marker counts only at a line start or after a
  * space: one inside a source (a block comment glued to the Plausible origin) stays and keeps that
- * source refused.
+ * source refused. Both code markers are read in one pass, left to right, so a `/*` inside a line
+ * comment, or a `//` inside a block comment, cannot pair with a later comment and hide a header.
+ * shortcut: a ` //` or ` /*` inside a string is read as a comment; parse with TypeScript if a real
+ * header ever sits after one on the same line.
  */
 const withoutComments = ({ file, text }: Source) =>
   file.endsWith('.conf')
     ? text.replace(/(^|\s)#.*$/gm, '$1')
-    : text.replace(/(^|\s)\/\*[\s\S]*?\*\//g, '$1').replace(/(^|\s)\/\/.*$/gm, '$1')
+    : text.replace(/(^|\s)(?:\/\*[\s\S]*?\*\/|\/\/.*$)/gm, '$1')
 
 /** A comma before a directive name: one header value can carry several policies, each enforced. */
 const NEXT_POLICY =
@@ -149,6 +152,13 @@ add_header Content-Security-Policy-Report-Only "connect-src https://plausible.io
       expect(policyProblems([edgeHeaders])).toEqual(['nginx-staging.conf: a policy without connect-src'])
     })
 
+    it.each([
+      ['a /* inside a line comment', "// per the wiki, /* marks the header section\nres.headers.set('Content-Security-Policy', \"default-src 'self'\")\n/* footer */"],
+      ['a // inside a block comment', "/* see the wiki // header section */\nres.headers.set('Content-Security-Policy', \"default-src 'self'\")\n/* footer */"],
+    ])('does not let %s pair with a later comment and hide a header', (_where, text) => {
+      expect(policyProblems([code(text)])).toEqual(['middleware.ts: a policy without connect-src'])
+    })
+
     it('reads a # in code as code, so a header after it still counts', () => {
       expect(policyProblems([code(`const brand = { colour: '#0D5C63', header: 'Content-Security-Policy', value: "default-src 'self'" }`)])).toEqual([
         'middleware.ts: a policy without connect-src',
@@ -176,6 +186,7 @@ location = /pricing { add_header Content-Security-Policy "default-src 'self'" al
       ],
       ['a comment marker inside a source', `add_header Content-Security-Policy "connect-src https://plausible.io/*blocked*/" always;`, ['connect-src https://plausible.io/*blocked*/']],
       ['a directive browsers do not know', `add_header Content-Security-Policy "default-src 'self'; x-connect-src https://plausible.io" always;`, ['a policy without connect-src']],
+      ['a directive name with a suffix', `add_header Content-Security-Policy "default-src 'self'; connect-src-extra https://plausible.io" always;`, ['a policy without connect-src']],
     ])('refuses %s', (_where, text, problems) => {
       expect(policyProblems([edge(text)])).toEqual(problems.map((problem) => `nginx-staging.conf: ${problem}`))
     })
