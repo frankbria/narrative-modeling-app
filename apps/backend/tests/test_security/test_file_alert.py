@@ -268,3 +268,14 @@ def test_bytes_that_are_not_utf8_are_still_redacted_and_filed():
     run, posted = _file(b"bad \xff\xfe byte fd7a:115c:a1e0::1: refused\n")
     assert run.returncode == 0, run.stderr
     assert "byte <tailnet address>: refused" in posted and "fd7a" not in posted
+
+
+def test_a_name_with_a_non_ascii_character_is_redacted():
+    """The body is decoded to count characters; the names must be decoded with it."""
+    _, posted = _file(
+        "cd /srv/café: no such file\nssh: connect to höst port 22\n",
+        HOST="höst",
+        DEPLOY_PATH="/srv/café",
+    )
+    assert "cd <deploy path>: no such file" in posted
+    assert "connect to <staging host> port 22" in posted

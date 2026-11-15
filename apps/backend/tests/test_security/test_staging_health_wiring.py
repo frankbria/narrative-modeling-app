@@ -498,18 +498,25 @@ def test_a_hung_probe_fails_its_step_before_the_job_is_cancelled():
 RECONCILE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml"
 
 
+# Two retry waits of a minute (scripts/ci/file_alert.sh) and the gh calls themselves.
+REPORT_MINUTES = 3
+
+
 def test_every_step_that_can_hang_stops_before_the_job_does():
     """#1231 item 3: a hang in Tailscale or ssh setup used up the whole job, and the
     report then ran only in the short grace after the cancel. Every step before the
-    report that reaches the network carries its own limit, and together they end
-    with time left for the report."""
-    for path, main in (
-        (HEALTH_WORKFLOW, "Run the probes in the backend and frontend containers"),
-        (RECONCILE_WORKFLOW, "Reconcile subscriptions in the backend container"),
-    ):
+    report that reaches the box carries its own limit, and together they leave the
+    report its retries."""
+    unbounded_on_purpose = {"Checkout", "Check deploy secrets are configured"}
+    for path in (HEALTH_WORKFLOW, RECONCILE_WORKFLOW):
         job = next(iter(_workflow(path)["jobs"].values()))
-        steps = _steps(path)
-        bounded = ("Connect to Tailscale", "Configure SSH", main)
-        limits = [steps[name].get("timeout-minutes") for name in bounded]
-        assert None not in limits, (path.name, dict(zip(bounded, limits, strict=True)))
-        assert sum(limits) < job["timeout-minutes"], path.name
+        names = [step["name"] for step in job["steps"]]
+        before = names[: names.index("Report the failure on an issue")]
+        limits = {
+            name: _steps(path)[name].get("timeout-minutes")
+            for name in before
+            if name not in unbounded_on_purpose
+        }
+        assert None not in limits.values(), (path.name, limits)
+        assert "Connect to Tailscale" in limits and "Configure SSH" in limits
+        assert sum(limits.values()) + REPORT_MINUTES <= job["timeout-minutes"], path.name

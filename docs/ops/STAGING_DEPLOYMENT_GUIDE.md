@@ -425,8 +425,9 @@ Both it and `subscription-reconcile.yml` file through `scripts/ci/file_alert.sh`
 which removes the box's names and tailnet addresses from the public issue (not a
 custom MagicDNS domain or other names in the stderr: keep `HOST` the bare machine
 name), cuts a body over GitHub's 65,536 characters, and retries a failed `gh` call
-once, a minute later. Tailscale, ssh setup and the probe or reconciliation each stop
-at their own `timeout-minutes`, together inside the job's, so a hang files too.
+once, a minute later. Every step before the report (Tailscale, ssh setup, the probe
+or reconciliation, the state dump) stops at its own `timeout-minutes`, leaving the
+report three minutes of the job's, so a hang files too.
 
 ### A schedule that stopped running
 

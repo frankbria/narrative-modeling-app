@@ -46,7 +46,8 @@ trap 'rm -f "$body_file"' EXIT
 # die on it in the first match, losing the alert.
 perl -MEncode -0777 -pe '
   $_ = Encode::decode("UTF-8", $_);
-  my ($host, $path, $user) = map { $ENV{$_} // "" } qw(HOST DEPLOY_PATH DEPLOY_USER);
+  # Decoded like the body, or a name with a non-ASCII character would never match.
+  my ($host, $path, $user) = map { Encode::decode("UTF-8", $ENV{$_} // "") } qw(HOST DEPLOY_PATH DEPLOY_USER);
   $path =~ s{/+$}{};
   my @names;
   push @names, [qr/\Q$path\E/, "<deploy path>"] if length $path;
