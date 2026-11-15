@@ -18,6 +18,7 @@ from pathlib import Path
 import yaml
 
 from tests.test_security.deploy_box import stand_in_box
+from tests.test_security.test_file_alert import recording_gh
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 COMPOSE = REPO_ROOT / "docker-compose.deploy.yml"
@@ -380,7 +381,7 @@ def _posted_alert(host: str, files: dict[str, str], **deploy: str) -> str:
         shutil.copy2(REPO_ROOT / "scripts" / "ci" / "file_alert.sh", file_alert)
         posted = Path(tmp) / "posted.txt"
         fake_gh = bin_dir / "gh"
-        fake_gh.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" >> {posted}\n')
+        fake_gh.write_text("#!/usr/bin/env bash\n" + recording_gh(posted))
         fake_gh.chmod(0o755)
         for name, text in files.items():
             (Path(tmp) / name).write_text(text)
@@ -492,3 +493,23 @@ def test_a_hung_probe_fails_its_step_before_the_job_is_cancelled():
     job = _workflow(HEALTH_WORKFLOW)["jobs"]["probe"]
     probe = _steps(HEALTH_WORKFLOW)["Run the probes in the backend and frontend containers"]
     assert probe["timeout-minutes"] < job["timeout-minutes"]
+
+
+RECONCILE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml"
+
+
+def test_every_step_that_can_hang_stops_before_the_job_does():
+    """#1231 item 3: a hang in Tailscale or ssh setup used up the whole job, and the
+    report then ran only in the short grace after the cancel. Every step before the
+    report that reaches the network carries its own limit, and together they end
+    with time left for the report."""
+    for path, main in (
+        (HEALTH_WORKFLOW, "Run the probes in the backend and frontend containers"),
+        (RECONCILE_WORKFLOW, "Reconcile subscriptions in the backend container"),
+    ):
+        job = next(iter(_workflow(path)["jobs"].values()))
+        steps = _steps(path)
+        bounded = ("Connect to Tailscale", "Configure SSH", main)
+        limits = [steps[name].get("timeout-minutes") for name in bounded]
+        assert None not in limits, (path.name, dict(zip(bounded, limits, strict=True)))
+        assert sum(limits) < job["timeout-minutes"], path.name

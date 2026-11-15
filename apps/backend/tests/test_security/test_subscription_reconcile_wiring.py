@@ -13,6 +13,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.test_security.test_file_alert import recording_gh
+
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml"
 BACKEND = REPO_ROOT / "apps" / "backend"
@@ -87,7 +89,7 @@ def _posted_alert(files: dict[str, str], **env: str) -> str:
             (tmp / name).write_text(text)
         posted = tmp / "posted.txt"
         fakes = {
-            "gh": f'printf "%s\\n" "$@" >> {posted}\n',
+            "gh": recording_gh(posted),
             FILE_ALERT: (REPO_ROOT / FILE_ALERT).read_text(),
         }
         run = _run_step(REPORT, tmp, fakes, ALERT_RETRY_DELAY_SECONDS="0", **env)
@@ -315,3 +317,14 @@ def test_the_module_stops_itself_well_inside_the_job_timeout():
     job_seconds = _doc()["jobs"]["reconcile"]["timeout-minutes"] * 60
     drain = 2 * stripe_client.REQUEST_TIMEOUT_SECONDS
     assert RUN_BUDGET_SECONDS + FINISH_SECONDS + drain + 120 <= job_seconds - 60
+
+
+def test_the_module_stops_itself_inside_its_step_limit():
+    """#1231 item 3: the step's own limit is the backstop for a hung ssh; the module
+    must report by itself before it, with a little time for the container to start."""
+    from app.billing import stripe_client
+    from app.billing.reconcile_subscriptions import FINISH_SECONDS, RUN_BUDGET_SECONDS
+
+    step = _steps()[RECONCILE]
+    drain = 2 * stripe_client.REQUEST_TIMEOUT_SECONDS
+    assert RUN_BUDGET_SECONDS + FINISH_SECONDS + drain + 30 <= step["timeout-minutes"] * 60
