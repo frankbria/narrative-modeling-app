@@ -70,6 +70,9 @@ const HEADER_NAME = /^content-security-policy/i
 const HEADER_VALUE = /^content-security-policy['"`]?[^'"`;()]*?(["'`])([\s\S]*?)\1/i
 const headerValue = (header: string) => header.match(HEADER_VALUE)?.[2] ?? ''
 
+/** A `connect-src` that starts a directive: at the start of a policy or after a `;`, never inside another's source list. */
+const DIRECTIVE_START = /(?:^|;)\s*connect-src(?![\w-])/i
+
 /**
  * What the guard reports, each problem prefixed with its file: empty when the counts can reach
  * Plausible. A browser enforces every policy it receives (Next's, the edge's, a `location` block's,
@@ -87,7 +90,7 @@ function policyProblems(sources: Source[]): string[] {
       .filter((list) => !list.some((entry) => entry.replace(/'$/, '') === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
     const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => headerValue(header).split(NEXT_POLICY))
-    const withoutConnectSource = policies.filter((policy) => connectSources(policy).length === 0).map(() => 'a policy without connect-src')
+    const withoutConnectSource = policies.filter((policy) => !DIRECTIVE_START.test(policy)).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource].map((problem) => `${source.file}: ${problem}`)
   })
 }
@@ -192,6 +195,7 @@ location = /pricing { add_header Content-Security-Policy "default-src 'self'" al
       ],
       ['a comment marker inside a source', `add_header Content-Security-Policy "connect-src https://plausible.io/*blocked*/" always;`, ['connect-src https://plausible.io/*blocked*/']],
       ['a directive browsers do not know', `add_header Content-Security-Policy "default-src 'self'; x-connect-src https://plausible.io" always;`, ['a policy without connect-src']],
+      ['a connect-src left inside another directive by a missing semicolon', `add_header Content-Security-Policy "default-src 'self'; script-src 'self' connect-src https://plausible.io" always;`, ['a policy without connect-src']],
       ['a directive name with a suffix', `add_header Content-Security-Policy "default-src 'self'; connect-src-extra https://plausible.io" always;`, ['a policy without connect-src']],
     ])('refuses %s', (_where, text, problems) => {
       expect(policyProblems([edge(text)])).toEqual(problems.map((problem) => `nginx-staging.conf: ${problem}`))
