@@ -95,7 +95,7 @@ perl -MEncode -0777 -pe '
     my ($open, $details) = ("", 0);
     for my $line (split /\n/, $_[0]) {
       if (length $open) {
-        $open = "" if $line =~ /^ {0,3}(`{3,}|~{3,})[ \t]*$/
+        $open = "" if $line =~ /^ {0,3}(`{3,}|~{3,})\s*$/
           && substr($1, 0, 1) eq substr($open, 0, 1) && length $1 >= length $open;
       }
       elsif ($line =~ /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/) { $open = $1 }

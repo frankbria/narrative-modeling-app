@@ -324,6 +324,12 @@ def test_a_cut_inside_a_tilde_fence_closes_it_with_tildes():
     assert kept.endswith("\n~~~"), kept[-20:]
 
 
+def test_a_fence_closed_by_a_crlf_line_is_closed():
+    """Box output can end its lines with CRLF; that still closes the fence."""
+    kept, _ = _cut("```\n```\r\n" + "y" * 70_000)
+    assert not kept.endswith("```"), kept[-20:]
+
+
 def test_closing_markup_that_does_not_fit_makes_room_by_cutting_more():
     """The alert must arrive (``_cut`` checks the length) and its notice must still
     be outside the fence and every <details>."""
