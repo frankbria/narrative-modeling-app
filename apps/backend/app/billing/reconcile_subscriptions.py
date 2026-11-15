@@ -46,9 +46,12 @@ round to the start again (#1239): that run stores the first row it did not read
 in `RESUME_COLLECTION`. A table that outgrows one run is then read in full every
 two runs, inside `ENTITLEMENT_GRACE`; one that outgrows two leaves a row unread on
 two runs in a row, which is exit 5. The same document lists the rows Stripe
-refused for the first time (#1251): the next run reads them before anything
-else, so a row refused late in a run is not left until after the wrap. A row
-refused again is not listed again, so none can hold that place. The resume
+refused (#1251): the next run reads them before anything else and leaves them
+out of its walk, so a row refused late in a run is not left until after the
+wrap. A listed row refused again is not listed again, and a listed row never
+moves the start, so a row that stays busy cannot hold anything up. After a
+Stripe outage the list can be long, and reading it first spends the next run's
+budget on rows the previous one reached; the rows left go to exit 5. The resume
 point is also stored when the deadline stops the walk, before the rows left are
 counted, so a database that stalls there (exit 3) does not keep the next run at
 the old start. A cursor that fails still stores nothing: a row that breaks it
@@ -126,7 +129,8 @@ FINISH_SECONDS = 60
 UNREACHABLE_ALERT_AFTER = timedelta(hours=20)
 UNREACHABLE_FIELD = "stripe_unreachable_since"
 #: One document, `RESUME_ID`, holding `resume_from`: the `_id` the next run
-#: starts at, or null when the last `--apply` run read every row.
+#: starts at, or null when the last `--apply` run read every row; and
+#: `read_first`: the rows Stripe refused, which the next run reads first.
 RESUME_COLLECTION = "subscription_reconcile_resume"
 RESUME_ID = "subscriptions"
 _NO_ANSWER = (ReadFailure.UNAVAILABLE, ReadFailure.UNREAD)
@@ -370,19 +374,21 @@ async def _reconcile_row(
 class _NotRead:
     """The rows of this run that Stripe gave no answer for, as the next run
     needs them: the deadline's, which move its start, and the ones Stripe
-    refused for the first time, which it reads before anything else (#1251).
+    refused, which it reads before anything else (#1251).
 
-    A row already marked busy when it was refused is not listed again, so one
-    row that stays busy is read early once and never pins the next start: it
-    goes on to exit 5 like any row busy on two runs."""
+    A row this run already read first (`listed`) is not listed again, so a row
+    that stays busy is read early every other run, not every run. A listed row
+    never moves the start, so none can pin it; one busy on two runs goes on to
+    exit 5 like any other."""
 
+    listed: tuple[ObjectId, ...]
     cut_short: list[ObjectId] = field(default_factory=list)
     refused: list[ObjectId] = field(default_factory=list)
 
     def note(self, row: Row, remote: Remote | ReadFailure) -> None:
         if remote is ReadFailure.UNREAD:
             self.cut_short.append(row["_id"])
-        elif remote is ReadFailure.UNAVAILABLE and row.get(UNREACHABLE_FIELD) is None:
+        elif remote is ReadFailure.UNAVAILABLE and row["_id"] not in self.listed:
             self.refused.append(row["_id"])
 
 
@@ -436,7 +442,7 @@ async def _stored_order(resume: Collection | None) -> _Order:
     stored = await resume.find_one({"_id": RESUME_ID}) if resume is not None else None
     stored = stored or {}
     start = stored.get("resume_from")
-    first = [each for each in stored.get("read_first", []) if _is_id(each)]
+    first = [each for each in stored.get("read_first") or [] if _is_id(each)]
     return _Order(start if _is_id(start) else None, tuple(sorted(first)))
 
 
@@ -602,7 +608,7 @@ async def reconcile(
     order = await _stored_order(resume)
     slots = asyncio.Semaphore(CONCURRENT_READS)
     outcomes: Counter[str] = Counter()
-    not_read = _NotRead()
+    not_read = _NotRead(order.first)
 
     async def in_slot(row: Row) -> None:
         try:

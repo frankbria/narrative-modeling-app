@@ -1489,8 +1489,8 @@ class TestARowStripeRefused:
         assert await _marker("u-late-4") is None
 
     async def test_a_row_refused_again_is_not_listed_again(self, resume):
-        """The guard: only a first refusal is listed, so a row that stays busy
-        is read early once and then waits its turn (and exit 5) like any row."""
+        """The guard: a row this run read first is not listed again, so a row
+        that stays busy is read early every other run, never every run."""
         ids = await _seed_numbered("again", 3)
         for _run in range(2):
             asked: list[str] = []
@@ -1501,6 +1501,28 @@ class TestARowStripeRefused:
         assert asked == [ids[1], ids[0], ids[2]]
         stored = await resume.find_one({"_id": reconcile_subscriptions.RESUME_ID})
         assert stored["read_first"] == []
+
+    async def test_a_row_marked_by_the_deadline_is_listed_when_stripe_refuses_it(
+        self, resume
+    ):
+        """Codex on #1251: the deadline marks the rows it leaves busy too, so the
+        marker is not proof that a row was already read early once."""
+        ids = await _seed_numbered("marked", 3)
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(0, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+        assert await _marker("u-marked-1") is not None
+
+        await _load_reconcile()(
+            _collection(), _refusing({ids[1]}, []), apply=True, resume=resume
+        )
+
+        stored = await resume.find_one({"_id": reconcile_subscriptions.RESUME_ID})
+        assert stored["read_first"] == [await _row_id(ids[1])]
 
     async def test_a_row_the_deadline_cut_short_is_not_listed(self, resume):
         """A row the deadline left unread already moves the start; listing it
@@ -1540,6 +1562,26 @@ class TestARowStripeRefused:
         assert "not reached in the time limit:  5" in out
         assert "stripe busy or unreachable:     10" in out
 
+    async def test_a_stop_in_the_walk_does_not_count_a_listed_row_again(
+        self, resume, capsys
+    ):
+        """The rows after a stop in the walk leave out the listed rows: the run
+        has already read them, and marking one busy would undo its answer."""
+        ids = await _seed_numbered("walkstop", 10)
+        await _store_resume(resume, ids[0], [ids[8]])
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(3, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        # 8 (listed), 0 and 1 answered; 2..6 in flight; stopped at 7; 9 left.
+        assert "not reached in the time limit:  2" in capsys.readouterr().out
+        assert await _marker("u-walkstop-8") is None
+
     async def test_a_listed_row_stripe_hangs_on_does_not_hold_the_start(self, resume):
         """The walk read every other row: the next run starts at the top, and the
         hung row, marked busy, is read in its turn."""
@@ -1572,6 +1614,19 @@ class TestARowStripeRefused:
 
         assert asked == [ids[3], ids[1], ids[2], ids[0]]
         assert await resume.find_one({}) == stored
+
+    async def test_a_list_written_as_null_is_no_list(self, resume):
+        ids = await _seed_numbered("null", 2)
+        await resume.insert_one(
+            {"_id": reconcile_subscriptions.RESUME_ID, "read_first": None}
+        )
+        asked: list[str] = []
+
+        code = await _load_reconcile()(
+            _collection(), _refusing(set(), asked), apply=True, resume=resume
+        )
+
+        assert (code, asked) == (0, ids)
 
     async def test_listed_ids_that_are_not_ids_are_ignored(self, resume):
         ids = await _seed_numbered("junk", 2)
