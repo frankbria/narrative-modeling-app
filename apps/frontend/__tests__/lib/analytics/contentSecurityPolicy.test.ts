@@ -18,7 +18,7 @@ const PLAUSIBLE_ORIGIN = new URL(PLAUSIBLE_EVENT_URL).origin
 
 const frontendFiles = globSync('**/*.{ts,tsx,js,jsx,mjs,cjs}', {
   cwd: FRONTEND,
-  ignore: ['{__tests__,__mocks__,e2e,node_modules,coverage}/**', '**/*.test.*'],
+  ignore: ['{e2e,coverage}/**', '**/{__tests__,__mocks__,node_modules}/**', '**/*.test.*'],
 }).map((file) => join(FRONTEND, file))
 const edgeFiles = globSync('nginx*.conf', { cwd: REPOSITORY }).map((file) => join(REPOSITORY, file))
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
