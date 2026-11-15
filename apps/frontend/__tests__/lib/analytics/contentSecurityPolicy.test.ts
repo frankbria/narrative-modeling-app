@@ -91,14 +91,19 @@ const policiesIn = (value: string) => value.split(',').filter((policy, index) =>
 const AT_A_HEADER = /(?<![\w/-])(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
 const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
-/** After a string, what ends its expression: a separator or bracket, a JSX tag's end, the text's end, or a line break the next line does not continue (no semicolons here). */
-const LABEL_END = String.raw`(?=[ \t]*(?:[,;)\]}>]|\/>|$|\n(?!\s*[-+*/%.?:|&^[(\`])))`
+/**
+ * After a string and any brackets it closes, what ends its expression: a separator, a JSX tag's end,
+ * the text's end, or a line break the next line does not continue (no semicolons here).
+ */
+const LABEL_END = String.raw`(?=(?:[ \t]*[)\]}])*[ \t]*(?:[,;>]|\/>|$|\n(?!\s*[-+*/%.?:|&^[(\`])))`
 /**
  * What makes `Name:` a label in a string opened by `quote`: words up to that same quote, starting with
  * a letter, with no directive name and nothing that builds or escapes a value (`$`, `\`), where the
  * quote also ends the expression (LABEL_END), so neither a `+` nor a later string adds a policy to the
  * words. A policy of only directives browsers do not know (`made-up-directive x`) restricts nothing.
  * shortcut: a directive the spec adds without `-src` reads as a word; add it to DIRECTIVE_NAME.
+ * shortcut: label words that program flow later joins to a policy (an array's `join`, a function) are
+ * not followed, as no value set after it is written is; the emitted-header check (#1249) ends this.
  */
 const labelText = (quote: string) =>
   String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^${quote}$\\\n])+${quote}${LABEL_END}`
@@ -430,7 +435,9 @@ const note = "connect-src https://plausible.io"`)
       ['a substitution after a word', 'const line = `Content-Security-Policy: made-up ${policy}`'],
       ['a quoted source inside the words', `const line = "Content-Security-Policy: made-up 'x'; default-src 'none'"`],
       ['another quote and a semicolon inside the words', `const line = "Content-Security-Policy: made-up '; default-src https://example.com"`],
-      ['words concatenated with a policy',`const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
+      ['words in parentheses concatenated with a policy', `const line = ('Content-Security-Policy: made-up script; ') + "default-src 'none'"`],
+      ['words in a list joined to a policy', `const line = ['Content-Security-Policy: made-up script; '].concat("default-src 'none'")`],
+      ['words concatenated with a policy', `const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
       ['words continued on the next line', "const line = 'Content-Security-Policy: made-up script; '\n  + policy"],
       ['an escape after a word',String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
     ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
