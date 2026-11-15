@@ -45,11 +45,21 @@ Rows are read in `_id` order, from where the previous `--apply` run stopped and
 round to the start again (#1239): that run stores the first row it did not read
 in `RESUME_COLLECTION`. A table that outgrows one run is then read in full every
 two runs, inside `ENTITLEMENT_GRACE`; one that outgrows two leaves a row unread on
-two runs in a row, which is exit 5. A run without `--apply` follows the stored
-row and writes nothing: neither the resume point nor a busy marker, set or
+two runs in a row, which is exit 5. The same document lists the rows Stripe
+refused (#1251): the next run reads them before anything else and leaves them
+out of its walk, so a row refused late in a run is not left until after the
+wrap. A listed row refused again is not listed again, and a listed row never
+moves the start, so a row that stays busy cannot hold anything up. After a
+Stripe outage the list can be long, and reading it first spends the next run's
+budget on rows the previous one reached; the rows left go to exit 5. The resume
+point is also stored when the deadline stops the walk, before the rows left are
+counted, so a database that stalls there (exit 3) does not keep the next run at
+the old start. A cursor that fails still stores nothing: a row that breaks it
+would break it from any start. A run without `--apply` follows the stored
+order and writes nothing: neither the resume point nor a busy marker, set or
 cleared, so it is safe to run by hand; the next `--apply` run settles both. An
-`--apply` run by hand while the scheduled one runs is not: the last to finish
-sets the resume point.
+`--apply` run by hand while the scheduled one runs is not: both start at the
+same point and read the same range, and the last to finish stores its own.
 
 Exit status: 0 when every row it could read matches Stripe (after repairs, under
 `--apply`), 1 when a row is missing, unreadable, raced, or (read-only) drifted,
@@ -70,10 +80,10 @@ import os
 import sys
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypeGuard
 
 import stripe
 from bson import ObjectId
@@ -119,7 +129,8 @@ FINISH_SECONDS = 60
 UNREACHABLE_ALERT_AFTER = timedelta(hours=20)
 UNREACHABLE_FIELD = "stripe_unreachable_since"
 #: One document, `RESUME_ID`, holding `resume_from`: the `_id` the next run
-#: starts at, or null when the last `--apply` run read every row.
+#: starts at, or null when the last `--apply` run read every row; and
+#: `read_first`: the rows Stripe refused, which the next run reads first.
 RESUME_COLLECTION = "subscription_reconcile_resume"
 RESUME_ID = "subscriptions"
 _NO_ANSWER = (ReadFailure.UNAVAILABLE, ReadFailure.UNREAD)
@@ -344,14 +355,13 @@ async def _reconcile_row(
     tiers_resolvable: bool,
     apply: bool,
     deadline: float,
-    unread: list[ObjectId],
+    not_read: "_NotRead",
 ) -> str:
     """What happened to one row: a `ReadFailure`, matched, drifted, repaired or
-    raced. A row the deadline left unread joins `unread` before any write, so a
+    raced. A row without an answer joins `not_read` before any write, so a
     marker write that fails cannot drop it from the next run's start."""
     remote = await _read_before(fetch, row["stripe_subscription_id"], deadline)
-    if remote is ReadFailure.UNREAD:
-        unread.append(row["_id"])
+    not_read.note(row, remote)
     if remote in _NO_ANSWER:
         return await _busy(collection, row, apply)
     await _answered(collection, row, apply)
@@ -360,48 +370,115 @@ async def _reconcile_row(
     return await _repair(collection, row, _drift(row, remote, tiers_resolvable), apply)
 
 
+@dataclass
+class _NotRead:
+    """The rows of this run that Stripe gave no answer for, as the next run
+    needs them: the deadline's, which move its start, and the ones Stripe
+    refused, which it reads before anything else (#1251).
+
+    A row this run already read first (`listed`) is not listed again, so a row
+    that stays busy is read early every other run, not every run. A listed row
+    never moves the start, so none can pin it; one busy on two runs goes on to
+    exit 5 like any other."""
+
+    listed: tuple[ObjectId, ...]
+    cut_short: list[ObjectId] = field(default_factory=list)
+    refused: list[ObjectId] = field(default_factory=list)
+
+    def note(self, row: Row, remote: Remote | ReadFailure) -> None:
+        if remote is ReadFailure.UNREAD:
+            self.cut_short.append(row["_id"])
+        elif remote is ReadFailure.UNAVAILABLE and row["_id"] not in self.listed:
+            self.refused.append(row["_id"])
+
+
 @dataclass(frozen=True)
 class _Order:
-    """The walk's order: `_id` order from `start` to the end, then from the first
-    row up to `start`. No start is plain `_id` order."""
+    """The walk's order: the rows in `first`, then `_id` order from `start` to
+    the end, then from the first row up to `start`, leaving out `first`. No
+    start is plain `_id` order."""
 
     start: ObjectId | None
+    first: tuple[ObjectId, ...] = ()
 
     def segments(self) -> list[dict[str, Any]]:
         if self.start is None:
-            return [{}]
-        return [{"_id": {"$gte": self.start}}, {"_id": {"$lt": self.start}}]
+            main: list[dict[str, Any]] = [{}]
+        else:
+            main = [{"_id": {"$gte": self.start}}, {"_id": {"$lt": self.start}}]
+        listed = [{"_id": {"$in": list(self.first)}}] if self.first else []
+        return listed + [self._outside_first(segment) for segment in main]
 
     def position(self, row_id: ObjectId) -> tuple[bool, ObjectId]:
-        """Sorts ids in this order: the wrapped part after the rest."""
+        """Sorts the ids outside `first` in this order: the wrapped part last."""
         return (self.start is not None and row_id < self.start, row_id)
 
     def after(self, row_id: ObjectId) -> dict[str, Any]:
         """A filter for the rows that come after `row_id` in this order."""
+        if row_id in self.first:
+            later = [each for each in self.first if each > row_id]
+            rest = {"_id": {"$nin": list(self.first)}}
+            return {"$or": [{"_id": {"$in": later}}, rest]}
+        return self._outside_first(self._after_in_id_order(row_id))
+
+    def _after_in_id_order(self, row_id: ObjectId) -> dict[str, Any]:
         if self.start is None:
             return {"_id": {"$gt": row_id}}
         if row_id < self.start:
             return {"_id": {"$gt": row_id, "$lt": self.start}}
         return {"$or": [{"_id": {"$gt": row_id}}, {"_id": {"$lt": self.start}}]}
 
+    def _outside_first(self, query: dict[str, Any]) -> dict[str, Any]:
+        if not self.first:
+            return query
+        return {"$and": [query, {"_id": {"$nin": list(self.first)}}]}
 
-async def _resume_point(resume: Collection | None) -> ObjectId | None:
-    """Where the previous `--apply` run stopped, or None for the first row. Only
-    an `ObjectId` is a place in `_id` order; anything else written by hand would
-    match every row in one segment and fail the comparisons at the deadline."""
+
+async def _stored_order(resume: Collection | None) -> _Order:
+    """The order the previous `--apply` run left, or plain `_id` order."""
     stored = await resume.find_one({"_id": RESUME_ID}) if resume is not None else None
-    start = (stored or {}).get("resume_from")
-    return start if isinstance(start, ObjectId) else None
+    return _order_from(stored or {})
+
+
+def _order_from(stored: Mapping[str, Any]) -> _Order:
+    """The rows to read first and the row to resume from. Only an `ObjectId` is
+    a place in `_id` order; anything else written by hand would match every row
+    in one segment and fail the comparisons at the deadline."""
+    start = stored.get("resume_from")
+    first = [each for each in _as_list(stored.get("read_first")) if _is_id(each)]
+    return _Order(start if _is_id(start) else None, tuple(sorted(first)))
+
+
+def _is_id(value: object) -> TypeGuard[ObjectId]:
+    return isinstance(value, ObjectId)
+
+
+def _as_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _resume_from(
+    order: _Order, unread: list[ObjectId], stopped_at: list[ObjectId]
+) -> ObjectId | None:
+    """The first row after `first`, in this run's order, that it did not read:
+    one the deadline cut short or the one the walk stopped at; None when it read
+    every row. A stop among the listed rows reached none of the rest, so the
+    start stays. A listed row the deadline cut short is not the start: it is
+    marked busy like any row, and holding the start for it would read the same
+    range again."""
+    if any(each in order.first for each in stopped_at):
+        return order.start
+    rest = [each for each in unread + stopped_at if each not in order.first]
+    return min(rest, key=order.position, default=None)
 
 
 async def _store_resume_point(
-    resume: Collection, order: _Order, not_read: list[ObjectId]
+    resume: Collection, resume_from: ObjectId | None, refused: list[ObjectId]
 ) -> None:
-    """The first row, in this run's order, that it did not read: one the deadline
-    cut short or the one the walk stopped at. None when it read every row."""
-    first = min(not_read, key=order.position, default=None)
     await resume.update_one(
-        {"_id": RESUME_ID}, {"$set": {"resume_from": first}}, upsert=True
+        {"_id": RESUME_ID},
+        {"$set": {"resume_from": resume_from, "read_first": sorted(refused)}},
+        upsert=True,
     )
 
 
@@ -479,27 +556,32 @@ async def _walk(
     apply: bool,
     outcomes: Counter[str],
     order: _Order,
+    checkpoint: Callable[[list[ObjectId], list[ObjectId]], Awaitable[None]],
 ) -> list[ObjectId]:
     """Start `read_row` for each row as a slot frees, until the deadline; the id
     of the row the deadline stopped it at, if any.
 
-    Only the reads in flight are held, so memory does not grow with the table.
+    At the stop, `checkpoint` gets the reads still in flight and that row before
+    the rows left are counted: a database that stalls there ends the run, and
+    the next one should still start here (#1251). Only the reads in flight are
+    held, so memory does not grow with the table.
     """
-    in_flight: set[asyncio.Task[None]] = set()
+    in_flight: dict[asyncio.Task[None], ObjectId] = {}
     stopped_at: list[ObjectId] = []
     try:
         async for row in _rows_in(collection, order):
             if not await _slot_before(slots, deadline):
-                outcomes.update(await _the_rest(collection, row, apply, order))
                 stopped_at = [row["_id"]]
+                await checkpoint(list(in_flight.values()), stopped_at)
+                outcomes.update(await _the_rest(collection, row, apply, order))
                 break
             task = asyncio.create_task(read_row(row))
-            in_flight.add(task)
-            task.add_done_callback(in_flight.discard)
+            in_flight[task] = row["_id"]
+            task.add_done_callback(in_flight.pop)
         await asyncio.gather(*in_flight)
     finally:
         # A cursor that fails mid-table must not leave reads running behind it.
-        await _cancel(in_flight)
+        await _cancel(set(in_flight))
     return stopped_at
 
 
@@ -530,16 +612,16 @@ async def reconcile(
     # between reading a row and its conditional write does not grow with the
     # table: a longer window would turn more rows into "changed under us".
     deadline = asyncio.get_running_loop().time() + budget_seconds
-    order = _Order(await _resume_point(resume))
+    order = await _stored_order(resume)
     slots = asyncio.Semaphore(CONCURRENT_READS)
     outcomes: Counter[str] = Counter()
-    cut_short: list[ObjectId] = []
+    not_read = _NotRead(order.first)
 
     async def in_slot(row: Row) -> None:
         try:
             outcomes[
                 await _reconcile_row(
-                    collection, fetch, row, tiers_resolvable, apply, deadline, cut_short
+                    collection, fetch, row, tiers_resolvable, apply, deadline, not_read
                 )
             ] += 1
         except Exception as exc:  # noqa: BLE001 - counted by class, see `_report`
@@ -548,11 +630,16 @@ async def reconcile(
         finally:
             slots.release()
 
+    async def checkpoint(in_flight: list[ObjectId], stopped_at: list[ObjectId]) -> None:
+        if apply and resume is not None:
+            unread = not_read.cut_short + in_flight
+            resume_from = _resume_from(order, unread, stopped_at)
+            await _store_resume_point(resume, resume_from, not_read.refused)
+
     stopped_at = await _walk(
-        collection, in_slot, slots, deadline, apply, outcomes, order
+        collection, in_slot, slots, deadline, apply, outcomes, order, checkpoint
     )
-    if apply and resume is not None:
-        await _store_resume_point(resume, order, cut_short + stopped_at)
+    await checkpoint([], stopped_at)
     return _report(outcomes, apply)
 
 

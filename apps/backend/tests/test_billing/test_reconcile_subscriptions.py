@@ -1436,6 +1436,284 @@ class TestATableLargerThanOneRun:
         assert await _stored_resume_point(resume) == await _row_id(ids[1])
 
 
+def _refusing(refused: set[str], asked: list[str], answers: int = 1_000):
+    """A Stripe busy for `refused` and answering the rest, hanging once it has
+    been asked `answers` times."""
+
+    async def fetch(subscription_id: str):
+        asked.append(subscription_id)
+        if len(asked) > answers:
+            await asyncio.Event().wait()
+        if subscription_id in refused:
+            return reconcile_subscriptions.ReadFailure.UNAVAILABLE
+        return _remote("unpaid", None)
+
+    return fetch
+
+
+async def _store_resume(resume, resume_from: str | None, read_first: list[str]):
+    await resume.insert_one(
+        {
+            "_id": reconcile_subscriptions.RESUME_ID,
+            "resume_from": resume_from and await _row_id(resume_from),
+            "read_first": [await _row_id(each) for each in read_first],
+        }
+    )
+
+
+#: A budget these tests' answered reads finish well inside, on a loaded CI
+#: runner too (0.3 s once ran out before the first read there, PR #1260).
+_ROOM_TO_READ = 1.5
+
+
+class TestARowStripeRefused:
+    """#1251: a row Stripe refused is read first on the next run, without one
+    row that stays busy pinning the start."""
+
+    async def test_a_row_refused_late_in_a_run_is_read_first_on_the_next(
+        self, resume, capsys
+    ):
+        ids = await _seed_numbered("late", 10)
+        await _load_reconcile()(
+            _collection(),
+            _refusing({ids[4]}, [], answers=6),
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
+        )
+        capsys.readouterr()
+        asked: list[str] = []
+
+        await _load_reconcile()(
+            _collection(), _refusing(set(), asked), apply=True, resume=resume
+        )
+
+        # Run 1 read 0..5 (Stripe refused 4) and left 6..9 in flight.
+        assert asked == [ids[4]] + ids[6:] + ids[:4] + [ids[5]]
+        assert "subscriptions with a stripe id: 10" in capsys.readouterr().out
+        assert await _marker("u-late-4") is None
+
+    async def test_a_row_refused_again_is_not_listed_again(self, resume):
+        """The guard: a row this run read first is not listed again, so a row
+        that stays busy is read early every other run, never every run."""
+        ids = await _seed_numbered("again", 3)
+        for _run in range(2):
+            asked: list[str] = []
+            await _load_reconcile()(
+                _collection(), _refusing({ids[1]}, asked), apply=True, resume=resume
+            )
+
+        assert asked == [ids[1], ids[0], ids[2]]
+        stored = await resume.find_one({"_id": reconcile_subscriptions.RESUME_ID})
+        assert stored["read_first"] == []
+
+    async def test_a_row_marked_by_the_deadline_is_listed_when_stripe_refuses_it(
+        self, resume
+    ):
+        """Codex on #1251: the deadline marks the rows it leaves busy too, so the
+        marker is not proof that a row was already read early once."""
+        ids = await _seed_numbered("marked", 3)
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(0, []),
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
+        )
+        assert await _marker("u-marked-1") is not None
+
+        await _load_reconcile()(
+            _collection(), _refusing({ids[1]}, []), apply=True, resume=resume
+        )
+
+        stored = await resume.find_one({"_id": reconcile_subscriptions.RESUME_ID})
+        assert stored["read_first"] == [await _row_id(ids[1])]
+
+    async def test_a_row_the_deadline_cut_short_is_not_listed(self, resume):
+        """A row the deadline left unread already moves the start; listing it
+        too would read it twice."""
+        await _seed_numbered("unread", 3)
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(0, []),
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
+        )
+
+        stored = await resume.find_one({"_id": reconcile_subscriptions.RESUME_ID})
+        assert stored["read_first"] == []
+
+    async def test_a_deadline_among_the_listed_rows_keeps_the_resume_point(
+        self, resume, capsys
+    ):
+        ids = await _seed_numbered("first", 10)
+        await _store_resume(resume, ids[8], ids[:7])
+        asked: list[str] = []
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(0, asked),
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
+        )
+
+        assert asked == ids[:5]
+        assert await _stored_resume_point(resume) == await _row_id(ids[8])
+        # 0..4 in flight at the deadline, stopped at 5; 6 and 7..9 not reached.
+        out = capsys.readouterr().out
+        assert "not reached in the time limit:  5" in out
+        assert "stripe busy or unreachable:     10" in out
+
+    async def test_a_stop_in_the_walk_does_not_count_a_listed_row_again(
+        self, resume, capsys
+    ):
+        """The rows after a stop in the walk leave out the listed rows: the run
+        has already read them, and marking one busy would undo its answer."""
+        ids = await _seed_numbered("walkstop", 10)
+        await _store_resume(resume, ids[0], [ids[8]])
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(3, []),
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
+        )
+
+        # 8 (listed), 0 and 1 answered; 2..6 in flight; stopped at 7; 9 left.
+        assert "not reached in the time limit:  2" in capsys.readouterr().out
+        assert await _marker("u-walkstop-8") is None
+
+    async def test_a_listed_row_stripe_hangs_on_does_not_hold_the_start(self, resume):
+        """The walk read every other row: the next run starts at the top, and the
+        hung row, marked busy, is read in its turn."""
+        ids = await _seed_numbered("hang", 6)
+        await _store_resume(resume, ids[2], [ids[4]])
+
+        async def hangs_on_one(subscription_id):
+            if subscription_id == ids[4]:
+                await asyncio.Event().wait()
+            return _remote("unpaid", None)
+
+        await _load_reconcile()(
+            _collection(),
+            hangs_on_one,
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
+        )
+
+        assert await _stored_resume_point(resume) is None
+        assert await _marker("u-hang-4") is not None
+
+    async def test_a_read_only_run_reads_the_listed_rows_first_and_stores_nothing(
+        self, resume
+    ):
+        ids = await _seed_numbered("dryfirst", 4)
+        await _store_resume(resume, ids[1], [ids[3]])
+        stored = await resume.find_one({})
+        asked: list[str] = []
+
+        await _load_reconcile()(
+            _collection(), _refusing({ids[0]}, asked), apply=False, resume=resume
+        )
+
+        assert asked == [ids[3], ids[1], ids[2], ids[0]]
+        assert await resume.find_one({}) == stored
+
+    @pytest.mark.parametrize("by_hand", [None, 0, True, "sub_x"])
+    async def test_a_list_written_by_hand_as_no_list_is_ignored(self, resume, by_hand):
+        """The github-actions reviewer on #1260: a scalar must not stop every run."""
+        ids = await _seed_numbered("null", 2)
+        await resume.insert_one(
+            {"_id": reconcile_subscriptions.RESUME_ID, "read_first": by_hand}
+        )
+        asked: list[str] = []
+
+        code = await _load_reconcile()(
+            _collection(), _refusing(set(), asked), apply=True, resume=resume
+        )
+
+        assert (code, asked) == (0, ids)
+
+    async def test_listed_ids_that_are_not_ids_are_ignored(self, resume):
+        ids = await _seed_numbered("junk", 2)
+        await resume.insert_one(
+            {
+                "_id": reconcile_subscriptions.RESUME_ID,
+                "resume_from": None,
+                "read_first": ["sub_x", await _row_id(ids[1])],
+            }
+        )
+        asked: list[str] = []
+
+        await _load_reconcile()(
+            _collection(), _refusing(set(), asked), apply=True, resume=resume
+        )
+
+        assert asked == [ids[1], ids[0]]
+
+    async def test_the_stop_point_is_stored_before_the_rows_left_are_counted(
+        self, resume, monkeypatch
+    ):
+        """#1251 item 3: a database that stalls while the rows not reached are
+        counted ends the run with exit 3, and the next run still moves on."""
+        ids = await _seed_numbered("stall", 10)
+
+        async def stalls(*_args):
+            raise TimeoutError
+
+        monkeypatch.setattr(reconcile_subscriptions, "_not_reached_after", stalls)
+
+        with pytest.raises(TimeoutError):
+            await _load_reconcile()(
+                _collection(),
+                _answers_then_hangs(3, []),
+                apply=True,
+                budget_seconds=_ROOM_TO_READ,
+                resume=resume,
+            )
+
+        assert await _stored_resume_point(resume) == await _row_id(ids[3])
+
+    async def test_reads_still_in_flight_at_the_stop_count_as_not_read(
+        self, resume, monkeypatch
+    ):
+        """The walk can see the deadline before the reads in flight have seen
+        theirs (a cursor batch that arrives late): those rows were not read, so
+        the start stored before the rows left are counted is the first of them."""
+        ids = await _seed_numbered("flight", 10)
+        asked: list[str] = []
+
+        async def outlasts_its_deadline(subscription_id):
+            asked.append(subscription_id)
+            if len(asked) <= 3:
+                return _remote("unpaid", None)
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await asyncio.Event().wait()
+
+        async def stalls(*_args):
+            raise TimeoutError
+
+        monkeypatch.setattr(reconcile_subscriptions, "_not_reached_after", stalls)
+
+        with pytest.raises(TimeoutError):
+            await _load_reconcile()(
+                _collection(),
+                outlasts_its_deadline,
+                apply=True,
+                budget_seconds=_ROOM_TO_READ,
+                resume=resume,
+            )
+
+        assert await _stored_resume_point(resume) == await _row_id(ids[3])
+
+
 def test_the_command_flushes_logging_before_it_exits():
     """#1239: `os._exit` skips the interpreter's own shutdown, so a buffered log
     record written by the run would be lost without an explicit flush."""
