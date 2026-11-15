@@ -27,13 +27,16 @@
 # if a step ever connects through a name the box's secrets do not hold (#1231).
 #
 # The body goes to gh as a file, not an argument (Linux refuses one over 128 KiB),
-# cut to fit GitHub's 65,536-character limit with a line saying how much was cut.
+# cut to fit GitHub's 65,536-character limit with a line saying how much was cut;
+# a cut body is printed whole, redacted, to the run log first (#1241).
 #
 # Each gh call is tried twice, ALERT_RETRY_DELAY_SECONDS (default 60) apart, so one
 # API error does not leave a red run as the day's only signal; a minute because
 # GitHub asks for at least that after a secondary rate limit. A create whose first
 # attempt landed before failing can file a duplicate; the next run comments on the
-# oldest, so that is accepted.
+# oldest, so that is accepted. The callers' report budget counts on this: two gh
+# calls, each able to wait once (REPORT_MINUTES = 3 in test_staging_health_wiring.py).
+# A third call needs a bigger number there and longer job limits in both workflows.
 set -euo pipefail
 [ $# -eq 2 ] || { echo "usage: file_alert.sh <title> <stable phrase>   (body on stdin)" >&2; exit 2; }
 title=$1
@@ -83,12 +86,52 @@ perl -MEncode -0777 -pe '
     }
   }
   for my $span (reverse @merged) { substr($_, $span->[0], $span->[1] - $span->[0]) = $span->[2] }
+  # What closes every block a cut leaves open. A cut inside a code fence would
+  # render the notice as code, and one inside the collapsed <details> both callers
+  # end with would hide it. Fences per CommonMark: backticks or tildes; a closing
+  # one is the same character, at least as long, with no info string, and a
+  # backtick opener has no backtick in its info string. A tag inside a fence is text.
+  # shortcut: <details> is counted per line, not parsed, so one named in prose or an
+  # inline code span counts too (a stray </details> is harmless); parse HTML if a
+  # caller ever quotes box output outside a fence.
+  sub closing_markup {
+    my ($open, $details) = ("", 0);
+    for my $line (split /\n/, $_[0]) {
+      if (length $open) {
+        $open = "" if $line =~ /^ {0,3}(`{3,}|~{3,})[ \t\r]*$/
+          && substr($1, 0, 1) eq substr($open, 0, 1) && length $1 >= length $open;
+      }
+      elsif ($line =~ /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/) { $open = $1 }
+      else { $details += (() = $line =~ /<details\b/gi) - (() = $line =~ m{</details>}gi) }
+    }
+    return (length $open ? "\n$open" : "") . "\n</details>" x $details;
+  }
   # Cut after redacting, so a name is never split into a part the pattern misses.
   # 65,000 leaves room for the line below inside the 65,536 limit.
   if (length > 65536) {
-    my $cut = length($_) - 65000;
-    $_ = substr($_, 0, 65000)
-      . "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole output.)\n";
+    # The notice sends the reader here, and the callers print their stderr tail
+    # nowhere else; redacted, because the log is public and masks only secrets.
+    # Between stop-commands markers, so a box line reading `::error::` stays text.
+    # rand is enough: the body is fixed before the token is drawn, so it cannot
+    # hold the end marker, and a token source that fails must not lose the alert.
+    my $token = join "", map { sprintf "%04x", int rand 65536 } 1 .. 8;
+    print STDERR "file_alert.sh: the body was cut for the issue; the whole body, redacted:\n",
+      "::stop-commands::$token\n", Encode::encode("UTF-8", $_), "\n::${token}::\n";
+    my $kept = substr($_, 0, 65000);
+    my $notice = sub {
+      my $cut = length($_) - length $_[0];
+      "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
+    };
+    my $closing = closing_markup($kept);
+    # Cut further until the closing markup fits: a shorter cut can reopen a block,
+    # so it is recomputed each time. Each pass shortens the text or ends the loop,
+    # and an empty text needs no markup.
+    while (length($kept . $closing . $notice->($kept)) > 65536) {
+      my $room = 65536 - length($closing) - length($notice->($kept)) - 1;
+      $kept = substr($kept, 0, $room < 0 ? 0 : $room);
+      $closing = closing_markup($kept);
+    }
+    $_ = $kept . $closing . $notice->($kept);
   }
   $_ = Encode::encode("UTF-8", $_);
 ' > "$body_file"

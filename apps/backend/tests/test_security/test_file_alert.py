@@ -241,6 +241,133 @@ def test_a_body_too_long_for_an_issue_is_cut_to_fit():
     assert "characters were cut" in sent and "run log" in sent
 
 
+def test_a_cut_body_is_printed_whole_and_redacted_to_the_run_log():
+    """#1241 item 1: the notice sends the reader to the run log, and the stderr tail
+    each workflow quotes is printed nowhere else. So the filer logs the whole body
+    itself, after redaction: the log is public too, and GitHub masks only secrets
+    there, never a tailnet address ssh prints."""
+    body = "first line\n" + "x" * 70_000 + "\nssh: connect to 100.101.102.103 port 22\n"
+    run, posted = _file(body)
+    assert run.returncode == 0, run.stderr
+    logged = run.stderr.decode()
+    assert "ssh: connect to <tailnet address> port 22" in logged
+    assert "100.101.102.103" not in logged
+    assert "x" * 70_000 in logged, "the part the issue lost is in the log"
+    assert "ssh: connect to" not in posted.split("--body-file\n", 1)[1]
+
+
+def test_the_logged_body_cannot_issue_runner_commands():
+    """Box stderr now reaches the log: a line in it reading `::add-mask::` or
+    `::error::` must stay text, so the copy sits between stop-commands markers."""
+    body = "::error::forged annotation\n" + "x" * 70_000
+    run, _ = _file(body)
+    logged = run.stderr.decode()
+    start = logged.index("::stop-commands::")
+    token = logged[start:].split("\n", 1)[0].removeprefix("::stop-commands::")
+    assert len(token) >= 16, "a token the body cannot guess"
+    end = logged.index(f"::{token}::")
+    assert start < logged.index("::error::forged") < logged.rindex("x") < end
+
+
+def test_a_body_that_fits_is_not_printed_to_the_run_log():
+    run, _ = _file("short body\n")
+    assert b"short body" not in run.stderr
+
+
+def _cut(body: str) -> tuple[str, str]:
+    """The issue body sent for a cut ``body``, split into the kept text and the notice."""
+    _, posted = _file(body)
+    sent = posted.split("--body-file\n", 1)[1]
+    assert len(sent) <= 65_536
+    kept, notice = sent.rsplit("\n\n(", 1)
+    assert "characters were cut" in notice
+    return kept, notice
+
+
+def test_a_cut_inside_a_code_fence_closes_the_fence():
+    """#1241 item 2: a body cut inside a fence would render the notice as code."""
+    kept, _ = _cut("Run: x\n\n```\n" + "y\n" * 40_000 + "```\n")
+    assert kept.endswith("\n```"), kept[-20:]
+    assert kept.count("\n```") == 2
+
+
+def test_a_line_with_an_info_string_inside_a_fence_does_not_close_it():
+    """A closing fence carries no info string (CommonMark), so ```diagnostic inside
+    an open block is content and the cut still has to close the block."""
+    kept, _ = _cut("```\n```diagnostic\n" + "y\n" * 40_000)
+    assert kept.endswith("\n```"), kept[-20:]
+
+
+def test_a_fence_opened_with_more_backticks_is_closed_with_as_many():
+    kept, _ = _cut("````\n```\n" + "y\n" * 40_000)
+    assert kept.endswith("\n````"), kept[-20:]
+
+
+def test_a_cut_inside_a_details_block_shows_the_notice_outside_it():
+    """Both workflows end with the stderr tail in a collapsed <details> block; a
+    notice left inside it is never seen."""
+    body = "Run: x\n\n<details><summary>stderr</summary>\n\n```\n" + "y\n" * 40_000
+    kept, _ = _cut(body)
+    assert kept.endswith("\n```\n</details>"), kept[-30:]
+
+
+def test_a_details_tag_inside_a_fence_is_text_and_counts_for_nothing():
+    body = (
+        "<details><summary>stderr</summary>\n\n```\nprinted </details>\n"
+        + "y\n" * 40_000
+    )
+    kept, _ = _cut(body)
+    assert kept.endswith("\n```\n</details>"), kept[-30:]
+
+
+def test_a_cut_inside_a_tilde_fence_closes_it_with_tildes():
+    kept, _ = _cut("~~~\n```\n" + "y\n" * 40_000)
+    assert kept.endswith("\n~~~"), kept[-20:]
+
+
+def test_a_fence_closed_by_a_crlf_line_is_closed():
+    """Box output can end its lines with CRLF; that still closes the fence."""
+    kept, _ = _cut("```\n```\r\n" + "y" * 70_000)
+    assert kept.endswith("y" * 100), kept[-20:]
+
+
+def test_a_no_break_space_after_backticks_does_not_close_a_fence():
+    kept, _ = _cut("```\n``` \n" + "y" * 70_000)
+    assert kept.endswith("\n```"), kept[-20:]
+
+
+def test_markup_that_could_never_fit_leaves_the_notice_alone_and_outside():
+    body = "<details>\n" * 7_000 + "```\n" + "y" * 70_000
+    kept, notice = _cut(body)
+    assert kept == "", kept[-30:]
+    assert notice.startswith(f"{len(body)} characters were cut")
+
+
+def test_closing_markup_that_does_not_fit_makes_room_by_cutting_more():
+    """The alert must arrive (``_cut`` checks the length) and its notice must still
+    be outside the fence and every <details>."""
+    kept, _ = _cut("<details>\n" * 100 + "```\n" + "y" * 70_000)
+    assert kept.endswith("\n```" + "\n</details>" * 100), kept[-30:]
+
+
+def test_a_recut_that_reopens_a_fence_cuts_again():
+    """Cutting to make room for the </details> lands inside the long fence's closing
+    line, so the fence is open again and needs room of its own."""
+    fence = "`" * 1_000
+    body = (
+        "<details>\n" * 100 + fence + "\n" + "y\n" * 30_999 + fence + "\n" + "z" * 5_000
+    )
+    kept, _ = _cut(body)
+    assert kept.endswith("y\n" + fence + "\n</details>" * 100), kept[-30:]
+
+
+def test_a_cut_outside_a_code_fence_adds_no_fence():
+    body = "```\nshort\n```\n" + "z" * 70_000
+    _, posted = _file(body)
+    sent = posted.split("--body-file\n", 1)[1]
+    assert sent.count("```") == 2
+
+
 def test_a_body_that_fits_is_sent_whole():
     run, posted = _file("short body\n")
     assert run.returncode == 0, run.stderr
