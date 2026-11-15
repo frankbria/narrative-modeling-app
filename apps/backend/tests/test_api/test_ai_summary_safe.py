@@ -10,7 +10,7 @@ masked ones (the chunked path stores a RAW schema, so reading the stored schema
 would leak PII).
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -144,13 +144,44 @@ async def test_null_summary_is_logged_not_silent(setup_database, caplog):
 
     import logging
 
-    with patch.object(ai_summary, "call_openai_api", new=AsyncMock(return_value=None)):
+    # A key is configured: with none, a missing summary is routine (#1256, below).
+    with patch.object(ai_summary, "client", MagicMock()), patch.object(
+        ai_summary, "call_openai_api", new=AsyncMock(return_value=None)
+    ):
         with caplog.at_level(logging.WARNING):
             await generate_ai_summary_safe(str(doc.id), pd.DataFrame({"c": [1]}))
 
     refetched = await UserData.get(doc.id)
     assert refetched.aiSummary is None
     assert any(str(doc.id) in r.message and r.levelno == logging.WARNING for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_keyless_safe_summary_logs_nothing_above_info(setup_database, caplog):
+    """#1256: with no OpenAI key the masked-frame summary is skipped quietly: an
+    INFO line naming the dataset, nothing at WARNING or above."""
+    import logging
+
+    doc = await UserData(
+        user_id="u1",
+        filename="k.csv",
+        original_filename="k.csv",
+        s3_url="s3://b/datasets/u1/k.csv",
+        num_rows=1,
+        num_columns=1,
+        data_schema=[],
+    ).insert()
+
+    with patch.object(ai_summary, "client", None), caplog.at_level(logging.DEBUG):
+        await generate_ai_summary_safe(str(doc.id), pd.DataFrame({"c": [1]}))
+
+    refetched = await UserData.get(doc.id)
+    assert refetched.aiSummary is None
+    assert [r.getMessage() for r in caplog.records if r.levelno > logging.INFO] == []
+    assert any(
+        str(doc.id) in r.getMessage() and r.levelno == logging.INFO
+        for r in caplog.records
+    )
 
 
 @pytest.mark.unit

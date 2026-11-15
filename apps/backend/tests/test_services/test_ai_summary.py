@@ -1,5 +1,6 @@
+import logging
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from beanie import PydanticObjectId
@@ -223,3 +224,90 @@ def test_initialize_openai_client_no_key():
 
         initialize_openai_client()
         mock_build.assert_not_called()
+
+
+def _clean_user_data(user_id: str) -> UserData:
+    return UserData(
+        user_id=user_id,
+        filename="keyless.csv",
+        original_filename="keyless.csv",
+        s3_url=f"s3://b/datasets/{user_id}/keyless.csv",
+        num_rows=1,
+        num_columns=1,
+        data_schema=[
+            SchemaField(
+                field_name="c",
+                field_type="numeric",
+                inferred_dtype="int64",
+                unique_values=1,
+                missing_values=0,
+                example_values=[1],
+                is_constant=True,
+                is_high_cardinality=False,
+            )
+        ],
+    )
+
+
+def test_a_missing_key_is_one_warning(caplog):
+    """#1256: running without a key is a supported mode, reported like the other
+    services: once, at WARNING, never at ERROR."""
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "app.utils.ai_summary.client", None
+    ), caplog.at_level(logging.DEBUG):
+        initialize_openai_client()
+
+    warnings_or_worse = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert [r.levelno for r in warnings_or_worse] == [logging.WARNING]
+    assert "OPENAI_API_KEY" in warnings_or_worse[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_a_keyless_summary_logs_nothing_above_info(setup_database, caplog):
+    """#1256: with no key the summary is skipped, which is the normal fallback, so
+    nothing above INFO reaches the log (or Sentry)."""
+    doc = await _clean_user_data("keyless-user").insert()
+
+    with patch("app.utils.ai_summary.client", None), caplog.at_level(logging.DEBUG):
+        result = await generate_dataset_summary(str(doc.id))
+
+    assert result is None
+    assert [r.getMessage() for r in caplog.records if r.levelno > logging.INFO] == []
+    assert any(
+        str(doc.id) in r.getMessage() and r.levelno == logging.INFO
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_with_a_key_a_missing_summary_is_still_an_error(setup_database, caplog):
+    """The quiet path is only for a missing key: when a key is configured and
+    OpenAI gives nothing back, it is still an ERROR naming the dataset."""
+    doc = await _clean_user_data("keyed-user").insert()
+
+    with patch("app.utils.ai_summary.client", MagicMock()), patch(
+        "app.utils.ai_summary.call_openai_api", AsyncMock(return_value=None)
+    ), caplog.at_level(logging.DEBUG):
+        result = await generate_dataset_summary(str(doc.id))
+
+    assert result is None
+    assert any(
+        str(doc.id) in r.getMessage() and r.levelno == logging.ERROR
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_keyless_summary_never_reaches_the_ai_ceiling(caplog):
+    """#1256: the key is checked before the breaker, so a keyless summary spends
+    none of the daily AI ceiling, and a spent ceiling cannot turn it into an
+    ERROR or WARNING."""
+    admit = AsyncMock(return_value=False)
+    with patch("app.utils.ai_summary.client", None), patch(
+        "app.billing.ai_ceiling.admit", admit
+    ), caplog.at_level(logging.DEBUG):
+        result = await call_openai_api({"filename": "t.csv", "columns": []})
+
+    assert result is None
+    admit.assert_not_awaited()
+    assert [r.getMessage() for r in caplog.records if r.levelno > logging.INFO] == []

@@ -4,7 +4,8 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from openai import OpenAIError
+from openai import OpenAI, OpenAIError
+from openai.types.chat import ChatCompletion
 
 from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
@@ -24,10 +25,16 @@ def initialize_openai_client():
     global client
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logging.error("OPENAI_API_KEY not set in environment variables")
+        logger.warning("OPENAI_API_KEY not set - AI dataset summaries are skipped")
         return
     client = build_openai_client(api_key)
-    logging.info("OpenAI client initialized successfully")
+    logger.info("OpenAI client initialized successfully")
+
+
+def missing_summary_level(failure_level: int) -> int:
+    """The level for "no summary was produced": routine (INFO) when no key is
+    configured, which is a supported mode (#1256), else ``failure_level``."""
+    return failure_level if client else logging.INFO
 
 
 OPENAI_MODEL = openai_model()
@@ -72,7 +79,11 @@ async def generate_dataset_summary(user_data_id: str) -> AISummary | None:
             logger.info(f"AI summary generated and saved for dataset {user_data_id}")
             return ai_summary
         else:
-            logger.error(f"Failed to generate AI summary for dataset {user_data_id}")
+            logger.log(
+                missing_summary_level(logging.ERROR),
+                "AI summary not generated for dataset %s",
+                user_data_id,
+            )
             return None
 
     except Exception as e:
@@ -147,14 +158,6 @@ def prepare_dataset_summary_from_df(df: "pd.DataFrame", filename: str) -> dict[s
     return summary
 
 
-@with_circuit_breaker(
-    "openai",
-    max_attempts=3,
-    failure_threshold=5,
-    recovery_timeout=60.0,
-    exceptions=(OpenAIError, Exception),
-    fallback_value=None
-)
 async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
     """
     Call the OpenAI API to generate an AI summary of the dataset.
@@ -163,12 +166,25 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
         dataset_summary: A dictionary containing the dataset summary
 
     Returns:
-        An AISummary object if successful, None otherwise
+        An AISummary object if successful, None otherwise (always None with no key,
+        checked before the breaker so a keyless summary spends no AI ceiling, #1256)
     """
     if not client:
-        logging.error("OpenAI client not initialized")
         return None
+    return await _summarize_with_openai(client, dataset_summary)
 
+
+@with_circuit_breaker(
+    "openai",
+    max_attempts=3,
+    failure_threshold=5,
+    recovery_timeout=60.0,
+    exceptions=(OpenAIError, Exception),
+    fallback_value=None
+)
+async def _summarize_with_openai(
+    openai_client: OpenAI, dataset_summary: dict[str, Any]
+) -> AISummary | None:
     try:
         # Convert the dataset summary to a JSON string
         dataset_json = json.dumps(dataset_summary, indent=2)
@@ -206,24 +222,26 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
         # Call the OpenAI API off the event loop: the client is synchronous and
         # this runs in an async BackgroundTask after every upload, so calling it
         # inline would block the worker for the whole round-trip (#501).
-        response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_tokens=2000,
-            response_format={"type": "json_object"},
-        )
+        def create_completion() -> ChatCompletion:
+            return openai_client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+                response_format={"type": "json_object"},
+            )
+
+        response = await asyncio.to_thread(create_completion)
 
         # Extract the response content
         content = response.choices[0].message.content
 
         # Parse the JSON response
         try:
-            summary_json = json.loads(content)
+            summary_json = json.loads(content or "")
 
             # Create and return an AISummary object
             return AISummary(
