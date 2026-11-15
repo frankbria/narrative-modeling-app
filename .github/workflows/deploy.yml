@@ -104,11 +104,13 @@ jobs:
           BACKEND_IMAGE: ${{ steps.build.outputs.backend }}
           FRONTEND_IMAGE: ${{ steps.build.outputs.frontend }}
         run: |
-          # A digest or nothing: a tag can be pushed over, a digest cannot.
-          case "$BACKEND_IMAGE$FRONTEND_IMAGE" in
-            ghcr.io/*@sha256:*ghcr.io/*@sha256:*) ;;
-            *) echo "::error::the build printed no digest reference for one of the images"; exit 1 ;;
-          esac
+          # Exactly one digest reference each: a tag can be pushed over, a digest cannot,
+          # and checked joined, one output holding both references passed for two.
+          for named in "backend=$BACKEND_IMAGE" "frontend=$FRONTEND_IMAGE"; do
+            if ! [[ "${named#*=}" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::the build printed no digest reference for the ${named%%=*} image"; exit 1
+            fi
+          done
           {
             echo "## Images built for \`$GITHUB_SHA\`"
             echo

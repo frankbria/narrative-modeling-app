@@ -399,6 +399,16 @@ jobs:
         # The image is promoted from staging to production by digest (#831), so it
         # may not carry either host's API address or environment.
         run: scripts/ci/check_frontend_image_is_host_agnostic.sh narrative-frontend:ci
+      - name: The images the deploy pulls by name exist
+        # docker-compose.deploy.yml names redis by a pinned digest, and Dependabot bumps
+        # it; without this a bad bump fails only on the box. Our two images are
+        # variables there (`${BACKEND_IMAGE:?…}`), so a line starting `$` is skipped.
+        run: |
+          mapfile -t images < <(sed -nE 's/^ +image: ([^$].*)$/\1/p' docker-compose.deploy.yml)
+          if [ "${#images[@]}" -eq 0 ]; then
+            echo "::error::docker-compose.deploy.yml names no image by itself; update this step"; exit 1
+          fi
+          for image in "${images[@]}"; do docker pull --quiet "$image"; done
 
   shell-lint:
     name: Shell Lint (shellcheck)

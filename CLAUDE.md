@@ -18,6 +18,7 @@ Per-app conventions load when you work in that app: `apps/backend/CLAUDE.md` (Fa
 ## Testing Commands
 - Backend (full): `cd apps/backend && uv run pytest` — needs MongoDB on :27017; optional Redis (:6380) + LocalStack (:4566) via `docker compose -f docker-compose.test.yml up -d`.
 - Backend (PR gate): `cd apps/backend && PYTHONPATH=. uv run pytest tests/ -m "not integration and not performance" -v`. Selection is by **marker**, never by path.
+- `tests/test_security/test_images_built_once.py` renders the deploy compose file with the real `docker compose` CLI and has no skip: without it, those tests fail.
 - Frontend: `cd apps/frontend && npm test` | `npm run type-check` | `npm run lint`
 
 ### Test footguns
