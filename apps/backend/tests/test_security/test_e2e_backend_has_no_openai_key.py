@@ -47,10 +47,12 @@ def _env_blocks(workflow: str, job: str) -> list[tuple[str, dict]]:
 
 @pytest.mark.parametrize(("workflow", "job"), E2E_JOBS)
 def test_no_e2e_job_gives_the_backend_an_openai_key(workflow, job):
+    """Exactly blank: the backend tests the key for truth, so even " " builds a client.
+    A bare `OPENAI_API_KEY:` (YAML null) reaches the step as an empty string."""
     given = {
         where: env[KEY]
         for where, env in _env_blocks(workflow, job)
-        if KEY in env and str(env[KEY]).strip()
+        if KEY in env and env[KEY] not in ("", None)
     }
     assert given == {}, f"{workflow} {job} sets a non-blank {KEY}: {given}"
 
