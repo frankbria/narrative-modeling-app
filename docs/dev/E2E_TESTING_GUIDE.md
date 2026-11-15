@@ -171,3 +171,10 @@ Read `error-context.md` and `trace.zip` under `test-results/` before retrying. A
 that repeats across in-run retries is a real signal, not flake. `authenticatedPage` fails
 with the URL it actually landed on. Check `/tmp/backend-e2e.log` for 4xx/5xx from the
 backend.
+
+In CI, a failed run uploads the servers' output as the `smoke-server-logs` artifact
+(`e2e-full-server-logs` for the nightly suite): `backend-e2e.log`, `frontend-e2e.log` and
+`localstack-e2e.log` (#1233). After a failure `test-e2e.sh` also prints
+`Backend after the tests: process running|exited, /health status <code>` (000: no answer
+in 5 s), which tells a killed backend from a hung one. The artifact is as public as the
+run, so the E2E jobs read no secret (`test_e2e_server_logs_wiring.py`); keep it that way.
