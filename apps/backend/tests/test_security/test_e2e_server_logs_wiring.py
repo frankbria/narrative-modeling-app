@@ -46,8 +46,10 @@ def _uploaded_paths(step: dict) -> set[str]:
 def _log_upload(steps: list[dict]) -> tuple[int, dict]:
     server_logs = _server_log_paths()
     return next(
-        (index, step) for index, step in enumerate(steps)
-        if "upload-artifact" in step.get("uses", "") and server_logs <= _uploaded_paths(step)
+        (index, step)
+        for index, step in enumerate(steps)
+        if "upload-artifact" in step.get("uses", "")
+        and server_logs <= _uploaded_paths(step)
     )
 
 
@@ -57,11 +59,15 @@ def test_the_runner_script_still_writes_both_server_logs():
 
 def test_the_backend_log_is_appended_to_so_the_probe_line_is_not_overwritten():
     """`>` would keep uvicorn's own write offset, and its shutdown lines would land on the probe line."""
-    assert re.search(r">>\s*/tmp/backend-e2e\.log\s+2>&1\s*&", RUNNER_SCRIPT.read_text())
+    assert re.search(
+        r">>\s*/tmp/backend-e2e\.log\s+2>&1\s*&", RUNNER_SCRIPT.read_text()
+    )
 
 
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
-def test_the_server_logs_are_uploaded_when_the_suite_fails(workflow: str, job: str, suite: str):
+def test_the_server_logs_are_uploaded_when_the_suite_fails(
+    workflow: str, job: str, suite: str
+):
     steps = _steps(workflow, job)
 
     index, upload = _log_upload(steps)
@@ -71,12 +77,16 @@ def test_the_server_logs_are_uploaded_when_the_suite_fails(workflow: str, job: s
 
 
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
-def test_the_localstack_output_is_saved_before_the_upload(workflow: str, job: str, suite: str):
+def test_the_localstack_output_is_saved_before_the_upload(
+    workflow: str, job: str, suite: str
+):
     steps = _steps(workflow, job)
     upload_index, upload = _log_upload(steps)
     capture_index = next(
-        index for index, step in enumerate(steps)
-        if "docker logs narrative-localstack-test" in step.get("run", "") and "> /tmp/localstack-e2e.log" in step["run"]
+        index
+        for index, step in enumerate(steps)
+        if "docker logs narrative-localstack-test" in step.get("run", "")
+        and "> /tmp/localstack-e2e.log" in step["run"]
     )
 
     assert _index_of_step(steps, suite) < capture_index < upload_index
@@ -85,22 +95,34 @@ def test_the_localstack_output_is_saved_before_the_upload(workflow: str, job: st
 
 
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
-def test_the_logs_use_the_same_pinned_upload_action_as_the_report(workflow: str, job: str, suite: str):
+def test_the_logs_use_the_same_pinned_upload_action_as_the_report(
+    workflow: str, job: str, suite: str
+):
     steps = _steps(workflow, job)
     _, upload = _log_upload(steps)
-    report = next(step for step in steps if "playwright-report" in step.get("with", {}).get("path", ""))
+    report = next(
+        step
+        for step in steps
+        if "playwright-report" in step.get("with", {}).get("path", "")
+    )
 
     assert upload["uses"] == report["uses"]
     assert upload["with"]["retention-days"] == report["with"]["retention-days"]
 
 
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
-def test_no_secret_reaches_the_servers_whose_logs_are_published(workflow: str, job: str, suite: str):
+def test_no_secret_reaches_the_servers_whose_logs_are_published(
+    workflow: str, job: str, suite: str
+):
     definition = yaml.safe_load((WORKFLOWS / workflow).read_text())
     job_definition = definition["jobs"][job]
     suite_step = job_definition["steps"][_index_of_step(job_definition["steps"], suite)]
     server_environment = yaml.safe_dump(
-        [definition.get("env", {}), job_definition.get("env", {}), suite_step.get("env", {})]
+        [
+            definition.get("env", {}),
+            job_definition.get("env", {}),
+            suite_step.get("env", {}),
+        ]
     )
 
     assert "secrets." not in yaml.safe_dump(job_definition)
