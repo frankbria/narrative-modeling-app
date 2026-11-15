@@ -118,13 +118,13 @@ perl -MEncode -0777 -pe '
       "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
     };
     my $closing = closing_markup($kept);
-    if (length($kept . $closing . $notice->($kept)) > 65536) {
+    # Cut further until the closing markup fits: a shorter cut can reopen a block,
+    # so it is recomputed each time. Each pass shortens the text or ends the loop,
+    # and an empty text needs no markup.
+    while (length($kept . $closing . $notice->($kept)) > 65536) {
       my $room = 65536 - length($closing) - length($notice->($kept)) - 1;
       $kept = substr($kept, 0, $room < 0 ? 0 : $room);
       $closing = closing_markup($kept);
-      # The alert has to arrive: a body over the limit is refused whole, so one the
-      # shorter cut still cannot close goes unclosed.
-      $closing = "" if length($kept . $closing . $notice->($kept)) > 65536;
     }
     $_ = $kept . $closing . $notice->($kept);
   }

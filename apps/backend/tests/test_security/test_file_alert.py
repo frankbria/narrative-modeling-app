@@ -348,6 +348,17 @@ def test_closing_markup_that_does_not_fit_makes_room_by_cutting_more():
     assert kept.endswith("\n```" + "\n</details>" * 100), kept[-30:]
 
 
+def test_a_recut_that_reopens_a_fence_cuts_again():
+    """Cutting to make room for the </details> lands inside the long fence's closing
+    line, so the fence is open again and needs room of its own."""
+    fence = "`" * 1_000
+    body = (
+        "<details>\n" * 100 + fence + "\n" + "y\n" * 30_999 + fence + "\n" + "z" * 5_000
+    )
+    kept, _ = _cut(body)
+    assert kept.endswith("y\n" + fence + "\n</details>" * 100), kept[-30:]
+
+
 def test_a_cut_outside_a_code_fence_adds_no_fence():
     body = "```\nshort\n```\n" + "z" * 70_000
     _, posted = _file(body)
