@@ -56,16 +56,20 @@ second_process_waits_on_a_lock()
 
 # The intermediate shell logs the SIGABRT it gets and keeps waiting, so both Pythons are
 # reaped by their own parent whatever the host's PID 1 does with orphans; a trap set to
-# a command is reset in the children, so their SIGABRT keeps its default action.
+# a command is reset in the children, so their SIGABRT keeps its default action. Each
+# Python writes to a log of its own: two fault handlers dumping at once into one file
+# interleave their writes mid-line.
 INTERMEDIATE_SHELL = (
     "trap 'echo \"intermediate shell got SIGABRT\"' ABRT; "
-    'PYTHONFAULTHANDLER=1 "$0" -c "$1" & '
-    'PYTHONFAULTHANDLER=1 "$0" -c "$2" & '
+    'PYTHONFAULTHANDLER=1 "$0" -c "$1" >"$3" 2>&1 & '
+    'PYTHONFAULTHANDLER=1 "$0" -c "$2" >"$4" 2>&1 & '
     "until wait; do :; done"
 )
 
 
-def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
+def _start_hung_backend(
+    log: Path, first_log: Path, second_log: Path
+) -> subprocess.Popen[bytes]:
     """A wrapper shell with the hung processes under it, as `uv run` is for uvicorn.
 
     In a session of its own, so `_stop_all` can end them all whatever the test reached.
@@ -80,6 +84,8 @@ def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
                 sys.executable,
                 FIRST_HUNG_PROCESS,
                 SECOND_HUNG_PROCESS,
+                str(first_log),
+                str(second_log),
             ],
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -87,15 +93,23 @@ def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
         )
 
 
-def _wait_until_hung(log: Path) -> None:
+def _wait_until_hung(first_log: Path, second_log: Path) -> None:
     deadline = time.monotonic() + 30
-    while not _all_hung(log) and time.monotonic() < deadline:
+    while not _both_hung(first_log, second_log) and time.monotonic() < deadline:
         time.sleep(0.1)
-    assert _all_hung(log), "the stand-in never started: " + log.read_text()
+    assert _both_hung(first_log, second_log), "the stand-in never started"
 
 
-def _all_hung(log: Path) -> bool:
-    return {"first hung", "second hung"} <= set(log.read_text().splitlines())
+def _both_hung(first_log: Path, second_log: Path) -> bool:
+    return _says(first_log, "first hung") and _says(second_log, "second hung")
+
+
+def _says(log: Path, line: str) -> bool:
+    return log.exists() and line in log.read_text().splitlines()
+
+
+def _thread_headers(dump: str) -> int:
+    return len(re.findall(r"^(?:Current thread|Thread) 0x", dump, re.MULTILINE))
 
 
 def _processes_under(pid: int) -> list[int]:
@@ -144,9 +158,11 @@ def test_the_log_gets_every_threads_stack_and_the_hung_process_is_stopped(
     tmp_path: Path,
 ):
     log = tmp_path / "backend-e2e.log"
-    wrapper = _start_hung_backend(log)
+    first_log = tmp_path / "first-python.log"
+    second_log = tmp_path / "second-python.log"
+    wrapper = _start_hung_backend(log, first_log, second_log)
     try:
-        _wait_until_hung(log)
+        _wait_until_hung(first_log, second_log)
         backend = _processes_under(wrapper.pid)
         assert len(backend) == 3, f"expected the shell and two Pythons: {backend}"
         dumped = _dump(wrapper.pid, log)
@@ -158,17 +174,17 @@ def test_the_log_gets_every_threads_stack_and_the_hung_process_is_stopped(
         _stop_all(wrapper)
 
     text = log.read_text()
+    first, second = first_log.read_text(), second_log.read_text()
     assert dumped.returncode == 0, dumped.stdout + dumped.stderr
     assert still_running == [], f"still running after the dump: {still_running}"
-    dump = text[text.index("Backend stack dump") :]
-    assert dump.count("Fatal Python error: Aborted") == 2, text
-    assert "main_thread_waits_on_a_lock" in dump, text
-    assert "worker_sleeps_forever" in dump, text
-    assert "second_process_waits_on_a_lock" in dump, text
-    assert "intermediate shell got SIGABRT" in dump, text
-    assert len(re.findall(r"^(?:Current thread|Thread) 0x", dump, re.MULTILINE)) == 3, (
-        text
-    )
+    assert "intermediate shell got SIGABRT" in text[text.index("Backend stack dump") :]
+    assert "Fatal Python error: Aborted" in first, first
+    assert "main_thread_waits_on_a_lock" in first, first
+    assert "worker_sleeps_forever" in first, first
+    assert _thread_headers(first) == 2, first
+    assert "Fatal Python error: Aborted" in second, second
+    assert "second_process_waits_on_a_lock" in second, second
+    assert _thread_headers(second) == 1, second
     assert "Backend stack dump" in dumped.stdout, (
         "the job log should say the dump is in the artifact"
     )
