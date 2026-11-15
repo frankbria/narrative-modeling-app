@@ -7,6 +7,7 @@
  * without it, wherever the pages' headers can be set: Next's `headers()`, the middleware, any
  * other frontend source, or the nginx edge. Each file's policy is checked on its own.
  */
+import { execFileSync } from 'child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
@@ -218,6 +219,11 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
     } finally {
       rmSync(root, { recursive: true })
     }
+  })
+
+  it('skips no tracked file, so a hand-written folder named like build output is read', () => {
+    const tracked = execFileSync('git', ['ls-files'], { cwd: REPOSITORY, encoding: 'utf8' }).split('\n')
+    expect(tracked.filter((file) => file.split('/').slice(0, -1).some((folder) => GENERATED_FOLDERS.includes(folder)))).toEqual([])
   })
 
   it('every connect-src lists Plausible, and no policy is set without a connect-src', () => {
