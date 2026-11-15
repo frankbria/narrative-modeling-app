@@ -20,7 +20,7 @@ const frontendFiles = globSync('**/*.{ts,tsx,js,jsx,mjs,cjs}', {
   cwd: FRONTEND,
   ignore: ['{e2e,coverage}/**', '**/{__tests__,__mocks__,node_modules}/**', '**/*.test.*'],
 }).map((file) => join(FRONTEND, file))
-const edgeFiles = globSync('nginx*.conf', { cwd: REPOSITORY }).map((file) => join(REPOSITORY, file))
+const edgeFiles = globSync('**/*.conf', { cwd: REPOSITORY, ignore: ['**/node_modules/**'] }).map((file) => join(REPOSITORY, file))
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
 
 interface Source {
@@ -110,9 +110,11 @@ const headerValue = (header: string) => {
 const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)${ASCII_SPACE}*connect-src${NAME_END}`, 'i')
 
 /**
- * shortcut: this reads source text because no policy exists yet to emit (#1237); when the first one
+ * shortcut: this reads source text because no policy exists yet to emit (#1237). It reads strings,
+ * not program flow: a value replaced after it is written (`headers[0].value = …`, a function, an
+ * import) or an nginx `include` of a file outside the repository is not seen. When the first policy
  * lands, check the emitted values instead (Next's `headers()` result, the middleware response, the
- * nginx directive), which is simpler and stricter than these patterns.
+ * expanded nginx configuration), which is simpler and stricter than these patterns.
  *
  * What the guard reports, each problem prefixed with its file: empty when the counts can reach
  * Plausible. A browser enforces every policy it receives (Next's, the edge's, a `location` block's,
