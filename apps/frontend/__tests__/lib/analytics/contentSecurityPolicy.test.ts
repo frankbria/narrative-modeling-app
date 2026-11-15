@@ -406,7 +406,7 @@ const note = "connect-src https://plausible.io"`)
       ['a label with a colon closing a JSX element', code(`<Hint text="Content-Security-Policy: see the wiki" />`)],
       ['a label with a colon and an apostrophe', code(`const label = "Content-Security-Policy: see the team's wiki"`)],
       ['a label with a colon in a template', code('const label = `Content-Security-Policy: see the wiki`')],
-      ['a label with a colon before a semicolon',code(`const label = 'Content-Security-Policy: see the wiki'; export default label`)],
+      ['a label with a colon before a semicolon', code(`const label = 'Content-Security-Policy: see the wiki'; export default label`)],
       ['a label with a colon first in a list', code(`const labels = ['Content-Security-Policy: see the wiki', 'Referrer-Policy']`)],
       ['a label with a colon last in a list', code(`const labels = ['Content-Security-Policy: see the wiki']`)],
       ['a label with a colon in an object', code(`const hints = { csp: 'Content-Security-Policy: see the wiki' }`)],
@@ -431,6 +431,7 @@ const note = "connect-src https://plausible.io"`)
       ['a directive without a space after the colon', `const line = "Content-Security-Policy:frame-ancestors 'none'"`],
       ['a directive with no sources', `const line = 'Content-Security-Policy: upgrade-insecure-requests'`],
       ['a directive name the spec may add', `const line = 'Content-Security-Policy: future-src https://plausible.io'`],
+      ['a deprecated directive browsers may still know', `const line = 'Content-Security-Policy: require-sri-for script'`],
       ['sandbox, a directive without a hyphen', `const line = 'Content-Security-Policy: SANDBOX allow-scripts'`],
       ['a directive after one browsers ignore', `const line = "Content-Security-Policy: made-up-directive script; default-src 'none'"`],
       ['a directive after an empty one', `const line = "Content-Security-Policy: ; default-src 'none'"`],
@@ -446,7 +447,7 @@ const note = "connect-src https://plausible.io"`)
       ['words in a list joined to a policy', `const line = ['Content-Security-Policy: made-up script; '].concat("default-src 'none'")`],
       ['words concatenated with a policy', `const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
       ['words continued on the next line', "const line = 'Content-Security-Policy: made-up script; '\n  + policy"],
-      ['an escape after a word',String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
+      ['an escape after a word', String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
     ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
       expect(policyProblems([code(text)])).toEqual(['middleware.ts: a policy without connect-src'])
     })
