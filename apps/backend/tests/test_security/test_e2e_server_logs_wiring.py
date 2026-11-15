@@ -57,6 +57,22 @@ def test_the_runner_script_still_writes_both_server_logs():
     assert _server_log_paths() == {"/tmp/backend-e2e.log", "/tmp/frontend-e2e.log"}
 
 
+@pytest.mark.parametrize(
+    ("workflow", "job", "artifact"),
+    [
+        ("ci.yml", "e2e-smoke", "smoke-server-logs"),
+        ("e2e-tests.yml", "e2e-full-suite", "e2e-full-server-logs"),
+    ],
+)
+def test_the_artifact_keeps_the_name_the_docs_give_it(
+    workflow: str, job: str, artifact: str
+):
+    """CLAUDE.md and docs/dev/E2E_TESTING_GUIDE.md send a reader to these names."""
+    _, upload = _log_upload(_steps(workflow, job))
+
+    assert upload["with"]["name"] == artifact
+
+
 def test_the_backend_log_is_appended_to_so_the_probe_line_is_not_overwritten():
     """`>` would keep uvicorn's own write offset, and its shutdown lines would land on the probe line."""
     assert re.search(
@@ -126,5 +142,6 @@ def test_no_secret_reaches_the_servers_whose_logs_are_published(
     )
 
     assert "secrets." not in yaml.safe_dump(job_definition)
+    assert "secrets." not in server_environment
     assert "github.token" not in server_environment
     assert "GITHUB_TOKEN" not in server_environment
