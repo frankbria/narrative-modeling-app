@@ -435,12 +435,15 @@ class _Order:
 
 
 async def _stored_order(resume: Collection | None) -> _Order:
-    """The order the previous `--apply` run left: the rows to read first and the
-    row to resume from, or plain `_id` order. Only an `ObjectId` is a place in
-    `_id` order; anything else written by hand would match every row in one
-    segment and fail the comparisons at the deadline."""
+    """The order the previous `--apply` run left, or plain `_id` order."""
     stored = await resume.find_one({"_id": RESUME_ID}) if resume is not None else None
-    stored = stored or {}
+    return _order_from(stored or {})
+
+
+def _order_from(stored: Mapping[str, Any]) -> _Order:
+    """The rows to read first and the row to resume from. Only an `ObjectId` is
+    a place in `_id` order; anything else written by hand would match every row
+    in one segment and fail the comparisons at the deadline."""
     start = stored.get("resume_from")
     first = [each for each in stored.get("read_first") or [] if _is_id(each)]
     return _Order(start if _is_id(start) else None, tuple(sorted(first)))
