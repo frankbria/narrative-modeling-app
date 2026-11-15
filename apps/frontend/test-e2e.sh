@@ -270,6 +270,7 @@ npx playwright test "$@" || EXIT_CODE=$?
 
 # A backend that stopped answering mid-run (#1233): tell a killed process from a hung
 # one while it is still there to ask. 000: refused, or no answer within 5 seconds.
+# BACKEND_PID is the `uv run` wrapper, which waits on uvicorn and exits with it.
 if [ $EXIT_CODE -ne 0 ]; then
   backend_process=exited
   kill -0 "$BACKEND_PID" 2>/dev/null && backend_process=running

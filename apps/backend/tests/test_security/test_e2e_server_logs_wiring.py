@@ -45,7 +45,9 @@ def _index_of_step(steps: list[dict], name: str) -> int:
 
 def _server_log_paths() -> set[str]:
     """The files `test-e2e.sh` sends each server's output to."""
-    return set(re.findall(r">\s*(/tmp/\S+\.log)\s+2>&1\s*&", RUNNER_SCRIPT.read_text()))
+    return set(
+        re.findall(r">>?\s*(/tmp/\S+\.log)\s+2>&1\s*&", RUNNER_SCRIPT.read_text())
+    )
 
 
 def _uploaded_paths(step: dict) -> set[str]:
@@ -66,20 +68,26 @@ def test_the_runner_script_still_writes_both_server_logs():
     assert _server_log_paths() == {"/tmp/backend-e2e.log", "/tmp/frontend-e2e.log"}
 
 
+GUIDE = Path("docs") / "dev" / "E2E_TESTING_GUIDE.md"
+
+
 @pytest.mark.parametrize(
-    ("workflow", "job", "artifact"),
+    ("workflow", "job", "artifact", "cited_in"),
     [
-        ("ci.yml", "e2e-smoke", "smoke-server-logs"),
-        ("e2e-tests.yml", "e2e-full-suite", "e2e-full-server-logs"),
+        ("ci.yml", "e2e-smoke", "smoke-server-logs", [Path("CLAUDE.md"), GUIDE]),
+        ("e2e-tests.yml", "e2e-full-suite", "e2e-full-server-logs", [GUIDE]),
     ],
 )
 def test_the_artifact_keeps_the_name_the_docs_give_it(
-    workflow: str, job: str, artifact: str
+    workflow: str, job: str, artifact: str, cited_in: list[Path]
 ):
-    """CLAUDE.md and docs/dev/E2E_TESTING_GUIDE.md send a reader to these names."""
     _, upload = _log_upload(_steps(workflow, job))
 
     assert upload["with"]["name"] == artifact
+    for document in cited_in:
+        assert artifact in (REPO / document).read_text(), (
+            f"{document} no longer names {artifact}"
+        )
 
 
 def test_the_backend_log_is_appended_to_so_the_probe_line_is_not_overwritten():
@@ -166,4 +174,6 @@ def test_no_secret_reaches_the_servers_whose_logs_are_published(
     }
 
     assert not SECRETS_CONTEXT.search(yaml.safe_dump(job_definition))
-    assert expressions <= HARMLESS_EXPRESSIONS
+    assert expressions <= HARMLESS_EXPRESSIONS, (
+        f"not allowed before the upload: {expressions - HARMLESS_EXPRESSIONS}"
+    )
