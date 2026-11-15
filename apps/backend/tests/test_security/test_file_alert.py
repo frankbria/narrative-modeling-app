@@ -337,9 +337,10 @@ def test_a_no_break_space_after_backticks_does_not_close_a_fence():
 
 
 def test_markup_that_could_never_fit_leaves_the_notice_alone_and_outside():
-    kept, notice = _cut("<details>\n" * 7_000 + "```\n" + "y" * 70_000)
+    body = "<details>\n" * 7_000 + "```\n" + "y" * 70_000
+    kept, notice = _cut(body)
     assert kept == "", kept[-30:]
-    assert notice.startswith("1")  # every character was cut
+    assert notice.startswith(f"{len(body)} characters were cut")
 
 
 def test_closing_markup_that_does_not_fit_makes_room_by_cutting_more():

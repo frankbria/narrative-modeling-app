@@ -91,6 +91,9 @@ perl -MEncode -0777 -pe '
   # end with would hide it. Fences per CommonMark: backticks or tildes; a closing
   # one is the same character, at least as long, with no info string, and a
   # backtick opener has no backtick in its info string. A tag inside a fence is text.
+  # shortcut: <details> is counted per line, not parsed, so one named in prose or an
+  # inline code span counts too (a stray </details> is harmless); parse HTML if a
+  # caller ever quotes box output outside a fence.
   sub closing_markup {
     my ($open, $details) = ("", 0);
     for my $line (split /\n/, $_[0]) {
@@ -109,6 +112,8 @@ perl -MEncode -0777 -pe '
     # The notice sends the reader here, and the callers print their stderr tail
     # nowhere else; redacted, because the log is public and masks only secrets.
     # Between stop-commands markers, so a box line reading `::error::` stays text.
+    # rand is enough: the body is fixed before the token is drawn, so it cannot
+    # hold the end marker, and a token source that fails must not lose the alert.
     my $token = join "", map { sprintf "%04x", int rand 65536 } 1 .. 8;
     print STDERR "file_alert.sh: the body was cut for the issue; the whole body, redacted:\n",
       "::stop-commands::$token\n", Encode::encode("UTF-8", $_), "\n::${token}::\n";
