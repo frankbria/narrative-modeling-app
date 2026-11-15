@@ -467,17 +467,19 @@ def _report(outcomes: Counter[str], apply: bool) -> int:
     print(f"busy on the previous run too:   {too_long}")
     print(f"not reached in the time limit:  {outcomes['unreached']}")
     print(f"drifted from stripe:            {drifted}")
-    # Before the exit-3 check: the help holds whatever else went wrong.
-    busy_status = _busy_too_long_status(too_long)
     if outcomes["failed"]:
         # The class went to stdout per row; a database error message can name hosts.
         print(f"the reconciliation did not finish: {outcomes['failed']} rows failed")
-        return 3
-    status = (
-        _applied_status(outcomes)
-        if apply
-        else _read_only_status(drifted, outcomes["missing"] + outcomes["unreadable"])
-    )
+        status = 3
+    elif apply:
+        status = _applied_status(outcomes)
+    else:
+        status = _read_only_status(
+            drifted, outcomes["missing"] + outcomes["unreadable"]
+        )
+    # After every count, and whatever the status: the help is the only place the
+    # alert learns that Stripe has been unreachable since the previous run.
+    busy_status = _busy_too_long_status(too_long)
     return status or busy_status
 
 

@@ -881,7 +881,19 @@ class TestStripeBusyAcrossRuns:
             return _remote("unpaid", None)
 
         assert await _load_reconcile()(RepairFails(), fetch, apply=True) == 3
-        assert "api.stripe.com" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert out.index("rows failed") < out.index("api.stripe.com")
+
+    async def test_the_help_comes_after_every_count(self, setup_database, capsys):
+        """The output is the alert's body: the help must not split the counts."""
+        await _seed(
+            "u-help-last",
+            stripe_unreachable_since=datetime.now(UTC) - timedelta(days=1),
+        )
+
+        assert await _load_reconcile()(_collection(), _busy, apply=True) == 5
+        out = capsys.readouterr().out
+        assert out.index("skipped (changed under us):") < out.index("api.stripe.com")
 
 
 class TestRunBudget:
