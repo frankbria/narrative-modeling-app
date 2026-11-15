@@ -90,8 +90,11 @@ class TestTurningMailOff:
         self, setup_database
     ):
         await set_job_emails("acct-1", True)
+        # Mongo keeps milliseconds: a link built in the change's own millisecond is refused
+        # by design (the next test), so this one is built a millisecond after it.
+        issued_at = utcnow() + timedelta(milliseconds=1)
 
-        assert await job_mail_unsubscribe.turn_off("acct-1", utcnow()) is True
+        assert await job_mail_unsubscribe.turn_off("acct-1", issued_at) is True
         assert await wants_job_emails("acct-1") is False
 
     async def test_using_a_link_twice_leaves_mail_off(self, setup_database):
