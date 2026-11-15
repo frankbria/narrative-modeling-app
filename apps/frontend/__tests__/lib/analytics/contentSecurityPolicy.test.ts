@@ -44,6 +44,10 @@ const withoutComments = (text: string) =>
     .replace(/(^|\s)\/\*[\s\S]*?\*\//g, '$1')
     .replace(/(^|\s)(\/\/|#).*$/gm, '$1')
 
+/** A comma before a directive name: one header value can carry several policies, each enforced. */
+const NEXT_POLICY =
+  /,(?=\s*(?:[a-z-]+-src|base-uri|form-action|frame-ancestors|navigate-to|sandbox|upgrade-insecure-requests|block-all-mixed-content|report-uri|report-to|require-trusted-types-for|trusted-types|webrtc)\b)/i
+
 /**
  * What the guard reports, one text per file: empty when the counts can reach Plausible. A browser
  * enforces every policy it receives (Next's, the edge's, a `location` block's, each one of a
@@ -55,8 +59,7 @@ const withoutComments = (text: string) =>
 function policyProblems(texts: string[]): string[] {
   return texts.flatMap((text) => {
     const [beforeAnyPolicy, ...headers] = text.split(/content-security-policy/i).map(withoutComments)
-    // One header value can carry several policies, comma-separated; each one starts with a directive.
-    const policies = headers.flatMap((header) => header.split(/,(?=\s*[a-z-]+-src\b)/i))
+    const policies = headers.flatMap((header) => header.split(NEXT_POLICY))
     const blocking = [beforeAnyPolicy, ...policies]
       .flatMap(connectSources)
       .filter((list) => !list.includes(PLAUSIBLE_ORIGIN))
@@ -127,6 +130,7 @@ location = /pricing { add_header Content-Security-Policy "default-src 'self'" al
 
     it.each([
       ['a second policy after a comma', `add_header Content-Security-Policy "connect-src https://plausible.io, default-src 'self'" always;`, ['a policy without connect-src']],
+      ['a second policy that starts with frame-ancestors', `add_header Content-Security-Policy "connect-src https://plausible.io, frame-ancestors 'none'; default-src 'self'" always;`, ['a policy without connect-src']],
       [
         'a policy whose doubled directive would cover the next one',
         `add_header Content-Security-Policy "connect-src https://plausible.io; connect-src https://plausible.io" always;
