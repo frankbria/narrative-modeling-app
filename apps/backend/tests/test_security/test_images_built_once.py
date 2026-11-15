@@ -123,7 +123,7 @@ def test_every_compose_call_on_a_box_goes_through_the_wrapper():
         path.name
         for path in paths
         if path.name != "compose.sh"
-        and re.search(r"docker compose\s+-f", _code_lines(path))
+        and re.search(r"docker compose\b[^\n]*\s(-f|--file)\b", _code_lines(path))
     ]
     assert bare == []
 
