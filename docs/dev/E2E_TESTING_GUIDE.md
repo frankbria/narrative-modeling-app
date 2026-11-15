@@ -179,5 +179,6 @@ In CI, a failed run uploads the servers' output as the `smoke-server-logs` artif
 in 5 s), which tells a killed backend from a hung one. A backend still running but not
 answering 200 is then stopped with SIGABRT by `e2e/dump-hung-backend.sh`: it runs with
 `PYTHONFAULTHANDLER=1`, so the log continues after a `Backend stack dump …` line with
-every thread's stack, which names the line holding the event loop (#1245). The artifact is as public as the
-run, so the E2E jobs read no secret (`test_e2e_server_logs_wiring.py`); keep it that way.
+every thread's stack, which names the line holding the event loop (#1245). The artifact
+is as public as the run, so the E2E jobs read no secret (`test_e2e_server_logs_wiring.py`);
+keep it that way.

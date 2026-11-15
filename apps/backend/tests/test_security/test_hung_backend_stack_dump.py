@@ -9,6 +9,7 @@ Python's fault handler writes every thread's stack to stderr, which is that log.
 
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -49,7 +50,7 @@ def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
             [
                 "bash",
                 "-c",
-                'PYTHONFAULTHANDLER=1 "$0" -c "$1"; exit $?',
+                'ulimit -c unlimited; PYTHONFAULTHANDLER=1 "$0" -c "$1"; exit $?',
                 sys.executable,
                 HUNG_PROCESS,
             ],
@@ -74,12 +75,14 @@ def _stop_all(wrapper: subprocess.Popen[bytes]) -> None:
     wrapper.wait(timeout=30)
 
 
-def _dump(wrapper_pid: int, log: Path) -> subprocess.CompletedProcess[str]:
+def _dump(
+    wrapper_pid: int, log: Path, before: str = ""
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             "bash",
             "-c",
-            f'source "{HELPER}" && dump_hung_backend "$0" "$1"',
+            f'source "{HELPER}" && {before} dump_hung_backend "$0" "$1"',
             str(wrapper_pid),
             str(log),
         ],
@@ -172,3 +175,44 @@ def test_the_docs_say_where_the_dump_is():
         assert "Backend stack dump" in document.read_text(), (
             f"{document.name} does not mention the dump"
         )
+
+
+def test_the_backend_writes_no_core_file_when_it_is_aborted(tmp_path: Path):
+    """SIGABRT's default action dumps core: the backend's size, on a host that allows it."""
+    log = tmp_path / "backend-e2e.log"
+    seen = tmp_path / "core-limit-at-abort"
+    # Records the process's core limit at the moment the helper aborts it.
+    record = (
+        'kill() { [ "$1" = -ABRT ] && grep "Max core file size" "/proc/$2/limits"'
+        f' >> "{seen}"; command kill "$@"; }};'
+    )
+    wrapper = _start_hung_backend(log)
+    try:
+        _wait_until_hung(log)
+        dumped = _dump(wrapper.pid, log, before=record)
+    finally:
+        _stop_all(wrapper)
+
+    assert dumped.returncode == 0, dumped.stdout + dumped.stderr
+    assert seen.read_text().split()[-3:-1] == ["0", "0"], seen.read_text()
+
+
+def test_uv_run_keeps_a_wrapper_with_the_backend_as_its_child():
+    """The helper signals what is under `uv run`, which works only if uv forks, not execs."""
+    uv = shutil.which("uv")
+    assert uv, "uv is how test-e2e.sh starts the backend"
+    wrapper = subprocess.Popen(
+        [
+            uv,
+            "run",
+            "--no-project",
+            "python",
+            "-c",
+            "import os; print(os.getpid(), os.getppid())",
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    out, _ = wrapper.communicate(timeout=120)
+    python_pid, parent = (int(field) for field in out.split())
+    assert python_pid != wrapper.pid and parent == wrapper.pid, out
