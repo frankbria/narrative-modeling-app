@@ -25,6 +25,9 @@ export const COUNTED_PATHS: readonly string[] = ['/', ...NAV_LINKS.map((link) =>
  * The query-string parameters Plausible reads for its source and campaign reports (#1211).
  * Only these travel; anything else in the address (a callback URL, a token) is dropped, and so
  * is a tag whose value holds an @: a newsletter's merge tags can put the reader's email there.
+ * Values are not length-capped (decided on #1227): a cap would not stop a short crafted value
+ * such as a name in `ref`, and the Privacy Policy promises them "as the link wrote them". A cap
+ * changes that sentence and the Plausible row in SUB_PROCESSORS in the same change.
  */
 export const CAMPAIGN_PARAMETERS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'ref'] as const
 

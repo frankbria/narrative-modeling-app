@@ -79,6 +79,11 @@ describe('campaign parameters', () => {
     )
   })
 
+  it('send a long value whole: no length cap, so the policy\'s "as the link wrote them" holds (#1227)', () => {
+    const longCampaign = 'spring-launch-'.repeat(40)
+    expect(counted(`?utm_campaign=${longCampaign}`)).toBe(`https://www.sheetpredict.app/pricing?utm_campaign=${longCampaign}`)
+  })
+
   it('keep the first value of a repeated parameter and encode it again', () => {
     expect(counted('?utm_campaign=spring%20sale&utm_campaign=other')).toBe(
       'https://www.sheetpredict.app/pricing?utm_campaign=spring+sale',
