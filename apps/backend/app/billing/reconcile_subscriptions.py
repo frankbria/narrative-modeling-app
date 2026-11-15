@@ -35,12 +35,13 @@ retries). Only the first two need a person.
 Exit status: 0 when every row it could read matches Stripe (after repairs, under
 `--apply`), 1 when a row is missing, unreadable, raced, or (read-only) drifted,
 2 when a required setting is missing, 3 when the run could not finish (the
-database was unreachable, or a row's repair raised; the other rows are still repaired). A row Stripe was only too
-busy to answer does not make it 1: it settles on a later run.
+database was unreachable, or a row's repair raised; the other rows are still
+repaired). A row Stripe was only too busy to answer does not make it 1: it
+settles on a later run.
 
 shortcut: busy rows never fail the run, so a Stripe that stays unreachable from
 the box for days is seen only in the counts; alert when the same rows stay busy
-across consecutive runs once there are paying tenants (#1213 follow-up).
+across consecutive runs once there are paying tenants (#1228).
 
 A sales-led ENTERPRISE deal sold on its own price must use the price in
 `STRIPE_PRICE_ENTERPRISE`: any other price resolves to PRO, here as in the
@@ -144,6 +145,11 @@ def _failure(cause: BaseException | None) -> ReadFailure:
     return ReadFailure.UNREADABLE
 
 
+def _stripe_error(exc: stripe_client.BillingProviderError) -> BaseException:
+    """The SDK error the client raised `from`, or the wrapper if it had none."""
+    return exc.__cause__ or exc
+
+
 async def _fetch_from_stripe(subscription_id: str) -> Remote | ReadFailure:
     """The live subscription, or why Stripe would not give it to us.
 
@@ -157,10 +163,11 @@ async def _fetch_from_stripe(subscription_id: str) -> Remote | ReadFailure:
         try:
             return await stripe_client.retrieve_subscription(subscription_id)
         except stripe_client.BillingProviderError as exc:
-            failure = _failure(exc.__cause__)
+            stripe_error = _stripe_error(exc)
+            failure = _failure(stripe_error)
             delay = next(waits, None) if failure is ReadFailure.UNAVAILABLE else None
             if delay is None:
-                cause = type(exc.__cause__).__name__
+                cause = type(stripe_error).__name__
                 print(f"  could not read one subscription from Stripe: {cause}")
                 return failure
             await _sleep(delay)
@@ -318,7 +325,7 @@ def _read_only_status(drifted: int, unread: int) -> int:
         print(_UNREADABLE_HELP)
     if drifted or unread:
         return 1
-    print("\nEvery subscription matches Stripe.")
+    print("\nEvery subscription Stripe answered for matches it.")
     return 0
 
 

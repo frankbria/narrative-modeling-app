@@ -373,7 +373,24 @@ class TestReconcile:
 
         assert await reconcile(CountingCursor(), fetch, apply=False) == 0
         assert handed_out == 12
+        # + 1: the loop takes a row from the cursor, then waits for a free slot.
         assert furthest_ahead <= reconcile_subscriptions.CONCURRENT_READS + 1
+
+    async def test_a_dry_run_with_busy_rows_does_not_claim_they_match(
+        self, setup_database, capsys
+    ):
+        reconcile = _load_reconcile()
+        await _seed("u-busy-dry")
+
+        async def busy(_subscription_id):
+            return reconcile_subscriptions.ReadFailure.UNAVAILABLE
+
+        assert await reconcile(_collection(), busy, apply=False) == 0
+
+        out = capsys.readouterr().out
+        assert "stripe busy or unreachable:     1" in out
+        assert "Every subscription matches Stripe." not in out
+        assert "Every subscription Stripe answered for matches it." in out
 
     async def test_rows_that_never_reached_stripe_are_skipped(self, setup_database):
         """A FREE tenant has no `stripe_subscription_id`; calling Stripe for one
@@ -700,7 +717,7 @@ class TestTheStripeRead:
             with lock:
                 in_flight += 1
                 most = max(most, in_flight)
-            time.sleep(0.05)
+            time.sleep(0.2)
             with lock:
                 in_flight -= 1
             return _sdk_subscription("active", renewed)
@@ -709,3 +726,12 @@ class TestTheStripeRead:
 
         assert await reconcile_subscriptions.main() == 0
         assert 1 < most == reconcile_subscriptions.CONCURRENT_READS
+
+
+def test_a_wrapper_without_a_cause_is_named_itself():
+    """`retrieve_subscription` raises `from` the SDK error today; if a path ever
+    does not, the row is still named by a class, not `NoneType`."""
+    from app.billing.stripe_client import BillingProviderError
+
+    bare = BillingProviderError("no cause")
+    assert reconcile_subscriptions._stripe_error(bare) is bare
