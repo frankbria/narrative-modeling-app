@@ -208,7 +208,9 @@ export OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-e2e-testing}
 echo ""
 echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
 # Start backend in background using absolute path
-uv run --directory "${BACKEND_DIR}" uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} > /tmp/backend-e2e.log 2>&1 &
+# Appended to, so every write lands at the end, the probe line below included (#1233).
+: > /tmp/backend-e2e.log
+uv run --directory "${BACKEND_DIR}" uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} >> /tmp/backend-e2e.log 2>&1 &
 BACKEND_PID=$!
 
 # Wait for backend to be ready. 90 seconds by default: a loaded development machine
@@ -216,7 +218,7 @@ BACKEND_PID=$!
 echo "Waiting for backend to start..."
 if ! wait_for_server "backend" "http://localhost:${BACKEND_PORT}/health" "$BACKEND_PID" "${E2E_BACKEND_WAIT_SECONDS:-90}"; then
   echo -e "${YELLOW}Backend logs:${NC}"
-  cat /tmp/backend-e2e.log 2>/dev/null || echo "No backend logs found"
+  tail -50 /tmp/backend-e2e.log 2>/dev/null || echo "No backend logs found"
   stop_tree $BACKEND_PID
   exit 1
 fi
@@ -267,7 +269,7 @@ EXIT_CODE=0
 npx playwright test "$@" || EXIT_CODE=$?
 
 # A backend that stopped answering mid-run (#1233): tell a killed process from a hung
-# one while it is still there to ask. 000 means no answer within 5 seconds.
+# one while it is still there to ask. 000: refused, or no answer within 5 seconds.
 if [ $EXIT_CODE -ne 0 ]; then
   backend_process=exited
   kill -0 "$BACKEND_PID" 2>/dev/null && backend_process=running

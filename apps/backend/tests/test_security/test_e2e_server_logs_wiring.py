@@ -17,6 +17,9 @@ REPO = Path(__file__).resolve().parents[4]
 WORKFLOWS = REPO / ".github" / "workflows"
 RUNNER_SCRIPT = REPO / "apps" / "frontend" / "test-e2e.sh"
 
+# A hang can also run the job into its timeout-minutes, which cancels it.
+ON_FAILURE = "failure() || cancelled()"
+
 E2E_JOBS = [
     pytest.param("ci.yml", "e2e-smoke", "Run Smoke Tests", id="smoke"),
     pytest.param("e2e-tests.yml", "e2e-full-suite", "Run E2E Full Suite", id="nightly"),
@@ -52,6 +55,11 @@ def test_the_runner_script_still_writes_both_server_logs():
     assert _server_log_paths() == {"/tmp/backend-e2e.log", "/tmp/frontend-e2e.log"}
 
 
+def test_the_backend_log_is_appended_to_so_the_probe_line_is_not_overwritten():
+    """`>` would keep uvicorn's own write offset, and its shutdown lines would land on the probe line."""
+    assert re.search(r">>\s*/tmp/backend-e2e\.log\s+2>&1\s*&", RUNNER_SCRIPT.read_text())
+
+
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
 def test_the_server_logs_are_uploaded_when_the_suite_fails(workflow: str, job: str, suite: str):
     steps = _steps(workflow, job)
@@ -59,7 +67,7 @@ def test_the_server_logs_are_uploaded_when_the_suite_fails(workflow: str, job: s
     index, upload = _log_upload(steps)
 
     assert index > _index_of_step(steps, suite)
-    assert upload["if"] == "failure()"
+    assert upload["if"] == ON_FAILURE
 
 
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
@@ -72,7 +80,7 @@ def test_the_localstack_output_is_saved_before_the_upload(workflow: str, job: st
     )
 
     assert _index_of_step(steps, suite) < capture_index < upload_index
-    assert steps[capture_index]["if"] == "failure()"
+    assert steps[capture_index]["if"] == ON_FAILURE
     assert "/tmp/localstack-e2e.log" in _uploaded_paths(upload)
 
 

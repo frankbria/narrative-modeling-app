@@ -607,11 +607,13 @@ jobs:
       # The artifact is as public as the run: every value above is a dummy and the job
       # reads no secret (test_e2e_server_logs_wiring.py).
       - name: Save the LocalStack output
-        if: failure()
+        # cancelled(): a hang can run the job into its timeout-minutes.
+        if: failure() || cancelled()
         run: docker logs narrative-localstack-test > /tmp/localstack-e2e.log 2>&1 || true
 
       - name: Upload the server logs
-        if: failure()
+        # cancelled(): a hang can run the job into its timeout-minutes.
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-server-logs
