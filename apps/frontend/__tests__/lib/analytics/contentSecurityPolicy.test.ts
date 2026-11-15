@@ -91,13 +91,16 @@ const policiesIn = (value: string) => value.split(',').filter((policy, index) =>
 const AT_A_HEADER = /(?<![\w/-])(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
 const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
+/** After a string, what ends its expression: a separator or bracket, a JSX tag's end, the text's end, or a line break the next line does not continue (no semicolons here). */
+const LABEL_END = String.raw`(?=[ \t]*(?:[,;)\]}>]|\/>|$|\n(?!\s*[-+*/%.?:|&^[(\`])))`
 /**
  * What makes `Name:` a label: words up to the closing quote, starting with a letter, with no directive
- * name and nothing that builds or escapes a value (`$`, `\`). A policy of only directives browsers do
- * not know (`made-up-directive x`) restricts nothing. shortcut: a directive the spec adds without
- * `-src` reads as a word; add it to DIRECTIVE_NAME.
+ * name and nothing that builds or escapes a value (`$`, `\`), where that quote also ends the
+ * expression (LABEL_END), so neither an inner quote nor a `+` hides a policy after the words. A
+ * policy of only directives browsers do not know (`made-up-directive x`) restricts nothing.
+ * shortcut: a directive the spec adds without `-src` reads as a word; add it to DIRECTIVE_NAME.
  */
-const LABEL_TEXT = String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^'"\`$\\\n])+['"\`]`
+const LABEL_TEXT = String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^'"\`$\\\n])+['"\`]${LABEL_END}`
 /**
  * A header name, not a mention. In code its own closing quote (or the next string) follows it, or a
  * colon (a serialized `Name: policy` line) that LABEL_TEXT does not follow, which prose such as `the
@@ -383,6 +386,14 @@ const note = "connect-src https://plausible.io"`)
       ['the legacy prefixed name, which browsers ignore', edge(`add_header X-Content-Security-Policy "default-src 'self'" always;`)],
       ['an MDN link', code("const docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy'")],
       ['a label with a colon', code(`const label = "Content-Security-Policy: see the wiki"`)],
+      ['a label with a colon followed by the next statement', code(`const label = "Content-Security-Policy: see the wiki"\nexport default label`)],
+      ['a label with a colon in a JSX attribute', code(`<abbr title="Content-Security-Policy: see the wiki">CSP</abbr>`)],
+      ['a label with a colon passed to a call', code(`t('Content-Security-Policy: see the wiki')`)],
+      ['a label with a colon closing a JSX element', code(`<Hint text="Content-Security-Policy: see the wiki" />`)],
+      ['a label with a colon before a semicolon', code(`const label = 'Content-Security-Policy: see the wiki'; export default label`)],
+      ['a label with a colon first in a list', code(`const labels = ['Content-Security-Policy: see the wiki', 'Referrer-Policy']`)],
+      ['a label with a colon last in a list', code(`const labels = ['Content-Security-Policy: see the wiki']`)],
+      ['a label with a colon in an object', code(`const hints = { csp: 'Content-Security-Policy: see the wiki' }`)],
       ['an href', code('<a href="https://developer.mozilla.org/docs/Web/HTTP/Headers/Content-Security-Policy">the header</a>')],
       ['an nginx redirect path', edge('location = /csp { return 301 https://developer.mozilla.org/docs/Web/HTTP/Headers/Content-Security-Policy; }')],
     ])('does not take a mention of the header name in %s for a header', (_where, source) => {
@@ -407,7 +418,10 @@ const note = "connect-src https://plausible.io"`)
       ['an escaped tab', String.raw`const line = "Content-Security-Policy:\tdefault-src 'none'"`],
       ['an escaped letter', String.raw`const line = "Content-Security-Policy: \u0064efault-src 'none'"`],
       ['a substitution after a word', 'const line = `Content-Security-Policy: made-up ${policy}`'],
-      ['an escape after a word', String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
+      ['a quoted source inside the words', `const line = "Content-Security-Policy: made-up 'x'; default-src 'none'"`],
+      ['words concatenated with a policy', `const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
+      ['words continued on the next line', "const line = 'Content-Security-Policy: made-up script; '\n  + policy"],
+      ['an escape after a word',String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
     ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
       expect(policyProblems([code(text)])).toEqual(['middleware.ts: a policy without connect-src'])
     })
