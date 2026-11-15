@@ -91,14 +91,20 @@ const policiesIn = (value: string) => value.split(',').filter((policy, index) =>
 const AT_A_HEADER = /(?<![\w/-])(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
 /**
- * A header name, not a mention. In code its own closing quote (or the next string) follows it, which
- * prose such as `the Content-Security-Policy is…` or a `Content-Security-Policy: see the wiki` label
- * has not; `'our Content-Security-Policy'` still reads as a name kept in a constant, and is refused.
- * In nginx, where prose sits only in the comments already removed, any whole name counts (an
- * unquoted value is valid there).
+ * A header name, not a mention. In code its own closing quote (or the next string) follows it, or a
+ * colon and a directive name (a serialized `Name: policy` line), which prose such as `the
+ * Content-Security-Policy is…` or a `Content-Security-Policy: see the wiki` label has not;
+ * `'our Content-Security-Policy'` still reads as a name kept in a constant, and is refused. In
+ * nginx, where prose sits only in the comments already removed, any whole name counts (an unquoted
+ * value is valid there). shortcut: a serialized policy whose first directive is not one of
+ * DIRECTIVE_NAME's is read as a label; add the name when the spec gains one without `-src`.
  */
+const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
 const HEADER_NAME_IN_NGINX = /^content-security-policy(?![\w-])/i
-const HEADER_NAME_IN_CODE = /^content-security-policy(?![\w-])(?=['"`]|\s*['"`]|$)/i
+const HEADER_NAME_IN_CODE = new RegExp(
+  String.raw`^content-security-policy(?![\w-])(?=['"\`]|\s*['"\`]|\s*:${ASCII_SPACE}*${DIRECTIVE_NAME}(?:${ASCII_SPACE}|[;,'"\`]|$)|$)`,
+  'i',
+)
 /** The header name with the quote that closes its own string in code. */
 const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
 
@@ -382,6 +388,16 @@ const note = "connect-src https://plausible.io"`)
 
     it('still refuses the name kept in a constant, which a mention in a string cannot be told apart from', () => {
       expect(policyProblems([code("const name = 'Content-Security-Policy'")])).toEqual(['middleware.ts: a policy without connect-src'])
+    })
+
+    it.each([
+      ['a serialized header split later', `["Content-Security-Policy: default-src 'none'"].map((line) => line.split(': '))`],
+      ['a directive without a space after the colon', `const line = "Content-Security-Policy:frame-ancestors 'none'"`],
+      ['a directive with no sources', `const line = 'Content-Security-Policy: upgrade-insecure-requests'`],
+      ['a directive name the spec may add', `const line = 'Content-Security-Policy: future-src https://plausible.io'`],
+      ['sandbox, a directive without a hyphen', `const line = 'Content-Security-Policy: SANDBOX allow-scripts'`],
+    ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
+      expect(policyProblems([code(text)])).toEqual(['middleware.ts: a policy without connect-src'])
     })
 
     it('accepts a connect-src list written across lines in a template', () => {
