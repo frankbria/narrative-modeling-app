@@ -241,6 +241,45 @@ def test_a_body_too_long_for_an_issue_is_cut_to_fit():
     assert "characters were cut" in sent and "run log" in sent
 
 
+def test_a_cut_body_is_printed_whole_and_redacted_to_the_run_log():
+    """#1241 item 1: the notice sends the reader to the run log, and the stderr tail
+    each workflow quotes is printed nowhere else. So the filer logs the whole body
+    itself, after redaction: the log is public too, and GitHub masks only secrets
+    there, never a tailnet address ssh prints."""
+    body = "first line\n" + "x" * 70_000 + "\nssh: connect to 100.101.102.103 port 22\n"
+    run, posted = _file(body)
+    assert run.returncode == 0, run.stderr
+    logged = run.stderr.decode()
+    assert "ssh: connect to <tailnet address> port 22" in logged
+    assert "100.101.102.103" not in logged
+    assert "x" * 70_000 in logged, "the part the issue lost is in the log"
+    assert "ssh: connect to" not in posted.split("--body-file\n", 1)[1]
+
+
+def test_a_body_that_fits_is_not_printed_to_the_run_log():
+    run, _ = _file("short body\n")
+    assert b"short body" not in run.stderr
+
+
+def test_a_cut_inside_a_code_fence_closes_the_fence():
+    """#1241 item 2: a body cut inside a fence would render the notice, and every
+    comment after it in the issue, as code."""
+    body = "Run: x\n\n```\n" + "y\n" * 40_000 + "```\n"
+    _, posted = _file(body)
+    sent = posted.split("--body-file\n", 1)[1]
+    kept, notice = sent.rsplit("\n\n(", 1)
+    assert kept.endswith("\n```"), kept[-20:]
+    assert kept.count("\n```") == 2
+    assert "characters were cut" in notice
+
+
+def test_a_cut_outside_a_code_fence_adds_no_fence():
+    body = "```\nshort\n```\n" + "z" * 70_000
+    _, posted = _file(body)
+    sent = posted.split("--body-file\n", 1)[1]
+    assert sent.count("```") == 2
+
+
 def test_a_body_that_fits_is_sent_whole():
     run, posted = _file("short body\n")
     assert run.returncode == 0, run.stderr

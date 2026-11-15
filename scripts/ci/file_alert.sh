@@ -27,13 +27,16 @@
 # if a step ever connects through a name the box's secrets do not hold (#1231).
 #
 # The body goes to gh as a file, not an argument (Linux refuses one over 128 KiB),
-# cut to fit GitHub's 65,536-character limit with a line saying how much was cut.
+# cut to fit GitHub's 65,536-character limit with a line saying how much was cut;
+# a cut body is printed whole, redacted, to the run log first (#1241).
 #
 # Each gh call is tried twice, ALERT_RETRY_DELAY_SECONDS (default 60) apart, so one
 # API error does not leave a red run as the day's only signal; a minute because
 # GitHub asks for at least that after a secondary rate limit. A create whose first
 # attempt landed before failing can file a duplicate; the next run comments on the
-# oldest, so that is accepted.
+# oldest, so that is accepted. The callers' report budget counts on this: two gh
+# calls, each able to wait once (REPORT_MINUTES = 3 in test_staging_health_wiring.py).
+# A third call needs a bigger number there and longer job limits in both workflows.
 set -euo pipefail
 [ $# -eq 2 ] || { echo "usage: file_alert.sh <title> <stable phrase>   (body on stdin)" >&2; exit 2; }
 title=$1
@@ -86,9 +89,17 @@ perl -MEncode -0777 -pe '
   # Cut after redacting, so a name is never split into a part the pattern misses.
   # 65,000 leaves room for the line below inside the 65,536 limit.
   if (length > 65536) {
+    # The notice sends the reader here, and the callers print their stderr tail
+    # nowhere else; redacted, because the log is public and masks only secrets.
+    print STDERR "file_alert.sh: the body was cut for the issue; the whole body, redacted:\n",
+      Encode::encode("UTF-8", $_), "\n";
     my $cut = length($_) - 65000;
-    $_ = substr($_, 0, 65000)
-      . "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole output.)\n";
+    my $kept = substr($_, 0, 65000);
+    # An odd number of fence lines means the cut fell inside one, and the notice
+    # (and every later comment) would render as code.
+    my $fences = () = $kept =~ /^```/mg;
+    $kept .= "\n```" if $fences % 2;
+    $_ = $kept . "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
   }
   $_ = Encode::encode("UTF-8", $_);
 ' > "$body_file"

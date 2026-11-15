@@ -498,7 +498,8 @@ def test_a_hung_probe_fails_its_step_before_the_job_is_cancelled():
 RECONCILE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml"
 
 
-# Two retry waits of a minute (scripts/ci/file_alert.sh) and the gh calls themselves.
+# Two gh calls, each with one retry wait of a minute, and the calls themselves: the
+# header of scripts/ci/file_alert.sh says what changes if it makes a third.
 REPORT_MINUTES = 3
 
 
