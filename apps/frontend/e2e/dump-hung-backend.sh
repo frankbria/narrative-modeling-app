@@ -7,8 +7,8 @@
 # PYTHONFAULTHANDLER=1, so Python's fault handler writes every thread's stack to its
 # stderr, which is LOG, before the process aborts. The handler runs in C and needs no
 # lock, so it reports a thread that holds the GIL or a blocked event loop as well.
-# The process's core-file limit is set to 0 first: the stacks are all that is wanted, and
-# SIGABRT's default action would otherwise write a core the size of the backend.
+# test-e2e.sh starts the backend with a core-file limit of 0: SIGABRT's default action
+# would otherwise write a core the size of the backend on a host that allows cores.
 # Returns 1, saying so, when there is no process under the wrapper; otherwise 0, also
 # when a process outlives the 20-second wait (said in LOG; the cleanup then stops it). Sourced by test-e2e.sh;
 # tests: apps/backend/tests/test_security/test_hung_backend_stack_dump.py.
@@ -30,7 +30,6 @@ dump_hung_backend() {
     fi
     echo "Backend stack dump (SIGABRT to pid ${pids//$'\n'/ }); every thread's stack follows in this log:" | tee -a "$log"
     for pid in $pids; do
-        prlimit --pid "$pid" --core=0 2>/dev/null || true
         kill -ABRT "$pid" 2>/dev/null || true
     done
     # The handler writes and the process aborts within a moment; 20 seconds is for a

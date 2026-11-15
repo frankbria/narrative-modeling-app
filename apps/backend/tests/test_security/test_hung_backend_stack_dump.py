@@ -50,7 +50,7 @@ def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
             [
                 "bash",
                 "-c",
-                'ulimit -c unlimited; PYTHONFAULTHANDLER=1 "$0" -c "$1"; exit $?',
+                'ulimit -c 0; PYTHONFAULTHANDLER=1 "$0" -c "$1"; exit $?',
                 sys.executable,
                 HUNG_PROCESS,
             ],
@@ -67,7 +67,7 @@ def _wait_until_hung(log: Path) -> None:
     assert "hung" in log.read_text(), "the stand-in never started"
 
 
-def _stop_all(wrapper: subprocess.Popen[bytes]) -> None:
+def _stop_all(wrapper: subprocess.Popen[bytes] | subprocess.Popen[str]) -> None:
     try:
         os.killpg(wrapper.pid, signal.SIGKILL)
     except ProcessLookupError:
@@ -75,14 +75,12 @@ def _stop_all(wrapper: subprocess.Popen[bytes]) -> None:
     wrapper.wait(timeout=30)
 
 
-def _dump(
-    wrapper_pid: int, log: Path, before: str = ""
-) -> subprocess.CompletedProcess[str]:
+def _dump(wrapper_pid: int, log: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             "bash",
             "-c",
-            f'source "{HELPER}" && {before} dump_hung_backend "$0" "$1"',
+            f'source "{HELPER}" && dump_hung_backend "$0" "$1"',
             str(wrapper_pid),
             str(log),
         ],
@@ -177,24 +175,14 @@ def test_the_docs_say_where_the_dump_is():
         )
 
 
-def test_the_backend_writes_no_core_file_when_it_is_aborted(tmp_path: Path):
-    """SIGABRT's default action dumps core: the backend's size, on a host that allows it."""
-    log = tmp_path / "backend-e2e.log"
-    seen = tmp_path / "core-limit-at-abort"
-    # Records the process's core limit at the moment the helper aborts it.
-    record = (
-        'kill() { [ "$1" = -ABRT ] && grep "Max core file size" "/proc/$2/limits"'
-        f' >> "{seen}"; command kill "$@"; }};'
-    )
-    wrapper = _start_hung_backend(log)
-    try:
-        _wait_until_hung(log)
-        dumped = _dump(wrapper.pid, log, before=record)
-    finally:
-        _stop_all(wrapper)
-
-    assert dumped.returncode == 0, dumped.stdout + dumped.stderr
-    assert seen.read_text().split()[-3:-1] == ["0", "0"], seen.read_text()
+def test_nothing_the_runner_starts_writes_a_core_file():
+    """The dump aborts the backend, and SIGABRT's default action dumps core: the
+    backend's size, on a host that allows cores. Set before the start, so it holds
+    whatever the host allows and needs nothing to succeed later."""
+    script = RUNNER_SCRIPT.read_text()
+    limit = re.search(r"^ulimit -c 0$", script, re.MULTILINE)
+    assert limit, "test-e2e.sh no longer sets a core limit of 0"
+    assert limit.start() < script.index("PYTHONFAULTHANDLER=1 uv run")
 
 
 def test_uv_run_keeps_a_wrapper_with_the_backend_as_its_child():
@@ -212,7 +200,11 @@ def test_uv_run_keeps_a_wrapper_with_the_backend_as_its_child():
         ],
         stdout=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
-    out, _ = wrapper.communicate(timeout=120)
+    try:
+        out, _ = wrapper.communicate(timeout=120)
+    finally:
+        _stop_all(wrapper)
     python_pid, parent = (int(field) for field in out.split())
     assert python_pid != wrapper.pid and parent == wrapper.pid, out
