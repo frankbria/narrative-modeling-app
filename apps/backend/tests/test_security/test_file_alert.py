@@ -319,10 +319,16 @@ def test_a_details_tag_inside_a_fence_is_text_and_counts_for_nothing():
     assert kept.endswith("\n```\n</details>"), kept[-30:]
 
 
-def test_closing_markup_never_pushes_the_body_over_the_limit():
-    """The alert must arrive: if closing everything would break GitHub's limit, the
-    body goes unclosed rather than refused (``_cut`` checks the length)."""
-    _cut("<details>\n" * 100 + "y" * 70_000)
+def test_a_cut_inside_a_tilde_fence_closes_it_with_tildes():
+    kept, _ = _cut("~~~\n```\n" + "y\n" * 40_000)
+    assert kept.endswith("\n~~~"), kept[-20:]
+
+
+def test_closing_markup_that_does_not_fit_makes_room_by_cutting_more():
+    """The alert must arrive (``_cut`` checks the length) and its notice must still
+    be outside the fence and every <details>."""
+    kept, _ = _cut("<details>\n" * 100 + "```\n" + "y" * 70_000)
+    assert kept.endswith("\n```" + "\n</details>" * 100), kept[-30:]
 
 
 def test_a_cut_outside_a_code_fence_adds_no_fence():

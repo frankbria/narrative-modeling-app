@@ -86,6 +86,23 @@ perl -MEncode -0777 -pe '
     }
   }
   for my $span (reverse @merged) { substr($_, $span->[0], $span->[1] - $span->[0]) = $span->[2] }
+  # What closes every block a cut leaves open. A cut inside a code fence would
+  # render the notice as code, and one inside the collapsed <details> both callers
+  # end with would hide it. Fences per CommonMark: backticks or tildes; a closing
+  # one is the same character, at least as long, with no info string, and a
+  # backtick opener has no backtick in its info string. A tag inside a fence is text.
+  sub closing_markup {
+    my ($open, $details) = ("", 0);
+    for my $line (split /\n/, $_[0]) {
+      if (length $open) {
+        $open = "" if $line =~ /^ {0,3}(`{3,}|~{3,})[ \t]*$/
+          && substr($1, 0, 1) eq substr($open, 0, 1) && length $1 >= length $open;
+      }
+      elsif ($line =~ /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/) { $open = $1 }
+      else { $details += (() = $line =~ /<details\b/gi) - (() = $line =~ m{</details>}gi) }
+    }
+    return (length $open ? "\n$open" : "") . "\n</details>" x $details;
+  }
   # Cut after redacting, so a name is never split into a part the pattern misses.
   # 65,000 leaves room for the line below inside the 65,536 limit.
   if (length > 65536) {
@@ -95,23 +112,20 @@ perl -MEncode -0777 -pe '
     my $token = join "", map { sprintf "%04x", int rand 65536 } 1 .. 8;
     print STDERR "file_alert.sh: the body was cut for the issue; the whole body, redacted:\n",
       "::stop-commands::$token\n", Encode::encode("UTF-8", $_), "\n::${token}::\n";
-    my $cut = length($_) - 65000;
     my $kept = substr($_, 0, 65000);
-    # A cut inside a code fence would render the notice as code, and one inside the
-    # collapsed <details> both callers end with would hide it. Fences per CommonMark:
-    # a closing one has no info string and at least as many backticks as its opener.
-    # A tag inside a fence is text.
-    my ($open, $details) = ("", 0);
-    for my $line (split /\n/, $kept) {
-      if (length $open) { $open = "" if $line =~ /^ {0,3}(`{3,})[ \t]*$/ && length $1 >= length $open }
-      elsif ($line =~ /^ {0,3}(`{3,})[^`]*$/) { $open = $1 }
-      else { $details += (() = $line =~ /<details\b/gi) - (() = $line =~ m{</details>}gi) }
+    my $notice = sub {
+      my $cut = length($_) - length $_[0];
+      "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
+    };
+    my $closing = closing_markup($kept);
+    if (length($kept . $closing . $notice->($kept)) > 65536) {
+      $kept = substr($kept, 0, 65536 - length($closing) - length($notice->($kept)) - 1);
+      $closing = closing_markup($kept);
+      # The alert has to arrive: a body over the limit is refused whole, so one the
+      # shorter cut still cannot close goes unclosed.
+      $closing = "" if length($kept . $closing . $notice->($kept)) > 65536;
     }
-    my $closing = (length $open ? "\n$open" : "") . "\n</details>" x $details;
-    my $notice = "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
-    # The alert has to arrive: an over-long body would be refused whole.
-    $closing = "" if length($kept . $closing . $notice) > 65536;
-    $_ = $kept . $closing . $notice;
+    $_ = $kept . $closing . $notice->($kept);
   }
   $_ = Encode::encode("UTF-8", $_);
 ' > "$body_file"
