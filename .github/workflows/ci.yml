@@ -602,6 +602,25 @@ jobs:
           # OpenAI API key (dummy value for testing)
           OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
 
+      # A backend that stops answering mid-run leaves no trace in the Playwright
+      # report (#1233), so a failed run keeps what the servers and LocalStack printed.
+      # The artifact is as public as the run: every value above is a dummy and the job
+      # reads no secret (test_e2e_server_logs_wiring.py).
+      - name: Save the LocalStack output
+        if: failure()
+        run: docker logs narrative-localstack-test > /tmp/localstack-e2e.log 2>&1 || true
+
+      - name: Upload the server logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-server-logs
+          path: |
+            /tmp/backend-e2e.log
+            /tmp/frontend-e2e.log
+            /tmp/localstack-e2e.log
+          retention-days: 7
+
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

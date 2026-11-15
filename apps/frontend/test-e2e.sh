@@ -266,6 +266,15 @@ export NEXTAUTH_URL=http://localhost:${TEST_PORT}
 EXIT_CODE=0
 npx playwright test "$@" || EXIT_CODE=$?
 
+# A backend that stopped answering mid-run (#1233): tell a killed process from a hung
+# one while it is still there to ask. 000 means no answer within 5 seconds.
+if [ $EXIT_CODE -ne 0 ]; then
+  backend_process=exited
+  kill -0 "$BACKEND_PID" 2>/dev/null && backend_process=running
+  health_status=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://localhost:${BACKEND_PORT}/health" || true)
+  echo "Backend after the tests: process ${backend_process}, /health status ${health_status}" | tee -a /tmp/backend-e2e.log
+fi
+
 # Cleanup: Kill both servers
 echo ""
 echo -e "${YELLOW}=== Cleaning up ===${NC}"
