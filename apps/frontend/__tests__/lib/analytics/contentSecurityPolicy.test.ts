@@ -28,15 +28,24 @@ interface Source {
   text: string
 }
 
+/** What may follow a directive name: anything else (`connect-src!`, `connect-src-extra`) makes another name, which browsers ignore. */
+const NAME_END = String.raw`(?=[\s;,"'\x60]|$)`
+
 /**
  * Each `connect-src` directive's sources, up to the end of the directive (`;`), of the policy (`,`
- * starts another one) or of the string holding it. A single quote cannot end it (keywords are
- * written `'self'`), so one closing a JS string is trimmed off the last source when comparing. A
- * list split across array items reads as empty and is refused; so are `x-connect-src` and
- * `connect-src-extra`, which browsers ignore.
+ * starts another one) or of the string holding it. A quoted keyword (`'self'`) is a source; a lone
+ * single quote ends the list. In code it closes the string, unless a `"` or backtick follows it,
+ * which shows the string was opened by that one; in an nginx value it is part of the last source,
+ * so that source is invalid and refused. A list split across array items reads as empty and is
+ * refused; so is `x-connect-src`.
  */
-const connectSources = (text: string) =>
-  [...text.matchAll(/(?<![\w-])connect-src(?![\w-])([^;,"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/))
+const connectSources = (text: string, inCode: boolean) =>
+  [...text.matchAll(new RegExp(String.raw`(?<![\w-])connect-src${NAME_END}((?:[^;,"\x60'\n]|'[^'\s;,"\x60]*')*)(')?(.?)`, 'gi'))].map(
+    ([, list, loneQuote, after]) => {
+      const closesTheString = inCode && !['"', '`'].includes(after)
+      return (loneQuote && !closesTheString ? `${list}'` : list).trim().split(/\s+/)
+    },
+  )
 
 /**
  * The source without its comments (`#` in an nginx file, block and `//` in code), so a note neither
@@ -66,13 +75,15 @@ const HEADER_NAME = /^content-security-policy/i
 
 /**
  * A header's value: the first quoted string after its name, with no `;`, `(` or `)` in between (so
- * `headers.set(name, policy)` has none). A quote right after the name closes the name's own string.
+ * `headers.set(name, policy)` has none), that ends the expression: a `+` or `.concat(…)` after it
+ * means the emitted value is not this string, so none is read and the header is refused. A quote
+ * right after the name closes the name's own string.
  */
-const HEADER_VALUE = /^content-security-policy['"`]?[^'"`;()]*?(["'`])([\s\S]*?)\1/i
+const HEADER_VALUE = /^content-security-policy['"`]?[^'"`;()]*?(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1(?=\s*(?:[,;)}\]]|always\b|$))/i
 const headerValue = (header: string) => header.match(HEADER_VALUE)?.[2] ?? ''
 
 /** A `connect-src` that starts a directive: at the start of a policy or after a `;`, never inside another's source list. */
-const DIRECTIVE_START = /(?:^|;)\s*connect-src(?![\w-])/i
+const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)\s*connect-src${NAME_END}`, 'i')
 
 /**
  * shortcut: this reads source text because no policy exists yet to emit (#1237); when the first one
@@ -91,8 +102,8 @@ function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
     const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
     const blocking = parts
-      .flatMap(connectSources)
-      .filter((list) => !list.some((entry) => entry.replace(/'$/, '').toLowerCase() === PLAUSIBLE_ORIGIN))
+      .flatMap((part) => connectSources(part, !source.file.endsWith('.conf')))
+      .filter((list) => !list.some((entry) => entry.toLowerCase() === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
     const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => policiesIn(headerValue(header)))
     const withoutConnectSource = policies.filter((policy) => !DIRECTIVE_START.test(policy)).map(() => 'a policy without connect-src')
@@ -223,6 +234,8 @@ location = /pricing { add_header Content-Security-Policy "default-src 'self'" al
       ['a directive browsers do not know', `add_header Content-Security-Policy "default-src 'self'; x-connect-src https://plausible.io" always;`, ['a policy without connect-src']],
       ['a connect-src left inside another directive by a missing semicolon', `add_header Content-Security-Policy "default-src 'self'; script-src 'self' connect-src https://plausible.io" always;`, ['a policy without connect-src']],
       ['a directive name with a suffix', `add_header Content-Security-Policy "default-src 'self'; connect-src-extra https://plausible.io" always;`, ['a policy without connect-src']],
+      ['a directive name followed by punctuation', `add_header Content-Security-Policy "default-src 'none'; connect-src! https://plausible.io" always;`, ['a policy without connect-src']],
+      ['a stray quote after the origin in an nginx value', `add_header Content-Security-Policy "connect-src https://plausible.io'" always;`, ["connect-src https://plausible.io'"]],
     ])('refuses %s', (_where, text, problems) => {
       expect(policyProblems([edge(text)])).toEqual(problems.map((problem) => `nginx-staging.conf: ${problem}`))
     })
@@ -245,6 +258,17 @@ const note = "connect-src https://plausible.io"`)
   value: "default-src 'self'; connect-src 'self' https://plausible.io",
 }`)
       expect(policyProblems([nextHeader])).toEqual([])
+    })
+
+    it.each([
+      ['a concatenation', "res.headers.set(\n  'Content-Security-Policy',\n  'connect-src https://plausible.io' + '.invalid',\n)"],
+      ['a method call', "res.headers.set('Content-Security-Policy', 'connect-src https://plausible.io'.concat('.invalid'))"],
+    ])('refuses a header value that %s continues past its first string', (_how, text) => {
+      expect(policyProblems([code(text)])).toContain('middleware.ts: a policy without connect-src')
+    })
+
+    it('refuses a stray single quote after the origin inside a double-quoted code string', () => {
+      expect(policyProblems([code(`const policy = "connect-src https://plausible.io'"`)])).toEqual([`middleware.ts: connect-src https://plausible.io'`])
     })
 
     it('refuses a header whose policy is written before it', () => {
