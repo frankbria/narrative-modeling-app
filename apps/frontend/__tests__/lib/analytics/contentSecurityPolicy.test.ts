@@ -33,26 +33,30 @@ const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: re
 const connectSources = (text: string) =>
   [...text.matchAll(/connect-src([^;"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/).map((source) => source.replace(/['),]+$/, '')))
 
-const namesPolicy = (text: string) => /content-security-policy/i.test(text)
-
-/** The text without its comment lines (`//`, `/*`, ` *`, nginx `#`), so a note cannot stand in for a directive. */
-const code = (text: string) =>
-  text
-    .split('\n')
-    .filter((line) => !/^\s*(\/\/|\/\*|\*|#)/.test(line))
-    .join('\n')
+/** How many times the file names the header: each one can be a policy the browser enforces. */
+const policyCount = (text: string) => text.match(/content-security-policy/gi)?.length ?? 0
 
 /**
- * What the guard reports, one text per file: empty when the counts can reach Plausible. Every policy
- * is checked on its own, because a browser enforces each one it receives (Next's and the edge's):
- * a file naming the header needs its own `connect-src`. shortcut: a policy whose directives live in
- * another file than its header is refused too; split the check by header when such a file exists.
+ * The text with every comment removed (block, `//` outside an address, nginx `#`), so no note can
+ * stand in for a directive. Only directives are read from it: cutting too much can only refuse.
+ */
+const withoutComments = (text: string) =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+    .replace(/#.*$/gm, '')
+
+/**
+ * What the guard reports, one text per file: empty when the counts can reach Plausible. A browser
+ * enforces every policy it receives (Next's, the edge's, a `location` block's), so each header the
+ * file names needs a `connect-src` of its own there. shortcut: a policy whose directives live in
+ * another file than its header is refused too; pair them across files when such a file exists.
  */
 function policyProblems(texts: string[]): string[] {
-  return texts.map(code).flatMap((text) => {
-    const directives = connectSources(text)
+  return texts.flatMap((text) => {
+    const directives = connectSources(withoutComments(text))
     const blocking = directives.filter((list) => !list.includes(PLAUSIBLE_ORIGIN)).map((list) => `connect-src ${list.join(' ')}`)
-    return namesPolicy(text) && directives.length === 0 ? [...blocking, 'a policy without connect-src'] : blocking
+    return directives.length < policyCount(text) ? [...blocking, 'a policy without connect-src'] : blocking
   })
 }
 
@@ -96,9 +100,17 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
       expect(policyProblems([nextHeader, edgeHeader])).toEqual(['a policy without connect-src'])
     })
 
+    it('refuses a second policy in the same file, as an nginx location block sets it', () => {
+      const edge = `add_header Content-Security-Policy "default-src 'self'; connect-src 'self' https://plausible.io" always;
+location = /pricing { add_header Content-Security-Policy "default-src 'self'" always; }`
+      expect(policyProblems([edge])).toEqual(['a policy without connect-src'])
+    })
+
     it.each([
-      ['a JS comment', "// connect-src https://plausible.io\nheaders.set('Content-Security-Policy', \"default-src 'self'\")"],
-      ['an nginx comment', `# connect-src https://plausible.io\nadd_header Content-Security-Policy "default-src 'self'" always;`],
+      ['a JS comment line', "// connect-src https://plausible.io\nheaders.set('Content-Security-Policy', \"default-src 'self'\")"],
+      ['an inline JS comment', "headers.set('Content-Security-Policy', \"default-src 'self'\") // connect-src https://plausible.io"],
+      ['a block comment', "/* connect-src https://plausible.io */ headers.set('Content-Security-Policy', \"default-src 'self'\")"],
+      ['an nginx comment', `add_header Content-Security-Policy "default-src 'self'" always; # connect-src https://plausible.io`],
     ])('does not let %s stand in for the directive', (_where, text) => {
       expect(policyProblems([text])).toEqual(['a policy without connect-src'])
     })
