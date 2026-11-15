@@ -23,9 +23,6 @@ ON_FAILURE = "failure() || cancelled()"
 # Any reference to the context, not only `secrets.NAME`: `secrets['NAME']` and
 # `toJSON(secrets)` read it too, and expression names ignore case.
 SECRETS_CONTEXT = re.compile(r"\bsecrets\b", re.IGNORECASE)
-GITHUB_TOKEN = re.compile(
-    r"github\s*(\.\s*token|\[\s*['\"]token)|GITHUB_TOKEN", re.IGNORECASE
-)
 
 E2E_JOBS = [
     pytest.param("ci.yml", "e2e-smoke", "Run Smoke Tests", id="smoke"),
@@ -140,14 +137,18 @@ def test_no_secret_reaches_the_servers_whose_logs_are_published(
     definition = yaml.safe_load((WORKFLOWS / workflow).read_text())
     job_definition = definition["jobs"][job]
     suite_step = job_definition["steps"][_index_of_step(job_definition["steps"], suite)]
-    server_environment = yaml.safe_dump(
+    # Only literals where the servers run: an expression can read any context
+    # (`secrets['X']`, `GITHUB.TOKEN`, `toJSON(github)`), so none is allowed there.
+    # shortcut: an earlier step could still export a value through $GITHUB_ENV;
+    # check the other steps too if one ever writes to it.
+    server_inputs = yaml.safe_dump(
         [
             definition.get("env", {}),
             job_definition.get("env", {}),
             suite_step.get("env", {}),
+            suite_step["run"],
         ]
     )
 
     assert not SECRETS_CONTEXT.search(yaml.safe_dump(job_definition))
-    assert not SECRETS_CONTEXT.search(server_environment)
-    assert not GITHUB_TOKEN.search(server_environment)
+    assert "${{" not in server_inputs
