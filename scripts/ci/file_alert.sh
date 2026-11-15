@@ -91,14 +91,23 @@ perl -MEncode -0777 -pe '
   if (length > 65536) {
     # The notice sends the reader here, and the callers print their stderr tail
     # nowhere else; redacted, because the log is public and masks only secrets.
+    # Between stop-commands markers, so a box line reading `::error::` stays text.
+    my $token = join "", map { sprintf "%04x", int rand 65536 } 1 .. 8;
     print STDERR "file_alert.sh: the body was cut for the issue; the whole body, redacted:\n",
-      Encode::encode("UTF-8", $_), "\n";
+      "::stop-commands::$token\n", Encode::encode("UTF-8", $_), "\n::${token}::\n";
     my $cut = length($_) - 65000;
     my $kept = substr($_, 0, 65000);
-    # An odd number of fence lines means the cut fell inside one, and the notice
-    # (and every later comment) would render as code.
-    my $fences = () = $kept =~ /^```/mg;
-    $kept .= "\n```" if $fences % 2;
+    # A cut inside a code fence would render the notice as code, and one inside the
+    # collapsed <details> both callers end with would hide it. Fences per CommonMark: a closing
+    # one has no info string and at least as many backticks as its opener.
+    my $open = "";
+    for my $line (split /\n/, $kept) {
+      if (!length $open) { $open = $1 if $line =~ /^ {0,3}(`{3,})[^`]*$/ }
+      elsif ($line =~ /^ {0,3}(`{3,})[ \t]*$/ && length $1 >= length $open) { $open = "" }
+    }
+    $kept .= "\n$open" if length $open;
+    my $unclosed = (() = $kept =~ /<details\b/gi) - (() = $kept =~ m{</details>}gi);
+    $kept .= "\n</details>" x $unclosed if $unclosed > 0;
     $_ = $kept . "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole body.)\n";
   }
   $_ = Encode::encode("UTF-8", $_);

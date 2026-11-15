@@ -256,21 +256,58 @@ def test_a_cut_body_is_printed_whole_and_redacted_to_the_run_log():
     assert "ssh: connect to" not in posted.split("--body-file\n", 1)[1]
 
 
+def test_the_logged_body_cannot_issue_runner_commands():
+    """Box stderr now reaches the log: a line in it reading `::add-mask::` or
+    `::error::` must stay text, so the copy sits between stop-commands markers."""
+    body = "::error::forged annotation\n" + "x" * 70_000
+    run, _ = _file(body)
+    logged = run.stderr.decode()
+    start = logged.index("::stop-commands::")
+    token = logged[start:].split("\n", 1)[0].removeprefix("::stop-commands::")
+    assert len(token) >= 16, "a token the body cannot guess"
+    assert start < logged.index("::error::forged") < logged.index(f"::{token}::")
+
+
 def test_a_body_that_fits_is_not_printed_to_the_run_log():
     run, _ = _file("short body\n")
     assert b"short body" not in run.stderr
 
 
-def test_a_cut_inside_a_code_fence_closes_the_fence():
-    """#1241 item 2: a body cut inside a fence would render the notice, and every
-    comment after it in the issue, as code."""
-    body = "Run: x\n\n```\n" + "y\n" * 40_000 + "```\n"
+def _cut(body: str) -> tuple[str, str]:
+    """The issue body sent for a cut ``body``, split into the kept text and the notice."""
     _, posted = _file(body)
     sent = posted.split("--body-file\n", 1)[1]
+    assert len(sent) <= 65_536
     kept, notice = sent.rsplit("\n\n(", 1)
+    assert "characters were cut" in notice
+    return kept, notice
+
+
+def test_a_cut_inside_a_code_fence_closes_the_fence():
+    """#1241 item 2: a body cut inside a fence would render the notice as code."""
+    kept, _ = _cut("Run: x\n\n```\n" + "y\n" * 40_000 + "```\n")
     assert kept.endswith("\n```"), kept[-20:]
     assert kept.count("\n```") == 2
-    assert "characters were cut" in notice
+
+
+def test_a_line_with_an_info_string_inside_a_fence_does_not_close_it():
+    """A closing fence carries no info string (CommonMark), so ```diagnostic inside
+    an open block is content and the cut still has to close the block."""
+    kept, _ = _cut("```\n```diagnostic\n" + "y\n" * 40_000)
+    assert kept.endswith("\n```"), kept[-20:]
+
+
+def test_a_fence_opened_with_more_backticks_is_closed_with_as_many():
+    kept, _ = _cut("````\n```\n" + "y\n" * 40_000)
+    assert kept.endswith("\n````"), kept[-20:]
+
+
+def test_a_cut_inside_a_details_block_shows_the_notice_outside_it():
+    """Both workflows end with the stderr tail in a collapsed <details> block; a
+    notice left inside it is never seen."""
+    body = "Run: x\n\n<details><summary>stderr</summary>\n\n```\n" + "y\n" * 40_000
+    kept, _ = _cut(body)
+    assert kept.endswith("\n```\n</details>"), kept[-30:]
 
 
 def test_a_cut_outside_a_code_fence_adds_no_fence():
