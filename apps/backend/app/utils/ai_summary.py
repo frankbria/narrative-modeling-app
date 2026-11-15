@@ -24,10 +24,16 @@ def initialize_openai_client():
     global client
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logging.error("OPENAI_API_KEY not set in environment variables")
+        logger.warning("OPENAI_API_KEY not set - AI dataset summaries are skipped")
         return
     client = build_openai_client(api_key)
-    logging.info("OpenAI client initialized successfully")
+    logger.info("OpenAI client initialized successfully")
+
+
+def missing_summary_level(failure_level: int) -> int:
+    """The level for "no summary was produced": routine (INFO) when no key is
+    configured, which is a supported mode (#1256), else ``failure_level``."""
+    return failure_level if client else logging.INFO
 
 
 OPENAI_MODEL = openai_model()
@@ -72,7 +78,11 @@ async def generate_dataset_summary(user_data_id: str) -> AISummary | None:
             logger.info(f"AI summary generated and saved for dataset {user_data_id}")
             return ai_summary
         else:
-            logger.error(f"Failed to generate AI summary for dataset {user_data_id}")
+            logger.log(
+                missing_summary_level(logging.ERROR),
+                "AI summary not generated for dataset %s",
+                user_data_id,
+            )
             return None
 
     except Exception as e:
@@ -166,7 +176,6 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
         An AISummary object if successful, None otherwise
     """
     if not client:
-        logging.error("OpenAI client not initialized")
         return None
 
     try:
