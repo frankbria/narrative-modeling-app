@@ -61,7 +61,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any
+from typing import Any, NoReturn
 
 import stripe
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
@@ -512,5 +512,19 @@ key. Missing has two causes, and they need opposite responses:
     identical from here and one of them ends paid access."""
 
 
+def _cli() -> NoReturn:
+    """Run `main()` and exit with its status without waiting for read threads.
+
+    A read cancelled at the deadline can still be blocked in its worker thread
+    (a Stripe that trickles bytes inside the SDK's read timeout), and
+    `asyncio.run` waits up to five minutes for those threads on shutdown, then
+    the interpreter joins them again at exit: either would outlast the job's
+    timeout. The database client is closed by then and nothing else is pending.
+    """
+    status = asyncio.new_event_loop().run_until_complete(main())
+    sys.stdout.flush()
+    os._exit(status)
+
+
 if __name__ == "__main__":  # pragma: no cover
-    sys.exit(asyncio.run(main()))
+    _cli()

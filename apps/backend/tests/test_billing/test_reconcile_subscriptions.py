@@ -998,6 +998,39 @@ class TestRunBudget:
         assert code == 3
         assert "did not finish: TimeoutError" in capsys.readouterr().out
 
+    async def test_the_command_exits_without_waiting_for_a_stuck_read_thread(self):
+        """Codex on #1228: `asyncio.run` waits for executor threads on shutdown,
+        so a read still blocked after the deadline would hold the process past
+        the job's timeout and the status would never reach the workflow."""
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        script = (
+            "import asyncio, time\n"
+            "from app.billing import reconcile_subscriptions as module\n"
+            "async def stuck_read_then_status():\n"
+            "    asyncio.get_running_loop().run_in_executor(None, time.sleep, 60)\n"
+            "    print('subscriptions with a stripe id: 1')\n"
+            "    return 5\n"
+            "module.main = stuck_read_then_status\n"
+            "module._cli()\n"
+        )
+        backend = Path(reconcile_subscriptions.__file__).resolve().parents[2]
+        started = time.monotonic()
+        done = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=backend,
+            env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(backend)},
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+
+        assert time.monotonic() - started < 30
+        assert done.returncode == 5, done.stderr
+        assert "subscriptions with a stripe id: 1" in done.stdout
+
     async def test_a_cursor_that_fails_cancels_the_reads_in_flight(
         self, setup_database
     ):
