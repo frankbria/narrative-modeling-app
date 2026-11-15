@@ -86,14 +86,17 @@ const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
 const stringsOf = (part: string) => [...part.replace(NAME_AND_ITS_QUOTE, '').matchAll(STRING_LITERAL)].map(([literal]) => literal)
 
 /**
- * A header's value: the first of its part's strings, with no `;`, `(` or `)` before it (so
- * `headers.set(name, policy)` has none), when it ends the expression: a `+` or `.concat(…)` after it
+ * A header's value: the string right after its name, with only a separator between them (`, `,
+ * `: `, `, value: ` or a space), so `headers.set(name, policy)`, `base + "…"` or a fallback before
+ * the string has none; and only when the string ends the expression: a `+` or `.concat(…)` after it
  * means the emitted value is not this string, so none is read and the header is refused. So is a
- * value holding a `\` (a JS escape such as `,` emits a comma) or a `$` (a `${…}` substitution,
+ * value holding a `\` (a JS escape such as `\u002c` emits a comma) or a `$` (a `${…}` substitution,
  * an nginx variable), whose emitted value is not its text. shortcut: a header name written with an
  * escape (`Content-\x53ecurity-Policy`) is not found; decode strings if one is ever written so.
+ * shortcut: valid policies are refused too (fails closed): an nginx nonce (`'nonce-$request_id'`),
+ * the origin with a trailing slash, a `<meta httpEquiv>` policy; allow each when one is wanted.
  */
-const HEADER_VALUE = new RegExp(String.raw`^[^'"\x60;()]*?(${STRING_LITERAL.source})(?=\s*(?:[,;)}\]]|always\b|$))`)
+const HEADER_VALUE = new RegExp(String.raw`^\s*(?:[,:]\s*(?:value\s*:\s*)?)?(${STRING_LITERAL.source})(?=\s*(?:[,;)}\]]|always\b|$))`)
 const headerValue = (header: string) => {
   const literal = HEADER_VALUE.exec(header.replace(NAME_AND_ITS_QUOTE, ''))?.[1]
   return literal === undefined || /[\\$]/.test(literal.slice(1, -1)) ? '' : literal.slice(1, -1)
@@ -299,6 +302,10 @@ const note = "connect-src https://plausible.io"`)
       ['an escaped comma that makes a second policy', code(`res.headers.set('Content-Security-Policy', "connect-src https://plausible.io \\u002c default-src 'none'")`), ['a policy without connect-src']],
       ['an nginx header after a # inside a quoted value', edge(`set $note " #"; add_header Content-Security-Policy "default-src 'none'" always;`), ['a policy without connect-src']],
       ['an nginx value with a variable', edge(`add_header Content-Security-Policy "connect-src https://plausible.io $extra" always;`), ['a policy without connect-src']],
+      ['a fallback before the value', code(`res.headers.set('Content-Security-Policy', process.env.CSP_POLICY || "connect-src https://plausible.io")`), ['a policy without connect-src']],
+      ['a variable added before the value', code(`res.headers.set('Content-Security-Policy', base + "connect-src https://plausible.io")`), ['a policy without connect-src']],
+      ['a value joined from an array', code(`{ key: 'Content-Security-Policy', value: [base, "connect-src https://plausible.io"].join(', ') }`), ['a policy without connect-src']],
+      ['a header after a link in JSX text', code(`<p>docs at https://example.com</p>; res.headers.set('Content-Security-Policy', "default-src 'none'")`), ['a policy without connect-src']],
     ])('refuses %s, which browsers read differently', (_where, source, problems) => {
       expect(policyProblems([source])).toEqual(problems.map((problem) => `${source.file}: ${problem}`))
     })
