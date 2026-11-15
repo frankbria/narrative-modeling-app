@@ -23,6 +23,11 @@ ON_FAILURE = "failure() || cancelled()"
 # Any reference to the context, not only `secrets.NAME`: `secrets['NAME']` and
 # `toJSON(secrets)` read it too, and expression names ignore case.
 SECRETS_CONTEXT = re.compile(r"\bsecrets\b", re.IGNORECASE)
+EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+# The only expressions an E2E job may evaluate before its logs are uploaded. Any
+# other can carry a token to the servers: env at any level, `container`, a step
+# input, or a value an earlier step writes to $GITHUB_ENV.
+HARMLESS_EXPRESSIONS = {"runner.os", "hashFiles('apps/frontend/package-lock.json')"}
 
 E2E_JOBS = [
     pytest.param("ci.yml", "e2e-smoke", "Run Smoke Tests", id="smoke"),
@@ -130,25 +135,35 @@ def test_the_logs_use_the_same_pinned_upload_action_as_the_report(
     assert upload["with"]["retention-days"] == report["with"]["retention-days"]
 
 
+def _strings(node: object) -> list[str]:
+    if isinstance(node, dict):
+        return [
+            text
+            for key, value in node.items()
+            for text in _strings(key) + _strings(value)
+        ]
+    if isinstance(node, list):
+        return [text for item in node for text in _strings(item)]
+    return [node] if isinstance(node, str) else []
+
+
 @pytest.mark.parametrize(("workflow", "job", "suite"), E2E_JOBS)
 def test_no_secret_reaches_the_servers_whose_logs_are_published(
     workflow: str, job: str, suite: str
 ):
     definition = yaml.safe_load((WORKFLOWS / workflow).read_text())
     job_definition = definition["jobs"][job]
-    suite_step = job_definition["steps"][_index_of_step(job_definition["steps"], suite)]
-    # Only literals where the servers run: an expression can read any context
-    # (`secrets['X']`, `GITHUB.TOKEN`, `toJSON(github)`), so none is allowed there.
-    # shortcut: an earlier step could still export a value through $GITHUB_ENV;
-    # check the other steps too if one ever writes to it.
-    server_inputs = yaml.safe_dump(
-        [
-            definition.get("env", {}),
-            job_definition.get("env", {}),
-            suite_step.get("env", {}),
-            suite_step["run"],
-        ]
-    )
+    upload_index, _ = _log_upload(job_definition["steps"])
+    up_to_the_upload = [
+        definition.get("env", {}),
+        {key: value for key, value in job_definition.items() if key != "steps"},
+        job_definition["steps"][: upload_index + 1],
+    ]
+    expressions = {
+        " ".join(found.split())
+        for text in _strings(up_to_the_upload)
+        for found in EXPRESSION.findall(text)
+    }
 
     assert not SECRETS_CONTEXT.search(yaml.safe_dump(job_definition))
-    assert "${{" not in server_inputs
+    assert expressions <= HARMLESS_EXPRESSIONS
