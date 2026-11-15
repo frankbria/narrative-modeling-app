@@ -20,7 +20,7 @@ const frontendFiles = globSync('**/*.{ts,tsx,js,jsx,mjs,cjs}', {
   cwd: FRONTEND,
   ignore: ['{e2e,coverage}/**', '**/{__tests__,__mocks__,node_modules}/**', '**/*.test.*'],
 }).map((file) => join(FRONTEND, file))
-const edgeFiles = globSync('**/*.conf', { cwd: REPOSITORY, ignore: ['**/node_modules/**'] }).map((file) => join(REPOSITORY, file))
+const edgeFiles = globSync('**/*.conf', { cwd: REPOSITORY, ignore: ['**/{node_modules,coverage}/**'] }).map((file) => join(REPOSITORY, file))
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
 
 interface Source {
@@ -42,7 +42,7 @@ const NAME_END = String.raw`(?=${ASCII_SPACE}|[;,]|$)`
  * refused; so is `x-connect-src`.
  */
 const connectSources = (text: string) =>
-  [...text.matchAll(new RegExp(String.raw`(?<![\w-])connect-src${NAME_END}([^;,\n]*)`, 'gi'))].map(([, list]) =>
+  [...text.matchAll(new RegExp(String.raw`(?<![\w-])connect-src${NAME_END}([^;,]*)`, 'gi'))].map(([, list]) =>
     list.split(new RegExp(`${ASCII_SPACE}+`)).filter((entry) => entry !== ''),
   )
 
@@ -59,8 +59,9 @@ const CODE_COMMENT = String.raw`(?:\/\*[\s\S]*?\*\/|\/\/.*$)`
  * comment glued to the Plausible origin) stays and keeps that source refused. The text is read left
  * to right in one pass that steps over quoted strings, so a marker in a string is not a comment, and
  * a `/*` inside a line comment, or a `//` inside a block comment, cannot pair with a later comment
- * and hide a header. shortcut: a quote in a regular expression literal or in JSX text can start a
- * string here; parse with TypeScript if one ever hides a header.
+ * and hide a header. shortcut: a quote in a regular expression literal or in JSX text, or a backtick
+ * in an nginx file (nginx has no templates), can start a string here; parse properly if one ever
+ * hides a header.
  */
 const withoutComments = ({ file, text }: Source) =>
   text.replace(
@@ -76,14 +77,23 @@ const withoutComments = ({ file, text }: Source) =>
 const policiesIn = (value: string) => value.split(',').filter((policy, index) => index === 0 || policy.trim() !== '')
 
 /** Where a policy header starts; the report-only one never blocks a request, so its value is left out. */
-const AT_A_HEADER = /(?=content-security-policy)/i
+const AT_A_HEADER = /(?<![\w-])(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
-const HEADER_NAME = /^content-security-policy/i
+/**
+ * A header name, not a mention. In code its own closing quote or a separator and a value follow it,
+ * which prose such as `the Content-Security-Policy is…` has not; in nginx, where prose sits only in
+ * the comments already removed, any whole name counts (an unquoted value is valid there).
+ */
+const HEADER_NAME_IN_NGINX = /^content-security-policy(?![\w-])/i
+const HEADER_NAME_IN_CODE = /^content-security-policy(?![\w-])(?=['"`]|\s*['"`:]|$)/i
 /** The header name with the quote that closes its own string in code. */
 const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
 
 /** The quoted strings of a part, after its header name: the texts a browser could receive as a policy. */
 const stringsOf = (part: string) => [...part.replace(NAME_AND_ITS_QUOTE, '').matchAll(STRING_LITERAL)].map(([literal]) => literal)
+
+/** A comma after the value may only be the trailing one: anything after it in the object (a spread, a later key in any spelling) could replace the value. */
+const TRAILING_COMMA = String.raw`\s*[)}]`
 
 /**
  * A header's value: the string right after its name, with only a separator between them (`, `,
@@ -91,15 +101,12 @@ const stringsOf = (part: string) => [...part.replace(NAME_AND_ITS_QUOTE, '').mat
  * the string has none; and only when the string ends the expression: a `+` or `.concat(…)` after it,
  * or anything after it in the same object or call (a spread or a later key could replace it; write
  * the value last), means the emitted value is not this string, so none is read and the header is
- * refused. So is a
- * value holding a `\` (a JS escape such as `\u002c` emits a comma) or a `$` (a `${…}` substitution,
- * an nginx variable), whose emitted value is not its text. shortcut: a header name written with an
+ * refused. So is a value holding a `\` (a JS escape such as `\u002c` emits a comma) or a `$` (a
+ * `${…}` substitution, an nginx variable), whose emitted value is not its text. shortcut: a header name written with an
  * escape (`Content-\x53ecurity-Policy`) is not found; decode strings if one is ever written so.
  * shortcut: valid policies are refused too (fails closed): an nginx nonce (`'nonce-$request_id'`),
  * the origin with a trailing slash, a `<meta httpEquiv>` policy; allow each when one is wanted.
  */
-/** A comma after the value may only be the trailing one: anything after it in the object (a spread, a later key in any spelling) could replace the value. */
-const TRAILING_COMMA = String.raw`\s*[)}]`
 const HEADER_VALUE = new RegExp(String.raw`^\s*(?:[,:]\s*(?:value\s*:\s*)?)?(${STRING_LITERAL.source})(?=\s*(?:,${TRAILING_COMMA}|[;)}\]]|always\b|$))`)
 const headerValue = (header: string) => {
   const literal = HEADER_VALUE.exec(header.replace(NAME_AND_ITS_QUOTE, ''))?.[1]
@@ -126,13 +133,14 @@ const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)${ASCII_SPACE}*connect-src$
  */
 function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
+    const headerName = source.file.endsWith('.conf') ? HEADER_NAME_IN_NGINX : HEADER_NAME_IN_CODE
     const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
     const blocking = parts
       .flatMap(stringsOf)
       .flatMap((literal) => connectSources(literal.slice(1, -1)))
       .filter((list) => !list.some((entry) => entry.toLowerCase() === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
-    const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => policiesIn(headerValue(header)))
+    const policies = parts.filter((part) => headerName.test(part)).flatMap((header) => policiesIn(headerValue(header)))
     const withoutConnectSource = policies.filter((policy) => !DIRECTIVE_START.test(policy)).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource].map((problem) => `${source.file}: ${problem}`)
   })
@@ -321,6 +329,7 @@ const note = "connect-src https://plausible.io"`)
       ['a value a later duplicate key replaces', code("{ key: 'Content-Security-Policy', value: 'connect-src https://plausible.io', value: override.value }"), ['a policy without connect-src']],
       ['a value a later quoted key replaces', code("{ key: 'Content-Security-Policy', value: 'connect-src https://plausible.io', 'value': override.value }"), ['a policy without connect-src']],
       ['a value a later computed key replaces', code(`{ key: 'Content-Security-Policy', value: 'connect-src https://plausible.io', ["value"]: override.value }`), ['a policy without connect-src']],
+      ['an unquoted nginx value', edge(`add_header Content-Security-Policy default-src;`), ['a policy without connect-src']],
     ])('refuses %s, which browsers read differently', (_where, source, problems) => {
       expect(policyProblems([source])).toEqual(problems.map((problem) => `${source.file}: ${problem}`))
     })
@@ -329,6 +338,20 @@ const note = "connect-src https://plausible.io"`)
       expect(policyProblems([code("const policy = `connect-src https://plausible.io`\nheaders.set('Content-Security-Policy', policy)")])).toEqual([
         'middleware.ts: a policy without connect-src',
       ])
+    })
+
+    it.each([
+      ['JSX text', code('<p>Our Content-Security-Policy is set at the edge.</p>')],
+      ['an error message', code("throw new Error('Content-Security-Policy is not set in this app')")],
+      ['the plural', code("const note = 'Content-Security-Policies differ per host'")],
+      ['the legacy prefixed name, which browsers ignore', edge(`add_header X-Content-Security-Policy "default-src 'self'" always;`)],
+    ])('does not take a mention of the header name in %s for a header', (_where, source) => {
+      expect(policyProblems([source])).toEqual([])
+    })
+
+    it('accepts a connect-src list written across lines in a template', () => {
+      const middleware = code("res.headers.set('Content-Security-Policy', `default-src 'self';\n  connect-src 'self'\n    https://plausible.io`)")
+      expect(policyProblems([middleware])).toEqual([])
     })
 
     it('accepts sources that set no policy', () => {
