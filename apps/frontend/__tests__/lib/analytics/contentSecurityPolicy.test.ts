@@ -16,12 +16,10 @@ const FRONTEND = join(__dirname, '..', '..', '..')
 const REPOSITORY = join(FRONTEND, '..', '..')
 const PLAUSIBLE_ORIGIN = new URL(PLAUSIBLE_EVENT_URL).origin
 
-const frontendFiles = globSync('{app,lib,components,hooks}/**/*.{ts,tsx,js,jsx,mjs}', {
+const frontendFiles = globSync('**/*.{ts,tsx,js,jsx,mjs,cjs}', {
   cwd: FRONTEND,
-  ignore: ['**/__tests__/**', '**/node_modules/**', '**/*.test.*'],
-})
-  .concat(globSync('{instrumentation*,middleware,proxy,auth}.ts', { cwd: FRONTEND }), ['next.config.mjs'])
-  .map((file) => join(FRONTEND, file))
+  ignore: ['{__tests__,__mocks__,e2e,node_modules,coverage}/**', '**/*.test.*'],
+}).map((file) => join(FRONTEND, file))
 const edgeFiles = globSync('nginx*.conf', { cwd: REPOSITORY }).map((file) => join(REPOSITORY, file))
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
 
@@ -54,9 +52,12 @@ const withoutComments = ({ file, text }: Source) =>
     ? text.replace(/(^|\s)#.*$/gm, '$1')
     : text.replace(/(^|\s)(?:\/\*[\s\S]*?\*\/|\/\/.*$)/gm, '$1')
 
-/** A comma before a directive name: one header value can carry several policies, each enforced. */
-const NEXT_POLICY =
-  /,(?=\s*(?:[a-z-]+-src|base-uri|form-action|frame-ancestors|navigate-to|sandbox|upgrade-insecure-requests|block-all-mixed-content|report-uri|report-to|require-trusted-types-for|trusted-types|webrtc)\b)/i
+/**
+ * One header value can carry several policies, each enforced: a browser splits them at every comma
+ * (a source cannot hold one unencoded) and skips a blank one after a comma. The first is always
+ * kept, so a header whose value could not be read stays refused.
+ */
+const policiesIn = (value: string) => value.split(',').filter((policy, index) => index === 0 || policy.trim() !== '')
 
 /** Where a policy header starts; the report-only one never blocks a request, so its value is left out. */
 const AT_A_HEADER = /(?=content-security-policy)/i
@@ -74,6 +75,10 @@ const headerValue = (header: string) => header.match(HEADER_VALUE)?.[2] ?? ''
 const DIRECTIVE_START = /(?:^|;)\s*connect-src(?![\w-])/i
 
 /**
+ * shortcut: this reads source text because no policy exists yet to emit (#1237); when the first one
+ * lands, check the emitted values instead (Next's `headers()` result, the middleware response, the
+ * nginx directive), which is simpler and stricter than these patterns.
+ *
  * What the guard reports, each problem prefixed with its file: empty when the counts can reach
  * Plausible. A browser enforces every policy it receives (Next's, the edge's, a `location` block's,
  * each one of a comma-separated value), so each header's value, and each policy after a comma in
@@ -87,9 +92,9 @@ function policyProblems(sources: Source[]): string[] {
     const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
     const blocking = parts
       .flatMap(connectSources)
-      .filter((list) => !list.some((entry) => entry.replace(/'$/, '') === PLAUSIBLE_ORIGIN))
+      .filter((list) => !list.some((entry) => entry.replace(/'$/, '').toLowerCase() === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
-    const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => headerValue(header).split(NEXT_POLICY))
+    const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => policiesIn(headerValue(header)))
     const withoutConnectSource = policies.filter((policy) => !DIRECTIVE_START.test(policy)).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource].map((problem) => `${source.file}: ${problem}`)
   })
@@ -105,6 +110,15 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
       expect.arrayContaining([join(FRONTEND, 'next.config.mjs'), join(FRONTEND, 'middleware.ts')]),
     )
     expect(edgeFiles).toContain(join(REPOSITORY, 'nginx-staging.conf'))
+  })
+
+  it('reads every frontend source outside the tests, wherever it sits (a new root file or folder too)', () => {
+    expect(frontendFiles).toEqual(
+      expect.arrayContaining(
+        ['playwright.config.ts', 'scripts/check-auth-adapter.mjs', 'types/next-auth.d.ts'].map((file) => join(FRONTEND, file)),
+      ),
+    )
+    expect(frontendFiles.filter((file) => /[/\\](__tests__|__mocks__|e2e|node_modules|\.next|coverage)[/\\]|\.test\./.test(file))).toEqual([])
   })
 
   it('every connect-src lists Plausible, and no policy is set without a connect-src', () => {
@@ -174,6 +188,17 @@ add_header Content-Security-Policy-Report-Only "connect-src https://plausible.io
       ])
     })
 
+    it.each([
+      ['an upper-case origin', `add_header Content-Security-Policy "connect-src HTTPS://PLAUSIBLE.IO" always;`],
+      ['a mixed-case origin', `add_header Content-Security-Policy "connect-src 'self' https://Plausible.io" always;`],
+    ])('accepts %s, as browsers match scheme and host in any case', (_where, text) => {
+      expect(policyProblems([edge(text)])).toEqual([])
+    })
+
+    it('accepts a blank policy after a trailing comma, which browsers skip', () => {
+      expect(policyProblems([edge(`add_header Content-Security-Policy "connect-src https://plausible.io, " always;`)])).toEqual([])
+    })
+
     it('accepts Plausible at the end of a single-quoted string', () => {
       expect(policyProblems([code("const policy = 'connect-src https://plausible.io'")])).toEqual([])
     })
@@ -181,6 +206,7 @@ add_header Content-Security-Policy-Report-Only "connect-src https://plausible.io
     it.each([
       ['a second policy after a comma', `add_header Content-Security-Policy "connect-src https://plausible.io, default-src 'self'" always;`, ['a policy without connect-src']],
       ['a second policy that starts with frame-ancestors', `add_header Content-Security-Policy "connect-src https://plausible.io, frame-ancestors 'none'; default-src 'self'" always;`, ['a policy without connect-src']],
+      ['a second policy that starts with a directive the guard does not name', `add_header Content-Security-Policy "connect-src https://plausible.io, require-sri-for script; default-src 'self'" always;`, ['a policy without connect-src']],
       [
         'a second policy in a location block',
         `add_header Content-Security-Policy "default-src 'self'; connect-src 'self' https://plausible.io" always;
