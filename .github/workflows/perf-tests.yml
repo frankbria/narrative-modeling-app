@@ -119,8 +119,10 @@ jobs:
           AWS_S3_BUCKET: test-bucket
           S3_BUCKET: test-bucket
           AWS_ENDPOINT_URL: http://localhost:4566
-          # OpenAI API key (dummy value for testing)
-          OPENAI_API_KEY: sk-test-dummy-key-for-ci-testing-only
+          # Blank: the backend holds no OpenAI client and the specs run the
+          # rule-based fallback (#1243). test-e2e.sh exports it blank whatever is
+          # set here; this value is defence in depth.
+          OPENAI_API_KEY: ""
 
       - name: Report perf outcome
         if: always()

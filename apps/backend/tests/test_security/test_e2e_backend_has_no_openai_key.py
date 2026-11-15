@@ -25,6 +25,8 @@ BACKEND_START = "uvicorn app.main:app"
 E2E_JOBS = [
     pytest.param("ci.yml", "e2e-smoke", id="smoke"),
     pytest.param("e2e-tests.yml", "e2e-full-suite", id="nightly"),
+    # Advisory, but its `test:e2e:perf` also runs test-e2e.sh against a backend.
+    pytest.param("perf-tests.yml", "perf-tests", id="perf"),
 ]
 
 

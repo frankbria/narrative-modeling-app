@@ -111,7 +111,8 @@ jobs:
           S3_BUCKET: test-bucket
           AWS_ENDPOINT_URL: http://localhost:4566
           # Blank: the backend holds no OpenAI client and the specs run the
-          # rule-based fallback (#1243; test-e2e.sh blanks it too).
+          # rule-based fallback (#1243). test-e2e.sh exports it blank whatever is
+          # set here; this value is defence in depth.
           OPENAI_API_KEY: ""
 
       # As in ci.yml's e2e-smoke job (#1233): what the servers printed, kept on failure.
