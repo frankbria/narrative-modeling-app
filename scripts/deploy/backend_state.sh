@@ -7,16 +7,10 @@
 # cluster, a boto error the bucket).
 set -u
 cd "${DEPLOY_PATH:-/opt/narrative-modeling-app/staging}" 2>/dev/null || { echo "(no $DEPLOY_PATH)"; exit 0; }
-# shortcut: a box whose last deploy predates #831 has no wrapper and still has the old
-# compose file; drop this fallback once every box has been deployed from #831 or later.
-compose() {
-  if [ -x scripts/deploy/compose.sh ]; then scripts/deploy/compose.sh "$@"; return; fi
-  docker compose -f docker-compose.staging.yml --env-file .env.staging "$@"
-}
 
 echo "## backend container"
-compose ps backend --format '{{.Name}}  {{.Status}}' 2>/dev/null || echo "(compose ps failed)"
-docker inspect "$(compose ps -q backend)" --format \
+scripts/deploy/compose.sh ps backend --format '{{.Name}}  {{.Status}}' 2>/dev/null || echo "(compose ps failed)"
+docker inspect "$(scripts/deploy/compose.sh ps -q backend)" --format \
   'RestartCount={{.RestartCount}} OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}} StartedAt={{.State.StartedAt}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
   2>/dev/null || echo "(inspect failed)"
 
@@ -24,7 +18,7 @@ echo "## exception classes in the last 200 backend log lines"
 # Class names and a few fixed, hostname-free phrases; `grep -o` drops the rest of the line.
 # A failed fetch prints a sentinel that the class regex matches, so an empty section
 # always means "no exceptions", never "could not read the logs".
-{ compose logs --no-log-prefix --tail 200 backend 2>/dev/null || echo "LogsFetchError"; } \
+{ scripts/deploy/compose.sh logs --no-log-prefix --tail 200 backend 2>/dev/null || echo "LogsFetchError"; } \
   | grep -oE '\b[A-Z][A-Za-z]*(Error|Exception|Failure)\b|An error occurred \([A-Za-z0-9]+\) when calling the [A-Za-z]+ operation|Worker failed to boot|exited with code [0-9]+|bad auth|No S3 bucket is configured|S3 is in mock mode|is not writable \([A-Za-z]+\)|SKIP_AUTH=true is only permitted|MONGODB_DB environment variable is not set' \
   | sort | uniq -c | sort -rn
 echo "(end)"

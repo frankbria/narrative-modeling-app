@@ -117,23 +117,15 @@ def test_no_workflow_or_deploy_script_asks_compose_to_build():
 def test_every_compose_call_on_a_box_goes_through_the_wrapper():
     """A bare `docker compose -f docker-compose.deploy.yml` has no ENVIRONMENT and no
     image, and fails on the file's guards. One caller, so the next step copies a
-    working one. The only other compose call allowed is the fallback for a box that
-    has not been deployed from #831 yet, which names the file such a box still has."""
+    working one."""
     paths = [*BOX_WORKFLOWS, *sorted((REPO_ROOT / "scripts/deploy").glob("*.sh"))]
-    bare = {
-        path.name: sorted(
-            set(re.findall(r"docker compose\s+-f\s+(\S+)", _code_lines(path)))
-        )
+    bare = [
+        path.name
         for path in paths
         if path.name != "compose.sh"
         and re.search(r"docker compose\s+-f", _code_lines(path))
-    }
-    assert bare == {
-        "backend_state.sh": ["docker-compose.staging.yml"],
-        "frontend_probe.sh": ["docker-compose.staging.yml"],
-        "staging-health.yml": ["docker-compose.staging.yml"],
-        "subscription-reconcile.yml": ["docker-compose.staging.yml"],
-    }
+    ]
+    assert bare == []
 
 
 def _box_step(workflow: Path) -> str:
@@ -144,61 +136,78 @@ def _box_step(workflow: Path) -> str:
 
 
 @pytest.mark.parametrize("workflow", BOX_WORKFLOWS[1:], ids=lambda path: path.name)
-def test_a_scheduled_job_still_reaches_a_box_that_predates_the_wrapper(
-    tmp_path, workflow
-):
+def test_a_scheduled_job_reaches_the_backend_through_the_wrapper(tmp_path, workflow):
     """The hourly probe and the daily reconciliation are sent from `main` and run in the
-    box's own checkout. Between the merge of #831 and the first deploy that gets
-    through (or for as long as that deploy fails), the box has no wrapper: the job must
-    reach the containers the old way and not report a healthy box as down."""
-    old_box = tmp_path / "old"
-    old_box.mkdir()
-    new_box = stand_in_box(tmp_path / "new")
-    body = _box_step(workflow)
+    box's own checkout, which every deploy since #831 has given the wrapper."""
+    box = stand_in_box(tmp_path / "box")
 
-    for box in (old_box, new_box):
-        run = _run(["bash", "-c", body], box, _fake_tools(box))
-        assert run.returncode == 0, run.stderr
+    run = _run(["bash", "-c", _box_step(workflow)], box, _fake_tools(box))
 
-    old, new = "docker-compose.staging.yml", "docker-compose.deploy.yml"
-    assert _calls(old_box)[0].startswith(
-        f"docker compose -f {old} --env-file .env.staging exec -T backend "
+    assert run.returncode == 0, run.stderr
+    assert _calls(box)[0].startswith(
+        "docker compose -f docker-compose.deploy.yml --env-file .env.staging "
+        "exec -T backend "
     )
-    assert _calls(new_box)[0].startswith(
-        f"docker compose -f {new} --env-file .env.staging exec -T backend "
-    )
+
+
+@pytest.mark.parametrize("workflow", BOX_WORKFLOWS[1:], ids=lambda path: path.name)
+def test_a_scheduled_job_fails_on_a_box_without_the_wrapper(tmp_path, workflow):
+    """A checkout without the wrapper is not on the deployed layout: the job must fail
+    and be reported, not reach the containers some other way."""
+    box = tmp_path / "box"
+    box.mkdir()
+
+    run = _run(["bash", "-c", _box_step(workflow)], box, _fake_tools(box))
+
+    assert run.returncode != 0
+    assert _calls(box) == []
+
+
+ANSWERING = "printf '%s\\n%s' '{\"status\":\"healthy\"}' 200\n"
 
 
 @pytest.mark.parametrize("script", ["backend_state.sh", "frontend_probe.sh"])
-def test_a_probe_script_uses_the_wrapper_where_there_is_one_and_the_old_call_where_not(
-    tmp_path, script
-):
-    """After the first deploy from #831 the old compose file is gone from the box, so
-    the fallback must be taken only while the wrapper is absent."""
-    answering = "printf '%s\\n%s' '{\"status\":\"healthy\"}' 200\n"
-    old_box = tmp_path / "old"
-    old_box.mkdir()
-    new_box = stand_in_box(tmp_path / "new")
+def test_a_probe_script_calls_compose_only_through_the_wrapper(tmp_path, script):
+    box = stand_in_box(tmp_path / "box")
 
-    for box, compose_file in (
-        (old_box, "docker-compose.staging.yml"),
-        (new_box, "docker-compose.deploy.yml"),
-    ):
-        run = _run(
-            ["bash", str(REPO_ROOT / "scripts/deploy" / script)],
-            box,
-            _fake_tools(box, answering),
+    run = _run(
+        ["bash", str(REPO_ROOT / "scripts/deploy" / script)],
+        box,
+        _fake_tools(box, ANSWERING),
+    )
+
+    assert run.returncode == 0, run.stderr
+    compose_calls = [call for call in _calls(box) if call.startswith("docker compose")]
+    assert compose_calls
+    for call in compose_calls:
+        assert call.startswith(
+            "docker compose -f docker-compose.deploy.yml --env-file .env.staging "
         )
 
-        assert run.returncode == 0, run.stderr
-        compose_calls = [
-            call for call in _calls(box) if call.startswith("docker compose")
-        ]
-        assert compose_calls
-        for call in compose_calls:
-            assert call.startswith(
-                f"docker compose -f {compose_file} --env-file .env.staging "
-            ), box.name
+
+@pytest.mark.parametrize(
+    ("script", "reported"),
+    [
+        ("backend_state.sh", "(compose ps failed)"),
+        (
+            "frontend_probe.sh",
+            "frontend: unhealthy (the frontend container did not answer)",
+        ),
+    ],
+)
+def test_a_probe_script_reports_a_box_without_the_wrapper(tmp_path, script, reported):
+    """No old-file fallback: a box off the deployed layout reads as a failure."""
+    box = tmp_path / "box"
+    box.mkdir()
+
+    run = _run(
+        ["bash", str(REPO_ROOT / "scripts/deploy" / script)],
+        box,
+        _fake_tools(box, ANSWERING),
+    )
+
+    assert reported in run.stdout
+    assert not [call for call in _calls(box) if call.startswith("docker compose")]
 
 
 # ── the frontend image is host-agnostic ──────────────────────────────────────
