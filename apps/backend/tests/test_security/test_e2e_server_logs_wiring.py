@@ -21,9 +21,11 @@ RUNNER_SCRIPT = REPO / "apps" / "frontend" / "test-e2e.sh"
 ON_FAILURE = "failure() || cancelled()"
 
 # Any reference to the context, not only `secrets.NAME`: `secrets['NAME']` and
-# `toJSON(secrets)` read it too.
-SECRETS_CONTEXT = re.compile(r"\bsecrets\b")
-GITHUB_TOKEN = re.compile(r"github\s*(\.\s*token|\[\s*['\"]token)|GITHUB_TOKEN")
+# `toJSON(secrets)` read it too, and expression names ignore case.
+SECRETS_CONTEXT = re.compile(r"\bsecrets\b", re.IGNORECASE)
+GITHUB_TOKEN = re.compile(
+    r"github\s*(\.\s*token|\[\s*['\"]token)|GITHUB_TOKEN", re.IGNORECASE
+)
 
 E2E_JOBS = [
     pytest.param("ci.yml", "e2e-smoke", "Run Smoke Tests", id="smoke"),
