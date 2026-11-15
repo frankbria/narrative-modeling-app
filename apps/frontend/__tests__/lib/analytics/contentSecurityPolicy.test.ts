@@ -28,11 +28,11 @@ const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: re
 /**
  * Each `connect-src` directive's sources, up to the end of the directive (`;`), of the policy (`,`
  * starts another one) or of the string holding it. A single quote cannot end it (keywords are
- * written `'self'`), so one closing a JS string is trimmed off the last source. A list split across
+ * written `'self'`), so one closing a JS string is trimmed off the last source when comparing. A list split across
  * array items reads as empty and is refused; so is `x-connect-src`, which browsers ignore.
  */
 const connectSources = (text: string) =>
-  [...text.matchAll(/(?<![\w-])connect-src([^;,"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/).map((source) => source.replace(/'$/, '')))
+  [...text.matchAll(/(?<![\w-])connect-src([^;,"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/))
 
 /**
  * The text with its comments removed (block, `//`, nginx `#`), so no note can stand in for a
@@ -62,7 +62,7 @@ function policyProblems(texts: string[]): string[] {
     const policies = headers.flatMap((header) => header.split(NEXT_POLICY))
     const blocking = [beforeAnyPolicy, ...policies]
       .flatMap(connectSources)
-      .filter((list) => !list.includes(PLAUSIBLE_ORIGIN))
+      .filter((list) => !list.some((source) => source.replace(/'$/, '') === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
     const withoutConnectSource = policies.filter((policy) => connectSources(policy).length === 0).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource]
