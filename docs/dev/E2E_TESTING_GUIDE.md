@@ -52,6 +52,11 @@ What `test-e2e.sh` sets, and why:
   `plan-limit.spec.ts` hit a real 402 as the admin tenant. This is the only place
   `PLAN_*` overrides are set.
 - `AWS_ENDPOINT_URL=http://localhost:4566` when LocalStack answers there.
+- `OPENAI_API_KEY=` (blank, always; #1243). The backend then holds no OpenAI client and the
+  specs run the rule-based fallbacks, as pytest does (#1089); a dummy key sent every
+  summary to api.openai.com to wait for a 401. Blank, not unset, so a key in
+  `apps/backend/.env` is not read. The two E2E jobs and the perf job pass it blank too
+  (`test_e2e_backend_has_no_openai_key.py`).
 
 ## Projects and tags
 
