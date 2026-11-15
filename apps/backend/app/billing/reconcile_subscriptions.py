@@ -32,8 +32,10 @@ missing (Stripe says the subscription does not exist with this key), unreadable
 (Stripe refused for another reason) or busy/unreachable (still failing after the
 retries). Only the first two need a person, unless the same row was busy on
 the previous run too (#1228): under `--apply` a busy row gets
-`stripe_unreachable_since`, a read Stripe answers clears it, and a row still busy
-`UNREACHABLE_ALERT_AFTER` later threatens the grace window.
+`stripe_unreachable_since`, a read Stripe answers under `--apply` clears it, and a
+row still busy `UNREACHABLE_ALERT_AFTER` later, with no answer from Stripe in
+between, threatens the grace window. A run that never asked Stripe (the database
+or the box unreachable) does not reset that clock: nothing showed Stripe was back.
 
 The run stops itself after `RUN_BUDGET_SECONDS`, inside the job's timeout: reads
 still in flight are cancelled and the rows not reached are counted busy, so a
@@ -42,8 +44,8 @@ Stripe that hangs is reported here rather than by a cancelled job (#1228).
 Exit status: 0 when every row it could read matches Stripe (after repairs, under
 `--apply`), 1 when a row is missing, unreadable, raced, or (read-only) drifted,
 2 when a required setting is missing, 3 when the run could not finish (the
-database was unreachable, or a row's repair raised; the other rows are still
-repaired), 5 when nothing else is wrong but a row was busy on this run and the
+database was unreachable or stalled past `FINISH_SECONDS` after the budget, or a
+row's repair raised; the other rows are still repaired), 5 when nothing else is wrong but a row was busy on this run and the
 previous one. A row Stripe was busy for only this once does not fail the run: it
 settles on a later run.
 
@@ -92,11 +94,15 @@ RETRY_DELAYS_SECONDS = (1, 2, 4)
 #: about two go to Tailscale, ssh and the container start, and a read cancelled
 #: here keeps its thread until the SDK's own timeout.
 RUN_BUDGET_SECONDS = 9 * 60
+#: Seconds past the budget for the cancelled reads, the bulk accounting of the
+#: rows not reached and the report; past it the run stops with exit 3.
+FINISH_SECONDS = 60
 #: How long a row may stay busy before it alerts: the previous daily run, with
 #: room for GitHub starting a scheduled run late. `ENTITLEMENT_GRACE` is three
 #: days, so a missed renewal still has about one run left when this fires.
 UNREACHABLE_ALERT_AFTER = timedelta(hours=20)
 UNREACHABLE_FIELD = "stripe_unreachable_since"
+_WITH_A_STRIPE_ID = {"stripe_subscription_id": {"$type": "string"}}
 _TRANSIENT = (stripe.RateLimitError, stripe.APIConnectionError, stripe.APIError)
 _sleep = asyncio.sleep
 
@@ -142,9 +148,14 @@ async def _reconcile_database(uri: str, db_name: str, apply: bool) -> int:
         # pymongo's message can quote it.
         client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(uri)
         try:
-            return await reconcile(
-                client[db_name]["subscriptions"], _fetch_from_stripe, apply
-            )
+            # A database that stalls is bounded too, not only Stripe.
+            async with asyncio.timeout(RUN_BUDGET_SECONDS + FINISH_SECONDS):
+                return await reconcile(
+                    client[db_name]["subscriptions"],
+                    _fetch_from_stripe,
+                    apply,
+                    RUN_BUDGET_SECONDS,
+                )
         finally:
             client.close()
     except Exception as exc:  # noqa: BLE001 - reported by class, see above
@@ -322,6 +333,28 @@ async def _reconcile_row(
     return await _repair(collection, row, _drift(row, remote, tiers_resolvable), apply)
 
 
+async def _not_reached_after(
+    collection: AsyncIOMotorCollection[dict[str, Any]], last_id: Any, apply: bool
+) -> Counter[str]:
+    """The rows after `last_id`, counted busy with three queries rather than one
+    write per row, so the time this takes does not grow with the table."""
+    rest = {**_WITH_A_STRIPE_ID, "_id": {"$gt": last_id}}
+    now = datetime.now(UTC)
+    unreached = await collection.count_documents(rest)
+    too_long = await collection.count_documents(
+        {**rest, UNREACHABLE_FIELD: {"$lte": now - UNREACHABLE_ALERT_AFTER}}
+    )
+    if apply:
+        await collection.update_many(
+            {**rest, UNREACHABLE_FIELD: None}, {"$set": {UNREACHABLE_FIELD: now}}
+        )
+    return Counter(
+        unreached=unreached,
+        unavailable_too_long=too_long,
+        unavailable=unreached - too_long,
+    )
+
+
 async def _slot_before(slots: asyncio.Semaphore, deadline: float) -> bool:
     """A free read slot, unless the deadline comes first."""
     if asyncio.get_running_loop().time() >= deadline:
@@ -378,13 +411,13 @@ async def reconcile(
             slots.release()
 
     try:
-        async for row in collection.find(
-            {"stripe_subscription_id": {"$type": "string"}}
-        ):
+        # In `_id` order, so the rows the deadline leaves are one range.
+        async for row in collection.find(_WITH_A_STRIPE_ID, sort=[("_id", 1)]):
             if not await _slot_before(slots, deadline):
                 outcomes["unreached"] += 1
                 outcomes[await _busy(collection, row, apply)] += 1
-                continue
+                outcomes += await _not_reached_after(collection, row["_id"], apply)
+                break
             task = asyncio.create_task(in_slot(row))
             in_flight.add(task)
             task.add_done_callback(in_flight.discard)
@@ -406,8 +439,10 @@ def _report(outcomes: Counter[str], apply: bool) -> int:
     print(f"unreadable from stripe:         {outcomes['unreadable']}")
     print(f"stripe busy or unreachable:     {outcomes['unavailable'] + too_long}")
     print(f"busy on the previous run too:   {too_long}")
-    print(f"not reached in the time limit: {outcomes['unreached']}")
+    print(f"not reached in the time limit:  {outcomes['unreached']}")
     print(f"drifted from stripe:            {drifted}")
+    # Before the exit-3 check: the help holds whatever else went wrong.
+    busy_status = _busy_too_long_status(too_long)
     if outcomes["failed"]:
         # The class went to stdout per row; a database error message can name hosts.
         print(f"the reconciliation did not finish: {outcomes['failed']} rows failed")
@@ -417,7 +452,6 @@ def _report(outcomes: Counter[str], apply: bool) -> int:
         if apply
         else _read_only_status(drifted, outcomes["missing"] + outcomes["unreadable"])
     )
-    busy_status = _busy_too_long_status(too_long)
     return status or busy_status
 
 

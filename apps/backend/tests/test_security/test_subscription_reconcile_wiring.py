@@ -310,8 +310,8 @@ def test_the_module_stops_itself_well_inside_the_job_timeout():
     cancelled at the deadline keeps its thread until the SDK's own timeout (two
     attempts of `REQUEST_TIMEOUT_SECONDS`)."""
     from app.billing import stripe_client
-    from app.billing.reconcile_subscriptions import RUN_BUDGET_SECONDS
+    from app.billing.reconcile_subscriptions import FINISH_SECONDS, RUN_BUDGET_SECONDS
 
     job_seconds = _doc()["jobs"]["reconcile"]["timeout-minutes"] * 60
     drain = 2 * stripe_client.REQUEST_TIMEOUT_SECONDS
-    assert RUN_BUDGET_SECONDS + drain + 120 <= job_seconds - 60
+    assert RUN_BUDGET_SECONDS + FINISH_SECONDS + drain + 120 <= job_seconds - 60

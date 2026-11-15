@@ -853,6 +853,36 @@ class TestStripeBusyAcrossRuns:
         assert await _load_reconcile()(_collection(), fetch, apply=True) == 1
         assert "api.stripe.com" in capsys.readouterr().out
 
+    async def test_a_failed_repair_still_prints_what_to_check_for_stripe(
+        self, setup_database, capsys
+    ):
+        """Exit 3 wins the status, so the busy help is the only place the alert
+        learns that Stripe has been unreachable for a day as well."""
+        await _seed(
+            "u-stuck-too",
+            stripe_subscription_id="sub_stuck_too",
+            stripe_unreachable_since=datetime.now(UTC) - timedelta(days=1),
+        )
+        await _seed("u-write-fails", stripe_subscription_id="sub_write_fails")
+        collection = _collection()
+
+        class RepairFails:
+            def find(self, *args, **kwargs):
+                return collection.find(*args, **kwargs)
+
+            async def update_one(self, query, update):
+                if "$set" in update and "status" in update["$set"]:
+                    raise RuntimeError("write failed")
+                return await collection.update_one(query, update)
+
+        async def fetch(subscription_id):
+            if subscription_id == "sub_stuck_too":
+                return reconcile_subscriptions.ReadFailure.UNAVAILABLE
+            return _remote("unpaid", None)
+
+        assert await _load_reconcile()(RepairFails(), fetch, apply=True) == 3
+        assert "api.stripe.com" in capsys.readouterr().out
+
 
 class TestRunBudget:
     """#1228: a Stripe that hangs instead of refusing is reported by the module,
@@ -880,7 +910,7 @@ class TestRunBudget:
         assert code == 0, "a first busy run does not alert"
         assert len(asked) == reconcile_subscriptions.CONCURRENT_READS
         assert f"stripe busy or unreachable:     {rows}" in out
-        assert "not reached in the time limit: 2" in out
+        assert "not reached in the time limit:  2" in out
         for n in range(rows):
             assert await _marker(f"u-hang-{n}") is not None
 
@@ -898,7 +928,75 @@ class TestRunBudget:
         )
 
         assert code == 5
-        assert "not reached in the time limit: 1" in capsys.readouterr().out
+        assert "not reached in the time limit:  1" in capsys.readouterr().out
+
+    async def test_rows_past_the_deadline_are_counted_without_walking_them(
+        self, setup_database, capsys
+    ):
+        """Codex on #1228: one write per row after the deadline would let a large
+        table eat the time the budget was meant to leave."""
+        await _seed("u-late-first", stripe_subscription_id="sub_late_first")
+        await _seed("u-late-unmarked", stripe_subscription_id="sub_late_unmarked")
+        recent = datetime.now(UTC) - timedelta(hours=2)
+        await _seed(
+            "u-late-recent",
+            stripe_subscription_id="sub_late_recent",
+            stripe_unreachable_since=recent,
+        )
+        await _seed(
+            "u-late-old",
+            stripe_subscription_id="sub_late_old",
+            stripe_unreachable_since=datetime.now(UTC) - timedelta(days=1),
+        )
+        collection = _collection()
+        handed_out = 0
+
+        class CountingCursor:
+            def find(self, *args, **kwargs):
+                async def rows():
+                    nonlocal handed_out
+                    async for row in collection.find(*args, **kwargs):
+                        handed_out += 1
+                        yield row
+
+                return rows()
+
+            def __getattr__(self, name):
+                return getattr(collection, name)
+
+        code = await _load_reconcile()(
+            CountingCursor(), _busy, apply=True, budget_seconds=0
+        )
+
+        out = capsys.readouterr().out
+        assert code == 5
+        assert handed_out == 1, "the rest are counted, not read one by one"
+        assert "subscriptions with a stripe id: 4" in out
+        assert "stripe busy or unreachable:     4" in out
+        assert "busy on the previous run too:   1" in out
+        assert "not reached in the time limit:  4" in out
+        assert await _marker("u-late-first") is not None
+        assert await _marker("u-late-unmarked") is not None
+        assert abs(as_utc(await _marker("u-late-recent")) - recent) < timedelta(
+            seconds=1
+        ), "a marker keeps the first busy run's time"
+
+    async def test_a_database_that_stalls_ends_the_run_with_exit_3(
+        self, monkeypatch, capsys
+    ):
+        async def stalls(*_args):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(reconcile_subscriptions, "reconcile", stalls)
+        monkeypatch.setattr(reconcile_subscriptions, "RUN_BUDGET_SECONDS", 0)
+        monkeypatch.setattr(reconcile_subscriptions, "FINISH_SECONDS", 0.1)
+
+        code = await reconcile_subscriptions._reconcile_database(
+            "mongodb://127.0.0.1:27017", "unused", apply=True
+        )
+
+        assert code == 3
+        assert "did not finish: TimeoutError" in capsys.readouterr().out
 
     async def test_a_cursor_that_fails_cancels_the_reads_in_flight(
         self, setup_database
