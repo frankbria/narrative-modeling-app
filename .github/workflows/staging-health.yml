@@ -157,7 +157,8 @@ jobs:
         # Not keyed on the probe step's outcome, on purpose: a Tailscale or SSH step
         # that fails first leaves the probe step `skipped`, and those connectivity
         # failures are the ones nobody notices otherwise. `cancelled()` because a job
-        # that hits `timeout-minutes` (a hung ssh) is cancelled, not failed. (A
+        # that hits `timeout-minutes` (a hung ssh) is cancelled, not failed; a run a
+        # person cancels files too, which is accepted. (A
         # preflight "not configured" skips every step without failing, so it does
         # not file.)
         if: failure() || cancelled()

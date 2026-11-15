@@ -177,3 +177,10 @@ def test_names_that_partly_overlap_are_redacted_as_one():
 def test_a_name_that_overlaps_itself_is_redacted_whole():
     _, posted = _file("at node-node-node\n", HOST="node-node")
     assert "at <staging host>\n" in posted
+
+
+def test_a_magicdns_name_does_not_publish_the_tailnet():
+    """HOST is the bare machine name; the full name would leave `.tail1234.ts.net`."""
+    body = "ssh: Could not resolve hostname box.tail1234.ts.net: failure\n"
+    _, posted = _file(body, HOST="box")
+    assert "hostname <tailnet address>: failure" in posted and "tail1234" not in posted
