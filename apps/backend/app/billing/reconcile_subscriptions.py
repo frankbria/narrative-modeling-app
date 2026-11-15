@@ -92,23 +92,30 @@ async def main() -> int:
     apply = "--apply" in sys.argv[1:]
 
     uri, db_name = os.getenv("MONGODB_URI"), os.getenv("MONGODB_DB")
-    if not uri or not db_name:
-        print("Set MONGODB_URI and MONGODB_DB.", file=sys.stderr)
-        return 2
-    if not stripe_client.is_configured():
-        print("Set STRIPE_SECRET_KEY: this reads from Stripe.", file=sys.stderr)
-        return 2
-    # Required like the app requires it. An unset ENTERPRISE price is not refused:
-    # `reconcile()` then leaves every tier alone, because `tier_for_price` would
-    # resolve an unmatched price to PRO and `--apply` would downgrade ENTERPRISE.
-    if not stripe_client.setting("STRIPE_PRICE_PRO"):
-        print(
-            "Set STRIPE_PRICE_PRO: the price billing sells, as the app requires.",
-            file=sys.stderr,
-        )
+    missing = _missing_settings(uri, db_name)
+    if missing or not uri or not db_name:
+        # On stdout: the scheduled run discards the container's stderr (#1215).
+        print(f"missing settings: {', '.join(missing)}")
         return 2
 
     return await _reconcile_database(uri, db_name, apply)
+
+
+def _missing_settings(uri: str | None, db_name: str | None) -> list[str]:
+    """Names of the unset settings the run needs, in the order they are read.
+
+    STRIPE_PRICE_PRO is required like the app requires it. An unset ENTERPRISE
+    price is not refused: `reconcile()` then leaves every tier alone, because
+    `tier_for_price` would resolve an unmatched price to PRO and `--apply` would
+    downgrade ENTERPRISE.
+    """
+    present = {
+        "MONGODB_URI": bool(uri),
+        "MONGODB_DB": bool(db_name),
+        "STRIPE_SECRET_KEY": stripe_client.is_configured(),
+        "STRIPE_PRICE_PRO": bool(stripe_client.setting("STRIPE_PRICE_PRO")),
+    }
+    return [name for name, is_set in present.items() if not is_set]
 
 
 async def _reconcile_database(uri: str, db_name: str, apply: bool) -> int:

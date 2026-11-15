@@ -151,11 +151,13 @@ jobs:
           { echo "## Backend container state"; echo; echo '```'; cat /tmp/state.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report the failure on an issue
-        # `failure()` alone, on purpose: a Tailscale or SSH step that fails first
-        # leaves the probe step `skipped`, and those connectivity failures are the
-        # ones nobody notices otherwise. (A preflight "not configured" skips every
-        # step without failing, so it does not file.)
-        if: failure()
+        # Not keyed on the probe step's outcome, on purpose: a Tailscale or SSH step
+        # that fails first leaves the probe step `skipped`, and those connectivity
+        # failures are the ones nobody notices otherwise. `cancelled()` because a job
+        # that hits `timeout-minutes` (a hung ssh) is cancelled, not failed. (A
+        # preflight "not configured" skips every step without failing, so it does
+        # not file.)
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -165,14 +167,11 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/narrative-modeling-app/staging' }}
         run: |
           title='[P1] [ops] Staging health probe is failing'
-          # Search on the stable phrase, never the full title: the operator retitles
-          # every issue with a PX.Y prefix, which made `[P1] [ops] …` miss the open
-          # alert and file a duplicate beside it (#755 → #757).
-          search='"Staging health probe is failing" in:title'
           status=$(cat /tmp/probe.status 2>/dev/null || echo "not run")
           case "$status" in
             137) verdict="Probe exit status 137 — the probe process was SIGKILLed: the backend container is restarting (or being OOM-killed) under it. See the container state below.";;
-            "not run") verdict="The probe did not run — an earlier step (tailnet or ssh) failed; see the run log.";;
+            255) verdict="Probe exit status 255: ssh could not reach the box or sign in to it (see the stderr below). A connectivity failure: this run learned nothing about the services.";;
+            "not run") verdict="The probe did not run — an earlier step (tailnet or ssh) failed, or the job timed out; see the run log.";;
             *) verdict="Probe exit status $status.";;
           esac
           # `|| true`: under the runner's `bash -e`, a missing file (the probe never
@@ -183,24 +182,11 @@ jobs:
           # shellcheck disable=SC2016 # the backticks are literal markdown fences
           body=$(printf 'Run: %s\n\n%s\n\n## Probe\n```\n%s\n```\n\n## Backend container state\n```\n%s\n```\n\n<details><summary>probe stderr (last 20 lines)</summary>\n\n```\n%s\n```\n</details>\n\nSee docs/ops/CREDENTIAL_ROTATION.md if a secret was rotated recently.\n' \
             "$RUN_URL" "$verdict" "$probe" "$state" "$stderr")
-          # ssh names the host in its errors, and Actions masks secrets only in the
-          # log, never in an issue body this step posts to a public repo (#1150).
-          # ssh lowercases the name before printing it, so redact that form too.
-          # The user is redacted only as ssh prints it (`user@host`): a bare `root`
-          # would rewrite unrelated text. backend_state.sh names the path on failure.
-          body=${body//"$HOST"/<staging host>}
-          body=${body//"${HOST,,}"/<staging host>}
-          [ -z "$DEPLOY_USER" ] || body=${body//"$DEPLOY_USER@"/<deploy user>@}
-          body=${body//"$DEPLOY_PATH"/<deploy path>}
-          # `// empty`: on no match jq would print the 4-char string "null", which
-          # is non-empty and would send the very first failure to `gh issue comment null`.
-          # Comment on the OLDEST open alert so a duplicate never becomes the thread of record.
-          existing=$(gh issue list --state open --search "$search" --json number --jq 'min_by(.number).number // empty')
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
-          fi
+          # Redacts the box's names (HOST, DEPLOY_USER, DEPLOY_PATH, tailnet
+          # addresses) before posting, comments on the OLDEST open alert so a
+          # duplicate never becomes the thread of record (#755 → #757), and retries
+          # a failed gh call once.
+          printf '%s' "$body" | scripts/ci/file_alert.sh "$title" 'Staging health probe is failing'
 
       - name: Close a recovered alert
         if: steps.probe.outcome == 'success'
