@@ -265,7 +265,8 @@ def test_the_logged_body_cannot_issue_runner_commands():
     start = logged.index("::stop-commands::")
     token = logged[start:].split("\n", 1)[0].removeprefix("::stop-commands::")
     assert len(token) >= 16, "a token the body cannot guess"
-    assert start < logged.index("::error::forged") < logged.index(f"::{token}::")
+    end = logged.index(f"::{token}::")
+    assert start < logged.index("::error::forged") < logged.rindex("x") < end
 
 
 def test_a_body_that_fits_is_not_printed_to_the_run_log():
@@ -327,7 +328,7 @@ def test_a_cut_inside_a_tilde_fence_closes_it_with_tildes():
 def test_a_fence_closed_by_a_crlf_line_is_closed():
     """Box output can end its lines with CRLF; that still closes the fence."""
     kept, _ = _cut("```\n```\r\n" + "y" * 70_000)
-    assert not kept.endswith("```"), kept[-20:]
+    assert kept.endswith("y" * 100), kept[-20:]
 
 
 def test_a_no_break_space_after_backticks_does_not_close_a_fence():
