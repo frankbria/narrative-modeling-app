@@ -95,7 +95,7 @@ perl -MEncode -0777 -pe '
     my ($open, $details) = ("", 0);
     for my $line (split /\n/, $_[0]) {
       if (length $open) {
-        $open = "" if $line =~ /^ {0,3}(`{3,}|~{3,})\s*$/
+        $open = "" if $line =~ /^ {0,3}(`{3,}|~{3,})[ \t\r]*$/
           && substr($1, 0, 1) eq substr($open, 0, 1) && length $1 >= length $open;
       }
       elsif ($line =~ /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/) { $open = $1 }
@@ -119,7 +119,8 @@ perl -MEncode -0777 -pe '
     };
     my $closing = closing_markup($kept);
     if (length($kept . $closing . $notice->($kept)) > 65536) {
-      $kept = substr($kept, 0, 65536 - length($closing) - length($notice->($kept)) - 1);
+      my $room = 65536 - length($closing) - length($notice->($kept)) - 1;
+      $kept = substr($kept, 0, $room < 0 ? 0 : $room);
       $closing = closing_markup($kept);
       # The alert has to arrive: a body over the limit is refused whole, so one the
       # shorter cut still cannot close goes unclosed.

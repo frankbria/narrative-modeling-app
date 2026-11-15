@@ -330,6 +330,17 @@ def test_a_fence_closed_by_a_crlf_line_is_closed():
     assert not kept.endswith("```"), kept[-20:]
 
 
+def test_a_no_break_space_after_backticks_does_not_close_a_fence():
+    kept, _ = _cut("```\n``` \n" + "y" * 70_000)
+    assert kept.endswith("\n```"), kept[-20:]
+
+
+def test_markup_that_could_never_fit_leaves_the_notice_alone_and_outside():
+    kept, notice = _cut("<details>\n" * 7_000 + "```\n" + "y" * 70_000)
+    assert kept == "", kept[-30:]
+    assert notice.startswith("1")  # every character was cut
+
+
 def test_closing_markup_that_does_not_fit_makes_room_by_cutting_more():
     """The alert must arrive (``_cut`` checks the length) and its notice must still
     be outside the fence and every <details>."""
