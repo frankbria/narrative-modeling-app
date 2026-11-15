@@ -17,7 +17,7 @@ const FRONTEND = join(__dirname, '..', '..', '..')
 const REPOSITORY = join(FRONTEND, '..', '..')
 const PLAUSIBLE_ORIGIN = new URL(PLAUSIBLE_EVENT_URL).origin
 
-/** Dependencies and build or test output, at any depth. `.next` is named too, so the list does not lean on glob skipping dot folders. */
+/** Dependencies and build or test output, at any depth (glob skips dot folders such as `.next` already; it is named so the list is whole). */
 const GENERATED_FOLDERS = ['node_modules', 'coverage', '.next', 'out', 'build', 'dist', 'playwright-report', 'test-results']
 const IN_GENERATED_FOLDERS = `**/{${GENERATED_FOLDERS.join(',')}}/**`
 
@@ -86,25 +86,28 @@ const policiesIn = (value: string) => value.split(',').filter((policy, index) =>
 
 /**
  * Where a policy header starts; the report-only one never blocks a request, so its value is left out.
- * A name at the end of a path (an MDN link, an `href`) is a mention, not a header.
+ * A name right after a `/` (an MDN link, an `href`, any path) is a mention: no header is written so.
  */
 const AT_A_HEADER = /(?<![\w/-])(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
+const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
+/**
+ * What makes `Name:` a label: words up to the closing quote, starting with a letter, with no directive
+ * name and nothing that builds or escapes a value (`$`, `\`). A policy of only directives browsers do
+ * not know (`made-up-directive x`) restricts nothing. shortcut: a directive the spec adds without
+ * `-src` reads as a word; add it to DIRECTIVE_NAME.
+ */
+const LABEL_TEXT = String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^'"\`$\\\n])+['"\`]`
 /**
  * A header name, not a mention. In code its own closing quote (or the next string) follows it, or a
- * colon and a directive name (a serialized `Name: policy` line), which prose such as `the
+ * colon (a serialized `Name: policy` line) that LABEL_TEXT does not follow, which prose such as `the
  * Content-Security-Policy is…` or a `Content-Security-Policy: see the wiki` label has not;
  * `'our Content-Security-Policy'` still reads as a name kept in a constant, and is refused. In
  * nginx, where prose sits only in the comments already removed, any whole name counts (an unquoted
- * value is valid there). shortcut: a serialized policy whose first directive is not one of
- * DIRECTIVE_NAME's is read as a label; add the name when the spec gains one without `-src`.
+ * value is valid there).
  */
-const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
 const HEADER_NAME_IN_NGINX = /^content-security-policy(?![\w-])/i
-const HEADER_NAME_IN_CODE = new RegExp(
-  String.raw`^content-security-policy(?![\w-])(?=['"\`]|\s*['"\`]|\s*:${ASCII_SPACE}*${DIRECTIVE_NAME}(?:${ASCII_SPACE}|[;,'"\`]|$)|$)`,
-  'i',
-)
+const HEADER_NAME_IN_CODE = new RegExp(String.raw`^content-security-policy(?![\w-])(?=['"\`]|\s*['"\`]|\s*:(?!${LABEL_TEXT})|$)`, 'i')
 /** The header name with the quote that closes its own string in code. */
 const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
 
@@ -188,7 +191,7 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
 
   it('skips build and test output, which no deploy serves a header from, by name', () => {
     const root = mkdtempSync(join(tmpdir(), 'csp-guard-'))
-    const generated = ['node_modules', 'coverage', '.next', 'out', 'build', 'dist', 'playwright-report', 'test-results', 'apps/frontend/out']
+    const generated = ['node_modules', 'coverage', 'out', 'build', 'dist', 'playwright-report', 'test-results', 'apps/frontend/out']
     for (const file of ['middleware.ts', 'nginx-staging.conf', ...generated.flatMap((folder) => [`${folder}/chunk.js`, `${folder}/nginx.conf`])]) {
       mkdirSync(dirname(join(root, file)), { recursive: true })
       writeFileSync(join(root, file), '')
@@ -396,6 +399,15 @@ const note = "connect-src https://plausible.io"`)
       ['a directive with no sources', `const line = 'Content-Security-Policy: upgrade-insecure-requests'`],
       ['a directive name the spec may add', `const line = 'Content-Security-Policy: future-src https://plausible.io'`],
       ['sandbox, a directive without a hyphen', `const line = 'Content-Security-Policy: SANDBOX allow-scripts'`],
+      ['a directive after one browsers ignore', `const line = "Content-Security-Policy: made-up-directive script; default-src 'none'"`],
+      ['a directive after an empty one', `const line = "Content-Security-Policy: ; default-src 'none'"`],
+      ['a substitution', 'const line = `Content-Security-Policy: ${policy}`'],
+      ['a concatenation', "const line = 'Content-Security-Policy: ' + policy"],
+      ['the name and colon ending their string', `const lines = ['Content-Security-Policy:', "default-src 'none'"]`],
+      ['an escaped tab', String.raw`const line = "Content-Security-Policy:\tdefault-src 'none'"`],
+      ['an escaped letter', String.raw`const line = "Content-Security-Policy: \u0064efault-src 'none'"`],
+      ['a substitution after a word', 'const line = `Content-Security-Policy: made-up ${policy}`'],
+      ['an escape after a word', String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
     ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
       expect(policyProblems([code(text)])).toEqual(['middleware.ts: a policy without connect-src'])
     })
