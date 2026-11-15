@@ -204,8 +204,10 @@ else
 fi
 export AWS_REGION=${AWS_REGION:-us-east-1}
 
-# OpenAI API configuration (test/mock value for E2E)
-export OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-e2e-testing}
+# No OpenAI client in the E2E backend (#1243): a dummy key sent every summary to
+# api.openai.com and waited for its 401. Blank, not unset: the backend loads
+# apps/backend/.env without override, so this also beats a developer's own key.
+export OPENAI_API_KEY=
 
 echo ""
 echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
