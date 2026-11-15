@@ -4,7 +4,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from openai import OpenAIError
+from openai import OpenAI, OpenAIError
 
 from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
@@ -157,14 +157,6 @@ def prepare_dataset_summary_from_df(df: "pd.DataFrame", filename: str) -> dict[s
     return summary
 
 
-@with_circuit_breaker(
-    "openai",
-    max_attempts=3,
-    failure_threshold=5,
-    recovery_timeout=60.0,
-    exceptions=(OpenAIError, Exception),
-    fallback_value=None
-)
 async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
     """
     Call the OpenAI API to generate an AI summary of the dataset.
@@ -173,11 +165,25 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
         dataset_summary: A dictionary containing the dataset summary
 
     Returns:
-        An AISummary object if successful, None otherwise
+        An AISummary object if successful, None otherwise (always None with no key,
+        checked before the breaker so a keyless summary spends no AI ceiling, #1256)
     """
     if not client:
         return None
+    return await _summarize_with_openai(client, dataset_summary)
 
+
+@with_circuit_breaker(
+    "openai",
+    max_attempts=3,
+    failure_threshold=5,
+    recovery_timeout=60.0,
+    exceptions=(OpenAIError, Exception),
+    fallback_value=None
+)
+async def _summarize_with_openai(
+    openai_client: OpenAI, dataset_summary: dict[str, Any]
+) -> AISummary | None:
     try:
         # Convert the dataset summary to a JSON string
         dataset_json = json.dumps(dataset_summary, indent=2)
@@ -216,15 +222,16 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
         # this runs in an async BackgroundTask after every upload, so calling it
         # inline would block the worker for the whole round-trip (#501).
         response = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_tokens=2000,
-            response_format={"type": "json_object"},
+            lambda: openai_client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+                response_format={"type": "json_object"},
+            )
         )
 
         # Extract the response content
@@ -232,7 +239,7 @@ async def call_openai_api(dataset_summary: dict[str, Any]) -> AISummary | None:
 
         # Parse the JSON response
         try:
-            summary_json = json.loads(content)
+            summary_json = json.loads(content or "")
 
             # Create and return an AISummary object
             return AISummary(

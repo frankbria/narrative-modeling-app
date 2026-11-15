@@ -295,3 +295,19 @@ async def test_with_a_key_a_missing_summary_is_still_an_error(setup_database, ca
         str(doc.id) in r.getMessage() and r.levelno == logging.ERROR
         for r in caplog.records
     )
+
+
+@pytest.mark.asyncio
+async def test_a_keyless_summary_never_reaches_the_ai_ceiling(caplog):
+    """#1256: the key is checked before the breaker, so a keyless summary spends
+    none of the daily AI ceiling, and a spent ceiling cannot turn it into an
+    ERROR or WARNING."""
+    admit = AsyncMock(return_value=False)
+    with patch("app.utils.ai_summary.client", None), patch(
+        "app.billing.ai_ceiling.admit", admit
+    ), caplog.at_level(logging.DEBUG):
+        result = await call_openai_api({"filename": "t.csv", "columns": []})
+
+    assert result is None
+    admit.assert_not_awaited()
+    assert [r.getMessage() for r in caplog.records if r.levelno > logging.INFO] == []
