@@ -89,17 +89,18 @@ const stringsOf = (part: string) => [...part.replace(NAME_AND_ITS_QUOTE, '').mat
  * A header's value: the string right after its name, with only a separator between them (`, `,
  * `: `, `, value: ` or a space), so `headers.set(name, policy)`, `base + "…"` or a fallback before
  * the string has none; and only when the string ends the expression: a `+` or `.concat(…)` after it,
- * or a later spread or `value:` in the same object, means the emitted value is not this string, so
- * none is read and the header is refused. So is a
+ * or anything after it in the same object or call (a spread or a later key could replace it; write
+ * the value last), means the emitted value is not this string, so none is read and the header is
+ * refused. So is a
  * value holding a `\` (a JS escape such as `\u002c` emits a comma) or a `$` (a `${…}` substitution,
  * an nginx variable), whose emitted value is not its text. shortcut: a header name written with an
  * escape (`Content-\x53ecurity-Policy`) is not found; decode strings if one is ever written so.
  * shortcut: valid policies are refused too (fails closed): an nginx nonce (`'nonce-$request_id'`),
  * the origin with a trailing slash, a `<meta httpEquiv>` policy; allow each when one is wanted.
  */
-/** After a comma, the rest of the object up to its `}`: no spread and no second `value:` that would replace the value. */
-const NOT_REPLACED_LATER = String.raw`(?![^}]*(?:\.\.\.|\bvalue\s*:))`
-const HEADER_VALUE = new RegExp(String.raw`^\s*(?:[,:]\s*(?:value\s*:\s*)?)?(${STRING_LITERAL.source})(?=\s*(?:,${NOT_REPLACED_LATER}|[;)}\]]|always\b|$))`)
+/** A comma after the value may only be the trailing one: anything after it in the object (a spread, a later key in any spelling) could replace the value. */
+const TRAILING_COMMA = String.raw`\s*[)}]`
+const HEADER_VALUE = new RegExp(String.raw`^\s*(?:[,:]\s*(?:value\s*:\s*)?)?(${STRING_LITERAL.source})(?=\s*(?:,${TRAILING_COMMA}|[;)}\]]|always\b|$))`)
 const headerValue = (header: string) => {
   const literal = HEADER_VALUE.exec(header.replace(NAME_AND_ITS_QUOTE, ''))?.[1]
   return literal === undefined || /[\\$]/.test(literal.slice(1, -1)) ? '' : literal.slice(1, -1)
@@ -276,6 +277,11 @@ const note = "connect-src https://plausible.io"`)
       expect(policyProblems([middleware])).toEqual(['middleware.ts: a policy without connect-src'])
     })
 
+    it('accepts a value with a trailing comma, last in its object or call', () => {
+      expect(policyProblems([code("{\n  key: 'Content-Security-Policy',\n  value: 'connect-src https://plausible.io',\n}")])).toEqual([])
+      expect(policyProblems([code("res.headers.set(\n  'Content-Security-Policy',\n  'connect-src https://plausible.io',\n)")])).toEqual([])
+    })
+
     it('reads a Next header value written on the line after its name', () => {
       const nextHeader = code(`{
   key: 'Content-Security-Policy',
@@ -311,6 +317,8 @@ const note = "connect-src https://plausible.io"`)
       ['a header after a link in JSX text', code(`<p>docs at https://example.com</p>; res.headers.set('Content-Security-Policy', "default-src 'none'")`), ['a policy without connect-src']],
       ['a value a later spread replaces', code("headers: [{\n  key: 'Content-Security-Policy',\n  value: 'connect-src https://plausible.io',\n  ...override,\n}]"), ['a policy without connect-src']],
       ['a value a later duplicate key replaces', code("{ key: 'Content-Security-Policy', value: 'connect-src https://plausible.io', value: override.value }"), ['a policy without connect-src']],
+      ['a value a later quoted key replaces', code("{ key: 'Content-Security-Policy', value: 'connect-src https://plausible.io', 'value': override.value }"), ['a policy without connect-src']],
+      ['a value a later computed key replaces', code(`{ key: 'Content-Security-Policy', value: 'connect-src https://plausible.io', ["value"]: override.value }`), ['a policy without connect-src']],
     ])('refuses %s, which browsers read differently', (_where, source, problems) => {
       expect(policyProblems([source])).toEqual(problems.map((problem) => `${source.file}: ${problem}`))
     })
