@@ -26,37 +26,43 @@ const edgeFiles = globSync('nginx*.conf', { cwd: REPOSITORY }).map((file) => joi
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
 
 /**
- * Each `connect-src` directive's sources, up to the end of the directive or of the string holding it.
- * A single quote cannot end it (keywords are written `'self'`), so one closing a JS string is
- * trimmed off the last source. A list split across array items reads as empty and is refused.
+ * Each `connect-src` directive's sources, up to the end of the directive (`;`), of the policy (`,`
+ * starts another one) or of the string holding it. A single quote cannot end it (keywords are
+ * written `'self'`), so one closing a JS string is trimmed off the last source. A list split across
+ * array items reads as empty and is refused; so is `x-connect-src`, which browsers ignore.
  */
 const connectSources = (text: string) =>
-  [...text.matchAll(/connect-src([^;"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/).map((source) => source.replace(/['),]+$/, '')))
-
-/** How many times the file names the header: each one can be a policy the browser enforces. */
-const policyCount = (text: string) => text.match(/content-security-policy/gi)?.length ?? 0
+  [...text.matchAll(/(?<![\w-])connect-src([^;,"`\n]*)/gi)].map((match) => match[1].trim().split(/\s+/).map((source) => source.replace(/'$/, '')))
 
 /**
- * The text with every comment removed (block, `//` outside an address, nginx `#`), so no note can
- * stand in for a directive. Only directives are read from it: cutting too much can only refuse.
+ * The text with its comments removed (block, `//`, nginx `#`), so no note can stand in for a
+ * directive. A comment marker counts only at a line start or after a space: one inside a source
+ * (a block comment glued to the Plausible origin) stays and keeps that source refused.
  */
 const withoutComments = (text: string) =>
   text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
-    .replace(/#.*$/gm, '')
+    .replace(/(^|\s)\/\*[\s\S]*?\*\//g, '$1')
+    .replace(/(^|\s)(\/\/|#).*$/gm, '$1')
 
 /**
  * What the guard reports, one text per file: empty when the counts can reach Plausible. A browser
- * enforces every policy it receives (Next's, the edge's, a `location` block's), so each header the
- * file names needs a `connect-src` of its own there. shortcut: a policy whose directives live in
- * another file than its header is refused too; pair them across files when such a file exists.
+ * enforces every policy it receives (Next's, the edge's, a `location` block's, each one of a
+ * comma-separated value), so the text after each header name, up to the next one, and each policy
+ * after a comma in it need a `connect-src` of their own, and every one must list Plausible.
+ * shortcut: a header whose value is written before it or in another file (`headers.set(name, policy)`)
+ * is refused; pair them by variable when such a file exists.
  */
 function policyProblems(texts: string[]): string[] {
   return texts.flatMap((text) => {
-    const directives = connectSources(withoutComments(text))
-    const blocking = directives.filter((list) => !list.includes(PLAUSIBLE_ORIGIN)).map((list) => `connect-src ${list.join(' ')}`)
-    return directives.length < policyCount(text) ? [...blocking, 'a policy without connect-src'] : blocking
+    const [beforeAnyPolicy, ...headers] = text.split(/content-security-policy/i).map(withoutComments)
+    // One header value can carry several policies, comma-separated; each one starts with a directive.
+    const policies = headers.flatMap((header) => header.split(/,(?=\s*[a-z-]+-src\b)/i))
+    const blocking = [beforeAnyPolicy, ...policies]
+      .flatMap(connectSources)
+      .filter((list) => !list.includes(PLAUSIBLE_ORIGIN))
+      .map((list) => `connect-src ${list.join(' ')}`)
+    const withoutConnectSource = policies.filter((policy) => connectSources(policy).length === 0).map(() => 'a policy without connect-src')
+    return [...blocking, ...withoutConnectSource]
   })
 }
 
@@ -117,6 +123,26 @@ location = /pricing { add_header Content-Security-Policy "default-src 'self'" al
 
     it('accepts Plausible at the end of a single-quoted string', () => {
       expect(policyProblems(["const policy = 'connect-src https://plausible.io'"])).toEqual([])
+    })
+
+    it.each([
+      ['a second policy after a comma', `add_header Content-Security-Policy "connect-src https://plausible.io, default-src 'self'" always;`, ['a policy without connect-src']],
+      [
+        'a policy whose doubled directive would cover the next one',
+        `add_header Content-Security-Policy "connect-src https://plausible.io; connect-src https://plausible.io" always;
+location = /pricing { add_header Content-Security-Policy "default-src 'self'" always; }`,
+        ['a policy without connect-src'],
+      ],
+      ['a comment marker inside a source', `add_header Content-Security-Policy "connect-src https://plausible.io/*blocked*/" always;`, ['connect-src https://plausible.io/*blocked*/']],
+      ['a directive browsers do not know', `add_header Content-Security-Policy "default-src 'self'; x-connect-src https://plausible.io" always;`, ['a policy without connect-src']],
+    ])('refuses %s', (_where, text, problems) => {
+      expect(policyProblems([text])).toEqual(problems)
+    })
+
+    it('refuses a header whose policy is written before it', () => {
+      expect(policyProblems(["const policy = `connect-src https://plausible.io`\nheaders.set('Content-Security-Policy', policy)"])).toEqual([
+        'a policy without connect-src',
+      ])
     })
 
     it('accepts sources that set no policy', () => {
