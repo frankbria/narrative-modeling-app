@@ -25,8 +25,9 @@ can be wrong are not symmetric, and each is handled:
   rewrites what has drifted. `.github/workflows/subscription-reconcile.yml` runs
   it with `--apply` in the staging backend container every day and opens an issue
   when it does not exit 0, so the repair lands inside `ENTITLEMENT_GRACE` as long
-  as that workflow is green. A deployment that workflow does not reach has
-  webhooks only.
+  as that workflow is green. A Stripe the box cannot reach on two runs in a row
+  fails it too (`stripe_unreachable_since`, #1228). A deployment that workflow
+  does not reach has webhooks only.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -183,6 +184,14 @@ class Subscription(Document):
     # subscriptions written before it existed still validate.
     last_event_at: datetime | None = Field(
         None, description="`created` of the newest Stripe event applied"
+    )
+
+    # Written and cleared only by the reconciliation, with raw writes that leave
+    # `updated_at` alone, so its race check on repairs is unaffected (#1228).
+    stripe_unreachable_since: datetime | None = Field(
+        None,
+        description="When the reconciliation first found Stripe busy or unreachable "
+        "for this row; cleared by the next read Stripe answers",
     )
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

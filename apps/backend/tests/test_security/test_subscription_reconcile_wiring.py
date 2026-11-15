@@ -288,3 +288,30 @@ def test_the_alert_never_publishes_the_box():
     reconcile, report = _steps()[RECONCILE]["env"], _steps()[REPORT]["env"]
     for name in ("HOST", "DEPLOY_USER", "DEPLOY_PATH"):
         assert report[name] == reconcile[name], name
+
+
+def test_stripe_busy_across_runs_is_explained_with_what_to_check():
+    """#1228: exit 5 is the module's "Stripe has been unreachable since the
+    previous run", which a missed renewal cannot wait out."""
+    posted = _posted_alert({"reconcile.status": "5"})
+    assert "Exit status 5: " in posted
+    assert "api.stripe.com" in posted and "status.stripe.com" in posted
+
+
+def test_a_run_that_did_not_finish_points_at_the_other_counts_too():
+    """#1228 review item (b): exit 3 hides a 1 behind it."""
+    posted = _posted_alert({"reconcile.status": "3"})
+    assert "missing, unreadable and changed counts" in posted
+
+
+def test_the_module_stops_itself_well_inside_the_job_timeout():
+    """#1228: a hanging Stripe must be reported by the module, not by a cancelled
+    job. About two minutes go to Tailscale, ssh and the container start, and a read
+    cancelled at the deadline keeps its thread until the SDK's own timeout (two
+    attempts of `REQUEST_TIMEOUT_SECONDS`)."""
+    from app.billing import stripe_client
+    from app.billing.reconcile_subscriptions import RUN_BUDGET_SECONDS
+
+    job_seconds = _doc()["jobs"]["reconcile"]["timeout-minutes"] * 60
+    drain = 2 * stripe_client.REQUEST_TIMEOUT_SECONDS
+    assert RUN_BUDGET_SECONDS + drain + 120 <= job_seconds - 60

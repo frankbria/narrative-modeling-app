@@ -753,3 +753,184 @@ def test_a_wrapper_without_a_cause_is_named_itself():
 
     bare = BillingProviderError("no cause")
     assert reconcile_subscriptions._stripe_error(bare) is bare
+
+
+async def _busy(_subscription_id):
+    return reconcile_subscriptions.ReadFailure.UNAVAILABLE
+
+
+async def _marker(user_id: str):
+    row = await _collection().find_one({"user_id": user_id})
+    return row.get("stripe_unreachable_since")
+
+
+class TestStripeBusyAcrossRuns:
+    """#1228: a Stripe that stays unreachable from the box for days is a lost
+    renewal, not a transient failure, and has to reach the alert."""
+
+    async def test_a_first_busy_run_marks_the_row_and_does_not_alert(
+        self, setup_database
+    ):
+        await _seed("u-first-busy")
+        before = await _collection().find_one({"user_id": "u-first-busy"})
+
+        code = await _load_reconcile()(_collection(), _busy, apply=True)
+
+        assert code == 0
+        after = await _collection().find_one({"user_id": "u-first-busy"})
+        assert after["stripe_unreachable_since"] is not None
+        # The repair's race check reads `updated_at`; the marker must not move it.
+        assert after["updated_at"] == before["updated_at"]
+
+    async def test_a_row_busy_on_the_previous_run_too_alerts(
+        self, setup_database, capsys
+    ):
+        since = datetime.now(UTC) - timedelta(days=1)
+        await _seed("u-still-busy", stripe_unreachable_since=since)
+
+        code = await _load_reconcile()(_collection(), _busy, apply=True)
+
+        out = capsys.readouterr().out
+        assert code == 5
+        assert "stripe busy or unreachable:     1" in out
+        assert "busy on the previous run too:   1" in out
+        assert "api.stripe.com" in out and "status.stripe.com" in out
+        assert as_utc(await _marker("u-still-busy")) == since.replace(
+            microsecond=since.microsecond // 1000 * 1000
+        ), "the first busy run is when the clock started"
+
+    async def test_a_row_busy_for_a_few_hours_does_not_alert(self, setup_database):
+        await _seed(
+            "u-recent", stripe_unreachable_since=datetime.now(UTC) - timedelta(hours=2)
+        )
+
+        assert await _load_reconcile()(_collection(), _busy, apply=True) == 0
+
+    async def test_a_read_stripe_answers_clears_the_marker(self, setup_database):
+        since = datetime.now(UTC) - timedelta(days=1)
+        await _seed(
+            "u-back", stripe_subscription_id="sub_back", stripe_unreachable_since=since
+        )
+        await _seed(
+            "u-gone", stripe_subscription_id="sub_gone", stripe_unreachable_since=since
+        )
+
+        async def fetch(subscription_id):
+            if subscription_id == "sub_gone":
+                return reconcile_subscriptions.ReadFailure.MISSING
+            return _remote("active", None)
+
+        assert await _load_reconcile()(_collection(), fetch, apply=True) == 1
+        assert await _marker("u-back") is None
+        assert await _marker("u-gone") is None, "Stripe answered: it is reachable"
+
+    async def test_a_dry_run_reads_the_marker_and_never_writes_it(self, setup_database):
+        await _seed("u-dry-new", stripe_subscription_id="sub_dry_new")
+        await _seed(
+            "u-dry-old",
+            stripe_subscription_id="sub_dry_old",
+            stripe_unreachable_since=datetime.now(UTC) - timedelta(days=2),
+        )
+
+        assert await _load_reconcile()(_collection(), _busy, apply=False) == 5
+        assert await _marker("u-dry-new") is None
+
+    async def test_a_missing_row_keeps_exit_1_and_the_busy_help_is_still_printed(
+        self, setup_database, capsys
+    ):
+        await _seed("u-miss", stripe_subscription_id="sub_miss")
+        await _seed(
+            "u-stuck",
+            stripe_subscription_id="sub_stuck",
+            stripe_unreachable_since=datetime.now(UTC) - timedelta(days=1),
+        )
+
+        async def fetch(subscription_id):
+            if subscription_id == "sub_miss":
+                return reconcile_subscriptions.ReadFailure.MISSING
+            return reconcile_subscriptions.ReadFailure.UNAVAILABLE
+
+        assert await _load_reconcile()(_collection(), fetch, apply=True) == 1
+        assert "api.stripe.com" in capsys.readouterr().out
+
+
+class TestRunBudget:
+    """#1228: a Stripe that hangs instead of refusing is reported by the module,
+    before the job's own timeout cancels it with nothing said."""
+
+    async def test_reads_still_hanging_at_the_budget_are_counted_busy(
+        self, setup_database, capsys
+    ):
+        rows = reconcile_subscriptions.CONCURRENT_READS + 2
+        for n in range(rows):
+            await _seed(f"u-hang-{n}", stripe_subscription_id=f"sub_hang_{n}")
+        asked: list[str] = []
+
+        async def hangs(subscription_id):
+            asked.append(subscription_id)
+            await asyncio.Event().wait()
+
+        started = time.monotonic()
+        code = await _load_reconcile()(
+            _collection(), hangs, apply=True, budget_seconds=0.3
+        )
+
+        out = capsys.readouterr().out
+        assert time.monotonic() - started < 5
+        assert code == 0, "a first busy run does not alert"
+        assert len(asked) == reconcile_subscriptions.CONCURRENT_READS
+        assert f"stripe busy or unreachable:     {rows}" in out
+        assert "not reached in the time limit: 2" in out
+        for n in range(rows):
+            assert await _marker(f"u-hang-{n}") is not None
+
+    async def test_rows_not_reached_on_two_runs_alert(self, setup_database, capsys):
+        await _seed(
+            "u-never-reached",
+            stripe_unreachable_since=datetime.now(UTC) - timedelta(days=1),
+        )
+
+        async def fetch(_subscription_id):  # pragma: no cover - the budget is spent
+            raise AssertionError("no time was left to ask Stripe")
+
+        code = await _load_reconcile()(
+            _collection(), fetch, apply=True, budget_seconds=0
+        )
+
+        assert code == 5
+        assert "not reached in the time limit: 1" in capsys.readouterr().out
+
+    async def test_a_cursor_that_fails_cancels_the_reads_in_flight(
+        self, setup_database
+    ):
+        for n in range(3):
+            await _seed(f"u-cursor-{n}", stripe_subscription_id=f"sub_cursor_{n}")
+        collection = _collection()
+        cancelled: list[str] = []
+
+        class FailsAfterTwo:
+            def find(self, *args, **kwargs):
+                async def rows():
+                    handed = 0
+                    async for row in collection.find(*args, **kwargs):
+                        if handed == 2:
+                            await asyncio.sleep(0.05)  # the two reads start
+                            raise RuntimeError("cursor lost")
+                        handed += 1
+                        yield row
+
+                return rows()
+
+            def __getattr__(self, name):
+                return getattr(collection, name)
+
+        async def hangs(subscription_id):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.append(subscription_id)
+
+        with pytest.raises(RuntimeError, match="cursor lost"):
+            await _load_reconcile()(FailsAfterTwo(), hangs, apply=False)
+
+        assert sorted(cancelled) == ["sub_cursor_0", "sub_cursor_1"]
