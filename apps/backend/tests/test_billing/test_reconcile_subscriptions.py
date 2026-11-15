@@ -1077,3 +1077,329 @@ class TestRunBudget:
             await _load_reconcile()(FailsAfterTwo(), hangs, apply=False)
 
         assert sorted(cancelled) == ["sub_cursor_0", "sub_cursor_1"]
+
+
+@pytest.fixture
+async def resume(setup_database):
+    """Where `--apply` keeps the row the next run starts from (#1239), cleared
+    around each test because no Beanie model owns the collection."""
+    collection = _collection().database[reconcile_subscriptions.RESUME_COLLECTION]
+    await collection.delete_many({})
+    yield collection
+    await collection.delete_many({})
+
+
+def _answers_then_hangs(answers: int, asked: list[str]):
+    """A Stripe that answers `answers` reads on this run and hangs on the rest,
+    as one that is slow enough for the budget to run out does."""
+
+    async def fetch(subscription_id: str):
+        asked.append(subscription_id)
+        if len(asked) > answers:
+            await asyncio.Event().wait()
+        return _remote("unpaid", None)
+
+    return fetch
+
+
+async def _seed_numbered(prefix: str, rows: int) -> list[str]:
+    ids = [f"sub_{prefix}_{n}" for n in range(rows)]
+    for n, subscription_id in enumerate(ids):
+        await _seed(f"u-{prefix}-{n}", stripe_subscription_id=subscription_id)
+    return ids
+
+
+async def _row_id(subscription_id: str):
+    row = await _collection().find_one({"stripe_subscription_id": subscription_id})
+    return row["_id"]
+
+
+async def _store_resume_from(resume, subscription_id: str) -> None:
+    await resume.insert_one(
+        {
+            "_id": reconcile_subscriptions.RESUME_ID,
+            "resume_from": await _row_id(subscription_id),
+        }
+    )
+
+
+async def _stored_resume_point(resume):
+    stored = await resume.find_one({"_id": reconcile_subscriptions.RESUME_ID})
+    return stored["resume_from"]
+
+
+class TestATableLargerThanOneRun:
+    """#1239: the rows one run's budget does not reach are read first on the
+    next, so a table up to two runs' worth is read in full every two runs."""
+
+    async def test_two_runs_repair_a_table_one_run_cannot_reach(self, resume):
+        ids = await _seed_numbered("big", 10)
+
+        for _run in range(2):
+            await _load_reconcile()(
+                _collection(),
+                _answers_then_hangs(6, []),
+                apply=True,
+                budget_seconds=0.3,
+                resume=resume,
+            )
+
+        statuses = {
+            row["stripe_subscription_id"]: row["status"]
+            async for row in _collection().find({})
+        }
+        assert statuses == dict.fromkeys(ids, SubscriptionStatus.CANCELED.value)
+
+    async def test_rows_cut_short_by_the_deadline_come_first_next_run(self, resume):
+        """Rows in flight at the deadline were never read: resuming after them
+        would send them to the back of the queue."""
+        ids = await _seed_numbered("cut", 10)
+        asked: list[str] = []
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(3, asked),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        assert asked == ids[: 3 + reconcile_subscriptions.CONCURRENT_READS]
+        assert await _stored_resume_point(resume) == await _row_id(ids[3])
+
+    async def test_the_next_run_starts_at_the_first_row_not_read(self, resume):
+        ids = await _seed_numbered("order", 10)
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(3, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+        asked: list[str] = []
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(len(ids), asked),
+            apply=True,
+            resume=resume,
+        )
+
+        assert asked == ids[3:] + ids[:3], "from the first row not read, then wrap"
+
+    async def test_a_stop_before_the_wrap_counts_the_rows_on_both_sides(
+        self, resume, capsys
+    ):
+        """Resuming mid-table and stopping before the end leaves the end of the
+        table and its beginning, up to where the run started."""
+        ids = await _seed_numbered("both", 12)
+        await _store_resume_from(resume, ids[2])
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(3, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        # 2..4 answered, 5..9 in flight at the deadline, 10, 11, 0 and 1 not reached.
+        out = capsys.readouterr().out
+        assert "not reached in the time limit:  4" in out
+        assert "stripe busy or unreachable:     9" in out
+        for n in (10, 11, 0, 1):
+            assert await _marker(f"u-both-{n}") is not None
+        for n in (2, 3, 4):
+            assert await _marker(f"u-both-{n}") is None
+
+    async def test_a_stop_after_the_wrap_counts_only_the_rows_left(
+        self, resume, capsys
+    ):
+        ids = await _seed_numbered("left", 12)
+        await _store_resume_from(resume, ids[6])
+
+        asked: list[str] = []
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(6, asked),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        out = capsys.readouterr().out
+        assert asked == ids[6:] + ids[:5]
+        # 6..11 answered, 0..4 in flight at the deadline, 5 not reached.
+        assert "not reached in the time limit:  1" in out
+        assert await _stored_resume_point(resume) == await _row_id(ids[0])
+
+    async def test_a_run_that_reaches_every_row_starts_the_next_at_the_top(
+        self, resume
+    ):
+        ids = await _seed_numbered("full", 4)
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(2, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+        await _load_reconcile()(
+            _collection(),
+            _answering(_remote("unpaid", None)),
+            apply=True,
+            resume=resume,
+        )
+        asked: list[str] = []
+
+        async def records(subscription_id):
+            asked.append(subscription_id)
+            return _remote("unpaid", None)
+
+        await _load_reconcile()(_collection(), records, apply=True, resume=resume)
+
+        assert asked == ids
+
+    async def test_a_read_only_run_follows_the_resume_point_and_never_moves_it(
+        self, resume
+    ):
+        ids = await _seed_numbered("dry", 6)
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(1, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+        stored = await resume.find_one({})
+        asked: list[str] = []
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(2, asked),
+            apply=False,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        assert asked[0] == ids[1]
+        assert await resume.find_one({}) == stored
+
+    async def test_cut_short_rows_either_side_of_the_wrap_resume_at_the_earlier(
+        self, resume
+    ):
+        """The first row not read is the first in this run's order, which is
+        not the lowest `_id` once the run has wrapped round."""
+        ids = await _seed_numbered("side", 10)
+        await _store_resume_from(resume, ids[8])
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(1, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        # 8 answered; 9, 0, 1, 2, 3 in flight at the deadline; stopped at 4.
+        assert await _stored_resume_point(resume) == await _row_id(ids[9])
+
+    async def test_a_row_stripe_refused_does_not_move_the_next_start(self, resume):
+        """Busy before the deadline is Stripe's answer, settled by the retries;
+        only the deadline leaves a row unread."""
+        ids = await _seed_numbered("refused", 4)
+
+        async def refuses_one(subscription_id):
+            if subscription_id == ids[1]:
+                return reconcile_subscriptions.ReadFailure.UNAVAILABLE
+            return _remote("unpaid", None)
+
+        await _load_reconcile()(_collection(), refuses_one, apply=True, resume=resume)
+
+        assert await _stored_resume_point(resume) is None
+
+    async def test_a_run_with_no_time_left_keeps_its_place(self, resume):
+        ids = await _seed_numbered("still", 6)
+        await _store_resume_from(resume, ids[4])
+
+        async def fetch(_subscription_id):  # pragma: no cover - the budget is spent
+            raise AssertionError("no time was left to ask Stripe")
+
+        await _load_reconcile()(
+            _collection(), fetch, apply=True, budget_seconds=0, resume=resume
+        )
+
+        assert await _stored_resume_point(resume) == await _row_id(ids[4])
+
+    async def test_the_scheduled_command_keeps_its_resume_point(
+        self, resume, stripe_run, monkeypatch
+    ):
+        """`main()` hands `reconcile()` the database's resume collection."""
+        ids = await _seed_numbered("cli", 3)
+        asked: list[str] = []
+
+        async def retrieve(subscription_id):
+            asked.append(subscription_id)
+            if len(asked) > 1:
+                await asyncio.Event().wait()
+            return _sdk_subscription("active", 1_900_000_000)
+
+        monkeypatch.setattr(
+            reconcile_subscriptions.stripe_client, "retrieve_subscription", retrieve
+        )
+        monkeypatch.setattr(reconcile_subscriptions, "RUN_BUDGET_SECONDS", 0.3)
+
+        await reconcile_subscriptions.main()
+
+        assert await _stored_resume_point(resume) == await _row_id(ids[1])
+
+
+def test_the_command_flushes_logging_before_it_exits():
+    """#1239: `os._exit` skips the interpreter's own shutdown, so a buffered log
+    record written by the run would be lost without an explicit flush."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = (
+        "import logging, logging.handlers, sys\n"
+        "from app.billing import reconcile_subscriptions as module\n"
+        "target = logging.StreamHandler(sys.stdout)\n"
+        "logging.getLogger('run').addHandler(\n"
+        "    logging.handlers.MemoryHandler(1000, target=target))\n"
+        "logging.getLogger('run').setLevel(logging.INFO)\n"
+        "async def logs_then_status():\n"
+        "    logging.getLogger('run').info('buffered line')\n"
+        "    return 0\n"
+        "module.main = logs_then_status\n"
+        "module._cli()\n"
+    )
+    backend = Path(reconcile_subscriptions.__file__).resolve().parents[2]
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=backend,
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(backend)},
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "buffered line" in done.stdout
+
+
+def test_the_command_flushes_sentry_before_it_exits(monkeypatch):
+    flushed: list[float] = []
+    monkeypatch.setattr(
+        reconcile_subscriptions.sentry_sdk,
+        "flush",
+        lambda timeout: flushed.append(timeout),
+    )
+    exits: list[int] = []
+    monkeypatch.setattr(reconcile_subscriptions.os, "_exit", exits.append)
+
+    async def status():
+        return 0
+
+    monkeypatch.setattr(reconcile_subscriptions, "main", status)
+    reconcile_subscriptions._cli()
+
+    assert flushed and exits == [0]
