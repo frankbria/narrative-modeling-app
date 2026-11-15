@@ -92,7 +92,11 @@ keep=" $BACKEND_IMAGE $FRONTEND_IMAGE $rollback_backend $rollback_frontend "
 if [ -n "$rollback_backend" ] && [ -n "$rollback_frontend" ] \
   && [ "$rollback_backend $rollback_frontend" != "$BACKEND_IMAGE $FRONTEND_IMAGE" ]; then
   for repository in "${BACKEND_IMAGE%@*}" "${FRONTEND_IMAGE%@*}"; do
-    for image in $(docker image ls --digests --format '{{.Repository}}@{{.Digest}}' "$repository"); do
+    if ! listed=$(docker image ls --digests --format '{{.Repository}}@{{.Digest}}' "$repository"); then
+      echo "deploy: could not list $repository; none of its images removed" >&2
+      continue
+    fi
+    for image in $listed; do
       # A locally built image has no digest: not one of the deploys'.
       case "$image" in *"@<none>") continue ;; esac
       case "$keep" in *" $image "*) continue ;; esac

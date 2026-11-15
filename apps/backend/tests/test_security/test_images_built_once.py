@@ -1018,3 +1018,18 @@ def test_the_pr_gate_pulls_every_image_the_compose_file_names_by_itself(tmp_path
     assert sorted((tmp_path / "calls").read_text().splitlines()) == [
         f"docker pull --quiet {image}" for image in by_name
     ]
+
+
+def test_a_listing_docker_refuses_is_reported_and_removes_nothing(tmp_path):
+    box = stand_in_box(tmp_path)
+    (box / ".deploy-images.env").write_text(ROLLBACK_RECORD)
+
+    run = _deploy(
+        box,
+        'case " $* " in *" image ls "*) echo "daemon busy" >&2; exit 1;; esac\n',
+    )
+
+    assert run.returncode == 0, run.stderr
+    assert f"could not list {BACKEND_REPOSITORY}" in run.stderr
+    assert f"could not list {FRONTEND_REPOSITORY}" in run.stderr
+    assert _removed(box) == []
