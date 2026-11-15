@@ -172,8 +172,9 @@ class TestEveryModelCallIsBehindTheCeiling:
 
         def own_nodes(fn: ast.AST):
             """The function's body, not descending into nested defs (checked on their own).
-            A lambda's body counts as its enclosing function's: it cannot carry a
-            breaker of its own and runs under the one around that function (#1256)."""
+            A lambda's body counts as its enclosing function's, since a lambda cannot
+            carry a breaker of its own (#1256). Like the nested-def rule, this is
+            lexical: a lambda stored and called outside its function is not caught."""
             stack = list(ast.iter_child_nodes(fn))
             while stack:
                 node = stack.pop()

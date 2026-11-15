@@ -5,6 +5,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from openai import OpenAI, OpenAIError
+from openai.types.chat import ChatCompletion
 
 from app.models.user_data import AISummary, UserData
 from app.utils.circuit_breaker import with_circuit_breaker
@@ -221,8 +222,8 @@ async def _summarize_with_openai(
         # Call the OpenAI API off the event loop: the client is synchronous and
         # this runs in an async BackgroundTask after every upload, so calling it
         # inline would block the worker for the whole round-trip (#501).
-        response = await asyncio.to_thread(
-            lambda: openai_client.chat.completions.create(
+        def create_completion() -> ChatCompletion:
+            return openai_client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -232,7 +233,8 @@ async def _summarize_with_openai(
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
-        )
+
+        response = await asyncio.to_thread(create_completion)
 
         # Extract the response content
         content = response.choices[0].message.content
