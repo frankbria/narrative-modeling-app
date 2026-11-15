@@ -13,9 +13,10 @@
 # ssh lowercases it), DEPLOY_PATH (with or without a trailing slash), DEPLOY_USER
 # beside an `@` and, unless it is the public default `root` (a bare `root` is
 # ordinary text), as a bare word too, and any tailnet address (100.64.0.0/10,
-# fd7a:115c:a1e0::/48), which ssh can print in place of the name. The longest value
-# goes first: the default path ends in `/staging`, and a HOST of `staging` replaced
-# first would leave the rest of the path. A user that is an ordinary word (`deploy`)
+# fd7a:115c:a1e0::/48), which ssh can print in place of the name. Every name is
+# matched against the original text and overlapping matches are replaced as one
+# span: the default path ends in `/staging`, and a HOST of `staging` replaced first
+# would leave the rest of the path. A user that is an ordinary word (`deploy`)
 # is redacted wherever that word appears; over-redaction is the safe side.
 #
 # Each gh call is tried twice, ALERT_RETRY_DELAY_SECONDS (default 10) apart, so one
@@ -31,16 +32,28 @@ body=$(perl -0777 -pe '
   my ($host, $path, $user) = map { $ENV{$_} // "" } qw(HOST DEPLOY_PATH DEPLOY_USER);
   $path =~ s{/+$}{};
   my @names = (
-    [length $path, qr/\Q$path\E/, "<deploy path>"],
-    [length $user, qr/\Q$user\E(?=@)/, "<deploy user>"],
-    [length $user, ($user eq "root" ? qr/(?!)/ : qr/(?<![\w.-])\Q$user\E(?![\w-])/), "<deploy user>"],
-    [length $host, qr/\Q$host\E/i, "<staging host>"],
+    [qr/(?<![\d.])100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}(?!\d)/, "<tailnet address>"],
+    [qr/fd7a:115c:a1e0(?::[0-9a-f]{0,4})+/i, "<tailnet address>"],
   );
-  for my $name (sort { $b->[0] <=> $a->[0] } grep { $_->[0] } @names) {
-    s/$name->[1]/$name->[2]/g;
+  push @names, [qr/\Q$path\E/, "<deploy path>"] if length $path;
+  push @names, [qr/\Q$user\E(?=@)/, "<deploy user>"] if length $user;
+  push @names, [qr/(?<![\w.-])\Q$user\E(?![\w-])/, "<deploy user>"] if length $user && $user ne "root";
+  push @names, [qr/\Q$host\E/i, "<staging host>"] if length $host;
+  # Every match is found in the ORIGINAL text, and overlapping matches become one
+  # span: replacing one name first can break the match of another that overlaps it.
+  my @spans;
+  for my $name (@names) {
+    while (/$name->[0]/g) { push @spans, [$-[0], $+[0], $name->[1]] }
   }
-  s/(?<![\d.])100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}(?!\d)/<tailnet address>/g;
-  s/fd7a:115c:a1e0(?::[0-9a-f]{0,4})+/<tailnet address>/gi;
+  my @merged;
+  for my $span (sort { $a->[0] <=> $b->[0] || $b->[1] <=> $a->[1] } @spans) {
+    if (@merged && $span->[0] < $merged[-1][1]) {
+      $merged[-1][1] = $span->[1] if $span->[1] > $merged[-1][1];
+    } else {
+      push @merged, [@$span];
+    }
+  }
+  for my $span (reverse @merged) { substr($_, $span->[0], $span->[1] - $span->[0]) = $span->[2] }
 ')
 
 # Prints only the successful attempt's output: a search that printed a number and

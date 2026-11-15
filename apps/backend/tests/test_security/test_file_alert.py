@@ -162,3 +162,13 @@ def test_a_search_that_printed_before_failing_is_not_read_twice():
     run, posted = _file("again\n", gh=gh)
     assert run.returncode == 0, run.stderr
     assert "comment\n41\n--body" in posted and "create" not in posted
+
+
+def test_names_that_partly_overlap_are_redacted_as_one():
+    """Replacing the path first broke the host's match: `<deploy path>-prod`."""
+    _, posted = _file(
+        "in /srv/application/node-prod now\n",
+        HOST="node-prod",
+        DEPLOY_PATH="/srv/application/node",
+    )
+    assert "in <deploy path> now" in posted
