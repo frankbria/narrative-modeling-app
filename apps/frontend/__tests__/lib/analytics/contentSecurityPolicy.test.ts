@@ -222,7 +222,7 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
   })
 
   it('skips no tracked file, so a hand-written folder named like build output is read', () => {
-    const tracked = execFileSync('git', ['ls-files'], { cwd: REPOSITORY, encoding: 'utf8' }).split('\n')
+    const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: REPOSITORY, encoding: 'utf8' }).split('\0')
     expect(tracked.filter((file) => file.split('/').slice(0, -1).some((folder) => GENERATED_FOLDERS.includes(folder)))).toEqual([])
   })
 
