@@ -7,8 +7,10 @@
  * without it, wherever the pages' headers can be set: Next's `headers()`, the middleware, any
  * other frontend source, or the nginx edge. Each file's policy is checked on its own.
  */
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { execFileSync } from 'child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { dirname, join } from 'path'
 import { globSync } from 'glob'
 import { PLAUSIBLE_EVENT_URL } from '@/lib/analytics/plausible'
 
@@ -16,11 +18,18 @@ const FRONTEND = join(__dirname, '..', '..', '..')
 const REPOSITORY = join(FRONTEND, '..', '..')
 const PLAUSIBLE_ORIGIN = new URL(PLAUSIBLE_EVENT_URL).origin
 
-const frontendFiles = globSync('**/*.{ts,tsx,js,jsx,mjs,cjs}', {
-  cwd: FRONTEND,
-  ignore: ['{e2e,coverage}/**', '**/{__tests__,__mocks__,node_modules}/**', '**/*.test.*'],
-}).map((file) => join(FRONTEND, file))
-const edgeFiles = globSync('**/*.conf', { cwd: REPOSITORY, ignore: ['**/{node_modules,coverage}/**'] }).map((file) => join(REPOSITORY, file))
+/** Dependencies and build or test output, at any depth (glob skips dot folders such as `.next` already; it is named so the list is whole). */
+const GENERATED_FOLDERS = ['node_modules', 'coverage', '.next', 'out', 'build', 'dist', 'playwright-report', 'test-results']
+const IN_GENERATED_FOLDERS = `**/{${GENERATED_FOLDERS.join(',')}}/**`
+
+const filesUnder = (root: string, pattern: string, ignore: string[]) =>
+  globSync(pattern, { cwd: root, ignore: [IN_GENERATED_FOLDERS, ...ignore] }).map((file) => join(root, file))
+const frontendSourcesIn = (root: string) =>
+  filesUnder(root, '**/*.{ts,tsx,js,jsx,mjs,cjs}', ['e2e/**', '**/{__tests__,__mocks__}/**', '**/*.test.*'])
+const edgeConfigsIn = (root: string) => filesUnder(root, '**/*.conf', [])
+
+const frontendFiles = frontendSourcesIn(FRONTEND)
+const edgeFiles = edgeConfigsIn(REPOSITORY)
 const sources = [...frontendFiles, ...edgeFiles].map((file) => ({ file, text: readFileSync(file, 'utf8') }))
 
 interface Source {
@@ -76,16 +85,44 @@ const withoutComments = ({ file, text }: Source) =>
  */
 const policiesIn = (value: string) => value.split(',').filter((policy, index) => index === 0 || policy.trim() !== '')
 
-/** Where a policy header starts; the report-only one never blocks a request, so its value is left out. */
-const AT_A_HEADER = /(?<![\w-])(?=content-security-policy)/i
-const REPORT_ONLY = /^content-security-policy-report-only/i
 /**
- * A header name, not a mention. In code its own closing quote or a separator and a value follow it,
- * which prose such as `the Content-Security-Policy is…` has not; in nginx, where prose sits only in
- * the comments already removed, any whole name counts (an unquoted value is valid there).
+ * Where a policy header starts; the report-only one never blocks a request, so its value is left out.
+ * A name that ends a path (an MDN link, an `href`) is a mention: its `/` follows a path character,
+ * not a quote as in `'/Content-Security-Policy'.slice(1)`, which stays a header.
+ */
+const AT_A_HEADER = /(?<![\w-])(?<![^'"`]\/)(?=content-security-policy)/i
+const REPORT_ONLY = /^content-security-policy-report-only/i
+const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
+/**
+ * After a string and any brackets it closes, what ends its expression: a separator, a JSX tag's end,
+ * the text's end, or a line break the next line does not continue (no semicolons here).
+ */
+const LABEL_END = String.raw`(?=(?:[ \t]*[)\]}])*[ \t]*(?:[,;>]|\/>|$|\n(?!\s*[-+*/%.?:|&^[(\`])))`
+/**
+ * What makes `Name:` a label in a string opened by `quote`: words up to that same quote, starting with
+ * a letter, with no directive name and nothing that builds or escapes a value (`$`, `\`), where the
+ * quote also ends the expression (LABEL_END), so neither a `+` nor a later string adds a policy to the
+ * words. A policy of only directives browsers do not know (`made-up-directive x`) restricts nothing.
+ * shortcut: a directive the spec adds without `-src` reads as a word; add it to DIRECTIVE_NAME.
+ * shortcut: label words that program flow later joins to a policy (an array's `join`, a function) are
+ * not followed, as no value set after it is written is; the emitted-header check (#1249) ends this.
+ */
+const labelText = (quote: string) =>
+  String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^${quote}$\\\n])+${quote}${LABEL_END}`
+/**
+ * A header name, not a mention, given the character before it (the quote that opens its string, in
+ * code). In code its own closing quote (or the next string) follows it, or a colon (a serialized
+ * `Name: policy` line) that a label (`labelText`) does not follow, which prose such as `the
+ * Content-Security-Policy is…` or a `Content-Security-Policy: see the wiki` label has not;
+ * `'our Content-Security-Policy'` still reads as a name kept in a constant, and is refused. In
+ * nginx, where prose sits only in the comments already removed, any whole name counts (an unquoted
+ * value is valid there).
  */
 const HEADER_NAME_IN_NGINX = /^content-security-policy(?![\w-])/i
-const HEADER_NAME_IN_CODE = /^content-security-policy(?![\w-])(?=['"`]|\s*['"`:]|$)/i
+const headerNameInCode = (before: string) => {
+  const notALabel = /^['"`]$/.test(before) ? `(?!${labelText(before)})` : ''
+  return new RegExp(String.raw`^content-security-policy(?![\w-])(?=['"\`]|\s*['"\`]|\s*:${notALabel}|$)`, 'i')
+}
 /** The header name with the quote that closes its own string in code. */
 const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
 
@@ -133,14 +170,17 @@ const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)${ASCII_SPACE}*connect-src$
  */
 function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
-    const headerName = source.file.endsWith('.conf') ? HEADER_NAME_IN_NGINX : HEADER_NAME_IN_CODE
-    const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
+    const isHeaderName = (part: string, before: string) =>
+      (source.file.endsWith('.conf') ? HEADER_NAME_IN_NGINX : headerNameInCode(before)).test(part)
+    const allParts = withoutComments(source).split(AT_A_HEADER)
+    const enforced = allParts.map((part, index) => ({ part, before: allParts[index - 1]?.slice(-1) ?? '' })).filter(({ part }) => !REPORT_ONLY.test(part))
+    const parts = enforced.map(({ part }) => part)
     const blocking = parts
       .flatMap(stringsOf)
       .flatMap((literal) => connectSources(literal.slice(1, -1)))
       .filter((list) => !list.some((entry) => entry.toLowerCase() === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
-    const policies = parts.filter((part) => headerName.test(part)).flatMap((header) => policiesIn(headerValue(header)))
+    const policies = enforced.filter(({ part, before }) => isHeaderName(part, before)).flatMap(({ part }) => policiesIn(headerValue(part)))
     const withoutConnectSource = policies.filter((policy) => !DIRECTIVE_START.test(policy)).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource].map((problem) => `${source.file}: ${problem}`)
   })
@@ -165,6 +205,25 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
       ),
     )
     expect(frontendFiles.filter((file) => /[/\\](__tests__|__mocks__|e2e|node_modules|\.next|coverage)[/\\]|\.test\./.test(file))).toEqual([])
+  })
+
+  it('skips build and test output, which no deploy serves a header from, by name', () => {
+    const root = mkdtempSync(join(tmpdir(), 'csp-guard-'))
+    const generated = ['node_modules', 'coverage', 'out', 'build', 'dist', 'playwright-report', 'test-results', 'apps/frontend/out']
+    for (const file of ['middleware.ts', 'nginx-staging.conf', ...generated.flatMap((folder) => [`${folder}/chunk.js`, `${folder}/nginx.conf`])]) {
+      mkdirSync(dirname(join(root, file)), { recursive: true })
+      writeFileSync(join(root, file), '')
+    }
+    try {
+      expect([frontendSourcesIn(root), edgeConfigsIn(root)]).toEqual([[join(root, 'middleware.ts')], [join(root, 'nginx-staging.conf')]])
+    } finally {
+      rmSync(root, { recursive: true })
+    }
+  })
+
+  it('skips no tracked file, so a hand-written folder named like build output is read', () => {
+    const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: REPOSITORY, encoding: 'utf8' }).split('\0')
+    expect(tracked.filter((file) => file.split('/').slice(0, -1).some((folder) => GENERATED_FOLDERS.includes(folder)))).toEqual([])
   })
 
   it('every connect-src lists Plausible, and no policy is set without a connect-src', () => {
@@ -252,7 +311,7 @@ add_header Content-Security-Policy-Report-Only "connect-src https://plausible.io
     it.each([
       ['a second policy after a comma', `add_header Content-Security-Policy "connect-src https://plausible.io, default-src 'self'" always;`, ['a policy without connect-src']],
       ['a second policy that starts with frame-ancestors', `add_header Content-Security-Policy "connect-src https://plausible.io, frame-ancestors 'none'; default-src 'self'" always;`, ['a policy without connect-src']],
-      ['a second policy that starts with a directive the guard does not name', `add_header Content-Security-Policy "connect-src https://plausible.io, require-sri-for script; default-src 'self'" always;`, ['a policy without connect-src']],
+      ['a second policy that starts with a directive the guard does not name', `add_header Content-Security-Policy "connect-src https://plausible.io, made-up-directive script; default-src 'self'" always;`, ['a policy without connect-src']],
       [
         'a second policy in a location block',
         `add_header Content-Security-Policy "default-src 'self'; connect-src 'self' https://plausible.io" always;
@@ -345,8 +404,58 @@ const note = "connect-src https://plausible.io"`)
       ['an error message', code("throw new Error('Content-Security-Policy is not set in this app')")],
       ['the plural', code("const note = 'Content-Security-Policies differ per host'")],
       ['the legacy prefixed name, which browsers ignore', edge(`add_header X-Content-Security-Policy "default-src 'self'" always;`)],
+      ['an MDN link', code("const docs = 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy'")],
+      ['a label with a colon', code(`const label = "Content-Security-Policy: see the wiki"`)],
+      ['a label with a colon followed by the next statement', code(`const label = "Content-Security-Policy: see the wiki"\nexport default label`)],
+      ['a label with a colon in a JSX attribute', code(`<abbr title="Content-Security-Policy: see the wiki">CSP</abbr>`)],
+      ['a label with a colon passed to a call', code(`t('Content-Security-Policy: see the wiki')`)],
+      ['a label with a colon closing a JSX element', code(`<Hint text="Content-Security-Policy: see the wiki" />`)],
+      ['a label with a colon and an apostrophe', code(`const label = "Content-Security-Policy: see the team's wiki"`)],
+      ['a label with a colon in a template', code('const label = `Content-Security-Policy: see the wiki`')],
+      ['a label with a colon before a semicolon', code(`const label = 'Content-Security-Policy: see the wiki'; export default label`)],
+      ['a label with a colon first in a list', code(`const labels = ['Content-Security-Policy: see the wiki', 'Referrer-Policy']`)],
+      ['a label with a colon last in a list', code(`const labels = ['Content-Security-Policy: see the wiki']`)],
+      ['a label with a colon in an object', code(`const hints = { csp: 'Content-Security-Policy: see the wiki' }`)],
+      ['an href', code('<a href="https://developer.mozilla.org/docs/Web/HTTP/Headers/Content-Security-Policy">the header</a>')],
+      ['an nginx redirect path', edge('location = /csp { return 301 https://developer.mozilla.org/docs/Web/HTTP/Headers/Content-Security-Policy; }')],
     ])('does not take a mention of the header name in %s for a header', (_where, source) => {
       expect(policyProblems([source])).toEqual([])
+    })
+
+    it('still refuses the name kept in a constant, which a mention in a string cannot be told apart from', () => {
+      expect(policyProblems([code("const name = 'Content-Security-Policy'")])).toEqual(['middleware.ts: a policy without connect-src'])
+    })
+
+    it('still refuses a name after a slash that is not inside a path', () => {
+      expect(policyProblems([code(`res.headers.set('/Content-Security-Policy'.slice(1), "default-src 'none'")`)])).toEqual([
+        'middleware.ts: a policy without connect-src',
+      ])
+    })
+
+    it.each([
+      ['a serialized header split later', `["Content-Security-Policy: default-src 'none'"].map((line) => line.split(': '))`],
+      ['a directive without a space after the colon', `const line = "Content-Security-Policy:frame-ancestors 'none'"`],
+      ['a directive with no sources', `const line = 'Content-Security-Policy: upgrade-insecure-requests'`],
+      ['a directive name the spec may add', `const line = 'Content-Security-Policy: future-src https://plausible.io'`],
+      ['a deprecated directive browsers may still know', `const line = 'Content-Security-Policy: require-sri-for script'`],
+      ['sandbox, a directive without a hyphen', `const line = 'Content-Security-Policy: SANDBOX allow-scripts'`],
+      ['a directive after one browsers ignore', `const line = "Content-Security-Policy: made-up-directive script; default-src 'none'"`],
+      ['a directive after an empty one', `const line = "Content-Security-Policy: ; default-src 'none'"`],
+      ['a substitution', 'const line = `Content-Security-Policy: ${policy}`'],
+      ['a concatenation', "const line = 'Content-Security-Policy: ' + policy"],
+      ['the name and colon ending their string', `const lines = ['Content-Security-Policy:', "default-src 'none'"]`],
+      ['an escaped tab', String.raw`const line = "Content-Security-Policy:\tdefault-src 'none'"`],
+      ['an escaped letter', String.raw`const line = "Content-Security-Policy: \u0064efault-src 'none'"`],
+      ['a substitution after a word', 'const line = `Content-Security-Policy: made-up ${policy}`'],
+      ['a quoted source inside the words', `const line = "Content-Security-Policy: made-up 'x'; default-src 'none'"`],
+      ['another quote and a semicolon inside the words', `const line = "Content-Security-Policy: made-up '; default-src https://example.com"`],
+      ['words in parentheses concatenated with a policy', `const line = ('Content-Security-Policy: made-up script; ') + "default-src 'none'"`],
+      ['words in a list joined to a policy', `const line = ['Content-Security-Policy: made-up script; '].concat("default-src 'none'")`],
+      ['words concatenated with a policy', `const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
+      ['words continued on the next line', "const line = 'Content-Security-Policy: made-up script; '\n  + policy"],
+      ['an escape after a word', String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
+    ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
+      expect(policyProblems([code(text)])).toEqual(['middleware.ts: a policy without connect-src'])
     })
 
     it('accepts a connect-src list written across lines in a template', () => {
