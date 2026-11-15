@@ -36,7 +36,11 @@ _first_alive() {
 
 dump_hung_backend() {
     local wrapper=$1 log=$2 pids pid alive
-    mapfile -t pids < <(_descendants_of "$wrapper")
+    pids=()
+    # A read loop, not mapfile: macOS still ships bash 3.2.
+    while read -r pid; do
+        pids+=("$pid")
+    done < <(_descendants_of "$wrapper")
     if [ "${#pids[@]}" -eq 0 ]; then
         echo "Backend stack dump: no backend process under pid ${wrapper}" | tee -a "$log"
         return 1
