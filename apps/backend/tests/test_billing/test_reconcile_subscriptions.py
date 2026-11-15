@@ -1135,7 +1135,7 @@ class TestATableLargerThanOneRun:
     async def test_two_runs_repair_a_table_one_run_cannot_reach(self, resume):
         ids = await _seed_numbered("big", 10)
 
-        for _run in range(2):
+        codes = [
             await _load_reconcile()(
                 _collection(),
                 _answers_then_hangs(6, []),
@@ -1143,12 +1143,67 @@ class TestATableLargerThanOneRun:
                 budget_seconds=0.3,
                 resume=resume,
             )
+            for _run in range(2)
+        ]
+
+        assert codes == [0, 0], "rows read on the next run never alert"
+        # Run 1 read 0..5 and left 6..9 unread; run 2 read 6..9, 0, 1 and left
+        # 2..5, which a third run would read first.
+        for n in (6, 7, 8, 9, 0, 1):
+            assert await _marker(f"u-big-{n}") is None
+        for n in (2, 3, 4, 5):
+            assert await _marker(f"u-big-{n}") is not None
 
         statuses = {
             row["stripe_subscription_id"]: row["status"]
             async for row in _collection().find({})
         }
         assert statuses == dict.fromkeys(ids, SubscriptionStatus.CANCELED.value)
+
+    async def test_a_table_larger_than_two_runs_alerts(self, resume, capsys):
+        """Rows unread on two runs in a row threaten the grace window: exit 5."""
+        await _seed_numbered("huge", 20)
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(6, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+        # The next daily run: the markers the first run set are a day old.
+        marker = reconcile_subscriptions.UNREACHABLE_FIELD
+        await _collection().update_many(
+            {marker: {"$ne": None}},
+            {"$set": {marker: datetime.now(UTC) - timedelta(days=1)}},
+        )
+
+        code = await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(6, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        # Run 1 read 0..5; run 2 read 6..11 and left 12..19 unread again.
+        assert code == 5
+        assert "busy on the previous run too:   8" in capsys.readouterr().out
+
+    async def test_a_resume_point_that_is_not_an_id_starts_at_the_top(self, resume):
+        ids = await _seed_numbered("handmade", 3)
+        await resume.insert_one(
+            {"_id": reconcile_subscriptions.RESUME_ID, "resume_from": "sub_x"}
+        )
+        asked: list[str] = []
+
+        await _load_reconcile()(
+            _collection(),
+            _answers_then_hangs(len(ids), asked),
+            apply=True,
+            resume=resume,
+        )
+
+        assert asked == ids
 
     async def test_rows_cut_short_by_the_deadline_come_first_next_run(self, resume):
         """Rows in flight at the deadline were never read: resuming after them
@@ -1316,6 +1371,35 @@ class TestATableLargerThanOneRun:
 
         assert await _stored_resume_point(resume) is None
 
+    async def test_a_row_left_unread_stays_first_when_its_marker_write_fails(
+        self, resume
+    ):
+        """Codex on #1239: the row is recorded as unread before the marker write,
+        so a write that raises cannot move the next start past an unread row."""
+        ids = await _seed_numbered("nowrite", 3)
+        collection = _collection()
+
+        class MarkerWriteFails:
+            async def update_one(self, query, update):
+                marker = reconcile_subscriptions.UNREACHABLE_FIELD
+                if marker in update.get("$set", {}):
+                    raise RuntimeError("write failed")
+                return await collection.update_one(query, update)
+
+            def __getattr__(self, name):
+                return getattr(collection, name)
+
+        code = await _load_reconcile()(
+            MarkerWriteFails(),
+            _answers_then_hangs(0, []),
+            apply=True,
+            budget_seconds=0.3,
+            resume=resume,
+        )
+
+        assert code == 3
+        assert await _stored_resume_point(resume) == await _row_id(ids[0])
+
     async def test_a_run_with_no_time_left_keeps_its_place(self, resume):
         ids = await _seed_numbered("still", 6)
         await _store_resume_from(resume, ids[4])
@@ -1384,22 +1468,3 @@ def test_the_command_flushes_logging_before_it_exits():
 
     assert done.returncode == 0, done.stderr
     assert "buffered line" in done.stdout
-
-
-def test_the_command_flushes_sentry_before_it_exits(monkeypatch):
-    flushed: list[float] = []
-    monkeypatch.setattr(
-        reconcile_subscriptions.sentry_sdk,
-        "flush",
-        lambda timeout: flushed.append(timeout),
-    )
-    exits: list[int] = []
-    monkeypatch.setattr(reconcile_subscriptions.os, "_exit", exits.append)
-
-    async def status():
-        return 0
-
-    monkeypatch.setattr(reconcile_subscriptions, "main", status)
-    reconcile_subscriptions._cli()
-
-    assert flushed and exits == [0]

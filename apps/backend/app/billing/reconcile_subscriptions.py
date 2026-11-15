@@ -47,7 +47,9 @@ in `RESUME_COLLECTION`. A table that outgrows one run is then read in full every
 two runs, inside `ENTITLEMENT_GRACE`; one that outgrows two leaves a row unread on
 two runs in a row, which is exit 5. A run without `--apply` follows the stored
 row and writes nothing: neither the resume point nor a busy marker, set or
-cleared, so it is safe to run by hand; the next `--apply` run settles both.
+cleared, so it is safe to run by hand; the next `--apply` run settles both. An
+`--apply` run by hand while the scheduled one runs is not: the last to finish
+sets the resume point.
 
 Exit status: 0 when every row it could read matches Stripe (after repairs, under
 `--apply`), 1 when a row is missing, unreadable, raced, or (read-only) drifted,
@@ -68,11 +70,11 @@ import os
 import sys
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, NoReturn
 
-import sentry_sdk
 import stripe
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
@@ -89,6 +91,8 @@ class ReadFailure(StrEnum):
     MISSING = "missing"
     UNREADABLE = "unreadable"
     UNAVAILABLE = "unavailable"
+    #: The run's deadline ended the read: Stripe said nothing either way.
+    UNREAD = "unread"
 
 
 Row = Mapping[str, Any]
@@ -118,7 +122,7 @@ UNREACHABLE_FIELD = "stripe_unreachable_since"
 #: starts at, or null when the last `--apply` run read every row.
 RESUME_COLLECTION = "subscription_reconcile_resume"
 RESUME_ID = "subscriptions"
-_BUSY = frozenset({"unavailable", "unavailable_too_long"})
+_NO_ANSWER = (ReadFailure.UNAVAILABLE, ReadFailure.UNREAD)
 _WITH_A_STRIPE_ID = {"stripe_subscription_id": {"$type": "string"}}
 _TRANSIENT = (stripe.RateLimitError, stripe.APIConnectionError, stripe.APIError)
 _sleep = asyncio.sleep
@@ -267,12 +271,12 @@ def _drift(row: Row, remote: dict[str, Any], tiers_resolvable: bool) -> dict[str
 async def _read_before(
     fetch: Fetch, subscription_id: str, deadline: float
 ) -> Remote | ReadFailure:
-    """The read, or busy if it is still waiting at the run's deadline."""
+    """The read, or unread if it is still waiting at the run's deadline."""
     try:
         async with asyncio.timeout_at(deadline):
             return await fetch(subscription_id)
     except TimeoutError:
-        return ReadFailure.UNAVAILABLE
+        return ReadFailure.UNREAD
 
 
 async def _busy(
@@ -340,11 +344,15 @@ async def _reconcile_row(
     tiers_resolvable: bool,
     apply: bool,
     deadline: float,
+    unread: list[ObjectId],
 ) -> str:
     """What happened to one row: a `ReadFailure`, matched, drifted, repaired or
-    raced."""
+    raced. A row the deadline left unread joins `unread` before any write, so a
+    marker write that fails cannot drop it from the next run's start."""
     remote = await _read_before(fetch, row["stripe_subscription_id"], deadline)
-    if remote is ReadFailure.UNAVAILABLE:
+    if remote is ReadFailure.UNREAD:
+        unread.append(row["_id"])
+    if remote in _NO_ANSWER:
         return await _busy(collection, row, apply)
     await _answered(collection, row, apply)
     if isinstance(remote, ReadFailure):
@@ -352,12 +360,12 @@ async def _reconcile_row(
     return await _repair(collection, row, _drift(row, remote, tiers_resolvable), apply)
 
 
+@dataclass(frozen=True)
 class _Order:
     """The walk's order: `_id` order from `start` to the end, then from the first
     row up to `start`. No start is plain `_id` order."""
 
-    def __init__(self, start: ObjectId | None) -> None:
-        self.start = start
+    start: ObjectId | None
 
     def segments(self) -> list[dict[str, Any]]:
         if self.start is None:
@@ -378,9 +386,12 @@ class _Order:
 
 
 async def _resume_point(resume: Collection | None) -> ObjectId | None:
-    """Where the previous `--apply` run stopped, or None for the first row."""
+    """Where the previous `--apply` run stopped, or None for the first row. Only
+    an `ObjectId` is a place in `_id` order; anything else written by hand would
+    match every row in one segment and fail the comparisons at the deadline."""
     stored = await resume.find_one({"_id": RESUME_ID}) if resume is not None else None
-    return (stored or {}).get("resume_from")
+    start = (stored or {}).get("resume_from")
+    return start if isinstance(start, ObjectId) else None
 
 
 async def _store_resume_point(
@@ -518,8 +529,7 @@ async def reconcile(
     # A row is taken from the cursor only when a read slot is free, so the time
     # between reading a row and its conditional write does not grow with the
     # table: a longer window would turn more rows into "changed under us".
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + budget_seconds
+    deadline = asyncio.get_running_loop().time() + budget_seconds
     order = _Order(await _resume_point(resume))
     slots = asyncio.Semaphore(CONCURRENT_READS)
     outcomes: Counter[str] = Counter()
@@ -527,13 +537,11 @@ async def reconcile(
 
     async def in_slot(row: Row) -> None:
         try:
-            outcome = await _reconcile_row(
-                collection, fetch, row, tiers_resolvable, apply, deadline
-            )
-            outcomes[outcome] += 1
-            # Busy at the deadline: the deadline ended the read, Stripe did not.
-            if outcome in _BUSY and loop.time() >= deadline:
-                cut_short.append(row["_id"])
+            outcomes[
+                await _reconcile_row(
+                    collection, fetch, row, tiers_resolvable, apply, deadline, cut_short
+                )
+            ] += 1
         except Exception as exc:  # noqa: BLE001 - counted by class, see `_report`
             print(f"  could not repair one subscription: {type(exc).__name__}")
             outcomes["failed"] += 1
@@ -614,9 +622,11 @@ customer whose renewal webhook was missed drops to FREE three days
 after the stale period end, so this cannot wait for Stripe to recover
 on its own. Check, from the box, its route to api.stripe.com (DNS,
 firewall, proxy), and Stripe's status page, https://status.stripe.com.
-Each run starts at the first row the previous one did not read. If
-"not reached in the time limit" is above zero and this repeats, the
-table has outgrown two runs: read more at once or run more often."""
+Each run starts at the first row the previous one did not read, so a
+table up to two runs' worth is read every two runs. If Stripe answered
+every other read (no "could not read" lines above, the status page
+clear) and "not reached in the time limit" is above zero, the table
+has outgrown two runs: read more at once or run more often."""
 
 
 _UNREADABLE_HELP = """
@@ -641,11 +651,12 @@ def _cli() -> NoReturn:
     `asyncio.run` waits up to five minutes for those threads on shutdown, then
     the interpreter joins them again at exit: either would outlast the job's
     timeout. The database client is closed by then and nothing else is pending.
-    `os._exit` also skips the interpreter's own flushes, so they are done here.
+    `os._exit` also skips the interpreter's own shutdown, so logging is flushed
+    here. Sentry needs nothing: only `app.main` initialises it, and this process
+    never imports that (#1239). Initialise it here and flush it here together.
     """
     status = asyncio.new_event_loop().run_until_complete(main())
     logging.shutdown()
-    sentry_sdk.flush(timeout=2)
     sys.stdout.flush()
     os._exit(status)
 
