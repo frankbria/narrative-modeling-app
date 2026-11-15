@@ -176,7 +176,9 @@ deploys the commit it is dispatched on). Its `build-images` job runs
    `.deploy-images.env`; remove this repository's images that are neither running nor
    the previous deploy's (the rollback). Only the two `ghcr.io/<repo>/backend` and
    `…/frontend` names are looked at, never `docker image prune` (the box is shared); a
-   redeploy of the recorded images, or a box with no record, removes nothing. This
+   redeploy of the recorded images, or a box with no record, removes nothing. The run
+   log names each image it removed (`deploy: removed <repository>@<digest>`) and each
+   one docker refused (`deploy: could not remove …; it stays`). This
    assumes one deploy directory of this repository per docker daemon: a second one
    (production beside staging) would lose its idle rollback to the other's deploys.
 2. `scripts/deploy/apply_nginx_conf.sh` (Step 6)
