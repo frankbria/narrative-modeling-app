@@ -21,24 +21,13 @@ REPO = Path(__file__).resolve().parents[4]
 RUNNER_SCRIPT = REPO / "apps" / "frontend" / "test-e2e.sh"
 HELPER = REPO / "apps" / "frontend" / "e2e" / "dump-hung-backend.sh"
 
-# Stands in for the hung backend: the main thread blocks on a lock nobody releases, a
-# second thread sleeps, and a child process of its own hangs too, as a child uvicorn
-# would: two processes under the wrapper, so signalling only the first one leaves a
-# stack missing. Each waits in a function the dump has to name.
-HUNG_CHILD_PROCESS = """
-import threading
-
-def child_process_waits_on_a_lock():
-    lock = threading.Lock()
-    lock.acquire()
-    print("child hung", flush=True)
-    lock.acquire()
-
-child_process_waits_on_a_lock()
-"""
-
-HUNG_PROCESS = f"""
-import subprocess, sys, threading, time
+# Stands in for the hung backend, as `uv run` → uvicorn → a child uvicorn would: under
+# the wrapper, an intermediate shell with two hung Pythons under it. In the first, the
+# main thread blocks on a lock nobody releases and a second thread sleeps; the second
+# blocks on a lock. Each waits in a function the dump has to name. Signalling only some
+# of the three leaves a stack missing.
+FIRST_HUNG_PROCESS = """
+import threading, time
 
 def worker_sleeps_forever():
     time.sleep(600)
@@ -46,28 +35,51 @@ def worker_sleeps_forever():
 def main_thread_waits_on_a_lock():
     lock = threading.Lock()
     lock.acquire()
-    print("parent hung", flush=True)
+    print("first hung", flush=True)
     lock.acquire()
 
-subprocess.Popen([sys.executable, "-c", {HUNG_CHILD_PROCESS!r}])
 threading.Thread(target=worker_sleeps_forever, daemon=True).start()
 main_thread_waits_on_a_lock()
 """
 
+SECOND_HUNG_PROCESS = """
+import threading
+
+def second_process_waits_on_a_lock():
+    lock = threading.Lock()
+    lock.acquire()
+    print("second hung", flush=True)
+    lock.acquire()
+
+second_process_waits_on_a_lock()
+"""
+
+# The intermediate shell logs the SIGABRT it gets and keeps waiting, so both Pythons are
+# reaped by their own parent whatever the host's PID 1 does with orphans; a trap set to
+# a command is reset in the children, so their SIGABRT keeps its default action.
+INTERMEDIATE_SHELL = (
+    "trap 'echo \"intermediate shell got SIGABRT\"' ABRT; "
+    'PYTHONFAULTHANDLER=1 "$0" -c "$1" & '
+    'PYTHONFAULTHANDLER=1 "$0" -c "$2" & '
+    "until wait; do :; done"
+)
+
 
 def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
-    """A wrapper shell with the hung Python as its child, as `uv run` is for uvicorn.
+    """A wrapper shell with the hung processes under it, as `uv run` is for uvicorn.
 
-    In a session of its own, so `_stop_all` can end all three whatever the test reached.
+    In a session of its own, so `_stop_all` can end them all whatever the test reached.
     """
     with log.open("ab") as output:
         return subprocess.Popen(
             [
                 "bash",
                 "-c",
-                'ulimit -c 0; PYTHONFAULTHANDLER=1 "$0" -c "$1"; exit $?',
+                'ulimit -c 0; bash -c "$0" "$@"; exit $?',
+                INTERMEDIATE_SHELL,
                 sys.executable,
-                HUNG_PROCESS,
+                FIRST_HUNG_PROCESS,
+                SECOND_HUNG_PROCESS,
             ],
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -77,13 +89,13 @@ def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
 
 def _wait_until_hung(log: Path) -> None:
     deadline = time.monotonic() + 30
-    while not _both_hung(log) and time.monotonic() < deadline:
+    while not _all_hung(log) and time.monotonic() < deadline:
         time.sleep(0.1)
-    assert _both_hung(log), "the stand-in never started: " + log.read_text()
+    assert _all_hung(log), "the stand-in never started: " + log.read_text()
 
 
-def _both_hung(log: Path) -> bool:
-    return {"parent hung", "child hung"} <= set(log.read_text().splitlines())
+def _all_hung(log: Path) -> bool:
+    return {"first hung", "second hung"} <= set(log.read_text().splitlines())
 
 
 def _processes_under(pid: int) -> list[int]:
@@ -136,7 +148,7 @@ def test_the_log_gets_every_threads_stack_and_the_hung_process_is_stopped(
     try:
         _wait_until_hung(log)
         backend = _processes_under(wrapper.pid)
-        assert len(backend) == 2, f"expected the hung Python and its child: {backend}"
+        assert len(backend) == 3, f"expected the shell and two Pythons: {backend}"
         dumped = _dump(wrapper.pid, log)
         # Every one gone (reaped, not a zombie, which signal 0 still reaches) when the
         # helper returns: the dump is complete in the log before the job's cleanup and
@@ -152,7 +164,8 @@ def test_the_log_gets_every_threads_stack_and_the_hung_process_is_stopped(
     assert dump.count("Fatal Python error: Aborted") == 2, text
     assert "main_thread_waits_on_a_lock" in dump, text
     assert "worker_sleeps_forever" in dump, text
-    assert "child_process_waits_on_a_lock" in dump, text
+    assert "second_process_waits_on_a_lock" in dump, text
+    assert "intermediate shell got SIGABRT" in dump, text
     assert len(re.findall(r"^(?:Current thread|Thread) 0x", dump, re.MULTILINE)) == 3, (
         text
     )
