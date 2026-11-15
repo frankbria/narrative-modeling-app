@@ -86,9 +86,10 @@ const policiesIn = (value: string) => value.split(',').filter((policy, index) =>
 
 /**
  * Where a policy header starts; the report-only one never blocks a request, so its value is left out.
- * A name right after a `/` (an MDN link, an `href`, any path) is a mention: no header is written so.
+ * A name that ends a path (an MDN link, an `href`) is a mention: its `/` follows a path character,
+ * not a quote as in `'/Content-Security-Policy'.slice(1)`, which stays a header.
  */
-const AT_A_HEADER = /(?<![\w/-])(?=content-security-policy)/i
+const AT_A_HEADER = /(?<![\w-])(?<![^'"`]\/)(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
 const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base-uri|block-all-mixed-content|form-action|frame-ancestors|navigate-to|plugin-types|report-to|report-uri|require-sri-for|require-trusted-types-for|sandbox|trusted-types|upgrade-insecure-requests|webrtc)`
 /**
@@ -417,6 +418,12 @@ const note = "connect-src https://plausible.io"`)
 
     it('still refuses the name kept in a constant, which a mention in a string cannot be told apart from', () => {
       expect(policyProblems([code("const name = 'Content-Security-Policy'")])).toEqual(['middleware.ts: a policy without connect-src'])
+    })
+
+    it('still refuses a name after a slash that is not inside a path', () => {
+      expect(policyProblems([code(`res.headers.set('/Content-Security-Policy'.slice(1), "default-src 'none'")`)])).toEqual([
+        'middleware.ts: a policy without connect-src',
+      ])
     })
 
     it.each([
