@@ -16,6 +16,8 @@ FRONTEND_DIR="${SCRIPT_DIR}"
 BACKEND_DIR="$(cd "${SCRIPT_DIR}/../backend" && pwd)"
 # shellcheck source=e2e/wait-for-server.sh
 source "${SCRIPT_DIR}/e2e/wait-for-server.sh"
+# shellcheck source=e2e/dump-hung-backend.sh
+source "${SCRIPT_DIR}/e2e/dump-hung-backend.sh"
 
 # Determine the ports to use
 TEST_PORT="${PORT:-3010}"
@@ -209,8 +211,12 @@ echo ""
 echo -e "${YELLOW}=== Starting Backend Server ===${NC}"
 # Start backend in background using absolute path
 # Appended to, so every write lands at the end, the probe line below included (#1233).
+# PYTHONFAULTHANDLER: on SIGABRT Python writes every thread's stack here (#1245).
+# No core files from anything started below: the dump aborts the backend, and its
+# stacks are all that is wanted (a core would be the backend's size).
+ulimit -c 0
 : > /tmp/backend-e2e.log
-uv run --directory "${BACKEND_DIR}" uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} >> /tmp/backend-e2e.log 2>&1 &
+PYTHONFAULTHANDLER=1 uv run --directory "${BACKEND_DIR}" uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT} >> /tmp/backend-e2e.log 2>&1 &
 BACKEND_PID=$!
 
 # Wait for backend to be ready. 90 seconds by default: a loaded development machine
@@ -276,6 +282,10 @@ if [ $EXIT_CODE -ne 0 ]; then
   kill -0 "$BACKEND_PID" 2>/dev/null && backend_process=running
   health_status=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://localhost:${BACKEND_PORT}/health" || true)
   echo "Backend after the tests: process ${backend_process}, /health status ${health_status}" | tee -a /tmp/backend-e2e.log
+  # Alive and not answering (#1245): where every thread is, before the cleanup stops it.
+  if [ "$backend_process" = running ] && [ "$health_status" != 200 ]; then
+    dump_hung_backend "$BACKEND_PID" /tmp/backend-e2e.log || true
+  fi
 fi
 
 # Cleanup: Kill both servers
