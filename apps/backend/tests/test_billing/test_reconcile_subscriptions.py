@@ -433,23 +433,41 @@ class TestEntryPoint:
         monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
 
         assert await self._main()() == 2
-        assert "STRIPE_PRICE_PRO" in capsys.readouterr().err
+        # #1215: on stdout, because the scheduled run discards the container's stderr.
+        assert capsys.readouterr().out == "missing settings: STRIPE_PRICE_PRO\n"
 
     async def test_stripe_unconfigured_is_refused(self, monkeypatch, capsys):
         monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
         monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
 
         assert await self._main()() == 2
-        assert "STRIPE_SECRET_KEY" in capsys.readouterr().err
+        # #1215: on stdout, because the scheduled run discards the container's stderr.
+        assert capsys.readouterr().out == "missing settings: STRIPE_SECRET_KEY\n"
 
     async def test_a_missing_database_name_is_refused(self, monkeypatch, capsys):
         """Without `MONGODB_DB` the client would land on a database named `test`
         and report "every subscription matches" about an empty collection."""
         monkeypatch.delenv("MONGODB_DB", raising=False)
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "sk_test_x")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "price_pro")
         monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
 
         assert await self._main()() == 2
-        assert "MONGODB_DB" in capsys.readouterr().err
+        assert capsys.readouterr().out == "missing settings: MONGODB_DB\n"
+
+    async def test_every_missing_setting_is_named_at_once(self, monkeypatch, capsys):
+        monkeypatch.delenv("MONGODB_URI", raising=False)
+        monkeypatch.delenv("MONGODB_DB", raising=False)
+        monkeypatch.setattr(_settings, "STRIPE_SECRET_KEY", "")
+        monkeypatch.setattr(_settings, "STRIPE_PRICE_PRO", "")
+        monkeypatch.setattr("sys.argv", ["reconcile_subscriptions.py"])
+
+        assert await self._main()() == 2
+        assert capsys.readouterr().out == (
+            "missing settings: MONGODB_URI, MONGODB_DB, STRIPE_SECRET_KEY, "
+            "STRIPE_PRICE_PRO\n"
+        )
 
     async def test_a_crash_reports_its_class_and_never_its_message(
         self, setup_database, monkeypatch, capsys

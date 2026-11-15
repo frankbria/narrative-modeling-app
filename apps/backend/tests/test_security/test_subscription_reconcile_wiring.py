@@ -16,6 +16,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml"
 BACKEND = REPO_ROOT / "apps" / "backend"
+FILE_ALERT = "scripts/ci/file_alert.sh"
 
 COMMAND = "python -m app.billing.reconcile_subscriptions --apply"
 ALERT_PHRASE = "Subscription reconciliation is failing"
@@ -85,9 +86,11 @@ def _posted_alert(files: dict[str, str], **env: str) -> str:
         for name, text in files.items():
             (tmp / name).write_text(text)
         posted = tmp / "posted.txt"
-        run = _run_step(
-            REPORT, tmp, {"gh": f'printf "%s\\n" "$@" >> {posted}\n'}, **env
-        )
+        fakes = {
+            "gh": f'printf "%s\\n" "$@" >> {posted}\n',
+            FILE_ALERT: (REPO_ROOT / FILE_ALERT).read_text(),
+        }
+        run = _run_step(REPORT, tmp, fakes, ALERT_RETRY_DELAY_SECONDS="0", **env)
         assert run.returncode == 0, run.stderr
         return posted.read_text()
 
@@ -146,10 +149,12 @@ def test_a_failure_lands_on_an_issue_and_survives_a_retitle():
     # on that step's outcome would file nothing for exactly those failures. A job
     # that hits `timeout-minutes` is cancelled, not failed: a hung ssh must report too.
     assert str(report["if"]).strip() == "failure() || cancelled()"
-    assert "timed out" in _posted_alert({})
-    for name in (REPORT, CLOSE):
-        assert f"search='\"{ALERT_PHRASE}\" in:title'" in _steps()[name]["run"]
-    assert "min_by(.number)" in report["run"]
+    posted = _posted_alert({})
+    assert "timed out" in posted
+    # #1215: filed through the shared script, which searches on the stable phrase.
+    assert f"{FILE_ALERT} \"$title\" '{ALERT_PHRASE}'" in report["run"]
+    assert f'"{ALERT_PHRASE}" in:title' in posted
+    assert f"search='\"{ALERT_PHRASE}\" in:title'" in _steps()[CLOSE]["run"]
     assert str(_steps()[CLOSE]["if"]).strip() == "steps.reconcile.outcome == 'success'"
     assert ".[].number" in _steps()[CLOSE]["run"]
 
@@ -173,6 +178,33 @@ def test_the_alert_carries_the_counts_and_says_what_the_exit_status_means():
         "#1213: a rate limit no longer fails the run; do not send them to swap keys"
     )
     assert "https://example.invalid/run" in posted
+
+
+def test_an_unreachable_box_is_reported_as_connectivity_not_data():
+    """#1215 item 1: ssh's own exit status 255 says nothing about subscriptions."""
+    posted = _posted_alert(
+        {
+            "reconcile.status": "255",
+            "reconcile.err": "ssh: connect to host box port 22: Connection timed out\n",
+        }
+    )
+    assert "Exit status 255: ssh could not reach the box" in posted
+    assert "connectivity" in posted and "Connection timed out" in posted
+
+
+def test_a_missing_setting_is_named_in_the_alert():
+    """#1215 item 2: the container's stderr stays on the box, so the module names
+    the missing setting on stdout and the alert carries it."""
+    status, recorded, summary = _reconcile_step(
+        "cat > /dev/null\nprintf 'missing settings: STRIPE_PRICE_PRO\\n'\nexit 2\n"
+    )
+    assert (status, recorded) == (2, "2")
+    assert "missing settings: STRIPE_PRICE_PRO" in summary
+    posted = _posted_alert(
+        {"reconcile.status": "2", "reconcile.txt": "missing settings: STRIPE_PRICE_PRO\n"}
+    )
+    assert "named in the output" in posted
+    assert "missing settings: STRIPE_PRICE_PRO" in posted
 
 
 def test_a_run_with_failed_repairs_says_so():

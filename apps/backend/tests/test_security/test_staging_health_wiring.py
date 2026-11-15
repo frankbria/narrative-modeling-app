@@ -9,6 +9,7 @@ the wiring cannot quietly regress to "nothing checks".
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -64,7 +65,8 @@ def test_scheduled_probe_runs_independently_of_deploys():
     report = next(
         s for s in doc["jobs"]["probe"]["steps"] if s["name"].startswith("Report")
     )
-    assert str(report["if"]).strip() == "failure()"
+    # A job that hits `timeout-minutes` (a hung ssh) is cancelled, not failed (#1215).
+    assert str(report["if"]).strip() == "failure() || cancelled()"
 
 
 def test_deploy_gate_asserts_connection_dependent_health():
@@ -105,8 +107,12 @@ def test_alert_dedupe_search_carries_no_priority_prefix():
     steps = _steps(HEALTH_WORKFLOW)
     report = steps["Report the failure on an issue"]["run"]
     close = steps["Close a recovered alert"]["run"]
-    terms = _search_terms(report) + _search_terms(close)
-    assert len(terms) == 2, f"expected one --search per step, got {terms}"
+    # The report files through scripts/ci/file_alert.sh, which searches on the
+    # phrase it is given (#1215; its own tests pin the search).
+    assert f"scripts/ci/file_alert.sh \"$title\" '{ALERT_PHRASE}'" in report
+    assert f'"{ALERT_PHRASE}" in:title' in _posted_alert("box.example", {})
+    terms = _search_terms(close)
+    assert len(terms) == 1, f"expected one --search in the close step, got {terms}"
     for term in terms:
         phrase = term.replace("\\", "").replace('"', "").replace("in:title", "").strip()
         assert "[P" not in phrase, f"search must not key on the priority prefix: {term}"
@@ -116,9 +122,8 @@ def test_alert_dedupe_search_carries_no_priority_prefix():
 
 def test_alert_comments_on_the_oldest_match_and_recovery_closes_every_match():
     steps = _steps(HEALTH_WORKFLOW)
-    report = steps["Report the failure on an issue"]["run"]
     close = steps["Close a recovered alert"]["run"]
-    assert "min_by(.number)" in report, (
+    assert "min_by(.number)" in _posted_alert("box.example", {}), (
         "comment on the oldest open alert, not an arbitrary one"
     )
     assert ".[0]" not in close and ".[].number" in close, (
@@ -370,6 +375,9 @@ def _posted_alert(host: str, files: dict[str, str], **deploy: str) -> str:
     with tempfile.TemporaryDirectory() as tmp:
         bin_dir = Path(tmp) / "bin"
         bin_dir.mkdir()
+        file_alert = Path(tmp) / "scripts" / "ci" / "file_alert.sh"
+        file_alert.parent.mkdir(parents=True)
+        shutil.copy2(REPO_ROOT / "scripts" / "ci" / "file_alert.sh", file_alert)
         posted = Path(tmp) / "posted.txt"
         fake_gh = bin_dir / "gh"
         fake_gh.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" >> {posted}\n')
@@ -379,9 +387,11 @@ def _posted_alert(host: str, files: dict[str, str], **deploy: str) -> str:
         # Actions runs an unlabelled `run:` as `bash -e {0}`.
         subprocess.run(
             ["bash", "-e", "-c", run.replace("/tmp/", f"{tmp}/")],
+            cwd=tmp,
             env={
                 **os.environ,
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                "ALERT_RETRY_DELAY_SECONDS": "0",
                 "HOST": host,
                 "RUN_URL": "https://example.invalid/run",
                 **deploy,
@@ -450,3 +460,35 @@ def test_alert_is_filed_when_the_probe_never_ran():
     posted = _posted_alert("box.example", {})
     assert "The probe did not run" in posted
     assert "(the probe printed nothing)" in posted
+
+
+def test_alert_says_a_timed_out_run_did_not_finish():
+    """#1215 item 4: a hung ssh is cancelled at `timeout-minutes` and still reports."""
+    assert "timed out" in _posted_alert("box.example", {})
+
+
+def test_alert_reports_an_unreachable_box_as_connectivity():
+    """#1215 item 1: ssh's own 255 is the box out of reach, not an unhealthy service."""
+    posted = _posted_alert("box.example", {"probe.status": "255"})
+    assert "Probe exit status 255: ssh could not reach the box" in posted
+
+
+def test_the_ops_guide_names_every_scheduled_workflow():
+    """#1215 item 5: GitHub disables a schedule after 60 quiet days, and nothing
+    reports it. The guide's list is how the operator knows what to re-enable."""
+    guide = (REPO_ROOT / "docs" / "ops" / "STAGING_DEPLOYMENT_GUIDE.md").read_text()
+    section = guide.split("### A schedule that stopped running", 1)[1].split("\n##", 1)[
+        0
+    ]
+    assert "disabled_inactivity" in section and "gh workflow enable" in section
+    for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+        doc = _workflow(path)
+        if "schedule" in (doc.get("on") or doc[True]):
+            assert f"`{path.name}`" in section, path.name
+
+
+def test_a_hung_probe_fails_its_step_before_the_job_is_cancelled():
+    """#1215 item 4: a step timeout below the job's leaves time for the report."""
+    job = _workflow(HEALTH_WORKFLOW)["jobs"]["probe"]
+    probe = _steps(HEALTH_WORKFLOW)["Run the probes in the backend and frontend containers"]
+    assert probe["timeout-minutes"] < job["timeout-minutes"]

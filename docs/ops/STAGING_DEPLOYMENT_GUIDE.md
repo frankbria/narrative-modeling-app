@@ -413,6 +413,23 @@ In a browser, at `https://<host>`:
 
 `staging-health.yml` runs the probes hourly; a failing run opens or comments on a
 `[P1] [ops] Staging health probe is failing` issue and the next green run closes it.
+Both it and `subscription-reconcile.yml` file through `scripts/ci/file_alert.sh`,
+which removes the box's names and tailnet addresses from the public issue and retries
+a failed `gh` call once. A hung probe fails its step at its own `timeout-minutes`,
+inside the job's, so it files too.
+
+### A schedule that stopped running
+
+GitHub disables every scheduled workflow after 60 days without activity in the
+repository, and says so only on the Actions tab: no run, no red run, no alert issue.
+These run on a schedule: `staging-health.yml`, `subscription-reconcile.yml`,
+`backup-verify.yml`, `review-bots-health.yml`, `e2e-tests.yml`. No workflow checks for this, because a check would be a
+schedule too and stop with the rest. After a quiet spell (no commits for weeks):
+
+```bash
+gh workflow list --all   # a stopped one reads "disabled_inactivity"
+gh workflow enable <workflow file name>
+```
 
 ### View Logs
 
