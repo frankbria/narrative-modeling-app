@@ -424,8 +424,10 @@ In a browser, at `https://<host>`:
 Both it and `subscription-reconcile.yml` file through `scripts/ci/file_alert.sh`,
 which removes the box's names and tailnet addresses from the public issue (not a
 custom MagicDNS domain or other names in the stderr: keep `HOST` the bare machine
-name), cuts a body over GitHub's 65,536 characters, and retries a failed `gh` call
-once, a minute later. Every step before the report (Tailscale, ssh setup, the probe
+name), cuts a body over GitHub's 65,536 characters (closing a code block or
+`<details>` the cut leaves open, and printing the whole redacted body to the run
+log, where the notice sends the reader), and retries a failed `gh` call once, a
+minute later. Every step before the report (Tailscale, ssh setup, the probe
 or reconciliation, the state dump) stops at its own `timeout-minutes`, leaving the
 report three minutes of the job's, so a hang files too.
 
