@@ -49,22 +49,24 @@ const connectSources = (text: string) =>
 /** A quoted string, in code or an nginx file: single- and double-quoted ones end at their line, a template may span lines. */
 const STRING_LITERAL = /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`/g
 
+/** A comment: `#` in an nginx file, block and `//` in code. */
+const NGINX_COMMENT = String.raw`#.*$`
+const CODE_COMMENT = String.raw`(?:\/\*[\s\S]*?\*\/|\/\/.*$)`
+
 /**
- * The source without its comments (`#` in an nginx file, block and `//` in code), so a note neither
- * stands in for a directive nor counts as a header. A marker counts only at a line start or after a
- * space: one inside a source (a block comment glued to the Plausible origin) stays and keeps that
- * source refused. Code is read left to right in one pass that steps over string literals, so a `//`
- * in a string is not a comment, and a `/*` inside a line comment, or a `//` inside a block comment,
- * cannot pair with a later comment and hide a header. shortcut: a quote in a regular expression
- * literal or in JSX text can start a string here; parse with TypeScript if one ever hides a header.
+ * The source without its comments, so a note neither stands in for a directive nor counts as a
+ * header. A marker counts only at a line start or after a space: one inside a source (a block
+ * comment glued to the Plausible origin) stays and keeps that source refused. The text is read left
+ * to right in one pass that steps over quoted strings, so a marker in a string is not a comment, and
+ * a `/*` inside a line comment, or a `//` inside a block comment, cannot pair with a later comment
+ * and hide a header. shortcut: a quote in a regular expression literal or in JSX text can start a
+ * string here; parse with TypeScript if one ever hides a header.
  */
 const withoutComments = ({ file, text }: Source) =>
-  file.endsWith('.conf')
-    ? text.replace(/(^|\s)#.*$/gm, '$1')
-    : text.replace(
-        new RegExp(String.raw`(${STRING_LITERAL.source})|(^|\s)(?:\/\*[\s\S]*?\*\/|\/\/.*$)`, 'gm'),
-        (_match, literal: string | undefined, before: string | undefined) => literal ?? before ?? '',
-      )
+  text.replace(
+    new RegExp(String.raw`(${STRING_LITERAL.source})|(^|\s)${file.endsWith('.conf') ? NGINX_COMMENT : CODE_COMMENT}`, 'gm'),
+    (_match, literal: string | undefined, before: string | undefined) => literal ?? before ?? '',
+  )
 
 /**
  * One header value can carry several policies, each enforced: a browser splits them at every comma
@@ -86,13 +88,15 @@ const stringsOf = (part: string) => [...part.replace(NAME_AND_ITS_QUOTE, '').mat
 /**
  * A header's value: the first of its part's strings, with no `;`, `(` or `)` before it (so
  * `headers.set(name, policy)` has none), when it ends the expression: a `+` or `.concat(…)` after it
- * means the emitted value is not this string, so none is read and the header is refused; so is a
- * template with a `${…}` substitution, whose emitted value is not its text.
+ * means the emitted value is not this string, so none is read and the header is refused. So is a
+ * value holding a `\` (a JS escape such as `,` emits a comma) or a `$` (a `${…}` substitution,
+ * an nginx variable), whose emitted value is not its text. shortcut: a header name written with an
+ * escape (`Content-\x53ecurity-Policy`) is not found; decode strings if one is ever written so.
  */
 const HEADER_VALUE = new RegExp(String.raw`^[^'"\x60;()]*?(${STRING_LITERAL.source})(?=\s*(?:[,;)}\]]|always\b|$))`)
 const headerValue = (header: string) => {
   const literal = HEADER_VALUE.exec(header.replace(NAME_AND_ITS_QUOTE, ''))?.[1]
-  return literal === undefined || (literal.startsWith('`') && literal.includes('${')) ? '' : literal.slice(1, -1)
+  return literal === undefined || /[\\$]/.test(literal.slice(1, -1)) ? '' : literal.slice(1, -1)
 }
 
 /** A `connect-src` that starts a directive: at the start of a policy or after a `;`, never inside another's source list. */
@@ -292,6 +296,9 @@ const note = "connect-src https://plausible.io"`)
       ['a stray quote and a space after the origin in a double-quoted code string', code(`res.headers.set('Content-Security-Policy', "connect-src https://plausible.io' ")`), ["connect-src https://plausible.io'"]],
       ['a template value with a substitution', code("const extra = \", default-src 'none'\"\nres.headers.set(\n  'Content-Security-Policy',\n  `connect-src https://plausible.io ${extra}`,\n)"), ['a policy without connect-src']],
       ['a header after a comment marker inside a string', code(`const note = " //"; res.headers.set('Content-Security-Policy', "default-src 'none'")`), ['a policy without connect-src']],
+      ['an escaped comma that makes a second policy', code(`res.headers.set('Content-Security-Policy', "connect-src https://plausible.io \\u002c default-src 'none'")`), ['a policy without connect-src']],
+      ['an nginx header after a # inside a quoted value', edge(`set $note " #"; add_header Content-Security-Policy "default-src 'none'" always;`), ['a policy without connect-src']],
+      ['an nginx value with a variable', edge(`add_header Content-Security-Policy "connect-src https://plausible.io $extra" always;`), ['a policy without connect-src']],
     ])('refuses %s, which browsers read differently', (_where, source, problems) => {
       expect(policyProblems([source])).toEqual(problems.map((problem) => `${source.file}: ${problem}`))
     })
