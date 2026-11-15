@@ -176,7 +176,9 @@ deploys the commit it is dispatched on). Its `build-images` job runs
    `.deploy-images.env`; remove this repository's images that are neither running nor
    the previous deploy's (the rollback). Only the two `ghcr.io/<repo>/backend` and
    `…/frontend` names are looked at, never `docker image prune` (the box is shared); a
-   redeploy of the recorded images, or a box with no record, removes nothing.
+   redeploy of the recorded images, or a box with no record, removes nothing. This
+   assumes one deploy directory of this repository per docker daemon: a second one
+   (production beside staging) would lose its idle rollback to the other's deploys.
 2. `scripts/deploy/apply_nginx_conf.sh` (Step 6)
 3. the health gate: waits for `http://localhost:8010/health/ready`, then runs
    `python -m app.health_probe` in the backend container and
@@ -520,8 +522,10 @@ commit's images, so a hand rollback lasts only until then.
 
 The immediate one puts the previous images back. Their three lines are in the summary of
 the previous green Deploy run. Each deploy keeps the previous deploy's images on the box
-and removes older ones, so for anything further back `docker login ghcr.io` first (the
-registry keeps every commit's images):
+and removes older ones; anything further back is pulled again by digest (the registry
+keeps every commit's images, and both packages are public, so no login is needed. If one
+is made private, log in with a throwaway config, never the box's own:
+`cfg=$(mktemp -d); docker --config "$cfg" login ghcr.io; docker --config "$cfg" pull <digest>; rm -rf "$cfg"`):
 
 ```bash
 # Immediate, on the box

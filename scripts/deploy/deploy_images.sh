@@ -85,6 +85,9 @@ compose ps
 # nor the rollback go; the box is shared, so nothing outside these two names is
 # touched (never `docker image prune`). With no rollback recorded, or the same images
 # deployed again, which one is the rollback is unknown, and nothing goes.
+# shortcut: one deploy directory of this repository per docker daemon, since the keep
+# list is this directory's record; give a second one (production beside staging) a
+# keep list that reads both records before it shares a daemon.
 keep=" $BACKEND_IMAGE $FRONTEND_IMAGE $rollback_backend $rollback_frontend "
 if [ -n "$rollback_backend" ] && [ -n "$rollback_frontend" ] \
   && [ "$rollback_backend $rollback_frontend" != "$BACKEND_IMAGE $FRONTEND_IMAGE" ]; then
