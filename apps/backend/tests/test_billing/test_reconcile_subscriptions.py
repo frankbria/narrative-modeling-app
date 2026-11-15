@@ -1624,10 +1624,12 @@ class TestARowStripeRefused:
         assert asked == [ids[3], ids[1], ids[2], ids[0]]
         assert await resume.find_one({}) == stored
 
-    async def test_a_list_written_as_null_is_no_list(self, resume):
+    @pytest.mark.parametrize("by_hand", [None, 0, True, "sub_x"])
+    async def test_a_list_written_by_hand_as_no_list_is_ignored(self, resume, by_hand):
+        """The github-actions reviewer on #1260: a scalar must not stop every run."""
         ids = await _seed_numbered("null", 2)
         await resume.insert_one(
-            {"_id": reconcile_subscriptions.RESUME_ID, "read_first": None}
+            {"_id": reconcile_subscriptions.RESUME_ID, "read_first": by_hand}
         )
         asked: list[str] = []
 

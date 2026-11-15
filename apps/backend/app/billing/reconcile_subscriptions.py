@@ -83,7 +83,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mappi
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypeGuard
 
 import stripe
 from bson import ObjectId
@@ -445,12 +445,16 @@ def _order_from(stored: Mapping[str, Any]) -> _Order:
     a place in `_id` order; anything else written by hand would match every row
     in one segment and fail the comparisons at the deadline."""
     start = stored.get("resume_from")
-    first = [each for each in stored.get("read_first") or [] if _is_id(each)]
+    first = [each for each in _as_list(stored.get("read_first")) if _is_id(each)]
     return _Order(start if _is_id(start) else None, tuple(sorted(first)))
 
 
-def _is_id(value: object) -> bool:
+def _is_id(value: object) -> TypeGuard[ObjectId]:
     return isinstance(value, ObjectId)
+
+
+def _as_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
 
 
 def _resume_from(
