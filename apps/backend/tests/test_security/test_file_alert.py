@@ -172,3 +172,8 @@ def test_names_that_partly_overlap_are_redacted_as_one():
         DEPLOY_PATH="/srv/application/node",
     )
     assert "in <deploy path> now" in posted
+
+
+def test_a_name_that_overlaps_itself_is_redacted_whole():
+    _, posted = _file("at node-node-node\n", HOST="node-node")
+    assert "at <staging host>\n" in posted

@@ -43,7 +43,9 @@ body=$(perl -0777 -pe '
   # span: replacing one name first can break the match of another that overlaps it.
   my @spans;
   for my $name (@names) {
-    while (/$name->[0]/g) { push @spans, [$-[0], $+[0], $name->[1]] }
+    # Resumed one character after each match starts, so a value that overlaps
+    # itself (`node-node` in `node-node-node`) is found at every position.
+    while (/$name->[0]/g) { push @spans, [$-[0], $+[0], $name->[1]]; pos($_) = $-[0] + 1 }
   }
   my @merged;
   for my $span (sort { $a->[0] <=> $b->[0] || $b->[1] <=> $a->[1] } @spans) {
