@@ -45,7 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'frankbria/narrative-modeling-app'
     environment: Development
-    timeout-minutes: 15
+    # The steps before the report stop at their own limits (14 minutes together)
+    # and leave the report 3: two retry waits of a minute (#1231).
+    timeout-minutes: 17
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,6 +72,9 @@ jobs:
           fi
 
       - name: Connect to Tailscale
+        # Its own limit, as every step before the report has: a hang here used
+        # up the job and left the report only the grace after the cancel (#1231).
+        timeout-minutes: 2
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -77,6 +82,7 @@ jobs:
           tags: tag:ci
 
       - name: Configure SSH
+        timeout-minutes: 1
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
@@ -90,6 +96,9 @@ jobs:
 
       - name: Reconcile subscriptions in the backend container
         id: reconcile
+        # The module stops itself first (RUN_BUDGET_SECONDS + FINISH_SECONDS); this
+        # is for a hung ssh, and leaves the report time inside the job's limit (#1231).
+        timeout-minutes: 11
         env:
           HOST: ${{ secrets.HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}

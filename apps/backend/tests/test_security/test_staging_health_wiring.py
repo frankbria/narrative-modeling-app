@@ -18,6 +18,7 @@ from pathlib import Path
 import yaml
 
 from tests.test_security.deploy_box import stand_in_box
+from tests.test_security.test_file_alert import recording_gh
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 COMPOSE = REPO_ROOT / "docker-compose.deploy.yml"
@@ -380,7 +381,7 @@ def _posted_alert(host: str, files: dict[str, str], **deploy: str) -> str:
         shutil.copy2(REPO_ROOT / "scripts" / "ci" / "file_alert.sh", file_alert)
         posted = Path(tmp) / "posted.txt"
         fake_gh = bin_dir / "gh"
-        fake_gh.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" >> {posted}\n')
+        fake_gh.write_text("#!/usr/bin/env bash\n" + recording_gh(posted))
         fake_gh.chmod(0o755)
         for name, text in files.items():
             (Path(tmp) / name).write_text(text)
@@ -492,3 +493,30 @@ def test_a_hung_probe_fails_its_step_before_the_job_is_cancelled():
     job = _workflow(HEALTH_WORKFLOW)["jobs"]["probe"]
     probe = _steps(HEALTH_WORKFLOW)["Run the probes in the backend and frontend containers"]
     assert probe["timeout-minutes"] < job["timeout-minutes"]
+
+
+RECONCILE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "subscription-reconcile.yml"
+
+
+# Two retry waits of a minute (scripts/ci/file_alert.sh) and the gh calls themselves.
+REPORT_MINUTES = 3
+
+
+def test_every_step_that_can_hang_stops_before_the_job_does():
+    """#1231 item 3: a hang in Tailscale or ssh setup used up the whole job, and the
+    report then ran only in the short grace after the cancel. Every step before the
+    report that reaches the box carries its own limit, and together they leave the
+    report its retries."""
+    unbounded_on_purpose = {"Checkout", "Check deploy secrets are configured"}
+    for path in (HEALTH_WORKFLOW, RECONCILE_WORKFLOW):
+        job = next(iter(_workflow(path)["jobs"].values()))
+        names = [step["name"] for step in job["steps"]]
+        before = names[: names.index("Report the failure on an issue")]
+        limits = {
+            name: _steps(path)[name].get("timeout-minutes")
+            for name in before
+            if name not in unbounded_on_purpose
+        }
+        assert None not in limits.values(), (path.name, limits)
+        assert "Connect to Tailscale" in limits and "Configure SSH" in limits
+        assert sum(limits.values()) + REPORT_MINUTES <= job["timeout-minutes"], path.name

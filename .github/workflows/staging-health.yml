@@ -38,7 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'frankbria/narrative-modeling-app'
     environment: Development
-    timeout-minutes: 10
+    # The steps before the report stop at their own limits (9 minutes together, 11
+    # with the state dump) and leave the report 3: two retry waits of a minute (#1231).
+    timeout-minutes: 14
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,6 +68,9 @@ jobs:
           fi
 
       - name: Connect to Tailscale
+        # Its own limit, as every step before the report has: a hang here used
+        # up the job and left the report only the grace after the cancel (#1231).
+        timeout-minutes: 2
         if: steps.preflight.outputs.configured == 'true'
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
         with:
@@ -74,6 +79,7 @@ jobs:
           tags: tag:ci
 
       - name: Configure SSH
+        timeout-minutes: 1
         if: steps.preflight.outputs.configured == 'true'
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
@@ -139,6 +145,7 @@ jobs:
           exit "$status"
 
       - name: Backend container state
+        timeout-minutes: 2
         # The operator's first move on every alert was to ssh in and look at the
         # container; the run can do that. Status fields and exception CLASS names
         # only — this lands in a public issue (see the script header).

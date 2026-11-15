@@ -90,8 +90,8 @@ Fetch = Callable[[str], Awaitable[Remote | ReadFailure]]
 CONCURRENT_READS = 5
 #: Seconds to wait before each retry of a read Stripe was busy or unreachable for.
 RETRY_DELAYS_SECONDS = (1, 2, 4)
-#: Seconds the run may spend reading before it stops: the job allows 15 minutes,
-#: about two go to Tailscale, ssh and the container start, and a read cancelled
+#: Seconds the run may spend reading before it stops: its workflow step allows 11
+#: minutes, the container start takes some, and a read cancelled
 #: here keeps its thread until the SDK's own timeout.
 RUN_BUDGET_SECONDS = 9 * 60
 #: Seconds past the budget for the cancelled reads, the bulk accounting of the

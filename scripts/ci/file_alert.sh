@@ -20,17 +20,34 @@
 # an ordinary word (`deploy`) is redacted wherever that word appears;
 # over-redaction is the safe side.
 #
-# Each gh call is tried twice, ALERT_RETRY_DELAY_SECONDS (default 10) apart, so one
-# API error does not leave a red run as the day's only signal. A create whose first
+# shortcut: only the names above are redacted. A custom MagicDNS domain (not
+# `*.ts.net`) and any other host name or address the stderr prints go public as
+# printed. ssh names the host it was given (HOST, redacted), so this holds while
+# HOST is the bare machine name; redact more (every host name in the stderr block)
+# if a step ever connects through a name the box's secrets do not hold (#1231).
+#
+# The body goes to gh as a file, not an argument (Linux refuses one over 128 KiB),
+# cut to fit GitHub's 65,536-character limit with a line saying how much was cut.
+#
+# Each gh call is tried twice, ALERT_RETRY_DELAY_SECONDS (default 60) apart, so one
+# API error does not leave a red run as the day's only signal; a minute because
+# GitHub asks for at least that after a secondary rate limit. A create whose first
 # attempt landed before failing can file a duplicate; the next run comments on the
 # oldest, so that is accepted.
 set -euo pipefail
 [ $# -eq 2 ] || { echo "usage: file_alert.sh <title> <stable phrase>   (body on stdin)" >&2; exit 2; }
 title=$1
 search="\"$2\" in:title"
+body_file=$(mktemp)
+trap 'rm -f "$body_file"' EXIT
 
-body=$(perl -0777 -pe '
-  my ($host, $path, $user) = map { $ENV{$_} // "" } qw(HOST DEPLOY_PATH DEPLOY_USER);
+# Decoded so the limit and the cut count characters, as GitHub does; leniently
+# (a bad byte becomes U+FFFD), because ssh stderr can hold anything and -CS would
+# die on it in the first match, losing the alert.
+perl -MEncode -0777 -pe '
+  $_ = Encode::decode("UTF-8", $_);
+  # Decoded like the body, or a name with a non-ASCII character would never match.
+  my ($host, $path, $user) = map { Encode::decode("UTF-8", $ENV{$_} // "") } qw(HOST DEPLOY_PATH DEPLOY_USER);
   $path =~ s{/+$}{};
   my @names;
   push @names, [qr/\Q$path\E/, "<deploy path>"] if length $path;
@@ -40,7 +57,11 @@ body=$(perl -0777 -pe '
   # After the values of the box: on a tie the first placeholder stays.
   push @names,
     [qr/(?<![\d.])100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}(?!\d)/, "<tailnet address>"],
-    [qr/fd7a:115c:a1e0(?::[0-9a-f]{0,4})+/i, "<tailnet address>"],
+    # A colon is taken only before a hex group, so the colon ssh prints after an
+    # address stays; only a final `::` is. Every hex letter after a colon is taken,
+    # even one starting a word (`::3:Cannot` loses `Ca`): the groups at the end are
+    # the ones that name the node. An embedded IPv4 tail (`…:7:10.0.0.1`) goes too.
+    [qr/fd7a:115c:a1e0(?::{1,2}[0-9a-f]+)*(?:\.\d{1,3})*(?:::(?![\w:]))?/i, "<tailnet address>"],
     # A MagicDNS name (`box.tailXXXX.ts.net`) names the tailnet too; merged with
     # the HOST match it overlaps, it is replaced whole.
     [qr/[\w-]+(?:\.[\w-]+)*\.ts\.net\b/i, "<tailnet address>"],
@@ -62,20 +83,28 @@ body=$(perl -0777 -pe '
     }
   }
   for my $span (reverse @merged) { substr($_, $span->[0], $span->[1] - $span->[0]) = $span->[2] }
-')
+  # Cut after redacting, so a name is never split into a part the pattern misses.
+  # 65,000 leaves room for the line below inside the 65,536 limit.
+  if (length > 65536) {
+    my $cut = length($_) - 65000;
+    $_ = substr($_, 0, 65000)
+      . "\n\n($cut characters were cut: an issue body holds at most 65,536. The run log has the whole output.)\n";
+  }
+  $_ = Encode::encode("UTF-8", $_);
+' > "$body_file"
 
 # Prints only the successful attempt's output: a search that printed a number and
 # then failed must not hand its retry two numbers.
 twice() {
   local out
-  out=$("$@") || { sleep "${ALERT_RETRY_DELAY_SECONDS:-10}"; out=$("$@") || return 1; }
+  out=$("$@") || { sleep "${ALERT_RETRY_DELAY_SECONDS:-60}"; out=$("$@") || return 1; }
   printf '%s\n' "$out"
 }
 
 # `// empty`: on no match jq would print the string "null".
 existing=$(twice gh issue list --state open --search "$search" --json number --jq 'min_by(.number).number // empty')
 if [ -n "$existing" ]; then
-  twice gh issue comment "$existing" --body "$body"
+  twice gh issue comment "$existing" --body-file "$body_file"
 else
-  twice gh issue create --title "$title" --body "$body"
+  twice gh issue create --title "$title" --body-file "$body_file"
 fi

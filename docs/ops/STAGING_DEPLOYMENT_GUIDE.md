@@ -422,9 +422,12 @@ In a browser, at `https://<host>`:
 `staging-health.yml` runs the probes hourly; a failing run opens or comments on a
 `[P1] [ops] Staging health probe is failing` issue and the next green run closes it.
 Both it and `subscription-reconcile.yml` file through `scripts/ci/file_alert.sh`,
-which removes the box's names and tailnet addresses from the public issue and retries
-a failed `gh` call once. A hung probe fails its step at its own `timeout-minutes`,
-inside the job's, so it files too.
+which removes the box's names and tailnet addresses from the public issue (not a
+custom MagicDNS domain or other names in the stderr: keep `HOST` the bare machine
+name), cuts a body over GitHub's 65,536 characters, and retries a failed `gh` call
+once, a minute later. Every step before the report (Tailscale, ssh setup, the probe
+or reconciliation, the state dump) stops at its own `timeout-minutes`, leaving the
+report three minutes of the job's, so a hang files too.
 
 ### A schedule that stopped running
 
