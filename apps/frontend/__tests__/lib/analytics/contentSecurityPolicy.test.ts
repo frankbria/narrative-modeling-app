@@ -28,38 +28,43 @@ interface Source {
   text: string
 }
 
-/** What may follow a directive name: anything else (`connect-src!`, `connect-src-extra`) makes another name, which browsers ignore. */
-const NAME_END = String.raw`(?=[\s;,"'\x60]|$)`
+/** CSP separates names and sources with ASCII whitespace only; a no-break space is part of a token. */
+const ASCII_SPACE = String.raw`[\t\n\f\r ]`
+
+/** What may follow a directive name: anything else (`connect-src!`, `connect-src'self'`, `connect-src-extra`) makes another name, which browsers ignore. */
+const NAME_END = String.raw`(?=${ASCII_SPACE}|[;,]|$)`
 
 /**
- * Each `connect-src` directive's sources, up to the end of the directive (`;`), of the policy (`,`
- * starts another one) or of the string holding it. A quoted keyword (`'self'`) is a source; a lone
- * single quote ends the list. In code it closes the string, unless a `"` or backtick follows it,
- * which shows the string was opened by that one; in an nginx value it is part of the last source,
- * so that source is invalid and refused. A list split across array items reads as empty and is
+ * Each `connect-src` directive's sources in a policy text (an nginx value or a code string's
+ * contents), up to the end of the directive (`;`), of the policy (`,` starts another one) or of the
+ * text. Every character but ASCII whitespace belongs to a source, so a stray quote or a no-break
+ * space makes that source invalid and refused. A list split across strings reads as empty and is
  * refused; so is `x-connect-src`.
  */
-const connectSources = (text: string, inCode: boolean) =>
-  [...text.matchAll(new RegExp(String.raw`(?<![\w-])connect-src${NAME_END}((?:[^;,"\x60'\n]|'[^'\s;,"\x60]*')*)(')?(.?)`, 'gi'))].map(
-    ([, list, loneQuote, after]) => {
-      const closesTheString = inCode && !['"', '`'].includes(after)
-      return (loneQuote && !closesTheString ? `${list}'` : list).trim().split(/\s+/)
-    },
+const connectSources = (text: string) =>
+  [...text.matchAll(new RegExp(String.raw`(?<![\w-])connect-src${NAME_END}([^;,\n]*)`, 'gi'))].map(([, list]) =>
+    list.split(new RegExp(`${ASCII_SPACE}+`)).filter((entry) => entry !== ''),
   )
+
+/** A quoted string, in code or an nginx file: single- and double-quoted ones end at their line, a template may span lines. */
+const STRING_LITERAL = /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`/g
 
 /**
  * The source without its comments (`#` in an nginx file, block and `//` in code), so a note neither
  * stands in for a directive nor counts as a header. A marker counts only at a line start or after a
  * space: one inside a source (a block comment glued to the Plausible origin) stays and keeps that
- * source refused. Both code markers are read in one pass, left to right, so a `/*` inside a line
- * comment, or a `//` inside a block comment, cannot pair with a later comment and hide a header.
- * shortcut: a ` //` or ` /*` inside a string is read as a comment; parse with TypeScript if a real
- * header ever sits after one on the same line.
+ * source refused. Code is read left to right in one pass that steps over string literals, so a `//`
+ * in a string is not a comment, and a `/*` inside a line comment, or a `//` inside a block comment,
+ * cannot pair with a later comment and hide a header. shortcut: a quote in a regular expression
+ * literal or in JSX text can start a string here; parse with TypeScript if one ever hides a header.
  */
 const withoutComments = ({ file, text }: Source) =>
   file.endsWith('.conf')
     ? text.replace(/(^|\s)#.*$/gm, '$1')
-    : text.replace(/(^|\s)(?:\/\*[\s\S]*?\*\/|\/\/.*$)/gm, '$1')
+    : text.replace(
+        new RegExp(String.raw`(${STRING_LITERAL.source})|(^|\s)(?:\/\*[\s\S]*?\*\/|\/\/.*$)`, 'gm'),
+        (_match, literal: string | undefined, before: string | undefined) => literal ?? before ?? '',
+      )
 
 /**
  * One header value can carry several policies, each enforced: a browser splits them at every comma
@@ -72,18 +77,26 @@ const policiesIn = (value: string) => value.split(',').filter((policy, index) =>
 const AT_A_HEADER = /(?=content-security-policy)/i
 const REPORT_ONLY = /^content-security-policy-report-only/i
 const HEADER_NAME = /^content-security-policy/i
+/** The header name with the quote that closes its own string in code. */
+const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
+
+/** The quoted strings of a part, after its header name: the texts a browser could receive as a policy. */
+const stringsOf = (part: string) => [...part.replace(NAME_AND_ITS_QUOTE, '').matchAll(STRING_LITERAL)].map(([literal]) => literal)
 
 /**
- * A header's value: the first quoted string after its name, with no `;`, `(` or `)` in between (so
- * `headers.set(name, policy)` has none), that ends the expression: a `+` or `.concat(…)` after it
- * means the emitted value is not this string, so none is read and the header is refused. A quote
- * right after the name closes the name's own string.
+ * A header's value: the first of its part's strings, with no `;`, `(` or `)` before it (so
+ * `headers.set(name, policy)` has none), when it ends the expression: a `+` or `.concat(…)` after it
+ * means the emitted value is not this string, so none is read and the header is refused; so is a
+ * template with a `${…}` substitution, whose emitted value is not its text.
  */
-const HEADER_VALUE = /^content-security-policy['"`]?[^'"`;()]*?(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1(?=\s*(?:[,;)}\]]|always\b|$))/i
-const headerValue = (header: string) => header.match(HEADER_VALUE)?.[2] ?? ''
+const HEADER_VALUE = new RegExp(String.raw`^[^'"\x60;()]*?(${STRING_LITERAL.source})(?=\s*(?:[,;)}\]]|always\b|$))`)
+const headerValue = (header: string) => {
+  const literal = HEADER_VALUE.exec(header.replace(NAME_AND_ITS_QUOTE, ''))?.[1]
+  return literal === undefined || (literal.startsWith('`') && literal.includes('${')) ? '' : literal.slice(1, -1)
+}
 
 /** A `connect-src` that starts a directive: at the start of a policy or after a `;`, never inside another's source list. */
-const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)\s*connect-src${NAME_END}`, 'i')
+const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)${ASCII_SPACE}*connect-src${NAME_END}`, 'i')
 
 /**
  * shortcut: this reads source text because no policy exists yet to emit (#1237); when the first one
@@ -102,7 +115,8 @@ function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
     const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
     const blocking = parts
-      .flatMap((part) => connectSources(part, !source.file.endsWith('.conf')))
+      .flatMap(stringsOf)
+      .flatMap((literal) => connectSources(literal.slice(1, -1)))
       .filter((list) => !list.some((entry) => entry.toLowerCase() === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
     const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => policiesIn(headerValue(header)))
@@ -269,6 +283,17 @@ const note = "connect-src https://plausible.io"`)
 
     it('refuses a stray single quote after the origin inside a double-quoted code string', () => {
       expect(policyProblems([code(`const policy = "connect-src https://plausible.io'"`)])).toEqual([`middleware.ts: connect-src https://plausible.io'`])
+    })
+
+    it.each([
+      ['a quote glued to the directive name', code(`res.headers.set('Content-Security-Policy', "default-src 'none'; connect-src'self' https://plausible.io")`), ['a policy without connect-src']],
+      ['a no-break space after the directive name', edge(`add_header Content-Security-Policy "default-src 'none'; connect-src\u00a0https://plausible.io" always;`), ['a policy without connect-src']],
+      ['a no-break space between two sources', edge(`add_header Content-Security-Policy "connect-src 'self'\u00a0https://plausible.io" always;`), ["connect-src 'self'\u00a0https://plausible.io"]],
+      ['a stray quote and a space after the origin in a double-quoted code string', code(`res.headers.set('Content-Security-Policy', "connect-src https://plausible.io' ")`), ["connect-src https://plausible.io'"]],
+      ['a template value with a substitution', code("const extra = \", default-src 'none'\"\nres.headers.set(\n  'Content-Security-Policy',\n  `connect-src https://plausible.io ${extra}`,\n)"), ['a policy without connect-src']],
+      ['a header after a comment marker inside a string', code(`const note = " //"; res.headers.set('Content-Security-Policy', "default-src 'none'")`), ['a policy without connect-src']],
+    ])('refuses %s, which browsers read differently', (_where, source, problems) => {
+      expect(policyProblems([source])).toEqual(problems.map((problem) => `${source.file}: ${problem}`))
     })
 
     it('refuses a header whose policy is written before it', () => {
