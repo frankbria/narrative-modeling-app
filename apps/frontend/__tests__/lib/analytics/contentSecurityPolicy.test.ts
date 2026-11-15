@@ -64,23 +64,29 @@ const REPORT_ONLY = /^content-security-policy-report-only/i
 const HEADER_NAME = /^content-security-policy/i
 
 /**
+ * A header's value: the first quoted string after its name, with no `;`, `(` or `)` in between (so
+ * `headers.set(name, policy)` has none). A quote right after the name closes the name's own string.
+ */
+const HEADER_VALUE = /^content-security-policy['"`]?[^'"`;()]*?(["'`])([\s\S]*?)\1/i
+const headerValue = (header: string) => header.match(HEADER_VALUE)?.[2] ?? ''
+
+/**
  * What the guard reports, each problem prefixed with its file: empty when the counts can reach
  * Plausible. A browser enforces every policy it receives (Next's, the edge's, a `location` block's,
- * each one of a comma-separated value), so the text after each header name, up to the next one, and
- * each policy after a comma in it need a `connect-src` of their own, and every one must list Plausible.
- * shortcut: a header whose value is written before it or in another file (`headers.set(name, policy)`)
- * is refused; pair them by variable when such a file exists.
+ * each one of a comma-separated value), so each header's value, and each policy after a comma in
+ * it, needs a `connect-src` of its own; and every `connect-src` outside a report-only header must
+ * list Plausible. shortcut: a header whose value is not a quoted string right after its name
+ * (`headers.set(name, policy)`, a value from another file) is refused; resolve the variable when
+ * such a file exists.
  */
 function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
-    const parts = withoutComments(source).split(AT_A_HEADER)
-    const headers = parts.filter((part) => HEADER_NAME.test(part) && !REPORT_ONLY.test(part))
-    const policies = headers.flatMap((header) => header.split(NEXT_POLICY))
-    const beforeAnyPolicy = parts.filter((part) => !HEADER_NAME.test(part))
-    const blocking = [...beforeAnyPolicy, ...policies]
+    const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
+    const blocking = parts
       .flatMap(connectSources)
       .filter((list) => !list.some((entry) => entry.replace(/'$/, '') === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
+    const policies = parts.filter((part) => HEADER_NAME.test(part)).flatMap((header) => headerValue(header).split(NEXT_POLICY))
     const withoutConnectSource = policies.filter((policy) => connectSources(policy).length === 0).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource].map((problem) => `${source.file}: ${problem}`)
   })
@@ -189,6 +195,26 @@ location = /pricing { add_header Content-Security-Policy "default-src 'self'" al
       ['a directive name with a suffix', `add_header Content-Security-Policy "default-src 'self'; connect-src-extra https://plausible.io" always;`, ['a policy without connect-src']],
     ])('refuses %s', (_where, text, problems) => {
       expect(policyProblems([edge(text)])).toEqual(problems.map((problem) => `nginx-staging.conf: ${problem}`))
+    })
+
+    it('reads only the header value, not a later string that holds a connect-src', () => {
+      const edgeHeaders = edge(`add_header Content-Security-Policy "default-src 'self'" always;
+add_header X-Policy-Example "connect-src https://plausible.io" always;`)
+      expect(policyProblems([edgeHeaders])).toEqual(['nginx-staging.conf: a policy without connect-src'])
+    })
+
+    it('does not take a later string for the value of a header set from a variable', () => {
+      const middleware = code(`res.headers.set('Content-Security-Policy', policy)
+const note = "connect-src https://plausible.io"`)
+      expect(policyProblems([middleware])).toEqual(['middleware.ts: a policy without connect-src'])
+    })
+
+    it('reads a Next header value written on the line after its name', () => {
+      const nextHeader = code(`{
+  key: 'Content-Security-Policy',
+  value: "default-src 'self'; connect-src 'self' https://plausible.io",
+}`)
+      expect(policyProblems([nextHeader])).toEqual([])
     })
 
     it('refuses a header whose policy is written before it', () => {
