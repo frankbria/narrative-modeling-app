@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 # apps/backend/tests/test_security/ -> repo root
 REPO = Path(__file__).resolve().parents[4]
 RUNNER_SCRIPT = REPO / "apps" / "frontend" / "test-e2e.sh"
@@ -97,16 +99,14 @@ def test_the_log_gets_every_threads_stack_and_the_hung_process_is_stopped(
     wrapper = _start_hung_backend(log)
     try:
         _wait_until_hung(log)
-        backend = (
-            Path("/proc")
-            / subprocess.check_output(
-                ["pgrep", "-P", str(wrapper.pid)], text=True
-            ).strip()
+        backend = int(
+            subprocess.check_output(["pgrep", "-P", str(wrapper.pid)], text=True)
         )
         dumped = _dump(wrapper.pid, log)
-        # Gone (reaped, not a zombie) when the helper returns: the dump is complete
-        # in the log before the job's cleanup and upload run.
-        assert not backend.exists(), "the helper returned before the backend had exited"
+        # Gone (reaped, not a zombie, which signal 0 still reaches) when the helper
+        # returns: the dump is complete in the log before the job's cleanup and upload run.
+        with pytest.raises(ProcessLookupError):
+            os.kill(backend, 0)
     finally:
         _stop_all(wrapper)
 
@@ -186,7 +186,10 @@ def test_nothing_the_runner_starts_writes_a_core_file():
 
 
 def test_uv_run_keeps_a_wrapper_with_the_backend_as_its_child():
-    """The helper signals what is under `uv run`, which works only if uv forks, not execs."""
+    """The helper signals what is under `uv run`, which works only if uv forks, not execs.
+
+    Pinned to this interpreter and offline, so a cold uv cache never resolves or
+    downloads one: the PR gate needs no network for this test."""
     uv = shutil.which("uv")
     assert uv, "uv is how test-e2e.sh starts the backend"
     wrapper = subprocess.Popen(
@@ -194,6 +197,9 @@ def test_uv_run_keeps_a_wrapper_with_the_backend_as_its_child():
             uv,
             "run",
             "--no-project",
+            "--offline",
+            "--python",
+            sys.executable,
             "python",
             "-c",
             "import os; print(os.getpid(), os.getppid())",
