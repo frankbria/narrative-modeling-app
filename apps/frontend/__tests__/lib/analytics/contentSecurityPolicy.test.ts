@@ -94,23 +94,28 @@ const DIRECTIVE_NAME = String.raw`(?:[a-z]+(?:-[a-z]+)*-src(?:-elem|-attr)?|base
 /** After a string, what ends its expression: a separator or bracket, a JSX tag's end, the text's end, or a line break the next line does not continue (no semicolons here). */
 const LABEL_END = String.raw`(?=[ \t]*(?:[,;)\]}>]|\/>|$|\n(?!\s*[-+*/%.?:|&^[(\`])))`
 /**
- * What makes `Name:` a label: words up to the closing quote, starting with a letter, with no directive
- * name and nothing that builds or escapes a value (`$`, `\`), where that quote also ends the
- * expression (LABEL_END), so neither an inner quote nor a `+` hides a policy after the words. A
- * policy of only directives browsers do not know (`made-up-directive x`) restricts nothing.
+ * What makes `Name:` a label in a string opened by `quote`: words up to that same quote, starting with
+ * a letter, with no directive name and nothing that builds or escapes a value (`$`, `\`), where the
+ * quote also ends the expression (LABEL_END), so neither a `+` nor a later string adds a policy to the
+ * words. A policy of only directives browsers do not know (`made-up-directive x`) restricts nothing.
  * shortcut: a directive the spec adds without `-src` reads as a word; add it to DIRECTIVE_NAME.
  */
-const LABEL_TEXT = String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^'"\`$\\\n])+['"\`]${LABEL_END}`
+const labelText = (quote: string) =>
+  String.raw`${ASCII_SPACE}*(?=[a-z])(?:(?!(?<![\w-])${DIRECTIVE_NAME}(?![\w-]))[^${quote}$\\\n])+${quote}${LABEL_END}`
 /**
- * A header name, not a mention. In code its own closing quote (or the next string) follows it, or a
- * colon (a serialized `Name: policy` line) that LABEL_TEXT does not follow, which prose such as `the
+ * A header name, not a mention, given the character before it (the quote that opens its string, in
+ * code). In code its own closing quote (or the next string) follows it, or a colon (a serialized
+ * `Name: policy` line) that a label (`labelText`) does not follow, which prose such as `the
  * Content-Security-Policy is…` or a `Content-Security-Policy: see the wiki` label has not;
  * `'our Content-Security-Policy'` still reads as a name kept in a constant, and is refused. In
  * nginx, where prose sits only in the comments already removed, any whole name counts (an unquoted
  * value is valid there).
  */
 const HEADER_NAME_IN_NGINX = /^content-security-policy(?![\w-])/i
-const HEADER_NAME_IN_CODE = new RegExp(String.raw`^content-security-policy(?![\w-])(?=['"\`]|\s*['"\`]|\s*:(?!${LABEL_TEXT})|$)`, 'i')
+const headerNameInCode = (before: string) => {
+  const notALabel = /^['"`]$/.test(before) ? `(?!${labelText(before)})` : ''
+  return new RegExp(String.raw`^content-security-policy(?![\w-])(?=['"\`]|\s*['"\`]|\s*:${notALabel}|$)`, 'i')
+}
 /** The header name with the quote that closes its own string in code. */
 const NAME_AND_ITS_QUOTE = /^content-security-policy(?:-report-only)?['"`]?/i
 
@@ -158,14 +163,17 @@ const DIRECTIVE_START = new RegExp(String.raw`(?:^|;)${ASCII_SPACE}*connect-src$
  */
 function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
-    const headerName = source.file.endsWith('.conf') ? HEADER_NAME_IN_NGINX : HEADER_NAME_IN_CODE
-    const parts = withoutComments(source).split(AT_A_HEADER).filter((part) => !REPORT_ONLY.test(part))
+    const isHeaderName = (part: string, before: string) =>
+      (source.file.endsWith('.conf') ? HEADER_NAME_IN_NGINX : headerNameInCode(before)).test(part)
+    const allParts = withoutComments(source).split(AT_A_HEADER)
+    const enforced = allParts.map((part, index) => ({ part, before: allParts[index - 1]?.slice(-1) ?? '' })).filter(({ part }) => !REPORT_ONLY.test(part))
+    const parts = enforced.map(({ part }) => part)
     const blocking = parts
       .flatMap(stringsOf)
       .flatMap((literal) => connectSources(literal.slice(1, -1)))
       .filter((list) => !list.some((entry) => entry.toLowerCase() === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
-    const policies = parts.filter((part) => headerName.test(part)).flatMap((header) => policiesIn(headerValue(header)))
+    const policies = enforced.filter(({ part, before }) => isHeaderName(part, before)).flatMap(({ part }) => policiesIn(headerValue(part)))
     const withoutConnectSource = policies.filter((policy) => !DIRECTIVE_START.test(policy)).map(() => 'a policy without connect-src')
     return [...blocking, ...withoutConnectSource].map((problem) => `${source.file}: ${problem}`)
   })
@@ -390,7 +398,9 @@ const note = "connect-src https://plausible.io"`)
       ['a label with a colon in a JSX attribute', code(`<abbr title="Content-Security-Policy: see the wiki">CSP</abbr>`)],
       ['a label with a colon passed to a call', code(`t('Content-Security-Policy: see the wiki')`)],
       ['a label with a colon closing a JSX element', code(`<Hint text="Content-Security-Policy: see the wiki" />`)],
-      ['a label with a colon before a semicolon', code(`const label = 'Content-Security-Policy: see the wiki'; export default label`)],
+      ['a label with a colon and an apostrophe', code(`const label = "Content-Security-Policy: see the team's wiki"`)],
+      ['a label with a colon in a template', code('const label = `Content-Security-Policy: see the wiki`')],
+      ['a label with a colon before a semicolon',code(`const label = 'Content-Security-Policy: see the wiki'; export default label`)],
       ['a label with a colon first in a list', code(`const labels = ['Content-Security-Policy: see the wiki', 'Referrer-Policy']`)],
       ['a label with a colon last in a list', code(`const labels = ['Content-Security-Policy: see the wiki']`)],
       ['a label with a colon in an object', code(`const hints = { csp: 'Content-Security-Policy: see the wiki' }`)],
@@ -419,7 +429,8 @@ const note = "connect-src https://plausible.io"`)
       ['an escaped letter', String.raw`const line = "Content-Security-Policy: \u0064efault-src 'none'"`],
       ['a substitution after a word', 'const line = `Content-Security-Policy: made-up ${policy}`'],
       ['a quoted source inside the words', `const line = "Content-Security-Policy: made-up 'x'; default-src 'none'"`],
-      ['words concatenated with a policy', `const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
+      ['another quote and a semicolon inside the words', `const line = "Content-Security-Policy: made-up '; default-src https://example.com"`],
+      ['words concatenated with a policy',`const line = 'Content-Security-Policy: made-up script; ' + "default-src 'none'"`],
       ['words continued on the next line', "const line = 'Content-Security-Policy: made-up script; '\n  + policy"],
       ['an escape after a word',String.raw`const line = "Content-Security-Policy: made-up \u0064efault-src 'none'"`],
     ])('still refuses a policy written after the name and a colon: %s', (_where, text) => {
