@@ -44,9 +44,10 @@ if [ -z "$BACKEND_IMAGE" ] || [ -z "$FRONTEND_IMAGE" ] || [ -z "$APP_VERSION" ];
   # No deploy has recorded its images yet (the first deploy after #831 failed part
   # way, or the file was removed). The containers that are running can still be
   # inspected and probed, which is what keeps the health alert truthful; anything
-  # that would start a container needs a real image and is refused.
-  case " $* " in
-    *" up "*|*" run "*|*" pull "*|*" create "*|*" restart "*|*" start "*)
+  # that would start a container needs a real image and is refused. The subcommand
+  # comes first: an option before it could hide it, so that is refused too.
+  case "${1:-}" in
+    up|run|pull|create|restart|start|-*)
       echo "compose.sh: no image is recorded in $PWD/.deploy-images.env; run a deploy (deploy.yml) first" >&2
       exit 2 ;;
   esac

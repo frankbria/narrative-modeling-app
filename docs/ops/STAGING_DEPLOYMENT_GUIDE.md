@@ -167,10 +167,18 @@ deploys the commit it is dispatched on). Its `build-images` job runs
 `scripts/ci/build_images.sh <sha> --push ghcr.io/<repo>` and hands the two digests to
 `deploy-staging`, which joins the tailnet, SSHes to the box, and runs in the deploy path:
 
-1. `scripts/deploy/deploy_images.sh`: `git fetch`, `git checkout main`,
-   `git reset --hard <sha>`; `scripts/deploy/preflight_staging_env.sh`; `docker pull` of
-   the two digests, logged in with the run's own short-lived token in a throwaway docker
-   config; `compose.sh up -d --remove-orphans`; write `.deploy-images.env`
+1. `scripts/deploy/deploy_images.sh`: refuses a box without exactly one env file;
+   `docker pull` of the two digests, logged in with the run's own short-lived token in a
+   throwaway docker config; `git fetch`, then the new commit's
+   `preflight_staging_env.sh` against its compose file (both read with `git show`, so a
+   refused deploy leaves the checkout where it was); `git checkout main`,
+   `git reset --hard <sha>`; `compose.sh up -d --remove-orphans`; write
+   `.deploy-images.env`; remove this repository's images that are neither running nor
+   the previous deploy's (the rollback). Only the two `ghcr.io/<repo>/backend` and
+   `…/frontend` names are looked at, never `docker image prune` (the box is shared); a
+   redeploy of the recorded images, or a box with no record, removes nothing. This
+   assumes one deploy directory of this repository per docker daemon: a second one
+   (production beside staging) would lose its idle rollback to the other's deploys.
 2. `scripts/deploy/apply_nginx_conf.sh` (Step 6)
 3. the health gate: waits for `http://localhost:8010/health/ready`, then runs
    `python -m app.health_probe` in the backend container and
@@ -513,8 +521,11 @@ The durable rollback is a revert on `main`: the next deploy puts the box on that
 commit's images, so a hand rollback lasts only until then.
 
 The immediate one puts the previous images back. Their three lines are in the summary of
-the previous green Deploy run, and the images are still on the box from that deploy
-(if they were pruned, `docker login ghcr.io` first):
+the previous green Deploy run. Each deploy keeps the previous deploy's images on the box
+and removes older ones; anything further back is pulled again by digest (the registry
+keeps every commit's images, and both packages are public, so no login is needed. If one
+is made private, log in with a throwaway config, never the box's own:
+`cfg=$(mktemp -d); docker --config "$cfg" login ghcr.io; docker --config "$cfg" pull <digest>; rm -rf "$cfg"`):
 
 ```bash
 # Immediate, on the box
@@ -527,6 +538,13 @@ bash scripts/deploy/apply_nginx_conf.sh
 ```
 
 A failed nginx apply needs no rollback: the script restores the previous file itself.
+
+**A deploy whose `up` failed part way** can leave some containers on the new images while
+`.deploy-images.env` still names the old ones: the file is written only after a complete
+start. `scripts/deploy/compose.sh ps` shows each container's image. In that state a
+hand-run `compose.sh up -d --force-recreate` (a credential rotation, a restart) puts the
+**recorded, older** images back on every container, which is the rollback. To go forward
+instead, rerun the Deploy workflow for the new commit.
 
 ---
 

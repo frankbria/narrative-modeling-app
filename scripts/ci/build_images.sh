@@ -70,6 +70,9 @@ if [ "${2:-}" = "--push" ]; then
   pushed_digest() {
     docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" | grep -F -m 1 "${1%:*}@sha256:"
   }
-  echo "backend=$(pushed_digest "$backend")"
-  echo "frontend=$(pushed_digest "$frontend")"
+  # Both found before either is printed: the deploy needs both digests or neither.
+  backend_digest=$(pushed_digest "$backend") || { echo "no registry digest for $backend after its push" >&2; exit 1; }
+  frontend_digest=$(pushed_digest "$frontend") || { echo "no registry digest for $frontend after its push" >&2; exit 1; }
+  echo "backend=$backend_digest"
+  echo "frontend=$frontend_digest"
 fi

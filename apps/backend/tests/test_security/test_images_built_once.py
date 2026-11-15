@@ -46,6 +46,8 @@ TEMPLATE = (REPO_ROOT / ".env.staging.example").read_text() + A_DSN
 
 # Appends one line per call (`docker <args>`), then does what the test scripted.
 RECORDING = '#!/usr/bin/env bash\necho "$(basename "$0") $*" >> "$CALLS"\n'
+# `git show <commit>:<path>` answers with that path under $SOURCE: the commit being deployed.
+SHOWING = 'case "$1" in show) cat "$SOURCE/${2#*:}";; esac\n'
 
 
 def _code_lines(path: Path) -> str:
@@ -59,7 +61,7 @@ def _code_lines(path: Path) -> str:
 def _fake_tools(directory: Path, docker_script: str = "") -> Path:
     bin_dir = directory / "bin"
     bin_dir.mkdir()
-    for name, script in (("docker", docker_script), ("git", "")):
+    for name, script in (("docker", docker_script), ("git", SHOWING)):
         (bin_dir / name).write_text(RECORDING + script)
         (bin_dir / name).chmod(0o755)
     return bin_dir
@@ -362,6 +364,22 @@ def test_a_box_with_no_recorded_images_can_be_probed_but_not_started(tmp_path):
     assert len(_calls(box)) == 1
 
 
+def test_with_no_recorded_images_the_subcommand_decides_not_any_argument(tmp_path):
+    box = stand_in_box(tmp_path)
+    bin_dir = _fake_tools(box)
+    wrapper = str(box / "scripts/deploy/compose.sh")
+
+    # A word that names a starting subcommand, passed to a command that starts nothing.
+    probe = _run([wrapper, "exec", "-T", "backend", "echo", "up"], box, bin_dir)
+    assert probe.returncode == 0, probe.stderr
+
+    # An option before the subcommand hides it: refused rather than guessed at.
+    for starting in (["--ansi", "never", "up", "-d"], ["start"], ["create"]):
+        refused = _run([wrapper, *starting], box, bin_dir)
+        assert refused.returncode == 2, starting
+    assert len(_calls(box)) == 1
+
+
 def test_the_real_compose_accepts_a_box_with_no_recorded_images(tmp_path):
     """The recording `docker` above does not interpolate. The real one must get past the
     compose file's `${BACKEND_IMAGE:?}` guards for a probe to reach a running container."""
@@ -434,18 +452,25 @@ def test_the_preflight_skips_exactly_what_the_wrapper_supplies():
 
 
 def _deploy(
-    box: Path, docker_script: str = "", env_file: str = TEMPLATE, **overrides: str
+    box: Path,
+    docker_script: str = "",
+    env_file: str | None = TEMPLATE,
+    source: Path = REPO_ROOT,
+    **overrides: str,
 ) -> subprocess.CompletedProcess:
+    """Run the deploy on `box`; `source` is the checkout of the commit being deployed."""
     for name in ("deploy_images.sh", "preflight_staging_env.sh"):
         shutil.copy2(REPO_ROOT / "scripts/deploy" / name, box / "scripts/deploy" / name)
     shutil.copy2(COMPOSE_FILE, box / COMPOSE_FILE.name)
-    (box / ".env.staging").write_text(env_file)
+    if env_file is not None:
+        (box / ".env.staging").write_text(env_file)
     values = {
         "APP_VERSION": COMMIT,
         "BACKEND_IMAGE": BACKEND,
         "FRONTEND_IMAGE": FRONTEND,
         "REGISTRY_USER": "deployer",
         "REGISTRY_TOKEN": "ghs_short_lived",
+        "SOURCE": str(source),
         **overrides,
     }
     return _run(
@@ -468,6 +493,8 @@ def test_a_deploy_checks_out_the_commit_pulls_the_digests_and_records_them(tmp_p
         f"docker --config <throwaway> pull --quiet {BACKEND}",
         f"docker --config <throwaway> pull --quiet {FRONTEND}",
         "git fetch --prune origin",
+        f"git show {COMMIT}:docker-compose.deploy.yml",
+        f"git show {COMMIT}:scripts/deploy/preflight_staging_env.sh",
         "git checkout main",
         f"git reset --hard {COMMIT}",
         f"{compose} up -d --remove-orphans",
@@ -549,20 +576,152 @@ def test_a_tag_is_refused_before_anything_runs(tmp_path):
     assert _calls(box) == []
 
 
-def test_a_box_missing_a_required_setting_is_refused_before_anything_starts(tmp_path):
-    box = stand_in_box(tmp_path)
+def test_a_box_missing_a_required_setting_is_refused_before_the_checkout_moves(
+    tmp_path,
+):
+    """The preflight reads the deployed commit's compose file, so a refused deploy leaves
+    the box on the commit, the containers and the record it had."""
+    box = stand_in_box(tmp_path / "box")
+    previous = "APP_VERSION=previous\nBACKEND_IMAGE=old@sha256:1\nFRONTEND_IMAGE=old@sha256:2\n"
+    (box / ".deploy-images.env").write_text(previous)
+    # The new commit requires a setting this box's env file does not have yet.
+    source = tmp_path / "new-commit"
+    (source / "scripts/deploy").mkdir(parents=True)
+    shutil.copy2(PREFLIGHT, source / "scripts/deploy" / PREFLIGHT.name)
+    (source / COMPOSE_FILE.name).write_text(
+        COMPOSE_FILE.read_text().replace(
+            "    environment:\n",
+            "    environment:\n      - NEW_SETTING=${NEW_SETTING:?new in this commit}\n",
+            1,
+        )
+    )
 
     run = _deploy(
         box,
         env_file=re.sub(
             r"(?m)^NEXT_PUBLIC_API_URL=.*$", "NEXT_PUBLIC_API_URL=", TEMPLATE
         ),
+        source=source,
     )
 
     assert run.returncode == 1
     assert "- NEXT_PUBLIC_API_URL" in run.stderr
-    assert not any(" up " in call for call in _calls(box))
-    assert not (box / ".deploy-images.env").exists()
+    assert "- NEW_SETTING" in run.stderr, "the preflight read the old commit's file"
+    calls = _calls(box)
+    assert not any(" up " in call for call in calls)
+    assert not any(call.startswith(("git checkout", "git reset")) for call in calls), (
+        "the checkout moved before the preflight passed"
+    )
+    assert (box / ".deploy-images.env").read_text() == previous
+
+
+@pytest.mark.parametrize("env_files", [[], [".env.staging", ".env.production"]])
+def test_a_box_without_exactly_one_env_file_is_refused_before_anything_runs(
+    tmp_path, env_files
+):
+    box = stand_in_box(tmp_path)
+    (box / ".env.staging").unlink()
+    for name in env_files:
+        (box / name).write_text(TEMPLATE)
+
+    run = _deploy(box, env_file=None)
+
+    assert run.returncode == 2
+    assert "exactly one of .env.staging or .env.production" in run.stderr
+    assert _calls(box) == []
+
+
+# ── the box keeps the running images and the rollback, and no older ones ─────
+
+BACKEND_REPOSITORY = BACKEND.split("@")[0]
+FRONTEND_REPOSITORY = FRONTEND.split("@")[0]
+OLDER_BACKEND = f"{BACKEND_REPOSITORY}@sha256:" + "0" * 64
+OLDER_FRONTEND = f"{FRONTEND_REPOSITORY}@sha256:" + "9" * 64
+ROLLBACK_BACKEND = f"{BACKEND_REPOSITORY}@sha256:" + "1" * 64
+ROLLBACK_FRONTEND = f"{FRONTEND_REPOSITORY}@sha256:" + "2" * 64
+ROLLBACK_RECORD = (
+    f"APP_VERSION=previous\nBACKEND_IMAGE={ROLLBACK_BACKEND}\n"
+    f"FRONTEND_IMAGE={ROLLBACK_FRONTEND}\n"
+)
+# docker answers `image ls <repository>` with that repository's images only: the one
+# running, the rollback, an older one, and one built locally (no digest). `${!#}` is the
+# last argument, the repository.
+LISTING = (
+    'case " $* " in *" image ls "*)\n'
+    '  case "${!#}" in\n'
+    f'    *backend) printf "%s\\n" {BACKEND} {ROLLBACK_BACKEND} {OLDER_BACKEND} "${{!#}}@<none>";;\n'
+    f'    *frontend) printf "%s\\n" {FRONTEND} {ROLLBACK_FRONTEND} {OLDER_FRONTEND} "${{!#}}@<none>";;\n'
+    "  esac;;\n"
+    "esac\n"
+)
+
+
+def _removed(box: Path) -> list[str]:
+    return [
+        call.removeprefix("docker image rm ")
+        for call in _calls(box)
+        if call.startswith("docker image rm ")
+    ]
+
+
+def test_a_deploy_removes_only_this_repositorys_older_images(tmp_path):
+    box = stand_in_box(tmp_path)
+    (box / ".deploy-images.env").write_text(ROLLBACK_RECORD)
+
+    run = _deploy(box, LISTING)
+
+    assert run.returncode == 0, run.stderr
+    listed = [call for call in _calls(box) if " image ls " in call]
+    assert [call.split()[-1] for call in listed] == [
+        BACKEND_REPOSITORY,
+        FRONTEND_REPOSITORY,
+    ], "only this repository's two image names are looked at"
+    assert _removed(box) == [OLDER_BACKEND, OLDER_FRONTEND]
+    assert not any(
+        call.startswith("docker") and "prune" in call for call in _calls(box)
+    ), "the box is shared: nothing outside these two names may go"
+    assert (box / ".deploy-images.env").read_text() == (
+        f"APP_VERSION={COMMIT}\nBACKEND_IMAGE={BACKEND}\nFRONTEND_IMAGE={FRONTEND}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        "",  # no deploy recorded: nothing says which image is the rollback
+        f"APP_VERSION={COMMIT}\nBACKEND_IMAGE={BACKEND}\nFRONTEND_IMAGE={FRONTEND}\n",
+    ],
+    ids=["nothing recorded", "the same images again"],
+)
+def test_a_deploy_that_cannot_tell_the_rollback_removes_nothing(tmp_path, record):
+    box = stand_in_box(tmp_path)
+    if record:
+        (box / ".deploy-images.env").write_text(record)
+
+    run = _deploy(box, LISTING)
+
+    assert run.returncode == 0, run.stderr
+    assert _removed(box) == []
+
+
+def test_an_image_docker_will_not_remove_does_not_fail_the_deploy(tmp_path):
+    box = stand_in_box(tmp_path)
+    (box / ".deploy-images.env").write_text(ROLLBACK_RECORD)
+
+    run = _deploy(
+        box,
+        LISTING
+        + 'case " $* " in *" image rm "*) echo "conflict: image is in use" >&2; exit 1;; esac\n',
+    )
+
+    assert run.returncode == 0, run.stderr
+    assert OLDER_BACKEND in _removed(box) and OLDER_FRONTEND in _removed(box), (
+        "one refusal must not stop the others"
+    )
+    assert "could not remove" in run.stderr
+    assert (
+        (box / ".deploy-images.env").read_text().startswith(f"APP_VERSION={COMMIT}\n")
+    )
 
 
 # ── CI builds once and hands the digests to the deploy ───────────────────────
@@ -699,6 +858,20 @@ def test_a_push_the_registry_keeps_refusing_fails_the_build_and_prints_no_digest
     assert run.stdout == ""
 
 
+def test_a_push_with_no_registry_digest_fails_the_build_and_prints_no_digest(tmp_path):
+    # The registry answered for the backend only.
+    backend_only = 'case " $* " in *" inspect "*) case "${!#}" in *backend*) echo "registry.example/app/backend@sha256:feed";; esac;; esac\n'
+    run = _run(
+        ["bash", str(BUILD_SCRIPT), COMMIT, "--push", "registry.example/app"],
+        tmp_path,
+        _fake_tools(tmp_path, backend_only),
+    )
+
+    assert run.returncode != 0
+    assert run.stdout == "", "the deploy needs both digests or neither"
+    assert f"registry.example/app/frontend:{COMMIT}" in run.stderr
+
+
 def test_the_source_map_token_is_a_build_secret_only_when_it_is_set(tmp_path):
     (tmp_path / "without").mkdir()
     (tmp_path / "with").mkdir()
@@ -759,3 +932,104 @@ def test_the_deploy_job_deploys_what_the_build_job_built():
     assert "GITHUB_STEP_SUMMARY" in step["run"], (
         "the deployed digests belong in the run summary"
     )
+
+
+def _record_the_digests(
+    tmp_path: Path, backend: str, frontend: str
+) -> subprocess.CompletedProcess:
+    """Run deploy.yml's "Record the digests" step as Actions runs it (`bash -e`)."""
+    build = yaml.safe_load(DEPLOY_WORKFLOW.read_text())["jobs"]["build-images"]
+    step = next(s for s in build["steps"] if s.get("name") == "Record the digests")
+    return subprocess.run(
+        ["bash", "-e", "-c", step["run"]],
+        env={
+            "PATH": os.environ["PATH"],
+            "BACKEND_IMAGE": backend,
+            "FRONTEND_IMAGE": frontend,
+            "GITHUB_SHA": COMMIT,
+            "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("backend", "frontend", "named"),
+    [
+        ("", FRONTEND, "backend"),
+        (BACKEND, "ghcr.io/frankbria/narrative-modeling-app/frontend:main", "frontend"),
+        # Both digests in one output and none in the other: together they look like two.
+        ("", BACKEND + FRONTEND, "backend"),
+        (BACKEND, f"{FRONTEND} {BACKEND}", "frontend"),
+    ],
+)
+def test_each_digest_the_build_hands_on_is_checked_on_its_own(
+    tmp_path, backend, frontend, named
+):
+    run = _record_the_digests(tmp_path, backend, frontend)
+
+    assert run.returncode == 1
+    assert f"no digest reference for the {named} image" in run.stdout
+
+
+def test_two_digest_references_are_recorded_in_the_run_summary(tmp_path):
+    run = _record_the_digests(tmp_path, BACKEND, FRONTEND)
+
+    assert run.returncode == 0, run.stdout + run.stderr
+    summary = (tmp_path / "summary").read_text()
+    assert BACKEND in summary and FRONTEND in summary
+
+
+def test_the_pr_gate_pulls_every_image_the_compose_file_names_by_itself(tmp_path):
+    """The deploy pulls these by reference; a bad bump of one must fail the PR, not the deploy."""
+    services = yaml.safe_load(COMPOSE_FILE.read_text())["services"]
+    by_name = sorted(
+        service["image"]
+        for service in services.values()
+        if not service["image"].startswith("${")
+    )
+    assert by_name, "the compose file names no image by itself any more"
+    job = yaml.safe_load(CI_WORKFLOW.read_text())["jobs"]["docker-images"]
+    step = next(
+        step
+        for step in job["steps"]
+        if "docker-compose.deploy.yml" in step.get("run", "")
+    )
+    (tmp_path / "box").mkdir()
+    bin_dir = _fake_tools(tmp_path / "box")
+
+    run = subprocess.run(
+        ["bash", "-e", "-c", step["run"]],
+        cwd=REPO_ROOT,
+        env={
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "CALLS": str(tmp_path / "calls"),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    assert sorted((tmp_path / "calls").read_text().splitlines()) == [
+        f"docker pull --quiet {image}" for image in by_name
+    ]
+
+
+def test_a_listing_docker_refuses_is_reported_and_removes_nothing(tmp_path):
+    box = stand_in_box(tmp_path)
+    (box / ".deploy-images.env").write_text(ROLLBACK_RECORD)
+
+    run = _deploy(
+        box,
+        'case " $* " in *" image ls "*) echo "daemon busy" >&2; exit 1;; esac\n',
+    )
+
+    assert run.returncode == 0, run.stderr
+    assert f"could not list {BACKEND_REPOSITORY}" in run.stderr
+    assert f"could not list {FRONTEND_REPOSITORY}" in run.stderr
+    assert _removed(box) == []
