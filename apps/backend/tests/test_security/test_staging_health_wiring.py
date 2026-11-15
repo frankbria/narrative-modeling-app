@@ -485,3 +485,10 @@ def test_the_ops_guide_names_every_scheduled_workflow():
         doc = _workflow(path)
         if "schedule" in (doc.get("on") or doc[True]):
             assert f"`{path.name}`" in section, path.name
+
+
+def test_a_hung_probe_fails_its_step_before_the_job_is_cancelled():
+    """#1215 item 4: a step timeout below the job's leaves time for the report."""
+    job = _workflow(HEALTH_WORKFLOW)["jobs"]["probe"]
+    probe = _steps(HEALTH_WORKFLOW)["Run the probes in the backend and frontend containers"]
+    assert probe["timeout-minutes"] < job["timeout-minutes"]

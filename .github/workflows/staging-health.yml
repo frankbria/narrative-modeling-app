@@ -89,6 +89,9 @@ jobs:
       - name: Run the probes in the backend and frontend containers
         id: probe
         if: steps.preflight.outputs.configured == 'true'
+        # Below the job's 10: a hung ssh then FAILS this step with time left for the
+        # report, instead of the whole job being cancelled at its limit (#1215).
+        timeout-minutes: 6
         env:
           HOST: ${{ secrets.HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}

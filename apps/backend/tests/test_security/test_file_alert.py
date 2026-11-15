@@ -134,3 +134,31 @@ def test_an_unset_value_redacts_nothing():
     body = "a@b and /srv and text\n"
     _, posted = _file(body)
     assert body.strip() in posted
+
+
+def test_a_host_inside_the_path_or_user_does_not_leave_the_rest():
+    """The default path ends in `/staging`; a HOST of `staging` replaced first would
+    publish `/srv/<staging host>-prod/app` and `<staging host>-ops@…`."""
+    body = "cd: /srv/staging-prod/app: No such file\nstaging-ops@staging: denied\n"
+    _, posted = _file(
+        body,
+        HOST="staging",
+        DEPLOY_USER="staging-ops",
+        DEPLOY_PATH="/srv/staging-prod/app",
+    )
+    assert "cd: <deploy path>: No such file" in posted
+    assert "<deploy user>@<staging host>: denied" in posted
+    assert "prod" not in posted and "-ops" not in posted
+
+
+def test_a_path_set_with_a_trailing_slash_is_redacted_without_it():
+    _, posted = _file("path /srv/app and /srv/app/x\n", DEPLOY_PATH="/srv/app/")
+    assert "path <deploy path> and <deploy path>/x" in posted
+
+
+def test_a_search_that_printed_before_failing_is_not_read_twice():
+    """Only the successful attempt's output names the issue to comment on."""
+    gh = '[ "$2" = list ] && echo 41\n[ "$CALLS" = 0 ] && exit 1\nexit 0\n'
+    run, posted = _file("again\n", gh=gh)
+    assert run.returncode == 0, run.stderr
+    assert "comment\n41\n--body" in posted and "create" not in posted
