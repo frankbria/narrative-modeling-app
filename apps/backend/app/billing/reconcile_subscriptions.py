@@ -58,7 +58,7 @@ import asyncio
 import os
 import sys
 from collections import Counter
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, NoReturn
@@ -367,6 +367,50 @@ async def _slot_before(slots: asyncio.Semaphore, deadline: float) -> bool:
     return True
 
 
+async def _the_rest(
+    collection: AsyncIOMotorCollection[dict[str, Any]], row: Row, apply: bool
+) -> Counter[str]:
+    """The row the deadline caught and every row after it, all counted busy."""
+    rest = await _not_reached_after(collection, row["_id"], apply)
+    rest.update({await _busy(collection, row, apply): 1, "unreached": 1})
+    return rest
+
+
+async def _cancel(tasks: set[asyncio.Task[None]]) -> None:
+    """Cancel the reads still running and wait until they have stopped."""
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _walk(
+    collection: AsyncIOMotorCollection[dict[str, Any]],
+    read_row: Callable[[Row], Coroutine[Any, Any, None]],
+    slots: asyncio.Semaphore,
+    deadline: float,
+    apply: bool,
+    outcomes: Counter[str],
+) -> None:
+    """Start `read_row` for each row as a slot frees, until the deadline.
+
+    Only the reads in flight are held, so memory does not grow with the table.
+    """
+    in_flight: set[asyncio.Task[None]] = set()
+    try:
+        # In `_id` order, so the rows the deadline leaves are one range.
+        async for row in collection.find(_WITH_A_STRIPE_ID, sort=[("_id", 1)]):
+            if not await _slot_before(slots, deadline):
+                outcomes.update(await _the_rest(collection, row, apply))
+                break
+            task = asyncio.create_task(read_row(row))
+            in_flight.add(task)
+            task.add_done_callback(in_flight.discard)
+        await asyncio.gather(*in_flight)
+    finally:
+        # A cursor that fails mid-table must not leave reads running behind it.
+        await _cancel(in_flight)
+
+
 async def reconcile(
     collection: AsyncIOMotorCollection[dict[str, Any]],
     fetch: Fetch,
@@ -390,12 +434,10 @@ async def reconcile(
 
     # A row is taken from the cursor only when a read slot is free, so the time
     # between reading a row and its conditional write does not grow with the
-    # table: a longer window would turn more rows into "changed under us". Only
-    # the reads in flight are held, so memory does not grow with it either.
+    # table: a longer window would turn more rows into "changed under us".
     deadline = asyncio.get_running_loop().time() + budget_seconds
     slots = asyncio.Semaphore(CONCURRENT_READS)
     outcomes: Counter[str] = Counter()
-    in_flight: set[asyncio.Task[None]] = set()
 
     async def in_slot(row: Row) -> None:
         try:
@@ -410,23 +452,7 @@ async def reconcile(
         finally:
             slots.release()
 
-    try:
-        # In `_id` order, so the rows the deadline leaves are one range.
-        async for row in collection.find(_WITH_A_STRIPE_ID, sort=[("_id", 1)]):
-            if not await _slot_before(slots, deadline):
-                outcomes["unreached"] += 1
-                outcomes[await _busy(collection, row, apply)] += 1
-                outcomes += await _not_reached_after(collection, row["_id"], apply)
-                break
-            task = asyncio.create_task(in_slot(row))
-            in_flight.add(task)
-            task.add_done_callback(in_flight.discard)
-        await asyncio.gather(*in_flight)
-    finally:
-        # A cursor that fails mid-table must not leave reads running behind it.
-        for task in in_flight:
-            task.cancel()
-        await asyncio.gather(*in_flight, return_exceptions=True)
+    await _walk(collection, in_slot, slots, deadline, apply, outcomes)
     return _report(outcomes, apply)
 
 
