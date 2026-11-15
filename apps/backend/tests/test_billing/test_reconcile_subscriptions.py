@@ -1461,6 +1461,11 @@ async def _store_resume(resume, resume_from: str | None, read_first: list[str]):
     )
 
 
+#: A budget these tests' answered reads finish well inside, on a loaded CI
+#: runner too (0.3 s once ran out before the first read there, PR #1260).
+_ROOM_TO_READ = 1.5
+
+
 class TestARowStripeRefused:
     """#1251: a row Stripe refused is read first on the next run, without one
     row that stays busy pinning the start."""
@@ -1473,7 +1478,7 @@ class TestARowStripeRefused:
             _collection(),
             _refusing({ids[4]}, [], answers=6),
             apply=True,
-            budget_seconds=0.3,
+            budget_seconds=_ROOM_TO_READ,
             resume=resume,
         )
         capsys.readouterr()
@@ -1512,7 +1517,7 @@ class TestARowStripeRefused:
             _collection(),
             _answers_then_hangs(0, []),
             apply=True,
-            budget_seconds=0.3,
+            budget_seconds=_ROOM_TO_READ,
             resume=resume,
         )
         assert await _marker("u-marked-1") is not None
@@ -1533,7 +1538,7 @@ class TestARowStripeRefused:
             _collection(),
             _answers_then_hangs(0, []),
             apply=True,
-            budget_seconds=0.3,
+            budget_seconds=_ROOM_TO_READ,
             resume=resume,
         )
 
@@ -1551,7 +1556,7 @@ class TestARowStripeRefused:
             _collection(),
             _answers_then_hangs(0, asked),
             apply=True,
-            budget_seconds=0.3,
+            budget_seconds=_ROOM_TO_READ,
             resume=resume,
         )
 
@@ -1574,7 +1579,7 @@ class TestARowStripeRefused:
             _collection(),
             _answers_then_hangs(3, []),
             apply=True,
-            budget_seconds=0.3,
+            budget_seconds=_ROOM_TO_READ,
             resume=resume,
         )
 
@@ -1594,7 +1599,11 @@ class TestARowStripeRefused:
             return _remote("unpaid", None)
 
         await _load_reconcile()(
-            _collection(), hangs_on_one, apply=True, budget_seconds=0.3, resume=resume
+            _collection(),
+            hangs_on_one,
+            apply=True,
+            budget_seconds=_ROOM_TO_READ,
+            resume=resume,
         )
 
         assert await _stored_resume_point(resume) is None
@@ -1662,7 +1671,7 @@ class TestARowStripeRefused:
                 _collection(),
                 _answers_then_hangs(3, []),
                 apply=True,
-                budget_seconds=0.3,
+                budget_seconds=_ROOM_TO_READ,
                 resume=resume,
             )
 
@@ -1696,7 +1705,7 @@ class TestARowStripeRefused:
                 _collection(),
                 outlasts_its_deadline,
                 apply=True,
-                budget_seconds=0.3,
+                budget_seconds=_ROOM_TO_READ,
                 resume=resume,
             )
 
