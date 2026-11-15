@@ -20,6 +20,11 @@ RUNNER_SCRIPT = REPO / "apps" / "frontend" / "test-e2e.sh"
 # A hang can also run the job into its timeout-minutes, which cancels it.
 ON_FAILURE = "failure() || cancelled()"
 
+# Any reference to the context, not only `secrets.NAME`: `secrets['NAME']` and
+# `toJSON(secrets)` read it too.
+SECRETS_CONTEXT = re.compile(r"\bsecrets\b")
+GITHUB_TOKEN = re.compile(r"github\s*(\.\s*token|\[\s*['\"]token)|GITHUB_TOKEN")
+
 E2E_JOBS = [
     pytest.param("ci.yml", "e2e-smoke", "Run Smoke Tests", id="smoke"),
     pytest.param("e2e-tests.yml", "e2e-full-suite", "Run E2E Full Suite", id="nightly"),
@@ -141,7 +146,6 @@ def test_no_secret_reaches_the_servers_whose_logs_are_published(
         ]
     )
 
-    assert "secrets." not in yaml.safe_dump(job_definition)
-    assert "secrets." not in server_environment
-    assert "github.token" not in server_environment
-    assert "GITHUB_TOKEN" not in server_environment
+    assert not SECRETS_CONTEXT.search(yaml.safe_dump(job_definition))
+    assert not SECRETS_CONTEXT.search(server_environment)
+    assert not GITHUB_TOKEN.search(server_environment)
