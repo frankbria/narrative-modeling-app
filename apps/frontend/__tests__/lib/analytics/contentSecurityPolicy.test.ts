@@ -55,8 +55,10 @@ const withoutComments = ({ file, text }: Source) =>
 const NEXT_POLICY =
   /,(?=\s*(?:[a-z-]+-src|base-uri|form-action|frame-ancestors|navigate-to|sandbox|upgrade-insecure-requests|block-all-mixed-content|report-uri|report-to|require-trusted-types-for|trusted-types|webrtc)\b)/i
 
-/** An enforced policy header. The report-only one never blocks a request. */
-const POLICY_HEADER = /content-security-policy(?!-report-only)/i
+/** Where a policy header starts; the report-only one never blocks a request, so its value is left out. */
+const AT_A_HEADER = /(?=content-security-policy)/i
+const REPORT_ONLY = /^content-security-policy-report-only/i
+const HEADER_NAME = /^content-security-policy/i
 
 /**
  * What the guard reports, each problem prefixed with its file: empty when the counts can reach
@@ -68,9 +70,11 @@ const POLICY_HEADER = /content-security-policy(?!-report-only)/i
  */
 function policyProblems(sources: Source[]): string[] {
   return sources.flatMap((source) => {
-    const [beforeAnyPolicy, ...headers] = withoutComments(source).split(POLICY_HEADER)
+    const parts = withoutComments(source).split(AT_A_HEADER)
+    const headers = parts.filter((part) => HEADER_NAME.test(part) && !REPORT_ONLY.test(part))
     const policies = headers.flatMap((header) => header.split(NEXT_POLICY))
-    const blocking = [beforeAnyPolicy, ...policies]
+    const beforeAnyPolicy = parts.filter((part) => !HEADER_NAME.test(part))
+    const blocking = [...beforeAnyPolicy, ...policies]
       .flatMap(connectSources)
       .filter((list) => !list.some((entry) => entry.replace(/'$/, '') === PLAUSIBLE_ORIGIN))
       .map((list) => `connect-src ${list.join(' ')}`)
@@ -137,6 +141,12 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
       ['a report-only header, which never blocks', edge(`add_header Content-Security-Policy-Report-Only "default-src 'self'" always;`)],
     ])('does not take %s for an enforced policy', (_where, source) => {
       expect(policyProblems([source])).toEqual([])
+    })
+
+    it('does not let a report-only header supply the enforced policy before it with Plausible', () => {
+      const edgeHeaders = edge(`add_header Content-Security-Policy "default-src 'self'" always;
+add_header Content-Security-Policy-Report-Only "connect-src https://plausible.io" always;`)
+      expect(policyProblems([edgeHeaders])).toEqual(['nginx-staging.conf: a policy without connect-src'])
     })
 
     it('reads a # in code as code, so a header after it still counts', () => {
