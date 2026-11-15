@@ -32,7 +32,10 @@ def _env_blocks(workflow: str, job: str) -> list[tuple[str, dict]]:
     """Every `env:` that reaches the job's steps: the workflow's, the job's, each step's."""
     document = yaml.safe_load((WORKFLOWS / workflow).read_text())
     job_definition = document["jobs"][job]
-    blocks = [("workflow", document.get("env") or {}), ("job", job_definition.get("env") or {})]
+    blocks = [
+        ("workflow", document.get("env") or {}),
+        ("job", job_definition.get("env") or {}),
+    ]
     blocks += [
         (f"step {step.get('name', index)!r}", step.get("env") or {})
         for index, step in enumerate(job_definition["steps"])
@@ -76,5 +79,7 @@ def test_the_runner_script_exports_a_blank_key_and_nothing_else():
 
 def test_the_blank_key_is_exported_before_the_backend_starts():
     lines = RUNNER_SCRIPT.read_text().splitlines()
-    backend_start = next(number for number, line in enumerate(lines) if BACKEND_START in line)
+    backend_start = next(
+        number for number, line in enumerate(lines) if BACKEND_START in line
+    )
     assert all(number < backend_start for number, _ in _assignments())
