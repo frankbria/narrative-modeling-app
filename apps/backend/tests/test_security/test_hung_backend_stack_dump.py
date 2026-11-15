@@ -7,7 +7,9 @@ when the probe finds it running but not answering, `dump_hung_backend` sends it 
 Python's fault handler writes every thread's stack to stderr, which is that log.
 """
 
+import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -38,9 +40,12 @@ main_thread_waits_on_a_lock()
 
 
 def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
-    """A wrapper shell with the hung Python as its child, as `uv run` is for uvicorn."""
+    """A wrapper shell with the hung Python as its child, as `uv run` is for uvicorn.
+
+    In a session of its own, so `_stop_all` can end the pair whatever the test reached.
+    """
     with log.open("ab") as output:
-        wrapper = subprocess.Popen(
+        return subprocess.Popen(
             [
                 "bash",
                 "-c",
@@ -50,12 +55,23 @@ def _start_hung_backend(log: Path) -> subprocess.Popen[bytes]:
             ],
             stdout=output,
             stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
+
+
+def _wait_until_hung(log: Path) -> None:
     deadline = time.monotonic() + 30
     while "hung" not in log.read_text() and time.monotonic() < deadline:
         time.sleep(0.1)
     assert "hung" in log.read_text(), "the stand-in never started"
-    return wrapper
+
+
+def _stop_all(wrapper: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(wrapper.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    wrapper.wait(timeout=30)
 
 
 def _dump(wrapper_pid: int, log: Path) -> subprocess.CompletedProcess[str]:
@@ -78,19 +94,20 @@ def test_the_log_gets_every_threads_stack_and_the_hung_process_is_stopped(
 ):
     log = tmp_path / "backend-e2e.log"
     wrapper = _start_hung_backend(log)
-    backend = (
-        Path("/proc")
-        / subprocess.check_output(["pgrep", "-P", str(wrapper.pid)], text=True).strip()
-    )
     try:
+        _wait_until_hung(log)
+        backend = (
+            Path("/proc")
+            / subprocess.check_output(
+                ["pgrep", "-P", str(wrapper.pid)], text=True
+            ).strip()
+        )
         dumped = _dump(wrapper.pid, log)
         # Gone (reaped, not a zombie) when the helper returns: the dump is complete
         # in the log before the job's cleanup and upload run.
         assert not backend.exists(), "the helper returned before the backend had exited"
-        wrapper.wait(timeout=30)
     finally:
-        if wrapper.poll() is None:
-            wrapper.kill()
+        _stop_all(wrapper)
 
     text = log.read_text()
     assert dumped.returncode == 0, dumped.stdout + dumped.stderr
