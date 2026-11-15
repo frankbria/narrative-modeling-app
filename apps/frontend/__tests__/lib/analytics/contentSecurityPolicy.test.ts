@@ -5,7 +5,7 @@
  * so a Content-Security-Policy whose `connect-src` leaves out https://plausible.io would stop
  * the counts without any error (#1227). No policy exists today; this fails the day one is added
  * without it, wherever the pages' headers can be set: Next's `headers()`, the middleware, any
- * other frontend source, or the nginx edge.
+ * other frontend source, or the nginx edge. Each file's policy is checked on its own.
  */
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -35,12 +35,25 @@ const connectSources = (text: string) =>
 
 const namesPolicy = (text: string) => /content-security-policy/i.test(text)
 
-/** What the guard reports for a set of sources: the problems, empty when the counts can reach Plausible. */
+/** The text without its comment lines (`//`, `/*`, ` *`, nginx `#`), so a note cannot stand in for a directive. */
+const code = (text: string) =>
+  text
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\/\*|\*|#)/.test(line))
+    .join('\n')
+
+/**
+ * What the guard reports, one text per file: empty when the counts can reach Plausible. Every policy
+ * is checked on its own, because a browser enforces each one it receives (Next's and the edge's):
+ * a file naming the header needs its own `connect-src`. shortcut: a policy whose directives live in
+ * another file than its header is refused too; split the check by header when such a file exists.
+ */
 function policyProblems(texts: string[]): string[] {
-  const directives = texts.flatMap(connectSources)
-  const blocking = directives.filter((list) => !list.includes(PLAUSIBLE_ORIGIN)).map((list) => `connect-src ${list.join(' ')}`)
-  const withoutConnectSource = texts.some(namesPolicy) && directives.length === 0 ? ['a policy without connect-src'] : []
-  return [...blocking, ...withoutConnectSource]
+  return texts.map(code).flatMap((text) => {
+    const directives = connectSources(text)
+    const blocking = directives.filter((list) => !list.includes(PLAUSIBLE_ORIGIN)).map((list) => `connect-src ${list.join(' ')}`)
+    return namesPolicy(text) && directives.length === 0 ? [...blocking, 'a policy without connect-src'] : blocking
+  })
 }
 
 describe('a Content-Security-Policy lets the visit counts reach Plausible', () => {
@@ -71,10 +84,23 @@ describe('a Content-Security-Policy lets the visit counts reach Plausible', () =
       ])
     })
 
-    it('accepts a policy whose connect-src lists Plausible, wherever the header is named', () => {
+    it('accepts a policy whose connect-src lists Plausible', () => {
       expect(
-        policyProblems(["headers.set('Content-Security-Policy', policy)", "const policy = `default-src 'self'; connect-src 'self' https://plausible.io`"]),
+        policyProblems([`add_header Content-Security-Policy "default-src 'self'; connect-src 'self' https://plausible.io" always;`]),
       ).toEqual([])
+    })
+
+    it('refuses a second policy without connect-src even when the first one lists Plausible', () => {
+      const nextHeader = `{ key: 'Content-Security-Policy', value: "default-src 'self'; connect-src 'self' https://plausible.io" }`
+      const edgeHeader = `add_header Content-Security-Policy "default-src 'self'" always;`
+      expect(policyProblems([nextHeader, edgeHeader])).toEqual(['a policy without connect-src'])
+    })
+
+    it.each([
+      ['a JS comment', "// connect-src https://plausible.io\nheaders.set('Content-Security-Policy', \"default-src 'self'\")"],
+      ['an nginx comment', `# connect-src https://plausible.io\nadd_header Content-Security-Policy "default-src 'self'" always;`],
+    ])('does not let %s stand in for the directive', (_where, text) => {
+      expect(policyProblems([text])).toEqual(['a policy without connect-src'])
     })
 
     it('accepts Plausible at the end of a single-quoted string', () => {
