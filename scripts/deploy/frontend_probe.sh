@@ -14,17 +14,11 @@
 # exit code is the verdict.
 set -u
 cd "${DEPLOY_PATH:-/opt/narrative-modeling-app/staging}" 2>/dev/null || { echo "frontend: unhealthy (no deploy directory)"; exit 1; }
-# shortcut: a box whose last deploy predates #831 has no wrapper and still has the old
-# compose file; drop this fallback once every box has been deployed from #831 or later.
-compose() {
-  if [ -x scripts/deploy/compose.sh ]; then scripts/deploy/compose.sh "$@"; return; fi
-  docker compose -f docker-compose.staging.yml --env-file .env.staging "$@"
-}
 
 # </dev/null: this script arrives on bash's stdin, and `docker compose exec` reads its
 # own stdin to the end. Without it the exec swallows every line below, bash meets end
 # of file and exits 0 having printed nothing: a probe that always passes (#756).
-answer=$(compose exec -T frontend curl -sS -m 30 -w '\n%{http_code}' http://localhost:3000/api/health/ready 2>/dev/null </dev/null) || {
+answer=$(scripts/deploy/compose.sh exec -T frontend curl -sS -m 30 -w '\n%{http_code}' http://localhost:3000/api/health/ready 2>/dev/null </dev/null) || {
   echo "frontend: unhealthy (the frontend container did not answer)"
   exit 1
 }
