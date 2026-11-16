@@ -37,7 +37,11 @@ const customJestConfig = {
 // @auth/core|jose|@panva/hkdf, needed to exercise the real next-auth `getToken`
 // cookie resolution (#469) instead of mocking it blind. Inject those into
 // next/jest's own negative lookahead after it resolves.
-const ESM_TO_TRANSFORM = 'next-auth|@auth/core|jose|@panva/hkdf'
+// magic-string 1.x is ESM-only too, and @tailwindcss/node >= 4.3.4 nests it
+// under its own node_modules. The lookahead runs at every `node_modules/`, so
+// the nested path has to be listed whole or the outer `@tailwindcss` match
+// still ignores it (themeTokens.test.ts compiles CSS through that plugin).
+const ESM_TO_TRANSFORM = 'next-auth|@auth/core|jose|@panva/hkdf|@tailwindcss/node/node_modules/magic-string|magic-string'
 module.exports = async () => {
   const config = await createJestConfig(customJestConfig)()
   // A file is ignored (not transformed) if it matches ANY pattern, so the ESM
