@@ -84,7 +84,7 @@
     "@types/node-fetch": "^2.6.13",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-config-next": "16.4.6",
     "glob": "^14.0.4",
     "jest": "^30.5.2",
@@ -101,7 +101,10 @@
       "postcss": "^8.5.15"
     },
     "sharp": "^0.35.3",
-    "mongodb": "$mongodb"
+    "mongodb": "$mongodb",
+    "@tailwindcss/typography": {
+      "postcss-selector-parser": "^6.1.5"
+    }
   },
   "engines": {
     "node": "^22.13.0 || >=24"
