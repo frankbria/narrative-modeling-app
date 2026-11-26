@@ -9,7 +9,7 @@ describe('SiteFooter', () => {
     const link = screen.getByRole('link', { name: /source/i })
     expect(link).toHaveAttribute(
       'href',
-      'https://github.com/frankbria/narrative-modeling-app'
+      'https://github.com/frankbria/sheetpredict'
     )
     expect(link).toHaveTextContent(/Apache-2\.0/i)
     // External link opened safely.

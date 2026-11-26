@@ -10,7 +10,7 @@ name: Deploy (Staging)
 # scripts/deploy/compose.sh hands that file to compose. MongoDB is a managed Atlas
 # cluster (MONGODB_URI in .env.staging) — no Mongo container is deployed.
 #
-# REGISTRY: ghcr.io/frankbria/narrative-modeling-app/{backend,frontend}, tagged with
+# REGISTRY: ghcr.io/frankbria/sheetpredict/{backend,frontend}, tagged with
 # the commit SHA. The packages are private; the box pulls with this run's own
 # GITHUB_TOKEN (packages: read), which expires with the run and is used from a
 # throwaway docker config. No standing pull credential lives on the box.
@@ -70,7 +70,7 @@ jobs:
     name: Build and push images
     runs-on: ubuntu-latest
     # Don't attempt builds from forks (no access to the registry).
-    if: github.repository == 'frankbria/narrative-modeling-app'
+    if: github.repository == 'frankbria/sheetpredict'
     timeout-minutes: 30
     permissions:
       contents: read
@@ -123,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-images
     # Don't attempt deploys from forks (no access to secrets).
-    if: github.repository == 'frankbria/narrative-modeling-app'
+    if: github.repository == 'frankbria/sheetpredict'
     permissions:
       contents: read
       # The box pulls the images with this job's token (see the header).

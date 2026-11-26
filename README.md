@@ -20,7 +20,7 @@ You write no code.
 
 <br>
 
-[![CI](https://github.com/frankbria/narrative-modeling-app/actions/workflows/ci.yml/badge.svg)](https://github.com/frankbria/narrative-modeling-app/actions/workflows/ci.yml)
+[![CI](https://github.com/frankbria/sheetpredict/actions/workflows/ci.yml/badge.svg)](https://github.com/frankbria/sheetpredict/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-2563eb)](LICENSE)
 ![Python 3.13](https://img.shields.io/badge/python-3.13-3776ab?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)

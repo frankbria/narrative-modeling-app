@@ -17,7 +17,7 @@ import { Fragment } from 'react'
 import Link from 'next/link'
 import { PUBLIC_LINKS } from '@/lib/publicLinks'
 
-const SOURCE_URL = 'https://github.com/frankbria/narrative-modeling-app'
+const SOURCE_URL = 'https://github.com/frankbria/sheetpredict'
 
 export function SiteFooter({ className = '' }: { className?: string }) {
   return (

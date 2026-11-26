@@ -43,7 +43,7 @@ jobs:
   reconcile:
     name: Reconcile subscriptions with Stripe
     runs-on: ubuntu-latest
-    if: github.repository == 'frankbria/narrative-modeling-app'
+    if: github.repository == 'frankbria/sheetpredict'
     environment: Development
     # The steps before the report stop at their own limits (14 minutes together)
     # and leave the report 3: two retry waits of a minute (#1231).
