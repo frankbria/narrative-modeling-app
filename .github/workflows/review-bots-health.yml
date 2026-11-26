@@ -23,7 +23,7 @@ jobs:
   check:
     name: Check the review workflows start
     runs-on: ubuntu-latest
-    if: github.repository == 'frankbria/narrative-modeling-app'
+    if: github.repository == 'frankbria/sheetpredict'
     timeout-minutes: 5
     steps:
       - name: Checkout

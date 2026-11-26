@@ -425,7 +425,7 @@ app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["u
 
 # The licence and where the source lives, machine-readable (the UI half is the
 # frontend SiteFooter link). Same values as LICENSE/NOTICE in the repo root.
-SOURCE_CODE_URL = "https://github.com/frankbria/narrative-modeling-app"
+SOURCE_CODE_URL = "https://github.com/frankbria/sheetpredict"
 
 
 @app.get("/")

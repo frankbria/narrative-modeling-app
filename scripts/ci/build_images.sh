@@ -32,7 +32,7 @@ repo_root=$(cd "$(dirname "$0")/../.." && pwd)
 
 labels=(
   --label "org.opencontainers.image.revision=$revision"
-  --label "org.opencontainers.image.source=https://github.com/frankbria/narrative-modeling-app"
+  --label "org.opencontainers.image.source=https://github.com/frankbria/sheetpredict"
 )
 frontend_args=(
   --build-arg "SENTRY_RELEASE=$revision"

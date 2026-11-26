@@ -18,7 +18,7 @@ NOTICE = REPO_ROOT / "NOTICE"
 README = REPO_ROOT / "README.md"
 
 HOLDER = "Noatak Enterprises, LLC"
-SOURCE_URL = "https://github.com/frankbria/narrative-modeling-app"
+SOURCE_URL = "https://github.com/frankbria/sheetpredict"
 SPDX = "Apache-2.0"
 
 

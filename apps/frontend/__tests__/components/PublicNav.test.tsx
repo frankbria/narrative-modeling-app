@@ -37,7 +37,7 @@ describe('SiteFooter links (#772 AC5)', () => {
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
     expect(hrefs).toEqual([
-      'https://github.com/frankbria/narrative-modeling-app',
+      'https://github.com/frankbria/sheetpredict',
       ...PUBLIC_LINKS.map((link) => link.href),
     ])
   })
