@@ -81,7 +81,7 @@ secret record as well as on the box (`docs/ops/CREDENTIAL_ROTATION.md`).
 ```bash
 mkdir -p /opt/narrative-modeling-app/staging
 cd /opt/narrative-modeling-app/staging
-git clone https://github.com/frankbria/narrative-modeling-app.git .
+git clone https://github.com/frankbria/sheetpredict.git .
 git checkout main
 
 cp .env.staging.example .env.staging
@@ -145,7 +145,7 @@ It prints the complete list of missing required variables, and refuses an invali
 
 Nothing is built on the box (#831). CI builds the backend and frontend images once
 per commit and pushes them to GHCR
-(`ghcr.io/frankbria/narrative-modeling-app/{backend,frontend}`, tagged with the commit
+(`ghcr.io/frankbria/sheetpredict/{backend,frontend}`, tagged with the commit
 SHA); a box pulls them **by digest**. The same digests can then be given to production,
 which is what makes production "staging moved over".
 
